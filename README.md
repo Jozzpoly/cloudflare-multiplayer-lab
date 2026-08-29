@@ -13,6 +13,28 @@ The goal is **not** to build a game framework up front. The goal is to prove the
 
 Only Gate 1 belongs in the initial bootstrap. Later gates should be added only after the previous boundary is demonstrated.
 
+## Gate 1
+
+The initial scaffold intentionally contains only:
+
+- `public/` — static browser client served by Workers Static Assets,
+- `src/index.ts` — Worker with `/api/ping`,
+- `wrangler.jsonc` — Worker + Static Assets routing,
+- `.github/workflows/ci.yml` — typecheck and Wrangler dry-run on pushes/PRs.
+
+Local development:
+
+```bash
+npm install
+npm run dev
+```
+
+Repository validation:
+
+```bash
+npm run check
+```
+
 ## Current status
 
-Repository initialized. Gate 1 implementation is being prepared; no Cloudflare deployment has been validated yet.
+Gate 1 is implemented at source level. It is **not yet runtime-validated on Cloudflare**. The next evidence boundary is a real Workers Builds deployment from `main`, followed by a browser test of the public page and `/api/ping`.

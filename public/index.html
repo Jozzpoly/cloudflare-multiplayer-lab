@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Cloudflare Multiplayer Lab</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <p class="eyebrow">Gate 1 · Deployment sanity</p>
+      <h1>Cloudflare Multiplayer Lab</h1>
+      <p class="lede">
+        One deployment, one static client, one Worker endpoint. Realtime comes only after this boundary is proven.
+      </p>
+
+      <section class="panel" aria-labelledby="worker-check-title">
+        <div>
+          <h2 id="worker-check-title">Worker check</h2>
+          <p id="status" class="status" aria-live="polite">Not tested yet.</p>
+        </div>
+        <button id="ping" type="button">Ping Worker</button>
+      </section>
+
+      <pre id="result" class="result" aria-live="polite">Waiting for /api/ping</pre>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -14,10 +14,24 @@ const joystickEl = document.querySelector("#joystick");
 const stickEl = document.querySelector("#stick");
 const dashButton = document.querySelector("#dash");
 const dashCooldownEl = document.querySelector("#dash-cooldown");
+const labToggle = document.querySelector("#lab-toggle");
+const labPanel = document.querySelector("#lab-panel");
+const labClose = document.querySelector("#lab-close");
+const seedInput = document.querySelector("#run-seed");
+const resetButton = document.querySelector("#reset-run");
 
-if (!(canvas instanceof HTMLCanvasElement) || !ctx || !(boot instanceof HTMLElement) || !(callsignInput instanceof HTMLInputElement) || !(playButton instanceof HTMLButtonElement) || !(netDot instanceof HTMLElement) || !(netState instanceof HTMLElement) || !(rttEl instanceof HTMLElement) || !(scoreEl instanceof HTMLElement) || !(comboEl instanceof HTMLElement) || !(scoreboardEl instanceof HTMLOListElement) || !(feedEl instanceof HTMLElement) || !(joystickEl instanceof HTMLElement) || !(stickEl instanceof HTMLElement) || !(dashButton instanceof HTMLButtonElement) || !(dashCooldownEl instanceof HTMLElement)) {
-  throw new Error("Neon Salvage UI is incomplete.");
-}
+const metricIds = [
+  "m-run", "m-sim", "m-snapshot", "m-tick-p95", "m-drift-p95", "m-dropped",
+  "m-rtt", "m-snapshot-age", "m-correction", "m-fps", "m-input-rate", "m-bytes",
+];
+const metrics = Object.fromEntries(metricIds.map((id) => [id, document.querySelector(`#${id}`)]));
+
+const required = [
+  canvas, ctx, boot, callsignInput, playButton, netDot, netState, rttEl, scoreEl, comboEl,
+  scoreboardEl, feedEl, joystickEl, stickEl, dashButton, dashCooldownEl, labToggle, labPanel,
+  labClose, seedInput, resetButton, ...Object.values(metrics),
+];
+if (required.some((item) => !item)) throw new Error("Gate 4A UI is incomplete.");
 
 const WORLD_FALLBACK = { width: 1600, height: 1000 };
 const ACCELERATION = 920;
@@ -26,36 +40,70 @@ const MAX_SPEED = 330;
 const DASH_IMPULSE = 310;
 const DASH_COOLDOWN_MS = 1250;
 const INPUT_INTERVAL_MS = 66;
+const PLAYER_RADIUS = 18;
+const SAMPLE_LIMIT = 160;
+
 const keys = new Set();
 const players = new Map();
 const pickups = new Map();
 const particles = [];
 const pendingPings = new Map();
+const rttSamples = [];
+const correctionSamples = [];
+const snapshotGapSamples = [];
+const fpsSamples = [];
 
 let world = { ...WORLD_FALLBACK };
+let simulation = { simulationHz: 20, snapshotHz: 10, inputLeaseMs: 600 };
+let run = { id: "—", seed: 0, tick: 0 };
+let serverTelemetry = null;
 let socket = null;
 let playing = false;
 let reconnectTimer = null;
 let inputTimer = null;
 let pingTimer = null;
+let telemetryTimer = null;
 let selfSessionId = null;
 let localPlayer = null;
 let inputSeq = 0;
 let dashQueued = false;
+let dashPredictionUntil = 0;
 let localDashReadyAt = 0;
 let lastFrameAt = performance.now();
-let lastRtt = null;
+let lastSnapshotAt = null;
+let lastSnapshotAgeMs = null;
+let serverClockOffsetMs = null;
 let joystickPointer = null;
 let joystickInput = { x: 0, y: 0 };
 let dpr = 1;
 let viewportWidth = innerWidth;
 let viewportHeight = innerHeight;
 
+let rateWindowStartedAt = performance.now();
+let rateInputs = 0;
+let rateSnapshots = 0;
+let rateInboundBytes = 0;
+let rateOutboundBytes = 0;
+let clientRates = { inputsPerSec: 0, snapshotsPerSec: 0, inboundBytesPerSec: 0, outboundBytesPerSec: 0 };
+
 const storedCallsign = localStorage.getItem("neon-salvage-callsign");
 callsignInput.value = storedCallsign || `P-${crypto.randomUUID().slice(0, 6)}`;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function percentile(values, p) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * p) - 1));
+  return sorted[index];
+}
+
+function pushSample(target, value) {
+  if (!Number.isFinite(value)) return;
+  target.push(value);
+  if (target.length > SAMPLE_LIMIT) target.splice(0, target.length - SAMPLE_LIMIT);
 }
 
 function normalizeVector(x, y) {
@@ -75,7 +123,7 @@ function addFeed(text, hue = 195) {
   line.textContent = text;
   line.style.color = `hsl(${hue} 90% 72%)`;
   feedEl.prepend(line);
-  window.setTimeout(() => line.remove(), 2500);
+  window.setTimeout(() => line.remove(), 2600);
 }
 
 function resizeCanvas() {
@@ -106,14 +154,18 @@ function scheduleReconnect() {
 function stopNetworkLoops() {
   if (inputTimer) clearInterval(inputTimer);
   if (pingTimer) clearInterval(pingTimer);
+  if (telemetryTimer) clearInterval(telemetryTimer);
   inputTimer = null;
   pingTimer = null;
+  telemetryTimer = null;
 }
 
 function startNetworkLoops() {
   stopNetworkLoops();
   inputTimer = window.setInterval(sendInput, INPUT_INTERVAL_MS);
   pingTimer = window.setInterval(sendPing, 2000);
+  telemetryTimer = window.setInterval(renderTelemetry, 250);
+  sendInput();
   sendPing();
 }
 
@@ -130,6 +182,7 @@ function connect() {
 
   socket.addEventListener("message", (event) => {
     if (typeof event.data !== "string") return;
+    rateInboundBytes += event.data.length;
     let message;
     try {
       message = JSON.parse(event.data);
@@ -152,21 +205,49 @@ function connect() {
 function handleMessage(message) {
   if (message.type === "welcome") {
     world = message.world || WORLD_FALLBACK;
-    selfSessionId = message.self?.sessionId || null;
-    players.clear();
-    for (const player of message.players || []) upsertPlayer(player, true);
-    for (const pickup of message.pickups || []) pickups.set(pickup.id, pickup);
+    simulation = message.simulation || simulation;
+    run = message.run || run;
+    serverTelemetry = message.telemetry || null;
+    seedInput.value = String(run.seed >>> 0);
+    applyFullState(message.players || [], message.pickups || [], message.self);
+    setNetwork("live", "live");
+    addFeed(`SIM LOCK · ${simulation.simulationHz} Hz server / ${simulation.snapshotHz} Hz snapshots`, 150);
+    return;
+  }
 
-    const self = message.self;
-    if (self) {
-      localPlayer = { ...self, drawX: self.x, drawY: self.y };
-      upsertPlayer(self, true);
-      localDashReadyAt = self.dashReadyAt || 0;
-      updateSelfHud(self);
+  if (message.type === "run_reset") {
+    run = message.run || run;
+    simulation = message.simulation || simulation;
+    seedInput.value = String(run.seed >>> 0);
+    applyFullState(message.players || [], message.pickups || [], null);
+    correctionSamples.length = 0;
+    snapshotGapSamples.length = 0;
+    addFeed(`RUN RESET · seed ${run.seed} · by ${message.requestedBy}`, 48);
+    return;
+  }
+
+  if (message.type === "snapshot") {
+    const receivedAt = performance.now();
+    if (lastSnapshotAt !== null) pushSample(snapshotGapSamples, receivedAt - lastSnapshotAt);
+    lastSnapshotAt = receivedAt;
+    rateSnapshots += 1;
+    run = message.run || run;
+    serverTelemetry = message.telemetry || serverTelemetry;
+
+    let projectionAgeMs = 0;
+    if (serverClockOffsetMs !== null && Number.isFinite(message.serverTime)) {
+      lastSnapshotAgeMs = Math.max(0, Date.now() + serverClockOffsetMs - message.serverTime);
+      projectionAgeMs = clamp(lastSnapshotAgeMs, 0, 250);
     }
 
-    setNetwork("live", "live");
-    addFeed("LINK ESTABLISHED · shared world live", 150);
+    for (const player of message.players || []) {
+      upsertAuthoritativePlayer(player, projectionAgeMs);
+    }
+
+    const liveSessions = new Set((message.players || []).map((player) => player.sessionId));
+    for (const sessionId of players.keys()) {
+      if (!liveSessions.has(sessionId)) players.delete(sessionId);
+    }
     return;
   }
 
@@ -179,16 +260,6 @@ function handleMessage(message) {
   if (message.type === "player_left") {
     players.delete(message.sessionId);
     addFeed(`${message.playerId} left the grid`, 340);
-    return;
-  }
-
-  if (message.type === "player" && message.player) {
-    const player = message.player;
-    upsertPlayer(player, false);
-    if (player.sessionId === selfSessionId && localPlayer) {
-      reconcileSelf(player);
-      updateSelfHud(player);
-    }
     return;
   }
 
@@ -206,12 +277,54 @@ function handleMessage(message) {
   }
 
   if (message.type === "pong") {
-    const started = pendingPings.get(message.id);
-    if (started !== undefined) {
+    const pending = pendingPings.get(message.id);
+    if (pending) {
       pendingPings.delete(message.id);
-      lastRtt = performance.now() - started;
-      rttEl.textContent = `${Math.round(lastRtt)} ms`;
+      const rtt = performance.now() - pending.perf;
+      pushSample(rttSamples, rtt);
+      const offset = message.serverReceivedAt - (pending.wall + rtt / 2);
+      serverClockOffsetMs = serverClockOffsetMs === null ? offset : serverClockOffsetMs * 0.82 + offset * 0.18;
+      rttEl.textContent = `${Math.round(rtt)} ms`;
     }
+  }
+}
+
+function applyFullState(nextPlayers, nextPickups, explicitSelf) {
+  players.clear();
+  pickups.clear();
+  for (const pickup of nextPickups) pickups.set(pickup.id, pickup);
+
+  let self = explicitSelf;
+  if (!self && selfSessionId) self = nextPlayers.find((player) => player.sessionId === selfSessionId) || null;
+  if (!self) self = nextPlayers.find((player) => player.playerId === callsignInput.value.trim()) || null;
+
+  for (const player of nextPlayers) upsertPlayer(player, true);
+
+  if (self) {
+    selfSessionId = self.sessionId;
+    localPlayer = { ...self, drawX: self.x, drawY: self.y };
+    localDashReadyAt = self.dashReadyAt || 0;
+    updateSelfHud(self);
+  }
+}
+
+function projectAuthoritativePlayer(player, ageMs) {
+  const dt = clamp(ageMs / 1000, 0, 0.25);
+  if (dt <= 0) return player;
+
+  return {
+    ...player,
+    x: clamp(player.x + (player.vx || 0) * dt, PLAYER_RADIUS, world.width - PLAYER_RADIUS),
+    y: clamp(player.y + (player.vy || 0) * dt, PLAYER_RADIUS, world.height - PLAYER_RADIUS),
+  };
+}
+
+function upsertAuthoritativePlayer(player, ageMs) {
+  const projected = projectAuthoritativePlayer(player, ageMs);
+  upsertPlayer(projected, false);
+  if (player.sessionId === selfSessionId && localPlayer) {
+    reconcileSelf(projected);
+    updateSelfHud(player);
   }
 }
 
@@ -236,23 +349,25 @@ function upsertPlayer(player, immediate) {
   existing.combo = player.combo;
   existing.comboExpiresAt = player.comboExpiresAt;
   existing.dashReadyAt = player.dashReadyAt;
+  existing.ack = player.ack;
 }
 
 function reconcileSelf(authoritative) {
   const dx = authoritative.x - localPlayer.x;
   const dy = authoritative.y - localPlayer.y;
   const error = Math.hypot(dx, dy);
+  pushSample(correctionSamples, error);
 
-  if (error > 160) {
+  if (error > 150) {
     localPlayer.x = authoritative.x;
     localPlayer.y = authoritative.y;
   } else {
-    localPlayer.x += dx * 0.24;
-    localPlayer.y += dy * 0.24;
+    localPlayer.x += dx * 0.2;
+    localPlayer.y += dy * 0.2;
   }
 
-  localPlayer.vx += (authoritative.vx - localPlayer.vx) * 0.3;
-  localPlayer.vy += (authoritative.vy - localPlayer.vy) * 0.3;
+  localPlayer.vx += (authoritative.vx - localPlayer.vx) * 0.28;
+  localPlayer.vy += (authoritative.vy - localPlayer.vy) * 0.28;
   localPlayer.score = authoritative.score;
   localPlayer.combo = authoritative.combo;
   localPlayer.comboExpiresAt = authoritative.comboExpiresAt;
@@ -284,26 +399,34 @@ function renderScoreboard(scores) {
   }
 }
 
+function sendEncoded(payload) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+  const encoded = JSON.stringify(payload);
+  socket.send(encoded);
+  rateOutboundBytes += encoded.length;
+  return true;
+}
+
 function sendInput() {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
   const input = currentInput();
-  socket.send(JSON.stringify({
+  const sent = sendEncoded({
     type: "input",
     seq: ++inputSeq,
     x: input.x,
     y: input.y,
     dash: dashQueued,
-  }));
+  });
+  if (sent) rateInputs += 1;
   dashQueued = false;
 }
 
 function sendPing() {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   const id = crypto.randomUUID();
-  pendingPings.set(id, performance.now());
-  socket.send(JSON.stringify({ type: "ping", id }));
+  pendingPings.set(id, { perf: performance.now(), wall: Date.now() });
+  sendEncoded({ type: "ping", id });
   for (const [key, started] of pendingPings) {
-    if (performance.now() - started > 10000) pendingPings.delete(key);
+    if (performance.now() - started.perf > 10000) pendingPings.delete(key);
   }
 }
 
@@ -339,7 +462,9 @@ function triggerDash() {
   localPlayer.vx += dx * DASH_IMPULSE;
   localPlayer.vy += dy * DASH_IMPULSE;
   localDashReadyAt = Date.now() + DASH_COOLDOWN_MS;
+  dashPredictionUntil = performance.now() + 70;
   dashQueued = true;
+  sendInput();
   spawnTrail(localPlayer.x, localPlayer.y, localPlayer.hue, 18);
   navigator.vibrate?.(18);
 }
@@ -352,19 +477,40 @@ function simulateLocal(dt) {
   const damping = Math.exp(-DRAG * dt);
   localPlayer.vx *= damping;
   localPlayer.vy *= damping;
+
   const speed = Math.hypot(localPlayer.vx, localPlayer.vy);
-  if (speed > MAX_SPEED && Date.now() >= localDashReadyAt - DASH_COOLDOWN_MS + 220) {
+  if (speed > MAX_SPEED && performance.now() >= dashPredictionUntil) {
     const scale = MAX_SPEED / speed;
     localPlayer.vx *= scale;
     localPlayer.vy *= scale;
   }
-  localPlayer.x = clamp(localPlayer.x + localPlayer.vx * dt, 18, world.width - 18);
-  localPlayer.y = clamp(localPlayer.y + localPlayer.vy * dt, 18, world.height - 18);
+
+  localPlayer.x += localPlayer.vx * dt;
+  localPlayer.y += localPlayer.vy * dt;
+  resolveLocalBounds(localPlayer);
+
   if (speed > 90 && Math.random() < dt * 16) spawnTrail(localPlayer.x, localPlayer.y, localPlayer.hue, 1);
 }
 
+function resolveLocalBounds(player) {
+  if (player.x < PLAYER_RADIUS) {
+    player.x = PLAYER_RADIUS;
+    player.vx = Math.abs(player.vx) * 0.35;
+  } else if (player.x > world.width - PLAYER_RADIUS) {
+    player.x = world.width - PLAYER_RADIUS;
+    player.vx = -Math.abs(player.vx) * 0.35;
+  }
+  if (player.y < PLAYER_RADIUS) {
+    player.y = PLAYER_RADIUS;
+    player.vy = Math.abs(player.vy) * 0.35;
+  } else if (player.y > world.height - PLAYER_RADIUS) {
+    player.y = world.height - PLAYER_RADIUS;
+    player.vy = -Math.abs(player.vy) * 0.35;
+  }
+}
+
 function updateRemotePlayers(dt) {
-  const blend = 1 - Math.exp(-11 * dt);
+  const blend = 1 - Math.exp(-10 * dt);
   for (const player of players.values()) {
     if (player.sessionId === selfSessionId) continue;
     player.drawX += (player.targetX - player.drawX) * blend;
@@ -406,200 +552,278 @@ function updateParticles(dt) {
   }
 }
 
-function cameraTransform() {
+function camera() {
   const focusX = localPlayer?.x ?? world.width / 2;
   const focusY = localPlayer?.y ?? world.height / 2;
-  const zoom = clamp(Math.min(viewportWidth / 720, viewportHeight / 540), 0.55, 1.05);
+  const zoom = clamp(Math.min(viewportWidth / 780, viewportHeight / 520), 0.55, 1.1);
   return { focusX, focusY, zoom };
 }
 
-function worldToScreen(x, y, camera) {
+function toScreen(x, y, view) {
   return {
-    x: (x - camera.focusX) * camera.zoom + viewportWidth / 2,
-    y: (y - camera.focusY) * camera.zoom + viewportHeight / 2,
+    x: (x - view.focusX) * view.zoom + viewportWidth / 2,
+    y: (y - view.focusY) * view.zoom + viewportHeight / 2,
   };
 }
 
-function drawArena(camera, time) {
-  ctx.fillStyle = "#080b14";
+function drawGrid(view) {
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#070a12";
   ctx.fillRect(0, 0, viewportWidth, viewportHeight);
 
-  const topLeft = worldToScreen(0, 0, camera);
-  const bottomRight = worldToScreen(world.width, world.height, camera);
-  ctx.fillStyle = "#0b1120";
-  ctx.fillRect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
-
-  ctx.save();
-  ctx.strokeStyle = "rgba(105, 151, 210, 0.09)";
+  const spacing = 100 * view.zoom;
+  const origin = toScreen(0, 0, view);
+  ctx.strokeStyle = "rgba(80, 132, 188, 0.11)";
   ctx.lineWidth = 1;
-  const spacing = 100;
-  for (let x = 0; x <= world.width; x += spacing) {
-    const a = worldToScreen(x, 0, camera);
-    const b = worldToScreen(x, world.height, camera);
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  ctx.beginPath();
+  for (let x = ((origin.x % spacing) + spacing) % spacing; x < viewportWidth; x += spacing) {
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, viewportHeight);
   }
-  for (let y = 0; y <= world.height; y += spacing) {
-    const a = worldToScreen(0, y, camera);
-    const b = worldToScreen(world.width, y, camera);
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  for (let y = ((origin.y % spacing) + spacing) % spacing; y < viewportHeight; y += spacing) {
+    ctx.moveTo(0, y);
+    ctx.lineTo(viewportWidth, y);
   }
-  ctx.strokeStyle = "rgba(98, 216, 255, 0.42)";
+  ctx.stroke();
+
+  const topLeft = toScreen(0, 0, view);
+  const bottomRight = toScreen(world.width, world.height, view);
+  ctx.strokeStyle = "rgba(91, 211, 255, 0.36)";
   ctx.lineWidth = 2;
   ctx.strokeRect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
   ctx.restore();
-
-  for (const pickup of pickups.values()) drawPickup(pickup, camera, time);
 }
 
-function drawPickup(pickup, camera, time) {
-  const p = worldToScreen(pickup.x, pickup.y, camera);
-  const core = pickup.kind === "core";
-  const pulse = 1 + Math.sin(time * 0.004 + pickup.id) * 0.12;
-  const radius = (core ? 13 : 8) * camera.zoom * pulse;
-  if (p.x < -40 || p.x > viewportWidth + 40 || p.y < -40 || p.y > viewportHeight + 40) return;
-
+function drawPickup(pickup, view) {
+  const p = toScreen(pickup.x, pickup.y, view);
+  if (p.x < -50 || p.y < -50 || p.x > viewportWidth + 50 || p.y > viewportHeight + 50) return;
+  const size = (pickup.kind === "core" ? 10 : 7) * view.zoom;
   ctx.save();
-  ctx.shadowBlur = core ? 28 : 18;
-  ctx.shadowColor = core ? "#ffb84f" : "#56d9ff";
-  ctx.fillStyle = core ? "#ffd27a" : "#8eeaff";
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = core ? "#fff2bd" : "#dffaff";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.translate(p.x, p.y);
+  ctx.rotate(performance.now() / (pickup.kind === "core" ? 720 : 1200));
+  ctx.shadowBlur = pickup.kind === "core" ? 24 : 14;
+  ctx.shadowColor = pickup.kind === "core" ? "#ffcf5b" : "#5ce8ff";
+  ctx.fillStyle = pickup.kind === "core" ? "#ffd36b" : "#77edff";
+  if (pickup.kind === "core") {
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 1.5);
+    ctx.lineTo(size * 1.25, 0);
+    ctx.lineTo(0, size * 1.5);
+    ctx.lineTo(-size * 1.25, 0);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    ctx.fillRect(-size, -size, size * 2, size * 2);
+  }
   ctx.restore();
 }
 
-function drawPlayer(player, camera, self = false) {
-  const x = self ? localPlayer.x : player.drawX;
-  const y = self ? localPlayer.y : player.drawY;
-  const p = worldToScreen(x, y, camera);
-  const vx = self ? localPlayer.vx : player.vx;
-  const vy = self ? localPlayer.vy : player.vy;
-  const angle = Math.hypot(vx, vy) > 8 ? Math.atan2(vy, vx) : -Math.PI / 2;
-  const radius = 18 * camera.zoom;
-
+function drawPlayer(player, x, y, view, self = false) {
+  const p = toScreen(x, y, view);
+  const radius = PLAYER_RADIUS * view.zoom;
+  const angle = Math.atan2(player.vy || 0, player.vx || 0);
   ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.translate(p.x, p.y);
-  ctx.rotate(angle);
-  ctx.shadowBlur = self ? 24 : 16;
-  ctx.shadowColor = `hsl(${player.hue} 95% 60%)`;
-  ctx.fillStyle = `hsl(${player.hue} 82% ${self ? 67 : 58}%)`;
+  ctx.rotate(Number.isFinite(angle) ? angle : 0);
+  ctx.shadowBlur = self ? 24 : 15;
+  ctx.shadowColor = `hsl(${player.hue} 95% 62%)`;
+  ctx.fillStyle = `hsl(${player.hue} 82% ${self ? 66 : 57}%)`;
   ctx.beginPath();
-  ctx.moveTo(radius * 1.25, 0);
-  ctx.lineTo(-radius * 0.8, radius * 0.72);
-  ctx.lineTo(-radius * 0.5, 0);
-  ctx.lineTo(-radius * 0.8, -radius * 0.72);
+  ctx.moveTo(radius * 1.35, 0);
+  ctx.lineTo(-radius * 0.85, radius * 0.82);
+  ctx.lineTo(-radius * 0.55, 0);
+  ctx.lineTo(-radius * 0.85, -radius * 0.82);
   ctx.closePath();
   ctx.fill();
-  ctx.restore();
-
-  ctx.save();
-  ctx.font = `${Math.max(10, 12 * camera.zoom)}px system-ui`;
-  ctx.textAlign = "center";
-  ctx.fillStyle = self ? "#ffffff" : "#c6d2e4";
-  ctx.shadowColor = "#000";
-  ctx.shadowBlur = 6;
-  ctx.fillText(`${player.playerId} · ${player.score}`, p.x, p.y - radius - 10);
-  ctx.restore();
-}
-
-function drawParticles(camera) {
-  for (const p of particles) {
-    const screen = worldToScreen(p.x, p.y, camera);
-    ctx.globalAlpha = clamp(p.life * 2.2, 0, 1);
-    ctx.fillStyle = `hsl(${p.hue} 90% 64%)`;
-    ctx.beginPath();
-    ctx.arc(screen.x, screen.y, p.size * camera.zoom, 0, Math.PI * 2);
-    ctx.fill();
+  if (self) {
+    ctx.strokeStyle = "#ffffffcc";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
   }
-  ctx.globalAlpha = 1;
+  ctx.rotate(-(Number.isFinite(angle) ? angle : 0));
+  ctx.fillStyle = "#dbe9ff";
+  ctx.font = `${Math.max(10, 11 * view.zoom)}px system-ui`;
+  ctx.textAlign = "center";
+  ctx.fillText(player.playerId, 0, -radius - 10);
+  ctx.restore();
 }
 
-function updateDashHud(now) {
+function drawParticles(view) {
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  for (const particle of particles) {
+    const p = toScreen(particle.x, particle.y, view);
+    ctx.globalAlpha = clamp(particle.life * 2, 0, 1);
+    ctx.fillStyle = `hsl(${particle.hue} 90% 65%)`;
+    ctx.fillRect(p.x, p.y, particle.size, particle.size);
+  }
+  ctx.restore();
+}
+
+function render() {
+  const view = camera();
+  drawGrid(view);
+  for (const pickup of pickups.values()) drawPickup(pickup, view);
+  drawParticles(view);
+  for (const player of players.values()) {
+    if (player.sessionId === selfSessionId) continue;
+    drawPlayer(player, player.drawX, player.drawY, view, false);
+  }
+  if (localPlayer) drawPlayer(localPlayer, localPlayer.x, localPlayer.y, view, true);
+}
+
+function updateDashHud() {
   const remaining = Math.max(0, localDashReadyAt - Date.now());
   dashButton.classList.toggle("cooling", remaining > 0);
   dashCooldownEl.textContent = remaining > 0 ? `${(remaining / 1000).toFixed(1)}s` : "READY";
-  if (localPlayer) updateSelfHud(localPlayer);
+}
+
+function rollClientRates() {
+  const now = performance.now();
+  const elapsed = now - rateWindowStartedAt;
+  if (elapsed < 1000) return;
+  const scale = 1000 / Math.max(1, elapsed);
+  clientRates = {
+    inputsPerSec: rateInputs * scale,
+    snapshotsPerSec: rateSnapshots * scale,
+    inboundBytesPerSec: rateInboundBytes * scale,
+    outboundBytesPerSec: rateOutboundBytes * scale,
+  };
+  rateWindowStartedAt = now;
+  rateInputs = 0;
+  rateSnapshots = 0;
+  rateInboundBytes = 0;
+  rateOutboundBytes = 0;
+}
+
+function renderTelemetry() {
+  rollClientRates();
+  const rttP50 = percentile(rttSamples, 0.5);
+  const rttP95 = percentile(rttSamples, 0.95);
+  const correctionP50 = percentile(correctionSamples, 0.5);
+  const correctionP95 = percentile(correctionSamples, 0.95);
+  const fps = percentile(fpsSamples, 0.5);
+
+  metrics["m-run"].textContent = `${run.id} · seed ${run.seed >>> 0}`;
+  metrics["m-sim"].textContent = serverTelemetry
+    ? `${serverTelemetry.targetSimulationHz} Hz target · tick ${serverTelemetry.tick}`
+    : `${simulation.simulationHz} Hz target`;
+  metrics["m-snapshot"].textContent = serverTelemetry
+    ? `${serverTelemetry.snapshotsPerSec.toFixed(1)} /s server · ${clientRates.snapshotsPerSec.toFixed(1)} /s rx`
+    : `${clientRates.snapshotsPerSec.toFixed(1)} /s rx`;
+  metrics["m-tick-p95"].textContent = serverTelemetry ? `${serverTelemetry.tickDurationMsP95.toFixed(2)} ms` : "—";
+  metrics["m-drift-p95"].textContent = serverTelemetry ? `${serverTelemetry.tickDriftMsP95.toFixed(2)} ms` : "—";
+  metrics["m-dropped"].textContent = serverTelemetry ? `${serverTelemetry.droppedTicks} dropped · ${serverTelemetry.catchupSteps} catch-up` : "—";
+  metrics["m-rtt"].textContent = rttSamples.length ? `${rttP50.toFixed(0)} / ${rttP95.toFixed(0)} ms p50/p95` : "—";
+  metrics["m-snapshot-age"].textContent = lastSnapshotAgeMs === null
+    ? "—"
+    : `${Math.max(0, lastSnapshotAgeMs).toFixed(0)} ms · gap p95 ${percentile(snapshotGapSamples, 0.95).toFixed(0)} ms`;
+  metrics["m-correction"].textContent = correctionSamples.length
+    ? `${correctionP50.toFixed(1)} / ${correctionP95.toFixed(1)} px p50/p95`
+    : "—";
+  metrics["m-fps"].textContent = fpsSamples.length ? `${fps.toFixed(0)} fps` : "—";
+  metrics["m-input-rate"].textContent = `${clientRates.inputsPerSec.toFixed(1)} /s tx · ${serverTelemetry?.inputsPerSec?.toFixed?.(1) ?? "—"} /s server`;
+  metrics["m-bytes"].textContent = `${formatRate(clientRates.outboundBytesPerSec)} up · ${formatRate(clientRates.inboundBytesPerSec)} down`;
+}
+
+function formatRate(bytesPerSec) {
+  if (!Number.isFinite(bytesPerSec)) return "—";
+  if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
+  return `${(bytesPerSec / 1024).toFixed(1)} KiB/s`;
 }
 
 function frame(now) {
-  const dt = clamp((now - lastFrameAt) / 1000, 0, 0.033);
+  const rawDt = (now - lastFrameAt) / 1000;
+  const dt = clamp(rawDt, 0, 0.05);
   lastFrameAt = now;
-  if (playing) simulateLocal(dt);
+  if (rawDt > 0) pushSample(fpsSamples, 1 / rawDt);
+  simulateLocal(dt);
   updateRemotePlayers(dt);
   updateParticles(dt);
-
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const camera = cameraTransform();
-  drawArena(camera, now);
-  drawParticles(camera);
-  for (const player of players.values()) {
-    if (player.sessionId === selfSessionId) continue;
-    drawPlayer(player, camera, false);
-  }
-  if (localPlayer) drawPlayer(localPlayer, camera, true);
-  updateDashHud(now);
+  updateDashHud();
+  updateSelfHud(localPlayer || { score: 0, combo: 1, comboExpiresAt: 0 });
+  render();
   requestAnimationFrame(frame);
 }
 
 function updateJoystick(event) {
   const rect = joystickEl.getBoundingClientRect();
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  const max = rect.width * 0.34;
-  let dx = event.clientX - cx;
-  let dy = event.clientY - cy;
-  const distance = Math.hypot(dx, dy);
-  if (distance > max) {
-    dx = dx / distance * max;
-    dy = dy / distance * max;
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const maxRadius = rect.width * 0.33;
+  let dx = event.clientX - centerX;
+  let dy = event.clientY - centerY;
+  const length = Math.hypot(dx, dy);
+  if (length > maxRadius) {
+    dx = dx / length * maxRadius;
+    dy = dy / length * maxRadius;
   }
-  joystickInput = normalizeVector(dx / max, dy / max);
+  joystickInput = { x: dx / maxRadius, y: dy / maxRadius };
   stickEl.style.transform = `translate(${dx}px, ${dy}px)`;
 }
 
-function resetJoystick() {
+function releaseJoystick() {
   joystickPointer = null;
   joystickInput = { x: 0, y: 0 };
   stickEl.style.transform = "translate(0, 0)";
+  sendInput();
 }
 
 joystickEl.addEventListener("pointerdown", (event) => {
   joystickPointer = event.pointerId;
-  joystickEl.setPointerCapture(event.pointerId);
+  joystickEl.setPointerCapture?.(event.pointerId);
   updateJoystick(event);
 });
 joystickEl.addEventListener("pointermove", (event) => {
   if (event.pointerId === joystickPointer) updateJoystick(event);
 });
 joystickEl.addEventListener("pointerup", (event) => {
-  if (event.pointerId === joystickPointer) resetJoystick();
+  if (event.pointerId === joystickPointer) releaseJoystick();
 });
-joystickEl.addEventListener("pointercancel", resetJoystick);
+joystickEl.addEventListener("pointercancel", (event) => {
+  if (event.pointerId === joystickPointer) releaseJoystick();
+});
 
 dashButton.addEventListener("pointerdown", (event) => {
   event.preventDefault();
   triggerDash();
 });
 
-addEventListener("keydown", (event) => {
+window.addEventListener("keydown", (event) => {
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) event.preventDefault();
   keys.add(event.code);
   if (event.code === "Space" && !event.repeat) triggerDash();
 });
-addEventListener("keyup", (event) => keys.delete(event.code));
-addEventListener("blur", () => {
+window.addEventListener("keyup", (event) => keys.delete(event.code));
+
+window.addEventListener("resize", resizeCanvas);
+window.addEventListener("orientationchange", () => window.setTimeout(resizeCanvas, 80));
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) return;
   keys.clear();
-  resetJoystick();
+  releaseJoystick();
+  dashQueued = false;
+  sendInput();
 });
-addEventListener("resize", resizeCanvas);
-document.addEventListener("contextmenu", (event) => event.preventDefault());
+
+labToggle.addEventListener("click", () => labPanel.classList.toggle("open"));
+labClose.addEventListener("click", () => labPanel.classList.remove("open"));
+resetButton.addEventListener("click", () => {
+  const seed = Number(seedInput.value);
+  if (!Number.isFinite(seed)) return;
+  sendEncoded({ type: "reset", seed });
+});
 
 playButton.addEventListener("click", () => {
-  const callsign = callsignInput.value.trim().replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 20) || `P-${crypto.randomUUID().slice(0, 6)}`;
-  callsignInput.value = callsign;
+  const callsign = callsignInput.value.trim();
+  if (!/^[A-Za-z0-9_-]{1,24}$/.test(callsign)) {
+    callsignInput.focus();
+    return;
+  }
   localStorage.setItem("neon-salvage-callsign", callsign);
   playing = true;
   boot.classList.add("hidden");
@@ -611,4 +835,5 @@ callsignInput.addEventListener("keydown", (event) => {
 });
 
 resizeCanvas();
+renderTelemetry();
 requestAnimationFrame(frame);

@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#080b14" />
     <meta name="color-scheme" content="dark" />
-    <title>Neon Salvage · Multiplayer Lab</title>
+    <title>Neon Salvage · Gate 4A Simulation Lab</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <canvas id="game" aria-label="Neon Salvage game arena"></canvas>
+    <canvas id="game" aria-label="Neon Salvage fixed simulation arena"></canvas>
 
     <header class="hud top-hud">
       <div class="brand">
         <strong>NEON SALVAGE</strong>
-        <span>shared-world multiplayer lab</span>
+        <span>Gate 4A · authoritative simulation substrate</span>
       </div>
       <div class="network">
         <span id="net-dot" class="dot"></span>
@@ -34,6 +34,42 @@
       <span id="combo" class="combo">x1</span>
     </div>
 
+    <button id="lab-toggle" class="lab-toggle" type="button">LAB</button>
+
+    <section id="lab-panel" class="lab-panel" aria-label="Simulation telemetry">
+      <div class="lab-head">
+        <div>
+          <strong>SIMULATION LAB</strong>
+          <small>fixed-step authority · measurement first</small>
+        </div>
+        <button id="lab-close" type="button" aria-label="Close lab panel">×</button>
+      </div>
+
+      <div class="metrics-grid">
+        <div><span>RUN</span><strong id="m-run">—</strong></div>
+        <div><span>SERVER SIM</span><strong id="m-sim">—</strong></div>
+        <div><span>SNAPSHOTS</span><strong id="m-snapshot">—</strong></div>
+        <div><span>TICK COST p95</span><strong id="m-tick-p95">—</strong></div>
+        <div><span>TICK DRIFT p95</span><strong id="m-drift-p95">—</strong></div>
+        <div><span>SCHEDULER</span><strong id="m-dropped">—</strong></div>
+        <div><span>RTT p50/p95</span><strong id="m-rtt">—</strong></div>
+        <div><span>SNAPSHOT AGE</span><strong id="m-snapshot-age">—</strong></div>
+        <div><span>CORRECTION</span><strong id="m-correction">—</strong></div>
+        <div><span>CLIENT FPS</span><strong id="m-fps">—</strong></div>
+        <div><span>INPUT RATE</span><strong id="m-input-rate">—</strong></div>
+        <div><span>CLIENT TRAFFIC</span><strong id="m-bytes">—</strong></div>
+      </div>
+
+      <div class="run-controls">
+        <label>
+          deterministic seed
+          <input id="run-seed" inputmode="numeric" type="number" min="1" max="4294967295" step="1" />
+        </label>
+        <button id="reset-run" type="button">RESET RUN</button>
+      </div>
+      <p class="lab-note">Reset is intentionally permissive: this is a shared research lab, not a protected public game.</p>
+    </section>
+
     <div id="feed" class="feed" aria-live="polite"></div>
 
     <div id="joystick" class="joystick" aria-label="Movement joystick">
@@ -44,16 +80,16 @@
       <small id="dash-cooldown">READY</small>
     </button>
 
-    <div class="desktop-help">WASD / arrows · SPACE dash</div>
+    <div class="desktop-help">WASD / arrows · SPACE dash · LAB telemetry</div>
 
     <div id="boot" class="boot">
       <div class="boot-card">
-        <p class="eyebrow">Gate 3 · Single Shared World</p>
+        <p class="eyebrow">Gate 4A · Fixed Simulation Substrate</p>
         <h1>Neon Salvage</h1>
-        <p>Collect shards, chain combos and use dash to keep momentum. Everyone opening this URL joins the same world.</p>
-        <label>Callsign <input id="callsign" maxlength="20" autocomplete="off" /></label>
-        <button id="play" type="button">Enter the grid</button>
-        <small>Built mobile-first. Touch controls and keyboard are both live.</small>
+        <p>The game is intentionally familiar. What changed is underneath: input no longer advances the world directly. A fixed server simulation owns movement, snapshots and timing.</p>
+        <label>Callsign <input id="callsign" maxlength="24" autocomplete="off" /></label>
+        <button id="play" type="button">Enter the simulation</button>
+        <small>Mobile remains first-class. LAB exposes timing and reconciliation instead of hiding them.</small>
       </div>
     </div>
 

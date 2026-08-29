@@ -37,4 +37,4 @@ npm run check
 
 ## Current status
 
-Gate 1 is implemented at source level. It is **not yet runtime-validated on Cloudflare**. The next evidence boundary is a real Workers Builds deployment from `main`, followed by a browser test of the public page and `/api/ping`.
+Gate 1 source and build configuration are implemented. GitHub Actions has validated dependency installation, TypeScript, and a real Wrangler deployment dry-run. Gate 1 is **not yet runtime-validated on Cloudflare**. The next evidence boundary is a Workers Builds deployment from `main`, followed by a browser test of the public page and `/api/ping`.

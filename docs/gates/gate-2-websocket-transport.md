@@ -1,7 +1,8 @@
 # Gate 2 — WebSocket transport
 
-**Status:** IMPLEMENTED / AWAITING RUNTIME EVIDENCE  
-**Branch:** `gate-2-websocket-transport`
+**Status:** DEPLOYED PREVIEW / AWAITING EXTERNAL BROWSER EVIDENCE  
+**Branch:** `gate-2-websocket-transport`  
+**Draft PR:** #1
 
 ## Question
 
@@ -49,13 +50,52 @@ This gate does **not** test or introduce:
 
 A PASS here means only that the basic realtime transport and one bounded recovery cycle work through the actual deployed Cloudflare path.
 
-## Validation layers
+## Evidence so far
 
-- Local static JS syntax check: completed before commit.
-- TypeScript / Wrangler dry-run: must pass in GitHub Actions.
-- Cloudflare non-production build: must deploy successfully.
-- External browser lifecycle test: required before PASS.
+### Local / source validation
 
-## Current evidence
+- Browser script passed a local `node --check` syntax validation before commit.
+- Worker TypeScript shape was checked locally with strict TypeScript plus minimal Cloudflare API stubs before relying on the real generated runtime types.
 
-Runtime evidence is pending. Do not mark Gate 2 as PASS from CI or deployment success alone.
+### GitHub CI
+
+Draft PR #1 triggered the existing CI workflow on commit `14045a425ea92f45f41747068e126a3987362e60`.
+
+Result: **PASS**.
+
+The workflow completed:
+
+- dependency installation,
+- `wrangler types`,
+- strict TypeScript typecheck,
+- `wrangler deploy --dry-run`.
+
+### Cloudflare non-production deployment
+
+Cloudflare's GitHub integration reported **Deployment successful** for the same commit and created both commit and branch preview URLs.
+
+Stable branch preview:
+
+`https://gate-2-websocket-transport-cloudflare-multiplayer-lab.jozzpoly.workers.dev`
+
+Commit preview:
+
+`https://1810979f-cloudflare-multiplayer-lab.jozzpoly.workers.dev`
+
+This also validates the intended non-production workflow: branch → preview version without replacing the validated production deployment on `main`.
+
+### External runtime evidence
+
+Pending. The assistant execution environment could not resolve/access the public `workers.dev` preview, so it cannot honestly substitute a synthetic network result for the required real browser test.
+
+Do **not** mark Gate 2 as PASS from CI or Cloudflare deployment success alone.
+
+## Next action
+
+Open the stable branch preview in a real browser and execute, in order:
+
+1. `Connect`
+2. `Round trip`
+3. `Close + reconnect`
+
+A PASS requires the UI/log to demonstrate a successful initial ping/pong, a clean close, a fresh connection ID and an automatic recovery ping/pong.

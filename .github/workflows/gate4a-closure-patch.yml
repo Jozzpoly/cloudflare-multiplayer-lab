@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'chore: stage Gate 4A closure patch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +58,6 @@ jobs:
           path.write_text(text, encoding="utf-8")
           PY
 
-          # The workflow must disappear in the same commit that applies the source fix.
           rm .github/workflows/gate4a-closure-patch.yml
 
       - name: Validate patched source

@@ -8,15 +8,18 @@ The goal is not to build a generic game framework up front. Each gate should ans
 
 1. **Deployment sanity — PASS.** Static frontend + Worker + `/api/ping` work publicly.
 2. **Realtime transport — PASS.** Public WebSocket round-trip plus bounded reconnect/recovery validated in a real Android browser and promoted to `main`.
-3. **Single shared world game — IN PROGRESS.** One Durable Object coordinates a small mobile-first multiplayer game for 1–5 clients.
+3. **Single shared world game — PASS.** One Durable Object coordinated a real mobile-first multiplayer game across two independent phones.
+4. **Authoritative shared simulation — NEXT.** Test whether one Durable Object can sustain a continuous physically shared world with fixed simulation cadence, measurable prediction/reconciliation and bounded network stress.
 
 ## Gate 3: Neon Salvage
 
-Gate 3 deliberately removes rooms and matchmaking. Everyone opening the game joins one shared `WORLD` Durable Object.
+Gate 3 removed rooms and matchmaking. Everyone opening the game joins one shared `WORLD` Durable Object.
 
-The test is intentionally playable rather than a moving-square demo: inertial movement, touch joystick, dash, shared salvage pickups, rare cores, combo scoring and a live scoreboard. Mobile portrait/landscape support is a first-class criterion; desktop keyboard input is supported in parallel.
+The test is intentionally playable rather than a moving-square demo: inertial movement, touch joystick, dash, shared salvage pickups, rare cores, combo scoring and a live scoreboard. Mobile portrait/landscape support is a first-class criterion; desktop keyboard input remains available as a secondary path.
 
-The implementation contract and non-claims are recorded in [`docs/gates/gate-3-shared-world-game.md`](docs/gates/gate-3-shared-world-game.md).
+Gate 3 closed as PASS on 2026-08-29 after real concurrent play on two phones from different manufacturers. Both clients joined the same public world and observed shared movement/state, pickups and scoreboard behavior. Recordings from the primary handset were reviewed, including mobile portrait/landscape operation.
+
+The implementation contract, evidence and non-claims are recorded in [`docs/gates/gate-3-shared-world-game.md`](docs/gates/gate-3-shared-world-game.md).
 
 ## Validation
 
@@ -32,12 +35,12 @@ npm install
 npm run dev
 ```
 
-## Current production baseline
+## Current validated baseline
 
-`main` remains the source baseline for validated Gate 2 until Gate 3 passes CI and real multi-client gameplay evidence.
+Gate 3 / Neon Salvage is the current validated source baseline. Gate 4 should branch from this state and must not retroactively rewrite Gate 3 evidence.
 
 Public Worker URL:
 
 `https://cloudflare-multiplayer-lab.jozzpoly.workers.dev`
 
-This repository is still a laboratory. Staging/deployment isolation and deterministic dependency locking are hardening topics, not blockers for the current shared-world gameplay question.
+This repository is still a laboratory. Staging/deployment isolation and deterministic dependency locking remain hardening topics rather than claims established by Gate 3.

@@ -2,51 +2,61 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark light" />
-    <title>Cloudflare Multiplayer Lab · Gate 2</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#080b14" />
+    <meta name="color-scheme" content="dark" />
+    <title>Neon Salvage · Multiplayer Lab</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <p class="eyebrow">Gate 2 · Realtime transport</p>
-      <h1>WebSocket transport</h1>
-      <p class="lede">
-        Prove one connection before building rooms: open a public WebSocket, measure a real message round-trip, then close and recover once.
-      </p>
+    <canvas id="game" aria-label="Neon Salvage game arena"></canvas>
 
-      <section class="panel" aria-labelledby="transport-title">
-        <div class="panel-copy">
-          <h2 id="transport-title">Transport state</h2>
-          <p class="status">Current state: <strong id="connection-state">idle</strong></p>
-        </div>
-        <div class="controls">
-          <button id="connect" type="button">1 · Connect</button>
-          <button id="round-trip" type="button" disabled>2 · Round trip</button>
-          <button id="reconnect" type="button" disabled>3 · Close + reconnect</button>
-        </div>
-      </section>
+    <header class="hud top-hud">
+      <div class="brand">
+        <strong>NEON SALVAGE</strong>
+        <span>shared-world multiplayer lab</span>
+      </div>
+      <div class="network">
+        <span id="net-dot" class="dot"></span>
+        <span id="net-state">connecting</span>
+        <span id="rtt">— ms</span>
+      </div>
+    </header>
 
-      <section class="metrics" aria-label="Connection measurements">
-        <div class="metric">
-          <span>Connection ID</span>
-          <strong id="connection-id">—</strong>
-        </div>
-        <div class="metric">
-          <span>Last RTT</span>
-          <strong id="rtt">—</strong>
-        </div>
-      </section>
+    <aside class="hud score-panel">
+      <div class="score-title">LIVE GRID</div>
+      <ol id="scoreboard"></ol>
+    </aside>
 
-      <section aria-labelledby="log-title">
-        <h2 id="log-title" class="section-title">Lifecycle log</h2>
-        <pre id="log" class="result" aria-live="polite"></pre>
-      </section>
+    <div class="hud objective">
+      <strong id="score">0</strong>
+      <span>salvage</span>
+      <span id="combo" class="combo">x1</span>
+    </div>
 
-      <p class="footnote">
-        Gate 1 remains available at <code>/api/ping</code>. Durable Objects, rooms, shared state and game logic are intentionally absent from this branch.
-      </p>
-    </main>
+    <div id="feed" class="feed" aria-live="polite"></div>
+
+    <div id="joystick" class="joystick" aria-label="Movement joystick">
+      <div id="stick" class="stick"></div>
+    </div>
+    <button id="dash" class="dash" type="button" aria-label="Dash">
+      <span>DASH</span>
+      <small id="dash-cooldown">READY</small>
+    </button>
+
+    <div class="desktop-help">WASD / arrows · SPACE dash</div>
+
+    <div id="boot" class="boot">
+      <div class="boot-card">
+        <p class="eyebrow">Gate 3 · Single Shared World</p>
+        <h1>Neon Salvage</h1>
+        <p>Collect shards, chain combos and use dash to keep momentum. Everyone opening this URL joins the same world.</p>
+        <label>Callsign <input id="callsign" maxlength="20" autocomplete="off" /></label>
+        <button id="play" type="button">Enter the grid</button>
+        <small>Built mobile-first. Touch controls and keyboard are both live.</small>
+      </div>
+    </div>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>

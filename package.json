@@ -1,15 +1,16 @@
 {
   "name": "cloudflare-multiplayer-lab",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --env staging",
     "deploy": "wrangler deploy",
-    "generate:types": "wrangler types",
+    "generate:types": "wrangler types --env staging",
     "typecheck": "npm run generate:types && tsc --noEmit",
-    "validate:worker": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
-    "check": "npm run typecheck && npm run validate:worker"
+    "check:client": "node --check public/app.js",
+    "validate:worker": "wrangler deploy --dry-run --env staging --outdir .wrangler/dry-run",
+    "check": "npm run check:client && npm run typecheck && npm run validate:worker"
   },
   "devDependencies": {
     "typescript": "7.0.2",

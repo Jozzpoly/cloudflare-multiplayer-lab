@@ -7,8 +7,8 @@ The goal is **not** to build a game framework up front. The goal is to prove the
 ## Experiment gates
 
 1. **Deployment sanity** — PASS. Static frontend + Cloudflare Worker + `/api/ping` work from one public deployment.
-2. **Realtime transport** — IN PROGRESS on `gate-2-websocket-transport`. Direct WebSocket connection, round-trip and one bounded recovery cycle.
-3. **Stateful room** — pending. One Durable Object coordinates a small room.
+2. **Realtime transport** — PASS. Direct WebSocket connection, bidirectional round-trip and bounded reconnect/recovery work through a public Cloudflare preview.
+3. **Stateful room** — pending. One Durable Object coordinates multiple clients in an isolated room.
 4. **Two-player falsifier** — pending. Two real clients see each other's movement over the public Internet.
 
 Later gates should be added only after the previous boundary is demonstrated.
@@ -23,7 +23,7 @@ Public production deployment:
 
 ## Gate 2
 
-Gate 2 deliberately tests transport without Durable Objects or multiplayer state. The implementation contract and current evidence status are in [`docs/gates/gate-2-websocket-transport.md`](docs/gates/gate-2-websocket-transport.md).
+Gate 2 is closed as PASS. It deliberately tested transport without Durable Objects or multiplayer state. Evidence is recorded in [`docs/gates/gate-2-websocket-transport.md`](docs/gates/gate-2-websocket-transport.md).
 
 Repository validation:
 
@@ -41,4 +41,6 @@ npm run dev
 
 ## Current status
 
-`main` remains the Gate 1 validated baseline. Gate 2 is isolated on a non-production branch until CI, Cloudflare deployment and a real external browser test provide enough evidence to merge it.
+Gate 2 has passed source validation, GitHub CI, Cloudflare branch-preview deployment and real external-browser runtime validation. PR #1 is the promotion boundary to `main`; after merge, production deploy and a minimal production smoke test should confirm that the validated result survives promotion.
+
+Durable Objects, rooms and multiplayer state remain deliberately outside the completed Gate 2 evidence. Their introduction is a separate next-stage decision.

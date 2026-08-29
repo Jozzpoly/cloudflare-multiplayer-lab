@@ -1,0 +1,119 @@
+name: Gate 4B B1 runtime smoke
+
+on:
+  push:
+    branches: [gate-4b-shared-reactor-dynamics]
+    paths:
+      - .github/workflows/b1-runtime-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Probe deployed B1 Worker
+        run: |
+          node <<'NODE'
+          const HTTP = 'https://cloudflare-multiplayer-lab.jozzpoly.workers.dev/api/ping';
+          const WS = `wss://cloudflare-multiplayer-lab.jozzpoly.workers.dev/game/ws?player=B1Smoke_${Date.now()}`;
+          const expectedSeed = 424242;
+          const fail = (message) => { throw new Error(message); };
+          const finiteReactor = (r) => r && ['x', 'y', 'vx', 'vy', 'radius'].every((k) => Number.isFinite(r[k]));
+
+          const pingResponse = await fetch(HTTP, { cache: 'no-store' });
+          if (!pingResponse.ok) fail(`HTTP ping failed: ${pingResponse.status}`);
+          const ping = await pingResponse.json();
+          if (ping.stage !== 'gate-4b-passive-reactor') fail(`unexpected stage: ${ping.stage}`);
+
+          const result = await new Promise((resolve, reject) => {
+            const ws = new WebSocket(WS);
+            const snapshots = [];
+            let welcome = null;
+            let reset = null;
+            let timeout = setTimeout(() => {
+              try { ws.close(); } catch {}
+              reject(new Error(`runtime smoke timeout; welcome=${!!welcome} reset=${!!reset} snapshots=${snapshots.length}`));
+            }, 9000);
+
+            ws.addEventListener('error', () => reject(new Error('WebSocket error')));
+            ws.addEventListener('open', () => {});
+            ws.addEventListener('message', (event) => {
+              let message;
+              try { message = JSON.parse(String(event.data)); } catch { return; }
+
+              if (message.type === 'welcome') {
+                welcome = message;
+                if (!finiteReactor(message.reactor)) return reject(new Error('welcome missing finite Reactor state'));
+                if (message.simulation?.simulationHz !== 20 || message.simulation?.snapshotHz !== 10) {
+                  return reject(new Error(`unexpected simulation contract ${JSON.stringify(message.simulation)}`));
+                }
+                ws.send(JSON.stringify({ type: 'reset', seed: expectedSeed }));
+                return;
+              }
+
+              if (message.type === 'run_reset') {
+                reset = message;
+                if (message.run?.seed !== expectedSeed) return reject(new Error(`reset seed mismatch: ${message.run?.seed}`));
+                if (!finiteReactor(message.reactor)) return reject(new Error('reset missing finite Reactor state'));
+                if (Math.abs(message.reactor.x - 800) > 1e-9 || Math.abs(message.reactor.y - 500) > 1e-9) {
+                  return reject(new Error(`unexpected Reactor reset position: ${JSON.stringify(message.reactor)}`));
+                }
+                if (Math.abs(message.reactor.vx - 170) > 1e-9 || Math.abs(message.reactor.vy + 95) > 1e-9) {
+                  return reject(new Error(`unexpected Reactor reset velocity: ${JSON.stringify(message.reactor)}`));
+                }
+                return;
+              }
+
+              if (message.type === 'snapshot' && reset && message.run?.seed === expectedSeed) {
+                if (!finiteReactor(message.reactor)) return reject(new Error('snapshot missing finite Reactor state'));
+                snapshots.push(message);
+                if (snapshots.length >= 24) {
+                  clearTimeout(timeout);
+                  ws.close();
+                  resolve({ ping, welcome, reset, snapshots });
+                }
+              }
+            });
+          });
+
+          const snapshots = result.snapshots;
+          if (snapshots.length < 24) fail(`too few snapshots: ${snapshots.length}`);
+          const first = snapshots[0];
+          const last = snapshots.at(-1);
+          if (!(last.tick > first.tick)) fail(`tick did not advance: ${first.tick} -> ${last.tick}`);
+          const dx = last.reactor.x - result.reset.reactor.x;
+          const dy = last.reactor.y - result.reset.reactor.y;
+          if (Math.hypot(dx, dy) < 20) fail(`Reactor did not move materially: ${Math.hypot(dx, dy)}`);
+          const startSpeed = Math.hypot(result.reset.reactor.vx, result.reset.reactor.vy);
+          const endSpeed = Math.hypot(last.reactor.vx, last.reactor.vy);
+          if (!(endSpeed < startSpeed)) fail(`Reactor did not damp: ${startSpeed} -> ${endSpeed}`);
+          if (last.telemetry?.targetSimulationHz !== 20 || last.telemetry?.targetSnapshotHz !== 10) {
+            fail(`telemetry cadence markers wrong: ${JSON.stringify(last.telemetry)}`);
+          }
+          if ((last.telemetry?.droppedTicks ?? 0) > 0) fail(`unexpected dropped ticks in smoke: ${last.telemetry.droppedTicks}`);
+          if (!Number.isFinite(last.telemetry?.reactorSpeedP50) || !Number.isFinite(last.telemetry?.reactorSpeedP95)) {
+            fail('missing Reactor speed telemetry');
+          }
+
+          const elapsedTicks = last.tick - first.tick;
+          console.log(JSON.stringify({
+            ok: true,
+            stage: result.ping.stage,
+            snapshots: snapshots.length,
+            tickRange: [first.tick, last.tick],
+            elapsedTicks,
+            reactorMoved: Math.hypot(dx, dy),
+            speed: [startSpeed, endSpeed],
+            droppedTicks: last.telemetry.droppedTicks,
+            catchupSteps: last.telemetry.catchupSteps,
+            reactorSpeedP50: last.telemetry.reactorSpeedP50,
+            reactorSpeedP95: last.telemetry.reactorSpeedP95,
+          }, null, 2));
+          NODE

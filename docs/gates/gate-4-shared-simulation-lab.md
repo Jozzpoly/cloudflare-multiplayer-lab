@@ -2,7 +2,7 @@
 
 ## Gate 4A — Fixed simulation substrate
 
-**Status:** PASS / FREEZE CANDIDATE  
+**Status:** PASS / FROZEN CONTROL SPECIMEN  
 **Validated runtime:** 2026-08-29  
 **Branch:** `gate-4-shared-simulation-lab`  
 **Draft PR:** #4
@@ -99,6 +99,8 @@ That source patch was applied through exact one-occurrence assertions and passed
 
 The workflow used only to transport that patch removed itself in the same source commit and is not part of the final tree.
 
+The first owner-authored closure tree containing that source plus synchronized documentation, `6bfa8a2ef37c66002cb30e95ca10799a69a93b83`, then passed standard GitHub CI and Cloudflare Connected Build. Cloudflare Version ID: `1c07df70-baa4-411c-ab3b-11521183f9c7`.
+
 ## Gate 4A criteria disposition
 
 1. Repository validation / Wrangler dry-run — **PASS**.
@@ -125,7 +127,7 @@ A PASS does not establish:
 
 ## Freeze boundary
 
-Once the final owner-authored closure head passes standard GitHub CI and Cloudflare deployment and the exact validated tree is promoted to `main`, Gate 4A is frozen as the control specimen.
+Gate 4A is frozen at this contract as the control specimen for later Gate 4 work. Operational promotion to `main` must preserve the exact final validated tree; no Gate 4B mechanics are allowed into the promotion.
 
 The next separate candidate stage is Gate 4B: introduce one genuinely shared authoritative dynamic body (Reactor Core) and test multi-client physical impulse interaction. Gate 4B must not be folded into this closure stage.
 

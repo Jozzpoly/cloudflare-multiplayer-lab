@@ -9,8 +9,9 @@
     "generate:types": "wrangler types --env staging",
     "typecheck": "npm run generate:types && tsc --noEmit",
     "check:client": "node --check public/app.js",
+    "check:reactor": "tsc -p tsconfig.reactor-test.json && node .wrangler/reactor-tests/tests/reactor-physics.spec.js",
     "validate:worker": "wrangler deploy --dry-run --env staging --outdir .wrangler/dry-run",
-    "check": "npm run check:client && npm run typecheck && npm run validate:worker"
+    "check": "npm run check:client && npm run check:reactor && npm run typecheck && npm run validate:worker"
   },
   "devDependencies": {
     "typescript": "7.0.2",

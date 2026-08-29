@@ -1,7 +1,8 @@
 # Gate 3 — Single shared world game
 
-**Status:** IMPLEMENTED / AWAITING CI + REAL MULTI-CLIENT RUNTIME EVIDENCE  
-**Branch:** `gate-3-shared-world-game`
+**Status:** SOURCE/CI/DEPLOY VALIDATED / AWAITING REAL MOBILE + MULTI-CLIENT RUNTIME EVIDENCE  
+**Branch:** `gate-3-shared-world-game`  
+**Draft PR:** #3
 
 ## Question
 
@@ -32,6 +33,25 @@ The Durable Object is the coordination authority. Each client sends normalized i
 The browser predicts its own motion at render rate for responsive feel and reconciles toward the server state. Other players interpolate toward received authoritative positions.
 
 This is **not** yet a fixed-rate authoritative physics server. Event-driven integration is a deliberate bounded choice for a 1–5 player experiment.
+
+## Automated evidence
+
+Head `1e3ebd81f37c6e2c136889dba8f8e18940ee9088` passed GitHub CI on the real toolchain:
+
+- browser script syntax check,
+- `wrangler types --env staging`,
+- strict TypeScript typecheck,
+- `wrangler deploy --dry-run --env staging`.
+
+Cloudflare Connected Builds also deployed the same head successfully after retiring the disposable experimental `Room` Durable Object namespace with an explicit declarative `deleted` tombstone and provisioning `World`.
+
+Cloudflare deployment evidence:
+
+- status: **success**
+- Version ID: `5cc664c1-b05d-4e19-acce-b619e67b41df`
+- public lab Worker: `https://cloudflare-multiplayer-lab.jozzpoly.workers.dev`
+
+The assistant execution environment cannot resolve `workers.dev`, so none of this is treated as browser/gameplay runtime evidence.
 
 ## Success criteria
 

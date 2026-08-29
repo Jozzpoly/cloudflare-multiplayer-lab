@@ -2,8 +2,9 @@
 
 ## Gate 4A — Fixed simulation substrate
 
-**Status:** IMPLEMENTED / AWAITING REPOSITORY CI + CLOUD RUNTIME EVIDENCE  
-**Branch:** `gate-4-shared-simulation-lab`
+**Status:** SOURCE/CI/CLOUDFLARE BUILD VALIDATED / AWAITING PUBLIC RUNTIME EVIDENCE  
+**Branch:** `gate-4-shared-simulation-lab`  
+**Draft PR:** #4
 
 ## Canonical Gate 4 question
 
@@ -73,8 +74,8 @@ Client telemetry:
 - RTT p50/p95,
 - approximate snapshot age using ping-derived server clock offset,
 - snapshot inter-arrival p95,
-- local prediction correction p50/p95,
-- rendered FPS,
+- time-aware local prediction correction p50/p95 (authoritative position is projected by measured snapshot age before reconciliation),
+- rendered FPS measured from raw frame intervals,
 - client input messages/sec,
 - approximate client application bytes/sec.
 
@@ -90,16 +91,56 @@ Gate 4A intentionally keeps the Gate 3 Neon Salvage gameplay recognizable:
 
 The point is to change the timing/authority substrate without simultaneously adding Reactor Core, vehicle dynamics, debris or new game rules. A visible behavioral regression is therefore easier to attribute.
 
+## Automated evidence
+
+Current runtime-candidate head: `fcf3c9d09ee127cadd0529f8594bbd00177ae21a`.
+
+Repository validation on that exact head:
+
+- browser syntax check: **PASS**,
+- Wrangler-generated staging bindings/runtime types: **PASS**,
+- strict TypeScript typecheck: **PASS**,
+- Wrangler staging dry-run: **PASS**,
+- Cloudflare Connected Build: **PASS**,
+- Cloudflare Version ID: `cb64e42b-69dd-4bdd-8bdd-bf2ac569140c`.
+
+The assistant environment cannot independently prove the routable branch/staging `workers.dev` endpoint from GitHub metadata alone. A successful Connected Build is therefore evidence of build/deploy acceptance, not yet browser runtime evidence.
+
 ## Gate 4A success criteria
 
-1. GitHub CI and Wrangler dry-run pass on the real repository toolchain.
-2. Cloudflare deploy succeeds with the existing `WORLD` Durable Object binding.
-3. A real mobile client remains playable after the authority model changes.
-4. World motion continues under fixed simulation cadence and is not advanced directly by input callbacks.
-5. Server telemetry reports near-target simulation/snapshot cadence without sustained dropped-tick growth in a normal 1–2 client session.
-6. Prediction correction metrics remain bounded enough that normal play does not become dominated by visible snapping.
-7. Background/throttled input eventually neutralizes through the server lease.
-8. Resetting the same seed reproduces initial pickup layout and deterministic player spawn for the same callsign.
+1. GitHub CI and Wrangler dry-run pass on the real repository toolchain. **PASS.**
+2. Cloudflare build/deploy succeeds with the existing `WORLD` Durable Object binding. **PASS at Connected Build level.**
+3. A real mobile client remains playable after the authority model changes. **OPEN.**
+4. World motion continues under fixed simulation cadence and is not advanced directly by input callbacks. **Source contract confirmed; runtime observation still open.**
+5. Server telemetry reports near-target simulation/snapshot cadence without sustained dropped-tick growth in a normal 1–2 client session. **OPEN.**
+6. Prediction correction metrics remain bounded enough that normal play does not become dominated by visible snapping. **OPEN.**
+7. Background/throttled input eventually neutralizes through the server lease. **OPEN.**
+8. Resetting the same seed reproduces initial pickup layout and deterministic player spawn for the same callsign. **OPEN.**
+
+## Runtime falsifier — next action
+
+Use the routable staging/branch Worker corresponding to the current head; do not test the Gate 3 production `main` by accident.
+
+Minimal first run:
+
+1. One real phone joins and plays normally for roughly 30–60 seconds.
+2. Open LAB telemetry and capture simulation target, snapshots/sec, tick p95, drift p95, dropped/catch-up, RTT, snapshot age/gap, correction p50/p95, FPS and traffic rates.
+3. While holding movement, background/switch away from the browser for clearly longer than 600 ms, return, and verify the server did not leave the player in sustained runaway input.
+4. Reset to a chosen seed, observe spawn/pickup layout, then reset the same seed again with the same callsign and compare the initial state.
+5. Only if the one-phone substrate is coherent, join a second real phone for a short shared-world regression and compare the two LAB views.
+
+A screenshot/recording is useful evidence, but metric values should be transcribed where legible so later conclusions are not based on visual memory alone.
+
+## Known source/evidence debt before Gate 4A closure
+
+The current runtime candidate is suitable for the first 4A PLAY falsifier, but four bounded semantics should be cleaned before final promotion:
+
+- simulation events generated inside `simulateStep()` currently label the pre-increment tick while snapshots use the post-step tick; this is an observability off-by-one, not a trajectory error,
+- run reset clears scheduler counters but does not reset `activeRunStartedAt`, so active-duration telemetry after a reset is not a clean per-run duration,
+- Durable Object reconstruction restores `runId`/seed from socket attachments but not the numeric `runSerial`; a later reset after reconstruction can produce a non-monotonic/reused serial component,
+- input uses WebSocket/TCP ordering today, but duplicate/stale sequence rejection should be explicit before later application-level impairment/reordering experiments.
+
+These are not evidence for or against the central 4A fixed-step hypothesis and should not be silently folded into runtime results.
 
 ## Gate 4A non-claims
 

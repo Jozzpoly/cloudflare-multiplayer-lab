@@ -9,9 +9,9 @@ The goal is not to build a generic game framework up front. Each gate should ans
 1. **Deployment sanity — PASS.** Static frontend + Worker + `/api/ping` work publicly.
 2. **Realtime transport — PASS.** Public WebSocket round-trip plus bounded reconnect/recovery validated in a real Android browser.
 3. **Single shared world game — PASS.** One Durable Object coordinated Neon Salvage concurrently across two independent real phones.
-4. **Authoritative shared simulation — IN PROGRESS.** Gate 4A fixed-authoritative substrate is PASS/freeze-candidate; later shared physical interaction remains separate work.
+4. **Authoritative shared simulation — IN PROGRESS.** Gate 4A fixed-authoritative substrate is PASS/frozen; later shared physical interaction remains separate work.
 
-## Gate 4A: fixed simulation substrate — PASS / freeze candidate
+## Gate 4A: fixed simulation substrate — PASS / frozen
 
 Gate 4A deliberately kept Neon Salvage recognizable while changing the authority model underneath it.
 

@@ -1,4 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
+import {
+  advanceReactor,
+  resolveReactorBounds,
+  type ReactorPhysicsConfig,
+  type ReactorState,
+} from "./reactor-physics";
 
 const WORLD_WIDTH = 1600;
 const WORLD_HEIGHT = 1000;
@@ -20,6 +26,21 @@ const INPUT_LEASE_MS = 600;
 const DEFAULT_SEED = 0x4a4f5a5a;
 const TELEMETRY_SAMPLE_LIMIT = 160;
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
+
+const REACTOR_RADIUS = 46;
+const REACTOR_INITIAL_VX = 170;
+const REACTOR_INITIAL_VY = -95;
+const REACTOR_PHYSICS_CONFIG: ReactorPhysicsConfig = {
+  reactorMass: 4,
+  restitution: 0.2,
+  wallRestitution: 0.72,
+  drag: 0.85,
+  maxSpeed: 520,
+  positionSlop: 0.5,
+  positionCorrection: 0.8,
+  correctionPasses: 2,
+};
+const REACTOR_WORLD_BOUNDS = { width: WORLD_WIDTH, height: WORLD_HEIGHT };
 
 const jsonHeaders = {
   "cache-control": "no-store",
@@ -98,6 +119,16 @@ function normalizeSeed(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_SEED;
   const normalized = Math.trunc(value) >>> 0;
   return normalized === 0 ? DEFAULT_SEED : normalized;
+}
+
+function createInitialReactor(): ReactorState {
+  return {
+    x: WORLD_WIDTH / 2,
+    y: WORLD_HEIGHT / 2,
+    vx: REACTOR_INITIAL_VX,
+    vy: REACTOR_INITIAL_VY,
+    radius: REACTOR_RADIUS,
+  };
 }
 
 function parseClientMessage(raw: string): ClientMessage | null {
@@ -195,6 +226,7 @@ function directWebSocketResponse(request: Request): Response {
 export class World extends DurableObject<Env> {
   private players = new Map<WebSocket, PlayerState>();
   private pickups: Pickup[] = [];
+  private reactor: ReactorState = createInitialReactor();
   private runSeed = DEFAULT_SEED;
   private runSerial = 1;
   private runId = "";
@@ -211,6 +243,7 @@ export class World extends DurableObject<Env> {
 
   private tickDurationSamples: number[] = [];
   private tickDriftSamples: number[] = [];
+  private reactorSpeedSamples: number[] = [];
 
   private rateWindowStartedAt = Date.now();
   private rateWindowInputs = 0;
@@ -250,6 +283,7 @@ export class World extends DurableObject<Env> {
       self: this.publicPlayer(player),
       players: this.publicPlayers(),
       pickups: this.pickups,
+      reactor: this.reactor,
       world: { width: WORLD_WIDTH, height: WORLD_HEIGHT },
       simulation: this.simulationContract(),
       run: this.runContract(),
@@ -372,6 +406,13 @@ export class World extends DurableObject<Env> {
   private simulateStep(dt: number, now: number): void {
     let scoreboardDirty = false;
 
+    this.reactor = resolveReactorBounds(
+      advanceReactor(this.reactor, dt, REACTOR_PHYSICS_CONFIG),
+      REACTOR_WORLD_BOUNDS,
+      REACTOR_PHYSICS_CONFIG,
+    );
+    this.pushSample(this.reactorSpeedSamples, Math.hypot(this.reactor.vx, this.reactor.vy));
+
     for (const [socket, player] of this.players) {
       if (socket.readyState !== WebSocket.OPEN) continue;
 
@@ -479,6 +520,7 @@ export class World extends DurableObject<Env> {
       tick: this.tick,
       run: this.runContract(),
       players: this.publicPlayers(),
+      reactor: this.reactor,
       telemetry: this.telemetryPayload(now),
       serverTime: now,
     };
@@ -515,6 +557,7 @@ export class World extends DurableObject<Env> {
     this.catchupSteps = 0;
     this.tickDurationSamples = [];
     this.tickDriftSamples = [];
+    this.reactorSpeedSamples = [];
     this.rateWindowStartedAt = Date.now();
     this.rateWindowInputs = 0;
     this.rateWindowSnapshots = 0;
@@ -531,6 +574,7 @@ export class World extends DurableObject<Env> {
       run: this.runContract(),
       players: this.publicPlayers(),
       pickups: this.pickups,
+      reactor: this.reactor,
       simulation: this.simulationContract(),
       serverTime: Date.now(),
     });
@@ -543,6 +587,7 @@ export class World extends DurableObject<Env> {
     this.runId = `${this.runSeed.toString(16).padStart(8, "0")}-${this.runSerial}`;
     this.rngState = this.runSeed;
     this.pickups = Array.from({ length: PICKUP_COUNT }, (_, index) => this.createPickup(index));
+    this.reactor = createInitialReactor();
   }
 
   private nextRandom(): number {
@@ -624,6 +669,7 @@ export class World extends DurableObject<Env> {
         if (Number.isInteger(restoredSerial) && restoredSerial > 0) this.runSerial = restoredSerial;
         this.rngState = this.runSeed;
         this.pickups = Array.from({ length: PICKUP_COUNT }, (_, index) => this.createPickup(index));
+        this.reactor = createInitialReactor();
       }
       this.players.set(socket, restored);
     }
@@ -732,6 +778,8 @@ export class World extends DurableObject<Env> {
       tickDriftMsP95: percentile(this.tickDriftSamples, 0.95),
       droppedTicks: this.droppedTicks,
       catchupSteps: this.catchupSteps,
+      reactorSpeedP50: percentile(this.reactorSpeedSamples, 0.5),
+      reactorSpeedP95: percentile(this.reactorSpeedSamples, 0.95),
       activeDurationMs: this.activeRunStartedAt ? Math.max(0, now - this.activeRunStartedAt) : 0,
       ...this.rates,
     };
@@ -798,7 +846,7 @@ export default {
       return jsonResponse({
         ok: true,
         service: "cloudflare-multiplayer-lab",
-        stage: "gate-4a-fixed-simulation-substrate",
+        stage: "gate-4b-passive-reactor",
         timestamp: new Date().toISOString(),
       });
     }

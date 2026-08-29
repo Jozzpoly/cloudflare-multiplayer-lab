@@ -22,7 +22,8 @@ const resetButton = document.querySelector("#reset-run");
 
 const metricIds = [
   "m-run", "m-sim", "m-snapshot", "m-tick-p95", "m-drift-p95", "m-dropped",
-  "m-rtt", "m-snapshot-age", "m-correction", "m-fps", "m-input-rate", "m-bytes",
+  "m-rtt", "m-snapshot-age", "m-correction", "m-reactor-speed", "m-reactor-correction",
+  "m-fps", "m-input-rate", "m-bytes",
 ];
 const metrics = Object.fromEntries(metricIds.map((id) => [id, document.querySelector(`#${id}`)]));
 
@@ -31,7 +32,7 @@ const required = [
   scoreboardEl, feedEl, joystickEl, stickEl, dashButton, dashCooldownEl, labToggle, labPanel,
   labClose, seedInput, resetButton, ...Object.values(metrics),
 ];
-if (required.some((item) => !item)) throw new Error("Gate 4A UI is incomplete.");
+if (required.some((item) => !item)) throw new Error("Gate 4B UI is incomplete.");
 
 const WORLD_FALLBACK = { width: 1600, height: 1000 };
 const ACCELERATION = 920;
@@ -41,6 +42,7 @@ const DASH_IMPULSE = 310;
 const DASH_COOLDOWN_MS = 1250;
 const INPUT_INTERVAL_MS = 66;
 const PLAYER_RADIUS = 18;
+const REACTOR_PROJECTION_MAX_MS = 150;
 const SAMPLE_LIMIT = 160;
 
 const keys = new Set();
@@ -50,6 +52,7 @@ const particles = [];
 const pendingPings = new Map();
 const rttSamples = [];
 const correctionSamples = [];
+const reactorCorrectionSamples = [];
 const snapshotGapSamples = [];
 const fpsSamples = [];
 
@@ -65,6 +68,7 @@ let pingTimer = null;
 let telemetryTimer = null;
 let selfSessionId = null;
 let localPlayer = null;
+let reactor = null;
 let inputSeq = 0;
 let dashQueued = false;
 let dashPredictionUntil = 0;
@@ -210,6 +214,7 @@ function handleMessage(message) {
     serverTelemetry = message.telemetry || null;
     seedInput.value = String(run.seed >>> 0);
     applyFullState(message.players || [], message.pickups || [], message.self);
+    applyReactorState(message.reactor, true, 0);
     setNetwork("live", "live");
     addFeed(`SIM LOCK · ${simulation.simulationHz} Hz server / ${simulation.snapshotHz} Hz snapshots`, 150);
     return;
@@ -220,7 +225,9 @@ function handleMessage(message) {
     simulation = message.simulation || simulation;
     seedInput.value = String(run.seed >>> 0);
     applyFullState(message.players || [], message.pickups || [], null);
+    applyReactorState(message.reactor, true, 0);
     correctionSamples.length = 0;
+    reactorCorrectionSamples.length = 0;
     snapshotGapSamples.length = 0;
     addFeed(`RUN RESET · seed ${run.seed} · by ${message.requestedBy}`, 48);
     return;
@@ -243,6 +250,7 @@ function handleMessage(message) {
     for (const player of message.players || []) {
       upsertAuthoritativePlayer(player, projectionAgeMs);
     }
+    applyReactorState(message.reactor, false, Math.min(projectionAgeMs, REACTOR_PROJECTION_MAX_MS));
 
     const liveSessions = new Set((message.players || []).map((player) => player.sessionId));
     for (const sessionId of players.keys()) {
@@ -326,6 +334,41 @@ function upsertAuthoritativePlayer(player, ageMs) {
     reconcileSelf(projected);
     updateSelfHud(player);
   }
+}
+
+function projectAuthoritativeReactor(state, ageMs) {
+  if (!state) return null;
+  const dt = clamp(ageMs / 1000, 0, REACTOR_PROJECTION_MAX_MS / 1000);
+  const radius = Number.isFinite(state.radius) ? state.radius : 46;
+  return {
+    ...state,
+    radius,
+    x: clamp(state.x + (state.vx || 0) * dt, radius, world.width - radius),
+    y: clamp(state.y + (state.vy || 0) * dt, radius, world.height - radius),
+  };
+}
+
+function applyReactorState(state, immediate, ageMs) {
+  const projected = projectAuthoritativeReactor(state, ageMs);
+  if (!projected) return;
+
+  if (!reactor || immediate) {
+    reactor = {
+      ...projected,
+      drawX: projected.x,
+      drawY: projected.y,
+      targetX: projected.x,
+      targetY: projected.y,
+    };
+    return;
+  }
+
+  pushSample(reactorCorrectionSamples, Math.hypot(projected.x - reactor.drawX, projected.y - reactor.drawY));
+  reactor.targetX = projected.x;
+  reactor.targetY = projected.y;
+  reactor.vx = projected.vx;
+  reactor.vy = projected.vy;
+  reactor.radius = projected.radius;
 }
 
 function upsertPlayer(player, immediate) {
@@ -518,6 +561,13 @@ function updateRemotePlayers(dt) {
   }
 }
 
+function updateReactorPresentation(dt) {
+  if (!reactor) return;
+  const blend = 1 - Math.exp(-10 * dt);
+  reactor.drawX += (reactor.targetX - reactor.drawX) * blend;
+  reactor.drawY += (reactor.targetY - reactor.drawY) * blend;
+}
+
 function spawnTrail(x, y, hue, count) {
   for (let index = 0; index < count; index += 1) {
     particles.push({
@@ -620,6 +670,37 @@ function drawPickup(pickup, view) {
   ctx.restore();
 }
 
+function drawReactor(view) {
+  if (!reactor) return;
+  const p = toScreen(reactor.drawX, reactor.drawY, view);
+  const radius = reactor.radius * view.zoom;
+  if (p.x < -radius * 2 || p.y < -radius * 2 || p.x > viewportWidth + radius * 2 || p.y > viewportHeight + radius * 2) return;
+
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.translate(p.x, p.y);
+  ctx.shadowBlur = 30;
+  ctx.shadowColor = "#ff5ccf";
+  ctx.fillStyle = "rgba(44, 16, 60, 0.92)";
+  ctx.strokeStyle = "#ff76dc";
+  ctx.lineWidth = Math.max(2, 3 * view.zoom);
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.shadowBlur = 18;
+  ctx.strokeStyle = "#6df7ff";
+  ctx.lineWidth = Math.max(1.5, 2 * view.zoom);
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.58, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#f2fbff";
+  ctx.font = `${Math.max(10, 11 * view.zoom)}px system-ui`;
+  ctx.textAlign = "center";
+  ctx.fillText("REACTOR", 0, -radius - 10);
+  ctx.restore();
+}
+
 function drawPlayer(player, x, y, view, self = false) {
   const p = toScreen(x, y, view);
   const radius = PLAYER_RADIUS * view.zoom;
@@ -667,6 +748,7 @@ function render() {
   const view = camera();
   drawGrid(view);
   for (const pickup of pickups.values()) drawPickup(pickup, view);
+  drawReactor(view);
   drawParticles(view);
   for (const player of players.values()) {
     if (player.sessionId === selfSessionId) continue;
@@ -705,6 +787,8 @@ function renderTelemetry() {
   const rttP95 = percentile(rttSamples, 0.95);
   const correctionP50 = percentile(correctionSamples, 0.5);
   const correctionP95 = percentile(correctionSamples, 0.95);
+  const reactorCorrectionP50 = percentile(reactorCorrectionSamples, 0.5);
+  const reactorCorrectionP95 = percentile(reactorCorrectionSamples, 0.95);
   const fps = percentile(fpsSamples, 0.5);
 
   metrics["m-run"].textContent = `${run.id} · seed ${run.seed >>> 0}`;
@@ -724,6 +808,12 @@ function renderTelemetry() {
   metrics["m-correction"].textContent = correctionSamples.length
     ? `${correctionP50.toFixed(1)} / ${correctionP95.toFixed(1)} px p50/p95`
     : "—";
+  metrics["m-reactor-speed"].textContent = serverTelemetry
+    ? `${serverTelemetry.reactorSpeedP50.toFixed(1)} / ${serverTelemetry.reactorSpeedP95.toFixed(1)} u/s p50/p95`
+    : "—";
+  metrics["m-reactor-correction"].textContent = reactorCorrectionSamples.length
+    ? `${reactorCorrectionP50.toFixed(1)} / ${reactorCorrectionP95.toFixed(1)} px p50/p95`
+    : "—";
   metrics["m-fps"].textContent = fpsSamples.length ? `${fps.toFixed(0)} fps` : "—";
   metrics["m-input-rate"].textContent = `${clientRates.inputsPerSec.toFixed(1)} /s tx · ${serverTelemetry?.inputsPerSec?.toFixed?.(1) ?? "—"} /s server`;
   metrics["m-bytes"].textContent = `${formatRate(clientRates.outboundBytesPerSec)} up · ${formatRate(clientRates.inboundBytesPerSec)} down`;
@@ -742,6 +832,7 @@ function frame(now) {
   if (rawDt > 0) pushSample(fpsSamples, 1 / rawDt);
   simulateLocal(dt);
   updateRemotePlayers(dt);
+  updateReactorPresentation(dt);
   updateParticles(dt);
   updateDashHud();
   updateSelfHud(localPlayer || { score: 0, combo: 1, comboExpiresAt: 0 });

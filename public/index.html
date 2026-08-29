@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#080b14" />
     <meta name="color-scheme" content="dark" />
-    <title>Neon Salvage · Gate 4A Simulation Lab</title>
+    <title>Neon Salvage · Gate 4B Shared Dynamics Lab</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -14,7 +14,7 @@
     <header class="hud top-hud">
       <div class="brand">
         <strong>NEON SALVAGE</strong>
-        <span>Gate 4A · authoritative simulation substrate</span>
+        <span>Gate 4B · passive authoritative Reactor</span>
       </div>
       <div class="network">
         <span id="net-dot" class="dot"></span>
@@ -55,6 +55,8 @@
         <div><span>RTT p50/p95</span><strong id="m-rtt">—</strong></div>
         <div><span>SNAPSHOT AGE</span><strong id="m-snapshot-age">—</strong></div>
         <div><span>CORRECTION</span><strong id="m-correction">—</strong></div>
+        <div><span>REACTOR SPEED</span><strong id="m-reactor-speed">—</strong></div>
+        <div><span>REACTOR CORRECTION</span><strong id="m-reactor-correction">—</strong></div>
         <div><span>CLIENT FPS</span><strong id="m-fps">—</strong></div>
         <div><span>INPUT RATE</span><strong id="m-input-rate">—</strong></div>
         <div><span>CLIENT TRAFFIC</span><strong id="m-bytes">—</strong></div>
@@ -84,9 +86,9 @@
 
     <div id="boot" class="boot">
       <div class="boot-card">
-        <p class="eyebrow">Gate 4A · Fixed Simulation Substrate</p>
+        <p class="eyebrow">Gate 4B · Passive Shared Dynamics</p>
         <h1>Neon Salvage</h1>
-        <p>The game is intentionally familiar. What changed is underneath: input no longer advances the world directly. A fixed server simulation owns movement, snapshots and timing.</p>
+        <p>The frozen 4A substrate now carries one passive server-owned Reactor. It moves independently, snapshots at the existing cadence, and is presented without local Reactor physics.</p>
         <label>Callsign <input id="callsign" maxlength="24" autocomplete="off" /></label>
         <button id="play" type="button">Enter the simulation</button>
         <small>Mobile remains first-class. LAB exposes timing and reconciliation instead of hiding them.</small>

@@ -1,0 +1,60 @@
+name: Apply Gate 4B B1 once
+
+on:
+  push:
+    branches: [gate-4b-shared-reactor-dynamics]
+    paths:
+      - scripts/apply-b1.py
+      - .github/workflows/b1-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-b1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: gate-4b-shared-reactor-dynamics
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply asserted B1 delta
+        run: python scripts/apply-b1.py
+
+      - name: Remove one-shot transport
+        run: rm scripts/apply-b1.py .github/workflows/b1-apply.yml
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate exact B1 tree
+        run: |
+          npm run check
+          git diff --check
+          python - <<'PY'
+          import subprocess
+          expected = {
+              '.github/workflows/b1-apply.yml',
+              'public/app.js',
+              'public/index.html',
+              'scripts/apply-b1.py',
+              'src/index.ts',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          if changed != expected:
+              raise SystemExit(f'unexpected B1 worktree scope: {sorted(changed)}')
+          PY
+
+      - name: Commit coherent B1 runtime delta
+        run: |
+          git config user.name "Jozzpoly"
+          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: add Gate 4B passive Reactor transport"
+          git push origin HEAD:gate-4b-shared-reactor-dynamics

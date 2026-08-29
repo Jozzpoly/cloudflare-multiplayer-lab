@@ -7,20 +7,30 @@ The goal is **not** to build a game framework up front. The goal is to prove the
 ## Experiment gates
 
 1. **Deployment sanity** — PASS. Static frontend + Cloudflare Worker + `/api/ping` work from one public deployment.
-2. **Realtime transport** — next. A browser can establish and maintain a WebSocket connection.
-3. **Stateful room** — pending. One Durable Object coordinates a small room.
+2. **Realtime transport** — PASS. Direct WebSocket connection, bidirectional round-trip and bounded reconnect/recovery work through a public Cloudflare preview.
+3. **Stateful room** — pending. One Durable Object coordinates multiple clients in an isolated room.
 4. **Two-player falsifier** — pending. Two real clients see each other's movement over the public Internet.
 
 Later gates should be added only after the previous boundary is demonstrated.
 
 ## Gate 1
 
-The initial scaffold intentionally contains only:
+Gate 1 is closed as PASS. Evidence is recorded in [`docs/gates/gate-1-deployment-sanity.md`](docs/gates/gate-1-deployment-sanity.md).
 
-- `public/` — static browser client served by Workers Static Assets,
-- `src/index.ts` — Worker with `/api/ping`,
-- `wrangler.jsonc` — Worker + Static Assets routing,
-- `.github/workflows/ci.yml` — typecheck and Wrangler dry-run on pushes/PRs.
+Public production deployment:
+
+`https://cloudflare-multiplayer-lab.jozzpoly.workers.dev`
+
+## Gate 2
+
+Gate 2 is closed as PASS. It deliberately tested transport without Durable Objects or multiplayer state. Evidence is recorded in [`docs/gates/gate-2-websocket-transport.md`](docs/gates/gate-2-websocket-transport.md).
+
+Repository validation:
+
+```bash
+npm install
+npm run check
+```
 
 Local development:
 
@@ -29,20 +39,8 @@ npm install
 npm run dev
 ```
 
-Repository validation:
-
-```bash
-npm run check
-```
-
 ## Current status
 
-**Gate 1 is closed as PASS.** GitHub Actions validated the source and Wrangler dry-run, Cloudflare Workers Builds deployed the Worker and static assets, and a real external Android browser loaded the public deployment and received `ok: true` from `/api/ping`.
+Gate 2 has passed source validation, GitHub CI, Cloudflare branch-preview deployment and real external-browser runtime validation. PR #1 is the promotion boundary to `main`; after merge, production deploy and a minimal production smoke test should confirm that the validated result survives promotion.
 
-Public lab deployment:
-
-`https://cloudflare-multiplayer-lab.jozzpoly.workers.dev`
-
-Detailed evidence and known non-blocking debt are recorded in [`docs/gates/gate-1-deployment-sanity.md`](docs/gates/gate-1-deployment-sanity.md).
-
-The next experimental boundary is Gate 2: WebSocket transport only. Durable Objects and multiplayer state remain deliberately out of scope until that transport path is demonstrated.
+Durable Objects, rooms and multiplayer state remain deliberately outside the completed Gate 2 evidence. Their introduction is a separate next-stage decision.

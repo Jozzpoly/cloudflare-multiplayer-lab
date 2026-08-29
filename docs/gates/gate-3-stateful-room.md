@@ -1,7 +1,8 @@
 # Gate 3 — Stateful room
 
-**Status:** IMPLEMENTED / AWAITING STAGING DEPLOY + MULTI-CLIENT RUNTIME EVIDENCE  
-**Branch:** `gate-3-stateful-room`
+**Status:** SOURCE/CI VALIDATED / AWAITING TRUE STAGING DEPLOY + MULTI-CLIENT RUNTIME EVIDENCE  
+**Branch:** `gate-3-stateful-room`  
+**Draft PR:** #2
 
 ## Question
 
@@ -30,7 +31,9 @@ Gate 3 deliberately defines the Durable Object only under `env.staging`:
 
 The production/default Worker does not receive the Durable Object binding during the experimental branch. This prevents Gate 3 from silently turning a branch experiment into production stateful infrastructure.
 
-Cloudflare Workers Builds must therefore use a real staging deployment for this branch. The ordinary non-production default (`wrangler versions upload`) is insufficient for Gate 3 runtime validation because Workers implementing Durable Objects do not receive Preview URLs.
+Cloudflare Workers Builds must therefore use a real staging deployment for this branch. The ordinary non-production default (`wrangler versions upload`) is not the Gate 3 runtime target.
+
+An important observed nuance: because the Durable Object exists only in `env.staging`, Cloudflare can still create a normal preview URL for the **default environment** branch version. That preview does not contain the `ROOMS` binding and must not be used as Gate 3 runtime evidence. A valid test must run against the separately deployed `cloudflare-multiplayer-lab-staging` Worker.
 
 ## Success criteria
 
@@ -59,15 +62,43 @@ This gate does **not** establish:
 - load/scaling limits,
 - uncontrolled network-loss recovery.
 
-## Validation layers
+## Evidence so far
 
-1. Browser JS syntax check (`node --check`).
-2. Wrangler-generated staging runtime/binding types + strict TypeScript.
-3. `wrangler deploy --dry-run --env staging`.
-4. Real Cloudflare staging deployment.
-5. Real two-client browser evidence, including separate-room isolation.
+### First implementation attempt
 
-Only layer 5 can close Gate 3 as PASS.
+Commit `5a5fbefe4882ca277dec1c1ce73211d5bf5cda42` failed CI during staging type generation/typecheck because `ASSETS` was absent from the generated staging `Env`. The Durable Object binding `ROOMS` itself was generated correctly.
+
+This falsified the assumption that the top-level asset binding was sufficient for the named staging environment in the actual Wrangler toolchain. The staging `assets` configuration was then declared explicitly.
+
+### Corrected implementation
+
+Commit `e0725108c09d71ca5767bbf1db2c8d177a88534c` passed GitHub CI.
+
+Validated on the real toolchain:
+
+- `node --check public/app.js`,
+- `wrangler types --env staging`,
+- strict TypeScript typecheck,
+- `wrangler deploy --dry-run --env staging`.
+
+Wrangler generated both required staging bindings:
+
+- `ROOMS: DurableObjectNamespace<Room>`
+- `ASSETS: Fetcher`
+
+Cloudflare's ordinary non-production build also succeeded for the corrected commit, but it produced a preview for the default environment. That is useful as build evidence only and is **not** staging runtime evidence for the Durable Object.
+
+## Remaining runtime boundary
+
+Before browser testing, Workers Builds must execute a full staging deployment for the non-production branch:
+
+`npx wrangler deploy --env staging`
+
+Expected staging URL after deployment:
+
+`https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev`
+
+Only after that URL exists should the two-client success criteria be executed.
 
 ## Known non-blocking debt
 

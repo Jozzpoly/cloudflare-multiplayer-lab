@@ -2,6 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import {
   advanceReactor,
   resolveReactorBounds,
+  solveReactorContacts,
+  type ReactorContactBody,
   type ReactorPhysicsConfig,
   type ReactorState,
 } from "./reactor-physics";
@@ -86,6 +88,8 @@ type RateTelemetry = {
   snapshotsPerSec: number;
   inboundBytesPerSec: number;
   outboundBytesPerSec: number;
+  reactorContactsPerSec: number;
+  reactorImpulsesPerSec: number;
 };
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -244,17 +248,22 @@ export class World extends DurableObject<Env> {
   private tickDurationSamples: number[] = [];
   private tickDriftSamples: number[] = [];
   private reactorSpeedSamples: number[] = [];
+  private reactorImpulseSamples: number[] = [];
 
   private rateWindowStartedAt = Date.now();
   private rateWindowInputs = 0;
   private rateWindowSnapshots = 0;
   private rateWindowInboundBytes = 0;
   private rateWindowOutboundBytes = 0;
+  private rateWindowReactorContacts = 0;
+  private rateWindowReactorImpulses = 0;
   private rates: RateTelemetry = {
     inputsPerSec: 0,
     snapshotsPerSec: 0,
     inboundBytesPerSec: 0,
     outboundBytesPerSec: 0,
+    reactorContactsPerSec: 0,
+    reactorImpulsesPerSec: 0,
   };
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -404,93 +413,131 @@ export class World extends DurableObject<Env> {
   }
 
   private simulateStep(dt: number, now: number): void {
-    let scoreboardDirty = false;
+  let scoreboardDirty = false;
+  const activePlayers: Array<{ socket: WebSocket; player: PlayerState }> = [];
 
-    this.reactor = resolveReactorBounds(
-      advanceReactor(this.reactor, dt, REACTOR_PHYSICS_CONFIG),
-      REACTOR_WORLD_BOUNDS,
-      REACTOR_PHYSICS_CONFIG,
-    );
-    this.pushSample(this.reactorSpeedSamples, Math.hypot(this.reactor.vx, this.reactor.vy));
+  for (const [socket, player] of this.players) {
+    if (socket.readyState !== WebSocket.OPEN) continue;
+    activePlayers.push({ socket, player });
 
-    for (const [socket, player] of this.players) {
-      if (socket.readyState !== WebSocket.OPEN) continue;
-
-      if (now - player.lastInputAt > INPUT_LEASE_MS) {
-        player.inputX = 0;
-        player.inputY = 0;
-        player.dashQueued = false;
-      }
-
-      player.vx += player.inputX * ACCELERATION * dt;
-      player.vy += player.inputY * ACCELERATION * dt;
-
-      const damping = Math.exp(-DRAG * dt);
-      player.vx *= damping;
-      player.vy *= damping;
-
-      const baseSpeed = Math.hypot(player.vx, player.vy);
-      if (baseSpeed > MAX_SPEED) {
-        const scale = MAX_SPEED / baseSpeed;
-        player.vx *= scale;
-        player.vy *= scale;
-      }
-
-      if (player.dashQueued && now >= player.dashReadyAt) {
-        let dx = player.inputX;
-        let dy = player.inputY;
-        if (Math.hypot(dx, dy) < 0.1) {
-          const speed = Math.hypot(player.vx, player.vy);
-          if (speed > 1) {
-            dx = player.vx / speed;
-            dy = player.vy / speed;
-          }
-        }
-        if (Math.hypot(dx, dy) >= 0.1) {
-          player.vx += dx * DASH_IMPULSE;
-          player.vy += dy * DASH_IMPULSE;
-          player.dashReadyAt = now + DASH_COOLDOWN_MS;
-        }
-      }
+    if (now - player.lastInputAt > INPUT_LEASE_MS) {
+      player.inputX = 0;
+      player.inputY = 0;
       player.dashQueued = false;
-
-      player.x += player.vx * dt;
-      player.y += player.vy * dt;
-      this.resolveWorldBounds(player);
-
-      for (let index = 0; index < this.pickups.length; index += 1) {
-        const pickup = this.pickups[index];
-        const radius = pickup.kind === "core" ? 34 : 29;
-        if (Math.hypot(player.x - pickup.x, player.y - pickup.y) > radius) continue;
-
-        player.combo = now - player.lastCollectAt <= COMBO_WINDOW_MS
-          ? Math.min(5, player.combo + 1)
-          : 1;
-        player.lastCollectAt = now;
-        const points = pickup.value * player.combo;
-        player.score += points;
-        const replacement = this.createPickup(pickup.id);
-        this.pickups[index] = replacement;
-        scoreboardDirty = true;
-
-        this.broadcast({
-          type: "collect",
-          playerId: player.playerId,
-          pickupId: pickup.id,
-          pickupKind: pickup.kind,
-          points,
-          score: player.score,
-          combo: player.combo,
-          replacement,
-          tick: this.tick,
-        });
-      }
-
-      socket.serializeAttachment(player);
     }
 
-    if (scoreboardDirty) this.broadcastScoreboard();
+    player.vx += player.inputX * ACCELERATION * dt;
+    player.vy += player.inputY * ACCELERATION * dt;
+
+    const damping = Math.exp(-DRAG * dt);
+    player.vx *= damping;
+    player.vy *= damping;
+
+    const baseSpeed = Math.hypot(player.vx, player.vy);
+    if (baseSpeed > MAX_SPEED) {
+      const scale = MAX_SPEED / baseSpeed;
+      player.vx *= scale;
+      player.vy *= scale;
+    }
+
+    if (player.dashQueued && now >= player.dashReadyAt) {
+      let dx = player.inputX;
+      let dy = player.inputY;
+      if (Math.hypot(dx, dy) < 0.1) {
+        const speed = Math.hypot(player.vx, player.vy);
+        if (speed > 1) {
+          dx = player.vx / speed;
+          dy = player.vy / speed;
+        }
+      }
+      if (Math.hypot(dx, dy) >= 0.1) {
+        player.vx += dx * DASH_IMPULSE;
+        player.vy += dy * DASH_IMPULSE;
+        player.dashReadyAt = now + DASH_COOLDOWN_MS;
+      }
+    }
+    player.dashQueued = false;
+
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
+    this.resolveWorldBounds(player);
   }
+
+  this.reactor = resolveReactorBounds(
+    advanceReactor(this.reactor, dt, REACTOR_PHYSICS_CONFIG),
+    REACTOR_WORLD_BOUNDS,
+    REACTOR_PHYSICS_CONFIG,
+  );
+
+  const contactBodies: ReactorContactBody[] = activePlayers.map(({ player }) => ({
+    id: player.sessionId,
+    x: player.x,
+    y: player.y,
+    vx: player.vx,
+    vy: player.vy,
+    radius: PLAYER_RADIUS,
+    mass: 1,
+  }));
+
+  if (contactBodies.length > 0) {
+    const contactResult = solveReactorContacts(this.reactor, contactBodies, REACTOR_PHYSICS_CONFIG);
+    this.reactor = contactResult.reactor;
+    const solvedBodies = new Map(contactResult.bodies.map((body) => [body.id, body]));
+
+    for (const { player } of activePlayers) {
+      const solved = solvedBodies.get(player.sessionId);
+      if (!solved) continue;
+      player.x = solved.x;
+      player.y = solved.y;
+      player.vx = solved.vx;
+      player.vy = solved.vy;
+      this.resolveWorldBounds(player);
+    }
+
+    this.rateWindowReactorContacts += contactResult.contacts.length;
+    for (const contact of contactResult.contacts) {
+      if (!(contact.impulseMagnitude > 0)) continue;
+      this.rateWindowReactorImpulses += 1;
+      this.pushSample(this.reactorImpulseSamples, contact.impulseMagnitude);
+    }
+  }
+
+  this.reactor = resolveReactorBounds(this.reactor, REACTOR_WORLD_BOUNDS, REACTOR_PHYSICS_CONFIG);
+  this.pushSample(this.reactorSpeedSamples, Math.hypot(this.reactor.vx, this.reactor.vy));
+
+  for (const { socket, player } of activePlayers) {
+    for (let index = 0; index < this.pickups.length; index += 1) {
+      const pickup = this.pickups[index];
+      const radius = pickup.kind === "core" ? 34 : 29;
+      if (Math.hypot(player.x - pickup.x, player.y - pickup.y) > radius) continue;
+
+      player.combo = now - player.lastCollectAt <= COMBO_WINDOW_MS
+        ? Math.min(5, player.combo + 1)
+        : 1;
+      player.lastCollectAt = now;
+      const points = pickup.value * player.combo;
+      player.score += points;
+      const replacement = this.createPickup(pickup.id);
+      this.pickups[index] = replacement;
+      scoreboardDirty = true;
+
+      this.broadcast({
+        type: "collect",
+        playerId: player.playerId,
+        pickupId: pickup.id,
+        pickupKind: pickup.kind,
+        points,
+        score: player.score,
+        combo: player.combo,
+        replacement,
+        tick: this.tick,
+      });
+    }
+    socket.serializeAttachment(player);
+  }
+
+  if (scoreboardDirty) this.broadcastScoreboard();
+}
 
   private resolveWorldBounds(player: PlayerState): void {
     if (player.x < PLAYER_RADIUS) {
@@ -558,12 +605,22 @@ export class World extends DurableObject<Env> {
     this.tickDurationSamples = [];
     this.tickDriftSamples = [];
     this.reactorSpeedSamples = [];
+    this.reactorImpulseSamples = [];
     this.rateWindowStartedAt = Date.now();
     this.rateWindowInputs = 0;
     this.rateWindowSnapshots = 0;
     this.rateWindowInboundBytes = 0;
     this.rateWindowOutboundBytes = 0;
-    this.rates = { inputsPerSec: 0, snapshotsPerSec: 0, inboundBytesPerSec: 0, outboundBytesPerSec: 0 };
+  this.rateWindowReactorContacts = 0;
+  this.rateWindowReactorImpulses = 0;
+  this.rates = {
+    inputsPerSec: 0,
+    snapshotsPerSec: 0,
+    inboundBytesPerSec: 0,
+    outboundBytesPerSec: 0,
+    reactorContactsPerSec: 0,
+    reactorImpulsesPerSec: 0,
+  };
     this.activeRunStartedAt = Date.now();
     this.lastPumpAt = performance.now();
     this.accumulatorMs = 0;
@@ -780,6 +837,8 @@ export class World extends DurableObject<Env> {
       catchupSteps: this.catchupSteps,
       reactorSpeedP50: percentile(this.reactorSpeedSamples, 0.5),
       reactorSpeedP95: percentile(this.reactorSpeedSamples, 0.95),
+      reactorImpulseMagnitudeP50: percentile(this.reactorImpulseSamples, 0.5),
+      reactorImpulseMagnitudeP95: percentile(this.reactorImpulseSamples, 0.95),
       activeDurationMs: this.activeRunStartedAt ? Math.max(0, now - this.activeRunStartedAt) : 0,
       ...this.rates,
     };
@@ -794,12 +853,16 @@ export class World extends DurableObject<Env> {
       snapshotsPerSec: this.rateWindowSnapshots * scale,
       inboundBytesPerSec: this.rateWindowInboundBytes * scale,
       outboundBytesPerSec: this.rateWindowOutboundBytes * scale,
+      reactorContactsPerSec: this.rateWindowReactorContacts * scale,
+      reactorImpulsesPerSec: this.rateWindowReactorImpulses * scale,
     };
     this.rateWindowStartedAt = now;
     this.rateWindowInputs = 0;
     this.rateWindowSnapshots = 0;
     this.rateWindowInboundBytes = 0;
     this.rateWindowOutboundBytes = 0;
+    this.rateWindowReactorContacts = 0;
+    this.rateWindowReactorImpulses = 0;
   }
 
   private pushSample(target: number[], value: number): void {
@@ -846,7 +909,7 @@ export default {
       return jsonResponse({
         ok: true,
         service: "cloudflare-multiplayer-lab",
-        stage: "gate-4b-passive-reactor",
+        stage: "gate-4b-single-player-contact",
         timestamp: new Date().toISOString(),
       });
     }

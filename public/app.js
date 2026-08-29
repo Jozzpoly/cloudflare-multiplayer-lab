@@ -23,7 +23,7 @@ const resetButton = document.querySelector("#reset-run");
 const metricIds = [
   "m-run", "m-sim", "m-snapshot", "m-tick-p95", "m-drift-p95", "m-dropped",
   "m-rtt", "m-snapshot-age", "m-correction", "m-reactor-speed", "m-reactor-correction",
-  "m-fps", "m-input-rate", "m-bytes",
+  "m-reactor-contact", "m-fps", "m-input-rate", "m-bytes",
 ];
 const metrics = Object.fromEntries(metricIds.map((id) => [id, document.querySelector(`#${id}`)]));
 
@@ -814,7 +814,10 @@ function renderTelemetry() {
   metrics["m-reactor-correction"].textContent = reactorCorrectionSamples.length
     ? `${reactorCorrectionP50.toFixed(1)} / ${reactorCorrectionP95.toFixed(1)} px p50/p95`
     : "—";
-  metrics["m-fps"].textContent = fpsSamples.length ? `${fps.toFixed(0)} fps` : "—";
+  metrics["m-reactor-contact"].textContent = serverTelemetry
+  ? `${serverTelemetry.reactorContactsPerSec.toFixed(1)} overlap/s · ${serverTelemetry.reactorImpulsesPerSec.toFixed(1)} impulse/s · p95 ${serverTelemetry.reactorImpulseMagnitudeP95.toFixed(1)}`
+  : "—";
+metrics["m-fps"].textContent = fpsSamples.length ? `${fps.toFixed(0)} fps` : "—";
   metrics["m-input-rate"].textContent = `${clientRates.inputsPerSec.toFixed(1)} /s tx · ${serverTelemetry?.inputsPerSec?.toFixed?.(1) ?? "—"} /s server`;
   metrics["m-bytes"].textContent = `${formatRate(clientRates.outboundBytesPerSec)} up · ${formatRate(clientRates.inboundBytesPerSec)} down`;
 }

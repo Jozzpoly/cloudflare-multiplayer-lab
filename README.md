@@ -6,12 +6,12 @@ The goal is **not** to build a game framework up front. The goal is to prove the
 
 ## Experiment gates
 
-1. **Deployment sanity** — static frontend + Cloudflare Worker + `/api/ping` work from one public deployment.
-2. **Realtime transport** — a browser can establish and maintain a WebSocket connection.
-3. **Stateful room** — one Durable Object coordinates a small room.
-4. **Two-player falsifier** — two real clients see each other's movement over the public Internet.
+1. **Deployment sanity** — PASS. Static frontend + Cloudflare Worker + `/api/ping` work from one public deployment.
+2. **Realtime transport** — next. A browser can establish and maintain a WebSocket connection.
+3. **Stateful room** — pending. One Durable Object coordinates a small room.
+4. **Two-player falsifier** — pending. Two real clients see each other's movement over the public Internet.
 
-Only Gate 1 belongs in the initial bootstrap. Later gates should be added only after the previous boundary is demonstrated.
+Later gates should be added only after the previous boundary is demonstrated.
 
 ## Gate 1
 
@@ -37,4 +37,12 @@ npm run check
 
 ## Current status
 
-Gate 1 source and build configuration are implemented. GitHub Actions has validated dependency installation, TypeScript, and a real Wrangler deployment dry-run. Gate 1 is **not yet runtime-validated on Cloudflare**. The next evidence boundary is a Workers Builds deployment from `main`, followed by a browser test of the public page and `/api/ping`.
+**Gate 1 is closed as PASS.** GitHub Actions validated the source and Wrangler dry-run, Cloudflare Workers Builds deployed the Worker and static assets, and a real external Android browser loaded the public deployment and received `ok: true` from `/api/ping`.
+
+Public lab deployment:
+
+`https://cloudflare-multiplayer-lab.jozzpoly.workers.dev`
+
+Detailed evidence and known non-blocking debt are recorded in [`docs/gates/gate-1-deployment-sanity.md`](docs/gates/gate-1-deployment-sanity.md).
+
+The next experimental boundary is Gate 2: WebSocket transport only. Durable Objects and multiplayer state remain deliberately out of scope until that transport path is demonstrated.

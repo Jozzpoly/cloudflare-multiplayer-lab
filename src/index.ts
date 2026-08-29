@@ -298,11 +298,13 @@ export class World extends DurableObject<Env> {
       return;
     }
 
+    if (message.seq <= player.lastInputSeq) return;
+
     const input = normalizeVector(message.x, message.y);
     player.inputX = input.x;
     player.inputY = input.y;
     player.lastInputAt = Date.now();
-    player.lastInputSeq = Math.max(player.lastInputSeq, message.seq);
+    player.lastInputSeq = message.seq;
     player.dashQueued ||= message.dash;
     ws.serializeAttachment(player);
     this.rateWindowInputs += 1;
@@ -347,8 +349,8 @@ export class World extends DurableObject<Env> {
     let steps = 0;
     while (this.accumulatorMs >= SIMULATION_STEP_MS && steps < MAX_CATCHUP_STEPS) {
       const stepStartedAt = performance.now();
-      this.simulateStep(SIMULATION_STEP_MS / 1000, Date.now());
       this.tick += 1;
+      this.simulateStep(SIMULATION_STEP_MS / 1000, Date.now());
       steps += 1;
       this.accumulatorMs -= SIMULATION_STEP_MS;
       this.pushSample(this.tickDurationSamples, performance.now() - stepStartedAt);
@@ -519,6 +521,7 @@ export class World extends DurableObject<Env> {
     this.rateWindowInboundBytes = 0;
     this.rateWindowOutboundBytes = 0;
     this.rates = { inputsPerSec: 0, snapshotsPerSec: 0, inboundBytesPerSec: 0, outboundBytesPerSec: 0 };
+    this.activeRunStartedAt = Date.now();
     this.lastPumpAt = performance.now();
     this.accumulatorMs = 0;
 
@@ -617,6 +620,8 @@ export class World extends DurableObject<Env> {
       if (this.players.size === 0 && restored.runSeed) {
         this.runSeed = normalizeSeed(restored.runSeed);
         this.runId = restored.runId || this.runId;
+        const restoredSerial = Number(this.runId.split("-").at(-1));
+        if (Number.isInteger(restoredSerial) && restoredSerial > 0) this.runSerial = restoredSerial;
         this.rngState = this.runSeed;
         this.pickups = Array.from({ length: PICKUP_COUNT }, (_, index) => this.createPickup(index));
       }

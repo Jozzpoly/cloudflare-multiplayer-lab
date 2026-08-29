@@ -234,12 +234,14 @@ function handleMessage(message) {
     run = message.run || run;
     serverTelemetry = message.telemetry || serverTelemetry;
 
+    let projectionAgeMs = 0;
     if (serverClockOffsetMs !== null && Number.isFinite(message.serverTime)) {
-      lastSnapshotAgeMs = Date.now() - message.serverTime + serverClockOffsetMs;
+      lastSnapshotAgeMs = Math.max(0, Date.now() + serverClockOffsetMs - message.serverTime);
+      projectionAgeMs = clamp(lastSnapshotAgeMs, 0, 250);
     }
 
     for (const player of message.players || []) {
-      upsertAuthoritativePlayer(player);
+      upsertAuthoritativePlayer(player, projectionAgeMs);
     }
 
     const liveSessions = new Set((message.players || []).map((player) => player.sessionId));
@@ -306,10 +308,22 @@ function applyFullState(nextPlayers, nextPickups, explicitSelf) {
   }
 }
 
-function upsertAuthoritativePlayer(player) {
-  upsertPlayer(player, false);
+function projectAuthoritativePlayer(player, ageMs) {
+  const dt = clamp(ageMs / 1000, 0, 0.25);
+  if (dt <= 0) return player;
+
+  return {
+    ...player,
+    x: clamp(player.x + (player.vx || 0) * dt, PLAYER_RADIUS, world.width - PLAYER_RADIUS),
+    y: clamp(player.y + (player.vy || 0) * dt, PLAYER_RADIUS, world.height - PLAYER_RADIUS),
+  };
+}
+
+function upsertAuthoritativePlayer(player, ageMs) {
+  const projected = projectAuthoritativePlayer(player, ageMs);
+  upsertPlayer(projected, false);
   if (player.sessionId === selfSessionId && localPlayer) {
-    reconcileSelf(player);
+    reconcileSelf(projected);
     updateSelfHud(player);
   }
 }
@@ -722,9 +736,10 @@ function formatRate(bytesPerSec) {
 }
 
 function frame(now) {
-  const dt = clamp((now - lastFrameAt) / 1000, 0, 0.05);
+  const rawDt = (now - lastFrameAt) / 1000;
+  const dt = clamp(rawDt, 0, 0.05);
   lastFrameAt = now;
-  if (dt > 0) pushSample(fpsSamples, 1 / dt);
+  if (rawDt > 0) pushSample(fpsSamples, 1 / rawDt);
   simulateLocal(dt);
   updateRemotePlayers(dt);
   updateParticles(dt);

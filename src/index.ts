@@ -347,8 +347,8 @@ export class World extends DurableObject<Env> {
     let steps = 0;
     while (this.accumulatorMs >= SIMULATION_STEP_MS && steps < MAX_CATCHUP_STEPS) {
       const stepStartedAt = performance.now();
-      this.tick += 1;
       this.simulateStep(SIMULATION_STEP_MS / 1000, Date.now());
+      this.tick += 1;
       steps += 1;
       this.accumulatorMs -= SIMULATION_STEP_MS;
       this.pushSample(this.tickDurationSamples, performance.now() - stepStartedAt);
@@ -363,7 +363,7 @@ export class World extends DurableObject<Env> {
     if (this.accumulatorMs >= SIMULATION_STEP_MS) {
       const dropped = Math.floor(this.accumulatorMs / SIMULATION_STEP_MS);
       this.droppedTicks += dropped;
-      this.accumulatorMs % = SIMULATION_STEP_MS;
+      this.accumulatorMs %= SIMULATION_STEP_MS;
     }
   }
 
@@ -519,7 +519,6 @@ export class World extends DurableObject<Env> {
     this.rateWindowInboundBytes = 0;
     this.rateWindowOutboundBytes = 0;
     this.rates = { inputsPerSec: 0, snapshotsPerSec: 0, inboundBytesPerSec: 0, outboundBytesPerSec: 0 };
-    this.activeRunStartedAt = Date.now();
     this.lastPumpAt = performance.now();
     this.accumulatorMs = 0;
 
@@ -540,7 +539,7 @@ export class World extends DurableObject<Env> {
     if (!preserveSerial) this.runSerial = Math.max(1, this.runSerial);
     this.runId = `${this.runSeed.toString(16).padStart(8, "0")}-${this.runSerial}`;
     this.rngState = this.runSeed;
-    this.pickups = Array.from({ length: PIKKUP_COUNT }, (_, index) => this.createPickup(index));
+    this.pickups = Array.from({ length: PICKUP_COUNT }, (_, index) => this.createPickup(index));
   }
 
   private nextRandom(): number {
@@ -568,4 +567,237 @@ export class World extends DurableObject<Env> {
     return {
       playerId,
       sessionId: crypto.randomUUID(),
-      hue: hashString(jek'«!ÛaŠÊî'žt¤€”€ÌØÀ°(€€€€€àèÍÁ…Ý¸¹à°(€€€€€äèÍÁ…Ý¸¹ä°(€€€€€Ùàè€À°(€€€€€Ùäè€À°(€€€€€¥¹ÁÕÑ`è€À°(€€€€€¥¹ÁÕÑdè€À°(€€€€€±…ÍÑ%¹ÁÕÑÐè…Ñ”¹¹½Ü ¤°(€€€€€±…ÍÑ%¹ÁÕÑM•Äè€À°(€€€€€‘…Í¡EÕ•Õ•è™…±Í”°(€€€€€Í½É”è€À°(€€€€€½µ‰¼è€Ä°(€€€€€±…ÍÑ½±±•ÑÐè€À°(€€€€€‘…Í¡I•…‘åÐè€À°(€€€€€ÉÕ¹%èÑ¡¥Ì¹ÉÕ¹%°(€€€€€ÉÕ¹M••èÑ¡¥Ì¹ÉÕ¹M••°(€€€ôì(€ô((€ÁÉ¥Ù…Ñ”ÍÁ…Ý¹½È¡Á±…å•É%èÍÑÉ¥¹œ¤èìàè¹Õµ‰•Èìäè¹Õµ‰•Èôì(€€€½¹ÍÐ„€ô¡…Í¡MÑÉ¥¹œ¡€‘íÑ¡¥Ì¹ÉÕ¹M••‘ôè‘íÁ±…å•É%‘ôéá€¤€¼€ÐÈäÐäØÜÈäØì(€€€½¹ÍÐˆ€ô¡…Í¡MÑÉ¥¹œ¡€‘íÑ¡¥Ì¹ÉÕ¹M••‘ôè‘íÁ±…å•É%‘ôéå€¤€¼€ÐÈäÐäØÜÈäØì(€€€É•ÑÕÉ¸ì(€€€€€àè€ÄàÀ€¬„€¨€¡]=I1}]%Q €´€ÌØÀ¤°(€€€€€äè€ÄàÀ€¬ˆ€¨€¡]=I1}!%!P€´€ÌØÀ¤°(€€€ôì(€ô((€ÁÉ¥Ù…Ñ”É•µ½Ù•A±…å•È¡ÝÌè]•‰M½­•Ð¤èÙ½¥ì(€€€½¹ÍÐÁ±…å•È€ôÑ¡¥Ì¹Á±…å•ÉÌ¹•Ð¡ÝÌ¤€üüÑ¡¥Ì¹É•…‘ÑÑ…¡µ•¹Ð¡ÝÌ¤ì(€€€¥˜€ …Á±…å•È¤É•ÑÕÉ¸ì((€€€Ñ¡¥Ì¹Á±…å•ÉÌ¹‘•±•Ñ”¡ÝÌ¤ì(€€€Ñ¡¥Ì¹‰É½…‘…ÍÐ¡ì(€€€€€ÑåÁ”è€‰Á±…å•É}±•™Ðˆ°(€€€€€Á±…å•É%èÁ±…å•È¹Á±…å•É%°(€€€€€Í•ÍÍ¥½¹%èÁ±…å•È¹Í•ÍÍ¥½¹%°(€€€ô°ÝÌ¤ì(€€€Ñ¡¥Ì¹‰É½…‘…ÍÑM½É•‰½…É¡ÝÌ¤ì((€€€¥˜€¡Ñ¡¥Ì¹Á±…å•ÉÌ¹Í¥é”€ôôô€À¤Ñ¡¥Ì¹ÍÑ½Á1½½À ¤ì(€ô((€ÁÉ¥Ù…Ñ”É•ÍÑ½É•Ñ¥Ù•M½­•ÑÌ ¤èÙ½¥ì(€€€™½È€¡½¹ÍÐÍ½­•Ð½˜Ñ¡¥Ì¹Ñà¹•Ñ]•‰M½­•ÑÌ ‰Á±…å•Èˆ¤¤ì(€€€€€½¹ÍÐÉ•ÍÑ½É•€ôÑ¡¥Ì¹É•…‘ÑÑ…¡µ•¹Ð¡Í½­•Ð¤ì(€€€€€¥˜€ …É•ÍÑ½É•¤½¹Ñ¥¹Õ”ì(€€€€€¥˜€¡Ñ¡¥Ì¹Á±…å•ÉÌ¹Í¥é”€ôôô€À€˜˜É•ÍÑ½É•¹ÉÕ¹M••¤ì(€€€€€€€Ñ¡¥Ì¹ÉÕ¹M••€ô¹½Éµ…±¥é•M••¡É•ÍÑ½É•¹ÉÕ¹M••¤ì(€€€€€€€Ñ¡¥Ì¹ÉÕ¹%€ôÉ•ÍÑ½É•¹ÉÕ¹%ñðÑ¡¥Ì¹ÉÕ¹%ì(€€€€€€€½¹ÍÐÉ•ÍÑ½É•‘M•É¥…°€ô9Õµ‰•È¡Ñ¡¥Ì¹ÉÕ¹%¹ÍÁ±¥Ð ˆ´ˆ¤¹…Ð ´Ä¤¤ì(€€€€€€€¥˜€¡9Õµ‰•È¹¥Í%¹Ñ••È¡É•ÍÑ½É•‘M•É¥…°¤€˜˜É•ÍÑ½É•‘M•É¥…°€ø€À¤Ñ¡¥Ì¹ÉÕ¹M•É¥…°€ôÉ•ÍÑ½É•‘M•É¥…°ì(€€€€€€€Ñ¡¥Ì¹É¹MÑ…Ñ”€ôÑ¡¥Ì¹ÉÕ¹M••ì(€€€€€€€Ñ¡¥Ì¹Á¥­ÕÁÌ€ôÉÉ…ä¹™É½´¡ì±•¹Ñ èA%--UA}=U9Pô°€¡|°¥¹‘•à¤€ôøÑ¡¥Ì¹É•…Ñ•A¥­ÕÀ¡¥¹‘•à¤¤ì(€€€€€ô(€€€€€Ñ¡¥Ì¹Á±…å•ÉÌ¹Í•Ð¡Í½­•Ð°É•ÍÑ½É•¤ì(€€€ô(€ô((€ÁÉ¥Ù…Ñ”É•ÍÑ½É•M½­•Ð¡ÝÌè]•‰M½­•Ð¤èA±…å•ÉMÑ…Ñ”ð¹Õ±°ì(€€€½¹ÍÐÁ±…å•È€ôÑ¡¥Ì¹É•…‘ÑÑ…¡µ•¹Ð¡ÝÌ¤ì(€€€¥˜€¡Á±…å•È¤Ñ¡¥Ì¹Á±…å•ÉÌ¹Í•Ð¡ÝÌ°Á±…å•È¤ì(€€€É•ÑÕÉ¸Á±…å•Èì(€ô((€ÁÉ¥Ù…Ñ”É•…‘ÑÑ…¡µ•¹Ð¡ÝÌè]•‰M½­•Ð¤èA±…å•ÉMÑ…Ñ”ð¹Õ±°ì(€€€½¹ÍÐÙ…±Õ”€ôÝÌ¹‘•Í•É¥…±¥é•ÑÑ…¡µ•¹Ð ¤ì(€€€¥˜€¡ÑåÁ•½˜Ù…±Õ”€„ôô€‰½‰©•ÐˆñðÙ…±Õ”€ôôô¹Õ±°¤É•ÑÕÉ¸¹Õ±°ì(€€€½¹ÍÐ…¹‘¥‘…Ñ”€ôÙ…±Õ”…ÌA…ÉÑ¥…°ñA±…å•ÉMÑ…Ñ”øì((€€€¥˜€ (€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹Á±…å•É%€„ôô€‰ÍÑÉ¥¹œˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹Í•ÍÍ¥½¹%€„ôô€‰ÍÑÉ¥¹œˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹¡Õ”€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹à€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹ä€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹Ùà€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹Ùä€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹¥¹ÁÕÑ`€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹¥¹ÁÕÑd€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹±…ÍÑ%¹ÁÕÑÐ€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹±…ÍÑ%¹ÁÕÑM•Ä€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹‘…Í¡EÕ•Õ•€„ôô€‰‰½½±•…¸ˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹Í½É”€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹½µ‰¼€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹±…ÍÑ½±±•ÑÐ€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹‘…Í¡I•…‘åÐ€„ôô€‰¹Õµ‰•Èˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹ÉÕ¹%€„ôô€‰ÍÑÉ¥¹œˆñð(€€€€€ÑåÁ•½˜…¹‘¥‘…Ñ”¹ÉÕ¹M••€„ôô€‰¹Õµ‰•Èˆ(€€€€¤ì(€€€€€É•ÑÕÉ¸¹Õ±°ì(€€€ô((€€€É•ÑÕÉ¸…¹‘¥‘…Ñ”…ÌA±…å•ÉMÑ…Ñ”ì(€ô((€ÁÉ¥Ù…Ñ”ÁÕ‰±¥A±…å•È¡Á±…å•ÈèA±…å•ÉMÑ…Ñ”¤ì(€€€É•ÑÕÉ¸ì(€€€€€Á±…å•É%èÁ±…å•È¹Á±…å•É%°(€€€€€Í•ÍÍ¥½¹%èÁ±…å•È¹Í•ÍÍ¥½¹%°(€€€€€¡Õ”èÁ±…å•È¹¡Õ”°(€€€€àèÁ±…å•È¹à°(€€€€äèÁ±…å•È¹ä°(€€€€ÙàèÁ±…å•È¹Ùà°(€€€€€ÙäèÁ±…å•È¹Ùä°(€€€€€Í½É”èÁ±…å•È¹Í½É”°(€€€€€½µ‰¼èÁ±…å•È¹½µ‰¼°(€€€€€½µ‰½áÁ¥É•ÍÐèÁ±…å•È¹±…ÍÑ½±±•ÑÐ€¬=5	=}]%9=]}5L°(€€€€€‘…Í¡I•…‘åÐèÁ±…å•È¹‘…Í¡I•…‘åÐ°(€€€€€…¬èÁ±…å•È¹±…ÍÑ%¹ÁÕÑM•Ä°(€€€ôì(€ô((€ÁÉ¥Ù…Ñ”ÁÕ‰±¥A±…å•ÉÌ ¤ì(€€€É•ÑÕÉ¸l¸¸¹Ñ¡¥Ì¹Á±…å•ÉÌ¹Ù…±Õ•Ì ¥t¹µ…À ¡Á±…å•È¤€ôøÑ¡¥Ì¹ÁÕ‰±¥A±…å•È¡Á±…å•È¤¤ì(€ô((€ÁÉ¥Ù…Ñ”‰É½…‘…ÍÑM½É•‰½…É¡•á±Õ‘”üè]•‰M½­•Ð¤èÙ½¥ì(€€€½¹ÍÐÍ½É•Ì€ôl¸¸¹Ñ¡¥Ì¹Á±…å•ÉÌ¹Ù…±Õ•Ì ¥t(€€€€¹µ…À ¡Á±…å•È¤€ôø€¡ì(€€€€€Á±…å•É%èÁ±…å•È¹Á±…å•É%°(€€€€€¡Õ”èÁ±…å•È¹¡Õ”°(€€€€€Í½É”èÁ±…å•È¹Í½É”°(€€€€€½µ‰¼èÁ±…å•È¹½µ‰¼°(€€€ô¤¤(€€€€¹Í½ÉÐ ¡„°ˆ¤€ôøˆ¹Í½É”€´„¹Í½É”ñð„¹Á±…å•É%¹±½…±•½µÁ…É”¡ˆ¹Á±…å•É%¤¤ì((€€€Ñ¡¥Ì¹‰É½…‘…ÍÐ¡ìÑåÁ”è€‰Í½É•‰½…Éˆ°Í½É•Ìô°•á±Õ‘”¤ì(€ô((€ÁÉ¥Ù…Ñ”Í¥µÕ±…Ñ¥½¹½¹ÑÉ…Ð ¤ì(€€€É•ÑÕÉ¸ì(€€€€€Í¥µÕ±…Ñ¥½¹!èèM%5U1Q%=9}!h°(€€€€€Í¥µÕ±…Ñ¥½¹MÑ•Á5ÌèM%5U1Q%=9}MQA}5L°(€€€€€Í¹…ÁÍ¡½Ñ!èèM9AM!=Q}!h°(€€€€€¥¹ÁÕÑ1•…Í•5Ìè%9AUQ}1M}5L°(€€€€€µ…á…Ñ¡ÕÁMÑ•ÁÌè5a}Q!UA}MQAL°(€€€ôì(€ô((€ÁÉ¥Ù…Ñ”ÉÕ¹½¹ÑÉ…Ð ¤ì(€€€É•ÑÕÉ¸ì(€€€€€¥èÑ¡¥Ì¹ÉÕ¹%°(€€€€€Í••èÑ¡¥Ì¹ÉÕ¹M••°(€€€€€Ñ¥¬èÑ¡¥Ì¹Ñ¥¬°(€€€ôì(€ô((€ÁÉ¥Ù…Ñ”Ñ•±•µ•ÑÉåA…å±½…¡¹½Üè¹Õµ‰•È¤ì(€€€Ñ¡¥Ì¹É½±±I…Ñ•]¥¹‘½Ü¡¹½Ü¤ì(€€€É•ÑÕÉ¸ì(€€€€€Ñ…É•ÑM¥µÕ±…Ñ¥½¹!èèM%5U1Q%=9}!h°(€€€€€Ñ…É•ÑM¹…ÁÍ¡½Ñ!èèM9AM!=Q}!h°(€€€€€…Ñ¥Ù•A±…å•ÉÌèÑ¡¥Ì¹Á±…å•ÉÌ¹Í¥é”°(€€€€€Ñ¥¬èÑ¡¥Ì¹Ñ¥¬°(€€€€€Í¹…ÁÍ¡½ÑM•ÅÕ•¹”èÑ¡¥Ì¹Í¹…ÁÍ¡½ÑM•ÅÕ•¹”°(€€€€€Ñ¥­ÕÉ…Ñ¥½¹5Í@ÔÀèÁ•É•¹Ñ¥±”¡Ñ¡¥Ì¹Ñ¥­ÕÉ…Ñ¥½¹M…µÁ±•Ì°€À¸Ô¤°(€€€€€Ñ¥­ÕÉ…Ñ¥½¹5Í@äÔèÁ•É•¹Ñ¥±”¡Ñ¡¥Ì¹Ñ¥­ÕÉ…Ñ¥½¹M…µÁ±•Ì°€À¸äÔ¤°(€€€€€Ñ¥­É¥™Ñ5Í@ÔÀèÁ•É•¹Ñ¥±”¡Ñ¡¥Ì¹Ñ¥­É¥™ÑM…µÁ±•Ì°€À¸Ô¤°(€€€€€Ñ¥­É¥™Ñ5Í@äÔèÁ•É•¹Ñ¥±”¡Ñ¡¥Ì¹Ñ¥­É¥™ÑM…µÁ±•Ì°€À¸äÔ¤°(€€€€€‘É½ÁÁ•‘Q¥­ÌèÑ¡¥Ì¹‘É½ÁÁ•‘Q¥­Ì°(€€€€€…Ñ¡ÕÁMÑ•ÁÌèÑ¡¥Ì¹…Ñ¡ÕÁMÑ•ÁÌ°(€€€€€…Ñ¥Ù•ÕÉ…Ñ¥½¹5ÌèÑ¡¥Ì¹…Ñ¥Ù•IÕ¹MÑ…ÉÑ•‘Ð€ü5…Ñ ¹µ…à À°¹½Ü€´Ñ¡¥Ì¹…Ñ¥Ù•IÕ¹MÑ…ÉÑ•‘Ð¤€è€À°(€€€€€€¸¸¹Ñ¡¥Ì¹É…Ñ•Ì°(€€€ôì(€ô((€ÁÉ¥Ù…Ñ”É½±±I…Ñ•]¥¹‘½Ü¡¹½Üè¹Õµ‰•È¤èÙ½¥ì(€€€½¹ÍÐ•±…ÁÍ•€ô¹½Ü€´Ñ¡¥Ì¹É…Ñ•]¥¹‘½ÝMÑ…ÉÑ•‘Ðì(€€€¥˜€¡•±…ÁÍ•€ð€ÄÀÀÀ¤É•ÑÕÉ¸ì(€€€½¹ÍÐÍ…±”€ô€ÄÀÀÀ€¼5…Ñ ¹µ…à Ä°•±…ÁÍ•¤ì(€€€Ñ¡¥Ì¹É…Ñ•Ì€ôì(€€€€€¥¹ÁÕÑÍA•ÉM•ŒèÑ¡¥Ì¹É…Ñ•]¥¹‘½Ý%¹ÁÕÑÌ€¨Í…±”°(€€€€€Í¹…ÁÍ¡½ÑÍA•ÉM•ŒèÑ¡¥Ì¹É…Ñ•]¥¹‘½ÝM¹…ÁÍ¡½ÑÌ€¨Í…±”°(€€€€€¥¹‰½Õ¹‘	åÑ•ÍA•ÉM•ŒèÑ¡¥Ì¹É…Ñ•]¥¹‘½Ý%¹‰½Õ¹‘	åÑ•Ì€¨Í…±”°(€€€€€½ÕÑ‰½Õ¹‘	åÑ•ÍA•ÉM•ŒèÑ¡¥Ì¹É…Ñ•]¥¹‘½Ý=ÕÑ‰½Õ¹‘	åÑ•Ì€¨Í…±”°(€€€ôì(€€€Ñ¡¥Ì¹É…Ñ•]¥¹‘½ÝMÑ…ÉÑ•‘Ð€ô¹½Üì(€€€Ñ¡¥Ì¹É…Ñ•]¥¹‘½Ý%¹ÁÕÑÌ€ô€Àì(€€€Ñ¡¥Ì¹É…Ñ•]¥¹‘½ÝM¹…ÁÍ¡½ÑÌ€ô€Àì(€€€Ñ¡¥Ì¹É…Ñ•]¥¹‘½Ý%¹‰½Õ¹‘	åÑ•Ì€ô€Àì(€€€Ñ¡¥Ì¹É…Ñ•]¥¹‘½Ý=ÕÑ‰½Õ¹‘	åÑ•Ì€ô€Àì(€ô((€ÁÉ¥Ù…Ñ”ÁÕÍ¡M…µÁ±”¡Ñ…É•Ðè¹Õµ‰•Émt°Ù…±Õ”è¹Õµ‰•È¤èÙ½¥ì(€€€Ñ…É•Ð¹ÁÕÍ ¡Ù…±Õ”¤ì(€€€¥˜€¡Ñ…É•Ð¹±•¹Ñ €øQ15QIe}M5A1}1%5%P¤Ñ…É•Ð¹ÍÁ±¥” À°Ñ…É•Ð¹±•¹Ñ €´Q15QIe}M5A1}1%5%P¤ì(€ô((€ÁÉ¥Ù…Ñ”‰É½…‘…ÍÐ¡Á…å±½…èÕ¹­¹½Ý¸°•á±Õ‘”üè]•‰M½­•Ð¤èÙ½¥ì(€€€½¹ÍÐ•¹½‘•€ô)M=8¹ÍÑÉ¥¹¥™ä¡Á…å±½…¤ì(€€€™½È€¡½¹ÍÐÍ½­•Ð½˜Ñ¡¥Ì¹Á±…å•ÉÌ¹­•åÌ ¤¤ì(€€€€€¥˜€¡Í½­•Ð€ôôô•á±Õ‘”ñðÍ½­•Ð¹É•…‘åMÑ…Ñ”€„ôô]•‰M½­•Ð¹=A8¤½¹Ñ¥¹Õ”ì(€€€€€ÑÉäì(€€€€€€€Í½­•Ð¹Í•¹¡•¹½‘•¤ì(€€€€€€€Ñ¡¥Ì¹É…Ñ•]¥¹‘½Ý=ÕÑ‰½Õ¹‘	åÑ•Ì€¬ô•¹½‘•¹±•¹Ñ ì(€€€€€ô…Ñ ì(€€€€€€€€¼¼½¹ÕÉÉ•¹Ð±½Í”¥Ì•áÁ•Ñ•±¥™•å±”¹½¥Í”°¹½Ð„Í¥µÕ±…Ñ¥½¸™…¥±ÕÉ”¸(€€€€€ô(€€€ô(€ô((€ÁÉ¥Ù…Ñ”Í•¹¡ÝÌè]•‰M½­•Ð°Á…å±½…èÕ¹­¹½Ý¸¤èÙ½¥ì(€€€½¹ÍÐ•¹½‘•€ô)M=8¹ÍÑÉ¥¹¥™ä¡Á…å±½…¤ì(€€€ÑÉäì(€€€€€ÝÌ¹Í•¹¡•¹½‘•¤ì(€€€€€Ñ¡¥Ì¹É…Ñ•]¥¹‘½Ý=ÕÑ‰½Õ¹‘	åÑ•Ì€¬ô•¹½‘•¹±•¹Ñ ì(€€€ô…Ñ ì(€€€€€€¼¼	É½ÝÍ•È½Í½­•Ð±¥™•å±”½Ý¹Ì™¥¹…°‘•±¥Ù•ÉäÍÑ…Ñ”¸(€€€ô(€ô)ô()…Íå¹Œ™Õ¹Ñ¥½¸Ý½É±‘]•‰M½­•ÑI•ÍÁ½¹Í”¡É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ°•¹Øè¹Ø¤èAÉ½µ¥Í”ñI•ÍÁ½¹Í”øì(€¥˜€¡É•ÅÕ•ÍÐ¹¡•…‘•ÉÌ¹•Ð ‰UÁÉ…‘”ˆ¤ü¹Ñ½1½Ý•É…Í” ¤€„ôô€‰Ý•‰Í½­•Ðˆ¤É•ÑÕÉ¸Ý•‰Í½­•ÑUÁÉ…‘•I•ÅÕ¥É• ¤ì(€½¹ÍÐÝ½É±€ô•¹Ø¹]=I1¹•Ð¡•¹Ø¹]=I1¹¥‘É½µ9…µ” ‰µ…¥¸ˆ¤¤ì(€É•ÑÕÉ¸Ý½É±¹™•Ñ ¡É•ÅÕ•ÍÐ¤ì)ô()•áÁ½ÉÐ‘•™…Õ±Ðì(€…Íå¹Œ™•Ñ ¡É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ°•¹Øè¹Ø¤èAÉ½µ¥Í”ñI•ÍÁ½¹Í”øì(€€€½¹ÍÐÕÉ°€ô¹•ÜUI0¡É•ÅÕ•ÍÐ¹ÕÉ°¤ì(€€€¥˜€¡ÕÉ°¹Á…Ñ¡¹…µ”€ôôô€ˆ½ÝÌˆ¤É•ÑÕÉ¸‘¥É•Ñ]•‰M½­•ÑI•ÍÁ½¹Í”¡É•ÅÕ•ÍÐ¤ì(€€€¥˜€¡ÕÉ°¹Á…Ñ¡¹…µ”€ôôô€ˆ½…µ”½ÝÌˆ¤É•ÑÕÉ¸Ý½É±‘]•‰M½­•ÑI•ÍÁ½¹Í”¡É•ÅÕ•ÍÐ°•¹Ø¤ì(€€€¥˜€¡ÕÉ°¹Á…Ñ¡¹…µ”€ôôô€ˆ½…Á¤½Á¥¹œˆ¤ì(€€€€€É•ÑÕÉ¸©Í½¹I•ÍÁ½¹Í”¡ì(€€€€€€€½¬èÑÉÕ”°(€€€€€€€Í•ÉÙ¥”è€‰±½Õ‘™±…É”µµÕ±Ñ¥Á±…å•Èµ±…ˆˆ°(€€€€€€€ÍÑ…”è€‰…Ñ”´Ñ„µ™¥á•µÍ¥µÕ±…Ñ¥½¸µÍÕ‰ÍÑÉ…Ñ”ˆ°(€€€€€€€Ñ¥µ•ÍÑ…µÀè¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤°(€€€€€ô¤ì(€€€ô(€€€¥˜€¡ÕÉ°¹Á…Ñ¡¹…µ”¹ÍÑ…ÉÑÍ]¥Ñ  ˆ½…Á¤¼ˆ¤¤É•ÑÕÉ¸©Í½¹I•ÍÁ½¹Í”¡ì½¬è™…±Í”°•ÉÉ½Èè€‰¹½Ñ}™½Õ¹ˆô°€ÐÀÐ¤ì(€€€É•ÑÕÉ¸•¹Ø¹MMQL¹™•Ñ ¡É•ÅÕ•ÍÐ¤ì(€ô°)ôÍ…Ñ¥Í™¥•ÌáÁ½ÉÑ•‘!…¹‘±•Èñ¹Øøì(
+      hue: hashString(`${playerId}:${this.runSeed}`) % 360,
+      x: spawn.x,
+      y: spawn.y,
+      vx: 0,
+      vy: 0,
+      inputX: 0,
+      inputY: 0,
+      lastInputAt: Date.now(),
+      lastInputSeq: 0,
+      dashQueued: false,
+      score: 0,
+      combo: 1,
+      lastCollectAt: 0,
+      dashReadyAt: 0,
+      runId: this.runId,
+      runSeed: this.runSeed,
+    };
+  }
+
+  private spawnFor(playerId: string): { x: number; y: number } {
+    const a = hashString(`${this.runSeed}:${playerId}:x`) / 4294967296;
+    const b = hashString(`${this.runSeed}:${playerId}:y`) / 4294967296;
+    return {
+      x: 180 + a * (WORLD_WIDTH - 360),
+      y: 180 + b * (WORLD_HEIGHT - 360),
+    };
+  }
+
+  private removePlayer(ws: WebSocket): void {
+    const player = this.players.get(ws) ?? this.readAttachment(ws);
+    if (!player) return;
+
+    this.players.delete(ws);
+    this.broadcast({
+      type: "player_left",
+      playerId: player.playerId,
+      sessionId: player.sessionId,
+    }, ws);
+    this.broadcastScoreboard(ws);
+
+    if (this.players.size === 0) this.stopLoop();
+  }
+
+  private restoreActiveSockets(): void {
+    for (const socket of this.ctx.getWebSockets("player")) {
+      const restored = this.readAttachment(socket);
+      if (!restored) continue;
+      if (this.players.size === 0 && restored.runSeed) {
+        this.runSeed = normalizeSeed(restored.runSeed);
+        this.runId = restored.runId || this.runId;
+        this.rngState = this.runSeed;
+        this.pickups = Array.from({ length: PICKUP_COUNT }, (_, index) => this.createPickup(index));
+      }
+      this.players.set(socket, restored);
+    }
+  }
+
+  private restoreSocket(ws: WebSocket): PlayerState | null {
+    const player = this.readAttachment(ws);
+    if (player) this.players.set(ws, player);
+    return player;
+  }
+
+  private readAttachment(ws: WebSocket): PlayerState | null {
+    const value = ws.deserializeAttachment();
+    if (typeof value !== "object" || value === null) return null;
+    const candidate = value as Partial<PlayerState>;
+
+    if (
+      typeof candidate.playerId !== "string" ||
+      typeof candidate.sessionId !== "string" ||
+      typeof candidate.hue !== "number" ||
+      typeof candidate.x !== "number" ||
+      typeof candidate.y !== "number" ||
+      typeof candidate.vx !== "number" ||
+      typeof candidate.vy !== "number" ||
+      typeof candidate.inputX !== "number" ||
+      typeof candidate.inputY !== "number" ||
+      typeof candidate.lastInputAt !== "number" ||
+      typeof candidate.lastInputSeq !== "number" ||
+      typeof candidate.dashQueued !== "boolean" ||
+      typeof candidate.score !== "number" ||
+      typeof candidate.combo !== "number" ||
+      typeof candidate.lastCollectAt !== "number" ||
+      typeof candidate.dashReadyAt !== "number" ||
+      typeof candidate.runId !== "string" ||
+      typeof candidate.runSeed !== "number"
+    ) {
+      return null;
+    }
+
+    return candidate as PlayerState;
+  }
+
+  private publicPlayer(player: PlayerState) {
+    return {
+      playerId: player.playerId,
+      sessionId: player.sessionId,
+      hue: player.hue,
+      x: player.x,
+      y: player.y,
+      vx: player.vx,
+      vy: player.vy,
+      score: player.score,
+      combo: player.combo,
+      comboExpiresAt: player.lastCollectAt + COMBO_WINDOW_MS,
+      dashReadyAt: player.dashReadyAt,
+      ack: player.lastInputSeq,
+    };
+  }
+
+  private publicPlayers() {
+    return [...this.players.values()].map((player) => this.publicPlayer(player));
+  }
+
+  private broadcastScoreboard(exclude?: WebSocket): void {
+    const scores = [...this.players.values()]
+      .map((player) => ({
+        playerId: player.playerId,
+        hue: player.hue,
+        score: player.score,
+        combo: player.combo,
+      }))
+      .sort((a, b) => b.score - a.score || a.playerId.localeCompare(b.playerId));
+
+    this.broadcast({ type: "scoreboard", scores }, exclude);
+  }
+
+  private simulationContract() {
+    return {
+      simulationHz: SIMULATION_HZ,
+      simulationStepMs: SIMULATION_STEP_MS,
+      snapshotHz: SNAPSHOT_HZ,
+      inputLeaseMs: INPUT_LEASE_MS,
+      maxCatchupSteps: MAX_CATCHUP_STEPS,
+    };
+  }
+
+  private runContract() {
+    return {
+      id: this.runId,
+      seed: this.runSeed,
+      tick: this.tick,
+    };
+  }
+
+  private telemetryPayload(now: number) {
+    this.rollRateWindow(now);
+    return {
+      targetSimulationHz: SIMULATION_HZ,
+      targetSnapshotHz: SNAPSHOT_HZ,
+      activePlayers: this.players.size,
+      tick: this.tick,
+      snapshotSequence: this.snapshotSequence,
+      tickDurationMsP50: percentile(this.tickDurationSamples, 0.5),
+      tickDurationMsP95: percentile(this.tickDurationSamples, 0.95),
+      tickDriftMsP50: percentile(this.tickDriftSamples, 0.5),
+      tickDriftMsP95: percentile(this.tickDriftSamples, 0.95),
+      droppedTicks: this.droppedTicks,
+      catchupSteps: this.catchupSteps,
+      activeDurationMs: this.activeRunStartedAt ? Math.max(0, now - this.activeRunStartedAt) : 0,
+      ...this.rates,
+    };
+  }
+
+  private rollRateWindow(now: number): void {
+    const elapsed = now - this.rateWindowStartedAt;
+    if (elapsed < 1000) return;
+    const scale = 1000 / Math.max(1, elapsed);
+    this.rates = {
+      inputsPerSec: this.rateWindowInputs * scale,
+      snapshotsPerSec: this.rateWindowSnapshots * scale,
+      inboundBytesPerSec: this.rateWindowInboundBytes * scale,
+      outboundBytesPerSec: this.rateWindowOutboundBytes * scale,
+    };
+    this.rateWindowStartedAt = now;
+    this.rateWindowInputs = 0;
+    this.rateWindowSnapshots = 0;
+    this.rateWindowInboundBytes = 0;
+    this.rateWindowOutboundBytes = 0;
+  }
+
+  private pushSample(target: number[], value: number): void {
+    target.push(value);
+    if (target.length > TELEMETRY_SAMPLE_LIMIT) target.splice(0, target.length - TELEMETRY_SAMPLE_LIMIT);
+  }
+
+  private broadcast(payload: unknown, exclude?: WebSocket): void {
+    const encoded = JSON.stringify(payload);
+    for (const socket of this.players.keys()) {
+      if (socket === exclude || socket.readyState !== WebSocket.OPEN) continue;
+      try {
+        socket.send(encoded);
+        this.rateWindowOutboundBytes += encoded.length;
+      } catch {
+        // Concurrent close is expected lifecycle noise, not a simulation failure.
+      }
+    }
+  }
+
+  private send(ws: WebSocket, payload: unknown): void {
+    const encoded = JSON.stringify(payload);
+    try {
+      ws.send(encoded);
+      this.rateWindowOutboundBytes += encoded.length;
+    } catch {
+      // Browser/socket lifecycle owns final delivery state.
+    }
+  }
+}
+
+async function worldWebSocketResponse(request: Request, env: Env): Promise<Response> {
+  if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return websocketUpgradeRequired();
+  const world = env.WORLD.get(env.WORLD.idFromName("main"));
+  return world.fetch(request);
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === "/ws") return directWebSocketResponse(request);
+    if (url.pathname === "/game/ws") return worldWebSocketResponse(request, env);
+    if (url.pathname === "/api/ping") {
+      return jsonResponse({
+        ok: true,
+        service: "cloudflare-multiplayer-lab",
+        stage: "gate-4a-fixed-simulation-substrate",
+        timestamp: new Date().toISOString(),
+      });
+    }
+    if (url.pathname.startsWith("/api/")) return jsonResponse({ ok: false, error: "not_found" }, 404);
+    return env.ASSETS.fetch(request);
+  },
+} satisfies ExportedHandler<Env>;

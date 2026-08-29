@@ -6,6 +6,45 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/game/*"]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WORLD",
+        "class_name": "World"
+      }
+    ]
+  },
+  "exports": {
+    "World": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "env": {
+    "staging": {
+      "name": "cloudflare-multiplayer-lab-staging",
+      "workers_dev": true,
+      "assets": {
+        "directory": "./public",
+        "binding": "ASSETS",
+        "run_worker_first": ["/api/*", "/game/*"]
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "WORLD",
+            "class_name": "World"
+          }
+        ]
+      },
+      "exports": {
+        "World": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        }
+      }
+    }
   }
 }

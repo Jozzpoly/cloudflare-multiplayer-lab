@@ -1,31 +1,24 @@
 # Cloudflare Multiplayer Lab
 
-Small, evidence-driven laboratory for learning and validating a Cloudflare-first workflow for browser realtime/multiplayer projects.
+Evidence-driven laboratory for a Cloudflare-first browser multiplayer workflow.
 
-The goal is **not** to build a game framework up front. The goal is to prove the important infrastructure boundaries one at a time while keeping the codebase clean enough to reuse the validated patterns later.
+The goal is not to build a generic game framework up front. Each gate should answer one useful infrastructure/gameplay question with real runtime evidence.
 
 ## Experiment gates
 
-1. **Deployment sanity** — PASS. Static frontend + Cloudflare Worker + `/api/ping` work from one public deployment.
-2. **Realtime transport** — PASS. Direct WebSocket connection, bidirectional round-trip and bounded reconnect/recovery work through a public Cloudflare preview.
-3. **Stateful room** — pending. One Durable Object coordinates multiple clients in an isolated room.
-4. **Two-player falsifier** — pending. Two real clients see each other's movement over the public Internet.
+1. **Deployment sanity — PASS.** Static frontend + Worker + `/api/ping` work publicly.
+2. **Realtime transport — PASS.** Public WebSocket round-trip plus bounded reconnect/recovery validated in a real Android browser and promoted to `main`.
+3. **Single shared world game — IN PROGRESS.** One Durable Object coordinates a small mobile-first multiplayer game for 1–5 clients.
 
-Later gates should be added only after the previous boundary is demonstrated.
+## Gate 3: Neon Salvage
 
-## Gate 1
+Gate 3 deliberately removes rooms and matchmaking. Everyone opening the game joins one shared `WORLD` Durable Object.
 
-Gate 1 is closed as PASS. Evidence is recorded in [`docs/gates/gate-1-deployment-sanity.md`](docs/gates/gate-1-deployment-sanity.md).
+The test is intentionally playable rather than a moving-square demo: inertial movement, touch joystick, dash, shared salvage pickups, rare cores, combo scoring and a live scoreboard. Mobile portrait/landscape support is a first-class criterion; desktop keyboard input is supported in parallel.
 
-Public production deployment:
+The implementation contract and non-claims are recorded in [`docs/gates/gate-3-shared-world-game.md`](docs/gates/gate-3-shared-world-game.md).
 
-`https://cloudflare-multiplayer-lab.jozzpoly.workers.dev`
-
-## Gate 2
-
-Gate 2 is closed as PASS. It deliberately tested transport without Durable Objects or multiplayer state. Evidence is recorded in [`docs/gates/gate-2-websocket-transport.md`](docs/gates/gate-2-websocket-transport.md).
-
-Repository validation:
+## Validation
 
 ```bash
 npm install
@@ -39,8 +32,12 @@ npm install
 npm run dev
 ```
 
-## Current status
+## Current production baseline
 
-Gate 2 has passed source validation, GitHub CI, Cloudflare branch-preview deployment and real external-browser runtime validation. PR #1 is the promotion boundary to `main`; after merge, production deploy and a minimal production smoke test should confirm that the validated result survives promotion.
+`main` remains the source baseline for validated Gate 2 until Gate 3 passes CI and real multi-client gameplay evidence.
 
-Durable Objects, rooms and multiplayer state remain deliberately outside the completed Gate 2 evidence. Their introduction is a separate next-stage decision.
+Public Worker URL:
+
+`https://cloudflare-multiplayer-lab.jozzpoly.workers.dev`
+
+This repository is still a laboratory. Staging/deployment isolation and deterministic dependency locking are hardening topics, not blockers for the current shared-world gameplay question.

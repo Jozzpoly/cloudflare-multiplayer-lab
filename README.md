@@ -9,13 +9,13 @@ The goal is not to build a generic game framework up front. Each gate should ans
 1. **Deployment sanity — PASS.** Static frontend + Worker + `/api/ping` work publicly.
 2. **Realtime transport — PASS.** Public WebSocket round-trip plus bounded reconnect/recovery validated in a real Android browser.
 3. **Single shared world game — PASS.** One Durable Object coordinated Neon Salvage concurrently across two independent real phones.
-4. **Authoritative shared simulation — IN PROGRESS.** Test a continuous server-owned world with measurable timing, prediction/reconciliation and later shared physical interaction.
+4. **Authoritative shared simulation — IN PROGRESS.** Gate 4A fixed-authoritative substrate is PASS/freeze-candidate; later shared physical interaction remains separate work.
 
-## Gate 4A: fixed simulation substrate
+## Gate 4A: fixed simulation substrate — PASS / freeze candidate
 
-Gate 4A deliberately keeps Neon Salvage familiar while changing the authority model underneath it.
+Gate 4A deliberately kept Neon Salvage recognizable while changing the authority model underneath it.
 
-Baseline contract:
+Validated baseline:
 
 - 20 Hz fixed authoritative simulation,
 - 10 Hz authoritative snapshots,
@@ -26,11 +26,15 @@ Baseline contract:
 - deterministic seeded run/reset,
 - server + client telemetry for timing, traffic and reconciliation.
 
-A mobile LAB panel exposes the measurements instead of hiding them. The experiment contract and non-claims are recorded in [`docs/gates/gate-4-shared-simulation-lab.md`](docs/gates/gate-4-shared-simulation-lab.md).
+Real mobile evidence showed coherent ~20 Hz simulation / ~10 Hz snapshots, 0 dropped ticks and 0 catch-up during normal play, small measured prediction corrections, working mobile background stale-input protection, and continued shared-world play with two participants visible.
+
+Closure hardening made tick labeling, per-run duration, restored run serial and stale input sequence handling explicit without changing gameplay or cadence. The full contract, runtime evidence, limitations and non-claims are recorded in [`docs/gates/gate-4-shared-simulation-lab.md`](docs/gates/gate-4-shared-simulation-lab.md).
+
+Gate 4B has **not** started. Its next candidate question is whether multiple clients can coherently influence one genuinely shared server-authoritative dynamic body.
 
 ## Gate 3 control specimen
 
-Gate 3 / Neon Salvage is preserved as the validated control boundary: two phones from different manufacturers joined one public shared world with touch play, shared movement/state, pickups and scoreboard behavior. The Gate 3 record is in [`docs/gates/gate-3-shared-world-game.md`](docs/gates/gate-3-shared-world-game.md).
+Gate 3 / Neon Salvage remains the validated previous boundary: two phones from different manufacturers joined one public shared world with touch play, shared movement/state, pickups and scoreboard behavior. The Gate 3 record is in [`docs/gates/gate-3-shared-world-game.md`](docs/gates/gate-3-shared-world-game.md).
 
 ## Validation
 
@@ -50,4 +54,4 @@ npm run dev
 
 `https://cloudflare-multiplayer-lab.jozzpoly.workers.dev`
 
-This repository remains a laboratory. Staging/deployment isolation and deterministic dependency locking are hardening topics, not evidence claims established by the current gates.
+This repository remains a laboratory. Deployment isolation and deterministic dependency locking are hardening topics, not evidence claims established by the current gates.

@@ -7,23 +7,28 @@ The goal is **not** to build a game framework up front. The goal is to prove the
 ## Experiment gates
 
 1. **Deployment sanity** — PASS. Static frontend + Cloudflare Worker + `/api/ping` work from one public deployment.
-2. **Realtime transport** — PASS. Direct WebSocket connection, bidirectional round-trip and bounded reconnect/recovery work through a public Cloudflare preview.
-3. **Stateful room** — pending. One Durable Object coordinates multiple clients in an isolated room.
+2. **Realtime transport** — PASS. Direct WebSocket connection, bidirectional round-trip and bounded reconnect/recovery work through the public Cloudflare path.
+3. **Stateful room** — IN PROGRESS on `gate-3-stateful-room`. One staging Durable Object coordinates multiple clients in an isolated named room.
 4. **Two-player falsifier** — pending. Two real clients see each other's movement over the public Internet.
 
 Later gates should be added only after the previous boundary is demonstrated.
 
-## Gate 1
+## Completed evidence
 
-Gate 1 is closed as PASS. Evidence is recorded in [`docs/gates/gate-1-deployment-sanity.md`](docs/gates/gate-1-deployment-sanity.md).
+- Gate 1: [`docs/gates/gate-1-deployment-sanity.md`](docs/gates/gate-1-deployment-sanity.md)
+- Gate 2: [`docs/gates/gate-2-websocket-transport.md`](docs/gates/gate-2-websocket-transport.md)
 
-Public production deployment:
+Production deployment after Gate 2:
 
 `https://cloudflare-multiplayer-lab.jozzpoly.workers.dev`
 
-## Gate 2
+## Gate 3
 
-Gate 2 is closed as PASS. It deliberately tested transport without Durable Objects or multiplayer state. Evidence is recorded in [`docs/gates/gate-2-websocket-transport.md`](docs/gates/gate-2-websocket-transport.md).
+The Gate 3 contract and current evidence state are in [`docs/gates/gate-3-stateful-room.md`](docs/gates/gate-3-stateful-room.md).
+
+Gate 3 is intentionally staged rather than deployed into the production/default Worker. Its runtime target is:
+
+`cloudflare-multiplayer-lab-staging`
 
 Repository validation:
 
@@ -32,7 +37,7 @@ npm install
 npm run check
 ```
 
-Local development:
+Local staging development:
 
 ```bash
 npm install
@@ -41,6 +46,6 @@ npm run dev
 
 ## Current status
 
-Gate 2 has passed source validation, GitHub CI, Cloudflare branch-preview deployment and real external-browser runtime validation. PR #1 is the promotion boundary to `main`; after merge, production deploy and a minimal production smoke test should confirm that the validated result survives promotion.
+The Gate 3 implementation uses a SQLite-backed Durable Object declared with Cloudflare's current declarative `exports` configuration and the recommended WebSocket Hibernation API. The branch must pass CI and a true staging deployment before any multi-client runtime result is accepted.
 
-Durable Objects, rooms and multiplayer state remain deliberately outside the completed Gate 2 evidence. Their introduction is a separate next-stage decision.
+Game movement, authoritative simulation and high-frequency state synchronization remain deliberately outside Gate 3.

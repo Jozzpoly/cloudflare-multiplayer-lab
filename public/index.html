@@ -4,47 +4,72 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <title>Cloudflare Multiplayer Lab · Gate 2</title>
+    <title>Cloudflare Multiplayer Lab · Gate 3</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell">
-      <p class="eyebrow">Gate 2 · Realtime transport</p>
-      <h1>WebSocket transport</h1>
+      <p class="eyebrow">Gate 3 · Stateful room</p>
+      <h1>Durable Object room</h1>
       <p class="lede">
-        Prove one connection before building rooms: open a public WebSocket, measure a real message round-trip, then close and recover once.
+        Prove shared state before game state: two public clients join one named room, observe presence, exchange a server-routed signal, leave/rejoin, and remain isolated from another room.
       </p>
 
-      <section class="panel" aria-labelledby="transport-title">
-        <div class="panel-copy">
-          <h2 id="transport-title">Transport state</h2>
-          <p class="status">Current state: <strong id="connection-state">idle</strong></p>
+      <section class="panel setup" aria-labelledby="setup-title">
+        <div>
+          <h2 id="setup-title">Client identity</h2>
+          <p class="status">Use the same room on two browsers, but different player IDs.</p>
         </div>
+        <label>
+          Room
+          <input id="room" maxlength="32" autocomplete="off" value="TEST" />
+        </label>
+        <label>
+          Player
+          <input id="player" maxlength="24" autocomplete="off" />
+        </label>
         <div class="controls">
-          <button id="connect" type="button">1 · Connect</button>
-          <button id="round-trip" type="button" disabled>2 · Round trip</button>
-          <button id="reconnect" type="button" disabled>3 · Close + reconnect</button>
+          <button id="connect" type="button">Connect</button>
+          <button id="disconnect" type="button" disabled>Disconnect</button>
+          <button id="reconnect" type="button" disabled>Reconnect</button>
         </div>
       </section>
 
-      <section class="metrics" aria-label="Connection measurements">
+      <section class="metrics" aria-label="Room measurements">
         <div class="metric">
-          <span>Connection ID</span>
-          <strong id="connection-id">—</strong>
+          <span>State</span>
+          <strong id="connection-state">idle</strong>
         </div>
         <div class="metric">
-          <span>Last RTT</span>
-          <strong id="rtt">—</strong>
+          <span>Participants</span>
+          <strong id="participant-count">0</strong>
         </div>
+        <div class="metric wide">
+          <span>Participant IDs</span>
+          <strong id="participants">—</strong>
+        </div>
+        <div class="metric wide">
+          <span>Session ID</span>
+          <strong id="session-id">—</strong>
+        </div>
+      </section>
+
+      <section class="panel signal" aria-labelledby="signal-title">
+        <div>
+          <h2 id="signal-title">Server-routed signal</h2>
+          <p class="status">Send from client A and verify that client B receives the same event.</p>
+        </div>
+        <input id="signal-text" maxlength="240" autocomplete="off" value="hello from this client" />
+        <button id="send-signal" type="button" disabled>Send signal to room</button>
       </section>
 
       <section aria-labelledby="log-title">
-        <h2 id="log-title" class="section-title">Lifecycle log</h2>
+        <h2 id="log-title" class="section-title">Room event log</h2>
         <pre id="log" class="result" aria-live="polite"></pre>
       </section>
 
       <p class="footnote">
-        Gate 1 remains available at <code>/api/ping</code>. Durable Objects, rooms, shared state and game logic are intentionally absent from this branch.
+        Isolation test: disconnect one client, change its room from <code>TEST</code> to <code>OTHER</code>, reconnect, then verify both rooms report one participant and signals do not cross rooms.
       </p>
     </main>
     <script type="module" src="/app.js"></script>

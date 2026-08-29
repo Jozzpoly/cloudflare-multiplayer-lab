@@ -17,6 +17,10 @@
     ]
   },
   "exports": {
+    "Room": {
+      "type": "durable-object",
+      "state": "deleted"
+    },
     "World": {
       "type": "durable-object",
       "storage": "sqlite"
@@ -40,6 +44,10 @@
         ]
       },
       "exports": {
+        "Room": {
+          "type": "durable-object",
+          "state": "deleted"
+        },
         "World": {
           "type": "durable-object",
           "storage": "sqlite"

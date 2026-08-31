@@ -41,7 +41,7 @@ export async function runBox3dCompatibilityProbe() {
     }
     const stepDurationMs = performance.now() - stepStartedAt;
 
-    const position = [0, 0, 0];
+    const position: [number, number, number] = [0, 0, 0];
     b3.b3Body_GetPosition(position, body);
     const finite = position.every(Number.isFinite);
     const settledOnGround = finite && position[1] > 0.2 && position[1] < 1.2;

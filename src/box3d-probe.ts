@@ -12,29 +12,19 @@ type Box3DFactoryOptions = {
 
 type Box3DFactory = (options?: Box3DFactoryOptions) => ReturnType<typeof Box3D>;
 
-let box3dPromise: ReturnType<typeof Box3D> | null = null;
-
-function loadBox3D() {
-  if (!box3dPromise) {
-    const factory = Box3D as Box3DFactory;
-    box3dPromise = factory({
-      instantiateWasm(imports, success) {
-        void WebAssembly.instantiate(box3dWasm, imports).then((instance) => {
-          success(instance, box3dWasm);
-        });
-        return {};
-      },
+const factory = Box3D as Box3DFactory;
+const startupInitStartedAt = performance.now();
+const b3 = await factory({
+  instantiateWasm(imports, success) {
+    void WebAssembly.instantiate(box3dWasm, imports).then((instance) => {
+      success(instance, box3dWasm);
     });
-  }
-  return box3dPromise;
-}
+    return {};
+  },
+});
+const startupInitDurationMs = performance.now() - startupInitStartedAt;
 
 export async function runBox3dCompatibilityProbe() {
-  const initializedBeforeRun = box3dPromise !== null;
-  const initStartedAt = performance.now();
-  const b3 = await loadBox3D();
-  const initDurationMs = performance.now() - initStartedAt;
-
   const worldDef = b3.b3DefaultWorldDef();
   worldDef.gravity = [0, -10, 0];
   const world = b3.b3CreateWorld(worldDef);
@@ -67,9 +57,9 @@ export async function runBox3dCompatibilityProbe() {
     return {
       ok: settledOnGround,
       package: "box3d.js@0.1.1",
-      build: "inline-glue-precompiled-wasm-single-threaded",
-      initializedBeforeRun,
-      initDurationMs,
+      build: "inline-glue-precompiled-wasm-startup-init-single-threaded",
+      initializedBeforeRun: true,
+      startupInitDurationMs,
       stepDurationMs,
       averageStepDurationMs: stepDurationMs / PROBE_STEPS,
       steps: PROBE_STEPS,

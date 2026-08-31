@@ -1,4 +1,4 @@
-import Box3D from "box3d.js";
+import Box3D from "box3d.js/inline";
 import box3dWasm from "../node_modules/box3d.js/dist/box3d.wasm";
 
 const PROBE_STEPS = 180;
@@ -67,7 +67,7 @@ export async function runBox3dCompatibilityProbe() {
     return {
       ok: settledOnGround,
       package: "box3d.js@0.1.1",
-      build: "precompiled-wasm-single-threaded",
+      build: "inline-glue-precompiled-wasm-single-threaded",
       initializedBeforeRun,
       initDurationMs,
       stepDurationMs,

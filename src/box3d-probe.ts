@@ -23,6 +23,13 @@ export type Box3dBenchmarkPreset = {
   substeps: number;
 };
 
+export type Box3dSoakRuntime = {
+  preset: Box3dBenchmarkPreset;
+  step: () => void;
+  sample: () => { finite: boolean; checksum: number };
+  destroy: () => void;
+};
+
 export const BOX3D_BENCHMARK_PRESETS: Record<string, Box3dBenchmarkPreset> = {
   "raw-16-60x4": { id: "raw-16-60x4", scenario: "raw", actors: 0, props: 16, steps: 300, hz: 60, substeps: 4 },
   "raw-32-60x4": { id: "raw-32-60x4", scenario: "raw", actors: 0, props: 32, steps: 300, hz: 60, substeps: 4 },
@@ -36,6 +43,11 @@ export const BOX3D_BENCHMARK_PRESETS: Record<string, Box3dBenchmarkPreset> = {
   "actors-6-props-64-30x4": { id: "actors-6-props-64-30x4", scenario: "actors", actors: 6, props: 64, steps: 150, hz: 30, substeps: 4 },
   "actors-6-props-64-30x2": { id: "actors-6-props-64-30x2", scenario: "actors", actors: 6, props: 64, steps: 150, hz: 30, substeps: 2 },
 };
+
+export const BOX3D_SOAK_PRESET_IDS = new Set([
+  "actors-6-props-64-60x4",
+  "actors-6-props-64-30x2",
+]);
 
 const factory = Box3D as Box3DFactory;
 const startupInitStartedAt = performance.now();
@@ -142,20 +154,40 @@ function checksumBodies(bodies: BodyId[]): { finite: boolean; checksum: number }
   return { finite, checksum };
 }
 
+export function createBox3dSoakRuntime(preset: Box3dBenchmarkPreset): Box3dSoakRuntime {
+  const { world, propBodies, actorBodies } = createBenchmarkWorld(preset);
+  let stepIndex = 0;
+  let destroyed = false;
+  return {
+    preset,
+    step() {
+      if (destroyed) throw new Error("soak_runtime_destroyed");
+      if (actorBodies.length > 0) driveActors(actorBodies, stepIndex);
+      b3.b3World_Step(world, 1 / preset.hz, preset.substeps);
+      stepIndex += 1;
+    },
+    sample() {
+      if (destroyed) return { finite: false, checksum: Number.NaN };
+      return checksumBodies([...propBodies, ...actorBodies]);
+    },
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      b3.b3DestroyWorld(world);
+    },
+  };
+}
+
 export function runBox3dBenchmark(preset: Box3dBenchmarkPreset) {
   const setupStartedAt = performance.now();
-  const { world, propBodies, actorBodies } = createBenchmarkWorld(preset);
+  const runtime = createBox3dSoakRuntime(preset);
   const setupDurationMs = performance.now() - setupStartedAt;
 
   try {
-    const dt = 1 / preset.hz;
     const stepStartedAt = performance.now();
-    for (let step = 0; step < preset.steps; step += 1) {
-      if (actorBodies.length > 0) driveActors(actorBodies, step);
-      b3.b3World_Step(world, dt, preset.substeps);
-    }
+    for (let step = 0; step < preset.steps; step += 1) runtime.step();
     const stepDurationMs = performance.now() - stepStartedAt;
-    const state = checksumBodies([...propBodies, ...actorBodies]);
+    const state = runtime.sample();
 
     return {
       ok: state.finite,
@@ -171,7 +203,7 @@ export function runBox3dBenchmark(preset: Box3dBenchmarkPreset) {
       checks: { finite: state.finite },
     };
   } finally {
-    b3.b3DestroyWorld(world);
+    runtime.destroy();
   }
 }
 

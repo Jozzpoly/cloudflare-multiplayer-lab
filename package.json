@@ -12,9 +12,6 @@
     "validate:worker": "wrangler deploy --dry-run --env staging --outdir .wrangler/dry-run",
     "check": "npm run check:client && npm run typecheck && npm run validate:worker"
   },
-  "dependencies": {
-    "box3d.js": "0.1.1"
-  },
   "devDependencies": {
     "typescript": "7.0.2",
     "wrangler": "4.127.1"

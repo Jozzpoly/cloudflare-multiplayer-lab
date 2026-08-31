@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "cloudflare-multiplayer-lab",
-  "main": "src/index.ts",
+  "main": "src/world-slice-entry.ts",
   "compatibility_date": "2026-08-29",
   "assets": {
     "directory": "./public",
@@ -13,6 +13,10 @@
       {
         "name": "WORLD",
         "class_name": "World"
+      },
+      {
+        "name": "WORLD_SLICE_0",
+        "class_name": "WorldSlice0"
       }
     ]
   },
@@ -22,6 +26,10 @@
       "state": "deleted"
     },
     "World": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "WorldSlice0": {
       "type": "durable-object",
       "storage": "sqlite"
     }
@@ -40,6 +48,10 @@
           {
             "name": "WORLD",
             "class_name": "World"
+          },
+          {
+            "name": "WORLD_SLICE_0",
+            "class_name": "WorldSlice0"
           }
         ]
       },
@@ -49,6 +61,10 @@
           "state": "deleted"
         },
         "World": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "WorldSlice0": {
           "type": "durable-object",
           "storage": "sqlite"
         }

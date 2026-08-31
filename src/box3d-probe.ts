@@ -1,13 +1,31 @@
-import Box3D from "box3d.js/inline";
+import Box3D from "box3d.js";
+import box3dWasm from "../node_modules/box3d.js/dist/box3d.wasm";
 
 const PROBE_STEPS = 180;
 const PROBE_DT = 1 / 60;
 const PROBE_SUBSTEPS = 4;
 
+type InstantiateSuccess = (instance: WebAssembly.Instance, module?: WebAssembly.Module) => void;
+type Box3DFactoryOptions = {
+  instantiateWasm: (imports: WebAssembly.Imports, success: InstantiateSuccess) => Record<string, never>;
+};
+
+type Box3DFactory = (options?: Box3DFactoryOptions) => ReturnType<typeof Box3D>;
+
 let box3dPromise: ReturnType<typeof Box3D> | null = null;
 
 function loadBox3D() {
-  if (!box3dPromise) box3dPromise = Box3D();
+  if (!box3dPromise) {
+    const factory = Box3D as Box3DFactory;
+    box3dPromise = factory({
+      instantiateWasm(imports, success) {
+        void WebAssembly.instantiate(box3dWasm, imports).then((instance) => {
+          success(instance, box3dWasm);
+        });
+        return {};
+      },
+    });
+  }
   return box3dPromise;
 }
 
@@ -49,7 +67,7 @@ export async function runBox3dCompatibilityProbe() {
     return {
       ok: settledOnGround,
       package: "box3d.js@0.1.1",
-      build: "inline-single-threaded",
+      build: "precompiled-wasm-single-threaded",
       initializedBeforeRun,
       initDurationMs,
       stepDurationMs,

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>World Slice 0 · A2</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main id="viewport" aria-label="World Slice 0 3D viewport"></main>
+
+  <section id="boot" class="boot-card">
+    <div class="eyebrow">WORLD SLICE 0 · A2</div>
+    <h1>Embodied contact baseline</h1>
+    <p>One real server-authoritative Box3D actor. Local movement is predicted, but props are deliberately <strong>not</strong> simulated on the client.</p>
+    <label>
+      Callsign
+      <input id="callsign" maxlength="24" autocomplete="off" spellcheck="false" />
+    </label>
+    <button id="enter" type="button">Enter world</button>
+    <small>WASD / arrows · push the crates · hit walls · change direction abruptly</small>
+  </section>
+
+  <aside id="hud" class="hud hidden">
+    <div class="hud-title">
+      <span>WS0 A2</span>
+      <span id="net" class="net">offline</span>
+    </div>
+    <div class="metrics">
+      <div><span>RTT p50 / p95</span><strong id="m-rtt">—</strong></div>
+      <div><span>Horizontal correction p50 / p95</span><strong id="m-correction">—</strong></div>
+      <div><span>Snapshot gap p50 / p95</span><strong id="m-gap">—</strong></div>
+      <div><span>Snapshot age</span><strong id="m-age">—</strong></div>
+      <div><span>Server tick ratio</span><strong id="m-tick">—</strong></div>
+      <div><span>Dropped / catch-up</span><strong id="m-scheduler">—</strong></div>
+      <div><span>Input ack</span><strong id="m-ack">—</strong></div>
+      <div><span>Hard snaps</span><strong id="m-snaps">0</strong></div>
+      <div><span>FPS</span><strong id="m-fps">—</strong></div>
+    </div>
+    <div class="baseline">NO CLIENT PROP COLLISION · INTENTIONAL</div>
+  </aside>
+
+  <div id="controls" class="controls hidden">WASD / ARROWS</div>
+  <div id="notice" class="notice hidden"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

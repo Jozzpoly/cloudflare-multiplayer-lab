@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "cloudflare-multiplayer-lab",
-  "main": "src/index.ts",
+  "main": "src/probe-entry.ts",
   "compatibility_date": "2026-08-29",
   "assets": {
     "directory": "./public",

@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { b3, BOX3D_RUNTIME } from "./box3d-runtime";
 
-export const WS0_REVISION = "ws0-a2-protocol-v1";
+export const WS0_REVISION = "ws0-a2-upright-v1";
 
 const SIMULATION_HZ = 60;
 const SIMULATION_STEP_MS = 1000 / SIMULATION_HZ;
@@ -339,10 +339,21 @@ export class WorldSlice0 extends DurableObject<Env> {
     const side = slot % 2 === 0 ? -1 : 1;
     const lane = Math.floor(slot / 2);
     const start: Vec3 = [side * (6.5 - lane * 0.8), 0.82, (slot % 3 - 1) * 1.4];
+    const body = this.createActorBody(start);
+    // A2 isolates networking/contact feel from controller stabilization. Keep
+    // all translation dynamic, but remove rotational tumbling as a variable.
+    b3.b3Body_SetMotionLocks(body, {
+      linearX: false,
+      linearY: false,
+      linearZ: false,
+      angularX: true,
+      angularY: true,
+      angularZ: true,
+    });
     return {
       playerId,
       sessionId: crypto.randomUUID(),
-      body: this.createActorBody(start),
+      body,
       inputX: 0,
       inputZ: 0,
       lastInputAt: Date.now(),

@@ -1,0 +1,107 @@
+name: WS0 A2 Upright Smoke
+
+on:
+  push:
+    branches: [world-slice-0-embodied-3d-place]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for upright revision and verify physical actor
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const origin = 'https://cloudflare-multiplayer-lab.jozzpoly.workers.dev';
+          const expectedRevision = 'ws0-a2-upright-v1';
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          let deployed = false;
+          for (let attempt = 1; attempt <= 36; attempt += 1) {
+            const response = await fetch(`${origin}/api/world0?action=status`, { cache: 'no-store' });
+            const payload = await response.json().catch(() => ({}));
+            console.log(`deploy-wait attempt=${attempt} http=${response.status} revision=${payload.revision ?? 'none'}`);
+            if (response.ok && payload.revision === expectedRevision) {
+              deployed = true;
+              break;
+            }
+            await sleep(5000);
+          }
+          if (!deployed) throw new Error('upright server revision did not deploy');
+
+          const ws = new WebSocket('wss://cloudflare-multiplayer-lab.jozzpoly.workers.dev/world0/ws?player=UprightSmoke');
+          let welcome = null;
+          let latest = null;
+          let first = null;
+          let maxRotationVector = 0;
+          let maxPropDelta = 0;
+
+          ws.addEventListener('message', (event) => {
+            const message = JSON.parse(String(event.data));
+            if (message.type === 'welcome') welcome = message;
+            if (message.type !== 'snapshot') return;
+            latest = message;
+            if (!first) first = message;
+            if (!welcome) return;
+            const self = message.players.find((player) => player.sessionId === welcome.selfSessionId);
+            if (self) {
+              const q = self.rotation || [0, 0, 0, 1];
+              maxRotationVector = Math.max(maxRotationVector, Math.hypot(q[0], q[1], q[2]));
+            }
+            if (first) {
+              const initialProps = new Map(first.props.map((prop) => [prop.id, prop.position]));
+              for (const prop of message.props) {
+                const p0 = initialProps.get(prop.id);
+                if (!p0) continue;
+                maxPropDelta = Math.max(maxPropDelta, Math.hypot(prop.position[0] - p0[0], prop.position[2] - p0[2]));
+              }
+            }
+          });
+
+          for (let attempt = 0; attempt < 50 && !welcome; attempt += 1) await sleep(100);
+          if (!welcome) throw new Error('missing websocket welcome');
+          if (welcome.revision !== expectedRevision) throw new Error(`wrong welcome revision: ${welcome.revision}`);
+
+          let seq = 0;
+          for (let i = 0; i < 60; i += 1) {
+            seq += 1;
+            ws.send(JSON.stringify({ type: 'input', seq, x: 1, z: 0 }));
+            await sleep(66);
+          }
+          for (let i = 0; i < 10; i += 1) {
+            seq += 1;
+            ws.send(JSON.stringify({ type: 'input', seq, x: 0, z: 0 }));
+            await sleep(66);
+          }
+          await sleep(700);
+
+          if (!first || !latest) throw new Error('missing snapshots');
+          const self0 = first.players.find((player) => player.sessionId === welcome.selfSessionId);
+          const self1 = latest.players.find((player) => player.sessionId === welcome.selfSessionId);
+          if (!self0 || !self1) throw new Error('self missing from snapshots');
+          const actorMoved = Math.hypot(self1.position[0] - self0.position[0], self1.position[2] - self0.position[2]);
+
+          if (!(actorMoved > 2)) throw new Error(`actor did not move enough: ${actorMoved}`);
+          if (!(maxPropDelta > 0.25)) throw new Error(`actor did not move props: ${maxPropDelta}`);
+          if (!(self1.ack >= seq - 1)) throw new Error(`input ack lagged: ${self1.ack}/${seq}`);
+          if (!(maxRotationVector < 1e-5)) throw new Error(`upright lock failed: ${maxRotationVector}`);
+          if (latest.telemetry?.finite !== true) throw new Error('non-finite state');
+          if (latest.telemetry?.droppedTicks !== 0) throw new Error(`dropped ticks: ${latest.telemetry?.droppedTicks}`);
+
+          console.log('WS0_A2_UPRIGHT_RESULT');
+          console.log(JSON.stringify({
+            revision: welcome.revision,
+            actorMoved,
+            maxPropDelta,
+            maxRotationVector,
+            ack: self1.ack,
+            sentSeq: seq,
+            tick: latest.tick,
+            telemetry: latest.telemetry,
+          }, null, 2));
+          ws.close(1000, 'upright_smoke_complete');
+          NODE

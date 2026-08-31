@@ -1,0 +1,45 @@
+name: Box3D Runtime Probe
+
+on:
+  push:
+    branches: [probe/box3d-do-feasibility]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Cloudflare deploy and run F0 probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://cloudflare-multiplayer-lab.jozzpoly.workers.dev/api/box3d-probe"
+          for attempt in $(seq 1 24); do
+            code=$(curl --silent --show-error --output probe.json --write-out '%{http_code}' "$url" || true)
+            echo "attempt=$attempt http=$code"
+            if [[ "$code" == "200" ]]; then
+              if node - <<'NODE'
+          const fs = require('fs');
+          const payload = JSON.parse(fs.readFileSync('probe.json', 'utf8'));
+          const ok =
+            payload.ok === true &&
+            payload.stage === 'physical-server-substrate-f0' &&
+            payload.runtime === 'durable-object' &&
+            payload.package === 'box3d.js@0.1.1' &&
+            payload.checks?.finite === true &&
+            payload.checks?.settledOnGround === true;
+          console.log(JSON.stringify(payload, null, 2));
+          process.exit(ok ? 0 : 1);
+          NODE
+              then
+                exit 0
+              fi
+            else
+              cat probe.json || true
+            fi
+            sleep 5
+          done
+          echo "F0 public runtime probe did not qualify within retry window" >&2
+          exit 1

@@ -9,17 +9,21 @@ export class FixedStepClock {
     this.accumulator = 0;
     this.totalSteps = 0;
     this.totalDroppedSteps = 0;
+    this.backlogSteps = 0;
+    this.maxBacklogSteps = 0;
   }
 
   reset() {
     this.accumulator = 0;
     this.totalSteps = 0;
     this.totalDroppedSteps = 0;
+    this.backlogSteps = 0;
+    this.maxBacklogSteps = 0;
   }
 
   advance(elapsedSeconds, step) {
     if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) {
-      return { steps: 0, droppedSteps: 0, remainderSeconds: this.accumulator };
+      return { steps: 0, droppedSteps: 0, backlogSteps: this.backlogSteps, remainderSeconds: this.accumulator };
     }
     if (typeof step !== "function") throw new Error("step callback required");
 
@@ -32,14 +36,14 @@ export class FixedStepClock {
       steps += 1;
     }
 
-    let droppedSteps = 0;
-    if (this.accumulator + EPS >= this.stepSeconds) {
-      droppedSteps = Math.floor((this.accumulator + EPS) / this.stepSeconds);
-      this.accumulator -= droppedSteps * this.stepSeconds;
-      this.totalDroppedSteps += droppedSteps;
-    }
+    // A2R intentionally does not discard simulation debt. With no continuous
+    // authority correction, throwing away a fixed tick creates permanent phase
+    // drift. Catch-up remains CPU-bounded per render advance; excess debt is
+    // carried into later frames and remains observable as backlogSteps.
+    this.backlogSteps = Math.max(0, Math.floor((this.accumulator + EPS) / this.stepSeconds));
+    this.maxBacklogSteps = Math.max(this.maxBacklogSteps, this.backlogSteps);
 
     if (Math.abs(this.accumulator) < EPS) this.accumulator = 0;
-    return { steps, droppedSteps, remainderSeconds: this.accumulator };
+    return { steps, droppedSteps: 0, backlogSteps: this.backlogSteps, remainderSeconds: this.accumulator };
   }
 }

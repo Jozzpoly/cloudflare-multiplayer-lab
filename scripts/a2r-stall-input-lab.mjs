@@ -122,24 +122,30 @@ const STALLS = [
   { name: "250ms", start: 1.00, duration: 0.25 },
 ];
 
+function makeCandidate() {
+  return {
+    sim: createWorld(),
+    clock: new FixedStepClock({ stepSeconds: DT, maxStepsPerAdvance: 8 }),
+    maxPlayer: 0,
+    maxProp: 0,
+  };
+}
+
 function run(scenario, stall) {
   const ideal = createWorld();
-  const stalled = createWorld();
-  const clock = new FixedStepClock({ stepSeconds: DT, maxStepsPerAdvance: 8 });
+  const current = makeCandidate();
+  const history = makeCandidate();
   const durationSeconds = 6.5;
   const totalWallTicks = Math.round(durationSeconds * HZ);
   const stallStartTick = Math.round(stall.start * HZ);
   const stallTicks = Math.round(stall.duration * HZ);
   const stallEndTick = stallStartTick + stallTicks;
   let skippedElapsed = 0;
-  let maxAfterResumePlayer = 0;
-  let maxAfterResumeProp = 0;
-  let maxBacklog = 0;
 
   try {
     for (let wallTick = 0; wallTick < totalWallTicks; wallTick += 1) {
-      const t = wallTick * DT;
-      step(ideal, scenario.input(t));
+      const wallTime = wallTick * DT;
+      step(ideal, scenario.input(wallTime));
 
       if (wallTick >= stallStartTick && wallTick < stallEndTick) {
         skippedElapsed += DT;
@@ -148,57 +154,84 @@ function run(scenario, stall) {
 
       const elapsed = DT + skippedElapsed;
       skippedElapsed = 0;
-      // This intentionally mirrors the browser candidate: every catch-up step
-      // in one render advance reads the *current* input, not historical input.
-      const currentInput = scenario.input(t);
-      clock.advance(elapsed, () => step(stalled, currentInput));
-      maxBacklog = Math.max(maxBacklog, clock.backlogSteps);
+
+      // Current browser strategy: all fixed steps performed during this render
+      // advance read the input state that exists *now*, after the stall.
+      const currentInput = scenario.input(wallTime);
+      current.clock.advance(elapsed, () => step(current.sim, currentInput));
+
+      // Counterfactual history-aware strategy: each repaid fixed step receives
+      // the input that belonged to that logical simulation tick. This is not a
+      // proposed browser implementation; it isolates the causal value of input
+      // history before we decide whether the browser can recover timestamps.
+      history.clock.advance(elapsed, () => {
+        const logicalTime = history.clock.totalSteps * DT;
+        step(history.sim, scenario.input(logicalTime));
+      });
 
       if (wallTick >= stallEndTick) {
-        const e = errors(stalled, ideal);
-        maxAfterResumePlayer = Math.max(maxAfterResumePlayer, e.player);
-        maxAfterResumeProp = Math.max(maxAfterResumeProp, e.prop);
+        const currentError = errors(current.sim, ideal);
+        current.maxPlayer = Math.max(current.maxPlayer, currentError.player);
+        current.maxProp = Math.max(current.maxProp, currentError.prop);
+        const historyError = errors(history.sim, ideal);
+        history.maxPlayer = Math.max(history.maxPlayer, historyError.player);
+        history.maxProp = Math.max(history.maxProp, historyError.prop);
       }
     }
 
-    // Drain any remaining simulation debt without advancing wall time. This is
-    // the best case for the current strategy; if divergence remains, it is from
-    // input history loss rather than merely unfinished backlog.
-    for (let i = 0; i < 120 && clock.backlogSteps > 0; i += 1) {
-      const t = durationSeconds;
-      clock.advance(0, () => step(stalled, scenario.input(t)));
-    }
-
-    const final = errors(stalled, ideal);
+    const currentFinal = errors(current.sim, ideal);
+    const historyFinal = errors(history.sim, ideal);
     return {
-      maxAfterResumePlayer,
-      maxAfterResumeProp,
-      finalPlayer: final.player,
-      finalProp: final.prop,
-      maxBacklog,
-      finalBacklog: clock.backlogSteps,
-      dropped: clock.totalDroppedSteps,
+      current: {
+        maxPlayer: current.maxPlayer,
+        maxProp: current.maxProp,
+        finalPlayer: currentFinal.player,
+        finalProp: currentFinal.prop,
+        maxBacklog: current.clock.maxBacklogSteps,
+        finalBacklog: current.clock.backlogSteps,
+        dropped: current.clock.totalDroppedSteps,
+        steps: current.clock.totalSteps,
+      },
+      history: {
+        maxPlayer: history.maxPlayer,
+        maxProp: history.maxProp,
+        finalPlayer: historyFinal.player,
+        finalProp: historyFinal.prop,
+        maxBacklog: history.clock.maxBacklogSteps,
+        finalBacklog: history.clock.backlogSteps,
+        dropped: history.clock.totalDroppedSteps,
+        steps: history.clock.totalSteps,
+      },
       idealSteps: totalWallTicks,
-      stalledSteps: clock.totalSteps,
     };
   } finally {
     destroy(ideal);
-    destroy(stalled);
+    destroy(current.sim);
+    destroy(history.sim);
   }
 }
 
 function f(v) { return Number(v).toFixed(3); }
 const results = [];
-console.log("\nA2R stall/input-transition falsifier — current backlog strategy");
+console.log("\nA2R stall/input-transition falsifier — current vs history-aware catch-up");
 for (const [scenarioName, scenario] of Object.entries(SCENARIOS)) {
   for (const stall of STALLS) {
     const result = run(scenario, stall);
     results.push({ scenario: scenarioName, stall: stall.name, result });
-    console.log(`  ${scenarioName}/${stall.name} | max player/prop ${f(result.maxAfterResumePlayer)}/${f(result.maxAfterResumeProp)} | final ${f(result.finalPlayer)}/${f(result.finalProp)} | backlog max/final ${result.maxBacklog}/${result.finalBacklog} | steps ${result.stalledSteps}/${result.idealSteps} | dropped ${result.dropped}`);
+    console.log(
+      `  ${scenarioName}/${stall.name} | current max ${f(result.current.maxPlayer)}/${f(result.current.maxProp)} final ${f(result.current.finalPlayer)}/${f(result.current.finalProp)} | history max ${f(result.history.maxPlayer)}/${f(result.history.maxProp)} final ${f(result.history.finalPlayer)}/${f(result.history.finalProp)} | backlog ${result.current.maxBacklog}/${result.history.maxBacklog} | steps ${result.current.steps}/${result.history.steps}/${result.idealSteps}`,
+    );
   }
 }
 
-if (!results.every(({ result }) => Object.values(result).every(Number.isFinite))) throw new Error("non-finite stall/input result");
-if (!results.every(({ result }) => result.finalBacklog === 0 && result.dropped === 0 && result.stalledSteps === result.idealSteps)) {
-  throw new Error("stall lab failed to repay simulation-time debt");
+if (!results.every(({ result }) => [
+  ...Object.values(result.current), ...Object.values(result.history), result.idealSteps,
+].every(Number.isFinite))) throw new Error("non-finite stall/input result");
+if (!results.every(({ result }) =>
+  result.current.finalBacklog === 0 && result.history.finalBacklog === 0 &&
+  result.current.dropped === 0 && result.history.dropped === 0 &&
+  result.current.steps === result.idealSteps && result.history.steps === result.idealSteps
+)) throw new Error("stall lab failed to repay simulation-time debt");
+if (!results.every(({ result }) => result.history.finalPlayer < 1e-5 && result.history.finalProp < 1e-5)) {
+  throw new Error("history-aware catch-up did not recover exact fixed-step outcome");
 }

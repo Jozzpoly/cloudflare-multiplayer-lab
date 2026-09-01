@@ -7,6 +7,7 @@ const SUBSTEPS = 4;
 const SPEED = 5.2;
 const ACCEL = 28;
 const DECEL = 36;
+const LINEAR_DAMPING = 0.3;
 const HEARTBEAT_MS = 66;
 const EPS = 1e-9;
 
@@ -64,7 +65,7 @@ function createPlayerWorld() {
   const bd = b3.b3DefaultBodyDef();
   bd.type = b3.b3BodyType.b3_dynamicBody;
   bd.position = [0, 0.82, 0];
-  bd.linearDamping = 0.3;
+  bd.linearDamping = LINEAR_DAMPING;
   bd.angularDamping = 8;
   const body = b3.b3CreateBody(world, bd);
   const sd = b3.b3DefaultShapeDef();
@@ -87,9 +88,7 @@ function createPlayerWorld() {
   return { world, body };
 }
 
-function destroy(sim) {
-  b3.b3DestroyWorld(sim.world);
-}
+function destroy(sim) { b3.b3DestroyWorld(sim.world); }
 
 function state(sim) {
   const position = [0, 0, 0];
@@ -105,60 +104,63 @@ function applyInput(sim, rawInput) {
   b3.b3Body_GetLinearVelocity(velocity, sim.body);
   const active = Math.hypot(x, z) > 0.01;
   const [vx, vz] = moveToward2(
-    velocity[0],
-    velocity[2],
-    x * SPEED,
-    z * SPEED,
+    velocity[0], velocity[2], x * SPEED, z * SPEED,
     (active ? ACCEL : DECEL) * DT,
   );
   b3.b3Body_SetLinearVelocity(sim.body, [vx, velocity[1], vz]);
 }
 
-function distanceXZ(a, b) {
-  return Math.hypot(a[0] - b[0], a[2] - b[2]);
+function projectInputAware(snapshot, rawInput, ageSeconds) {
+  const [x, z] = normalizeInput(rawInput);
+  const active = Math.hypot(x, z) > 0.01;
+  const position = [...snapshot.position];
+  const velocity = [...snapshot.velocity];
+  let remaining = Math.max(0, ageSeconds);
+  while (remaining > EPS) {
+    const h = Math.min(DT, remaining);
+    const [vx, vz] = moveToward2(
+      velocity[0], velocity[2], x * SPEED, z * SPEED,
+      (active ? ACCEL : DECEL) * h,
+    );
+    const damping = 1 / (1 + LINEAR_DAMPING * h);
+    velocity[0] = vx * damping;
+    velocity[2] = vz * damping;
+    position[0] += velocity[0] * h;
+    position[2] += velocity[2] * h;
+    remaining -= h;
+  }
+  return { position, velocity };
 }
 
-function enqueue(queue, at, payload) {
-  queue.push({ at, payload });
-  queue.sort((a, b) => a.at - b.at);
+function projectConstant(snapshot, ageSeconds) {
+  return {
+    position: [
+      snapshot.position[0] + snapshot.velocity[0] * ageSeconds,
+      snapshot.position[1] + snapshot.velocity[1] * ageSeconds,
+      snapshot.position[2] + snapshot.velocity[2] * ageSeconds,
+    ],
+    velocity: snapshot.velocity,
+  };
 }
 
-function deliver(queue, now, fn) {
-  while (queue.length && queue[0].at <= now + 1e-6) fn(queue.shift().payload);
-}
-
-function inputChanged(a, b) {
-  return !b || Math.abs(a[0] - b[0]) > EPS || Math.abs(a[1] - b[1]) > EPS;
-}
+function distanceXZ(a, b) { return Math.hypot(a[0] - b[0], a[2] - b[2]); }
+function enqueue(queue, at, payload) { queue.push({ at, payload }); queue.sort((a, b) => a.at - b.at); }
+function deliver(queue, now, fn) { while (queue.length && queue[0].at <= now + 1e-6) fn(queue.shift().payload); }
+function inputChanged(a, b) { return !b || Math.abs(a[0] - b[0]) > EPS || Math.abs(a[1] - b[1]) > EPS; }
 
 const SCENARIOS = {
-  steady: {
-    duration: 5,
-    activeUntil: 2.4,
-    input(t) {
-      return t < 2.4 ? [1, 0] : [0, 0];
-    },
-  },
+  steady: { duration: 5, activeUntil: 2.4, input: (t) => t < 2.4 ? [1, 0] : [0, 0] },
   reversal: {
-    duration: 6,
-    activeUntil: 3.6,
-    input(t) {
-      if (t < 1.8) return [1, 0];
-      if (t < 3.6) return [-1, 0];
-      return [0, 0];
-    },
+    duration: 6, activeUntil: 3.6,
+    input(t) { if (t < 1.8) return [1, 0]; if (t < 3.6) return [-1, 0]; return [0, 0]; },
   },
   taps: {
-    duration: 6,
-    activeUntil: 3.8,
-    input(t) {
-      if (t >= 3.8) return [0, 0];
-      return Math.floor(t / 0.45) % 2 === 0 ? [1, 0] : [0, 0];
-    },
+    duration: 6, activeUntil: 3.8,
+    input(t) { if (t >= 3.8) return [0, 0]; return Math.floor(t / 0.45) % 2 === 0 ? [1, 0] : [0, 0]; },
   },
 };
 
-function run({ scenario, network, params, seed }) {
+function run({ scenario, network, policy, seed }) {
   const authority = createPlayerWorld();
   const client = createPlayerWorld();
   const ideal = createPlayerWorld();
@@ -166,6 +168,9 @@ function run({ scenario, network, params, seed }) {
   const snapshotQueue = [];
   const rng = makeRng(seed);
   let authorityInput = [0, 0];
+  let authorityAck = 0;
+  let packetSeq = 0;
+  let lastChangeSeq = 0;
   let lastSent = null;
   let nextHeartbeat = 0;
   let snapshot = null;
@@ -175,6 +180,8 @@ function run({ scenario, network, params, seed }) {
   const correctionAccel = [];
   const correctionJerk = [];
   const authorityError = [];
+  let blockedByAckTicks = 0;
+  let correctionEligibleTicks = 0;
   const totalTicks = Math.round(scenario.duration * HZ);
   const snapshotEvery = Math.round(HZ / network.snapshotHz);
 
@@ -183,13 +190,20 @@ function run({ scenario, network, params, seed }) {
       const t = tick * DT;
       const nowMs = t * 1000;
       const input = scenario.input(t);
+      const changed = inputChanged(input, lastSent);
 
-      if (inputChanged(input, lastSent) || nowMs + 1e-6 >= nextHeartbeat) {
-        enqueue(inputQueue, nowMs + delayMs(network.oneWayMs, network.jitterMs, rng), [...input]);
+      if (changed || nowMs + 1e-6 >= nextHeartbeat) {
+        packetSeq += 1;
+        if (changed) lastChangeSeq = packetSeq;
+        enqueue(inputQueue, nowMs + delayMs(network.oneWayMs, network.jitterMs, rng), { seq: packetSeq, input: [...input] });
         lastSent = [...input];
         nextHeartbeat = nowMs + HEARTBEAT_MS;
       }
-      deliver(inputQueue, nowMs, (value) => { authorityInput = value; });
+      deliver(inputQueue, nowMs, (packet) => {
+        if (packet.seq <= authorityAck) return;
+        authorityAck = packet.seq;
+        authorityInput = packet.input;
+      });
       deliver(snapshotQueue, nowMs, (value) => { snapshot = value; });
 
       applyInput(authority, authorityInput);
@@ -197,38 +211,42 @@ function run({ scenario, network, params, seed }) {
       applyInput(ideal, input);
 
       let correction = [0, 0, 0];
-      if (snapshot && params.maxAccel > 0) {
-        const local = state(client);
-        const age = Math.max(0, tick - snapshot.tick) * DT;
-        const targetPosition = [
-          snapshot.position[0] + snapshot.velocity[0] * age,
-          snapshot.position[1] + snapshot.velocity[1] * age,
-          snapshot.position[2] + snapshot.velocity[2] * age,
-        ];
-        const posError = [
-          targetPosition[0] - local.position[0],
-          targetPosition[1] - local.position[1],
-          targetPosition[2] - local.position[2],
-        ];
-        const velError = [
-          snapshot.velocity[0] - local.velocity[0],
-          snapshot.velocity[1] - local.velocity[1],
-          snapshot.velocity[2] - local.velocity[2],
-        ];
-        const kp = 4 / (params.tau * params.tau);
-        const kd = 4 / params.tau;
-        correction = clampVector([
-          posError[0] * kp + velError[0] * kd,
-          posError[1] * kp + velError[1] * kd,
-          posError[2] * kp + velError[2] * kd,
-        ], params.maxAccel);
-        if (Math.hypot(...posError) < 0.015 && Math.hypot(...velError) < 0.05) correction = [0, 0, 0];
-        if (Math.hypot(...correction) > EPS) {
-          b3.b3Body_SetLinearVelocity(client.body, [
-            local.velocity[0] + correction[0] * DT,
-            local.velocity[1] + correction[1] * DT,
-            local.velocity[2] + correction[2] * DT,
-          ]);
+      if (snapshot && policy.maxAccel > 0) {
+        const ackEligible = policy.mode === 'naive' || snapshot.ack >= lastChangeSeq;
+        if (!ackEligible) {
+          blockedByAckTicks += 1;
+        } else {
+          correctionEligibleTicks += 1;
+          const local = state(client);
+          const age = Math.max(0, tick - snapshot.tick) * DT;
+          const target = policy.mode === 'ack-input'
+            ? projectInputAware(snapshot, input, age)
+            : projectConstant(snapshot, age);
+          const posError = [
+            target.position[0] - local.position[0],
+            target.position[1] - local.position[1],
+            target.position[2] - local.position[2],
+          ];
+          const velError = [
+            target.velocity[0] - local.velocity[0],
+            target.velocity[1] - local.velocity[1],
+            target.velocity[2] - local.velocity[2],
+          ];
+          const kp = 4 / (policy.tau * policy.tau);
+          const kd = 4 / policy.tau;
+          correction = clampVector([
+            posError[0] * kp + velError[0] * kd,
+            posError[1] * kp + velError[1] * kd,
+            posError[2] * kp + velError[2] * kd,
+          ], policy.maxAccel);
+          if (Math.hypot(...posError) < 0.015 && Math.hypot(...velError) < 0.05) correction = [0, 0, 0];
+          if (Math.hypot(...correction) > EPS) {
+            b3.b3Body_SetLinearVelocity(client.body, [
+              local.velocity[0] + correction[0] * DT,
+              local.velocity[1] + correction[1] * DT,
+              local.velocity[2] + correction[2] * DT,
+            ]);
+          }
         }
       }
 
@@ -250,6 +268,7 @@ function run({ scenario, network, params, seed }) {
           tick: tick + 1,
           position: auth.position,
           velocity: auth.velocity,
+          ack: authorityAck,
         });
       }
 
@@ -272,11 +291,11 @@ function run({ scenario, network, params, seed }) {
       finalError: distanceXZ(finalAuthority.position, finalClient.position),
       accelP95: percentile(correctionAccel, 0.95),
       jerkP95: percentile(correctionJerk, 0.95),
+      blockedByAckTicks,
+      correctionEligibleTicks,
     };
   } finally {
-    destroy(authority);
-    destroy(client);
-    destroy(ideal);
+    destroy(authority); destroy(client); destroy(ideal);
   }
 }
 
@@ -286,39 +305,40 @@ function aggregate(results) {
   return out;
 }
 
-function fmt(v) { return v.toFixed(3); }
+function score(summary) {
+  return summary.intentP95 * 3 + summary.settledP95 * 2 + summary.finalError * 2 + summary.accelP95 * 0.01 + summary.jerkP95 * 0.0005;
+}
+function fmt(v) { return Number(v).toFixed(3); }
 
 const network = { oneWayMs: 63, jitterMs: 6, snapshotHz: 10 };
-const candidates = [];
-for (const maxAccel of [0, 4, 8, 12, 16, 24, 36]) {
-  for (const tau of maxAccel === 0 ? [0.28] : [0.18, 0.28, 0.4, 0.6]) {
-    const params = { maxAccel, tau };
-    const results = Object.values(SCENARIOS).map((scenario, index) => run({
-      scenario,
-      network,
-      params,
-      seed: 4200 + index,
-    }));
-    const summary = aggregate(results);
-    const score = summary.intentP95 * 3 + summary.settledP95 * 2 + summary.finalError * 2 + summary.accelP95 * 0.01 + summary.jerkP95 * 0.0005;
-    candidates.push({ params, summary, score });
+const policies = [{ mode: 'none', maxAccel: 0, tau: 0.28 }];
+for (const mode of ['naive', 'ack', 'ack-input']) {
+  for (const maxAccel of [4, 8, 12, 16]) {
+    for (const tau of [0.18, 0.28, 0.4]) policies.push({ mode, maxAccel, tau });
   }
 }
 
-candidates.sort((a, b) => a.score - b.score);
-console.log('\nA2R owner prediction lab — observed A2 latency');
-for (const candidate of candidates.slice(0, 10)) {
+const ranked = policies.map((policy) => {
+  const results = Object.values(SCENARIOS).map((scenario, index) => run({ scenario, network, policy, seed: 4200 + index }));
+  const summary = aggregate(results);
+  return { policy, summary, score: score(summary) };
+}).sort((a, b) => a.score - b.score);
+
+console.log('\nA2R owner prediction lab v2 — ACK/input-aware policies');
+for (const candidate of ranked.slice(0, 12)) {
   const s = candidate.summary;
   console.log(
-    `  score ${fmt(candidate.score)} | intent p95 ${fmt(s.intentP95)} | settled p95 ${fmt(s.settledP95)} | ` +
-    `final ${fmt(s.finalError)} | authority p95 ${fmt(s.authorityP95)} | accel p95 ${fmt(s.accelP95)} | jerk p95 ${fmt(s.jerkP95)} | ` +
-    JSON.stringify(candidate.params),
+    `  score ${fmt(candidate.score)} | intent ${fmt(s.intentP95)} | settled ${fmt(s.settledP95)} | final ${fmt(s.finalError)} | ` +
+    `authority ${fmt(s.authorityP95)} | accel ${fmt(s.accelP95)} | jerk ${fmt(s.jerkP95)} | ack-blocked ${s.blockedByAckTicks} | ` +
+    JSON.stringify(candidate.policy),
   );
 }
 
-const noCorrection = candidates.find((c) => c.params.maxAccel === 0);
-console.log('\nNo-correction control:', JSON.stringify(noCorrection));
+for (const mode of ['none', 'naive', 'ack', 'ack-input']) {
+  const best = ranked.find((entry) => entry.policy.mode === mode);
+  console.log(`Best ${mode}: ${JSON.stringify(best)}`);
+}
 
-if (!candidates.every((c) => Object.values(c.summary).every(Number.isFinite))) {
+if (!ranked.every((entry) => Object.values(entry.summary).every(Number.isFinite))) {
   throw new Error('non-finite owner lab result');
 }

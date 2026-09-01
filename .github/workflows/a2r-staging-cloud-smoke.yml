@@ -10,7 +10,7 @@ permissions:
 jobs:
   staging-cloud-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,3 +22,6 @@ jobs:
 
       - name: Verify staging HTTP, WebSocket, ACK and prop contact
         run: node scripts/a2r-staging-cloud-smoke.mjs
+
+      - name: Verify real Chrome against staging A2R
+        run: node scripts/a2r-staging-browser-smoke.mjs

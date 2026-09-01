@@ -1,0 +1,58 @@
+name: A2R Staging Bootstrap
+
+on:
+  push:
+    branches: [world-slice-0-a2r-timeline-rebuild]
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-staging:
+    if: github.event.head_commit.message == 'chore: bootstrap A2R staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require Cloudflare credentials
+        shell: bash
+        run: |
+          if [[ -z "$CLOUDFLARE_API_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
+            echo "::error::Staging bootstrap stopped before Wrangler: CLOUDFLARE_API_TOKEN and/or CLOUDFLARE_ACCOUNT_ID is not configured in GitHub Actions secrets."
+            exit 2
+          fi
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Revalidate staging safety contract
+        run: npm run validate:staging-contract && npm run test:staging-deploy-guard
+
+      - name: Deploy isolated staging Worker
+        run: npm run deploy:staging
+
+      - name: Verify staging origin
+        shell: bash
+        run: |
+          origin="https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev"
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "$origin/api/ping" >/tmp/a2r-staging-ping.json; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent --show-error "$origin/world0-a2r/app.js" >/tmp/a2r-staging-app.js
+          curl --fail --silent --show-error "$origin/a2r-containment-canary.txt" >/tmp/a2r-staging-canary.txt
+          grep -F 'ws0-a2r-local-box3d-v2' /tmp/a2r-staging-app.js
+          grep -F 'A2R_CONTAINMENT_CANARY_2026-09-01_21-59Z_07a78279' /tmp/a2r-staging-canary.txt
+          node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("/tmp/a2r-staging-ping.json","utf8")); if(!p.ok) process.exit(1); console.log("A2R staging origin PASS", p);'

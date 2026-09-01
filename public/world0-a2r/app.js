@@ -1,7 +1,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js";
 import { FixedStepClock } from "./fixed-step-clock.js";
 
-const CLIENT_REVISION = "ws0-a2r-local-box3d-v1";
+const CLIENT_REVISION = "ws0-a2r-local-box3d-v2";
 const BOX3D_URL = "https://cdn.jsdelivr.net/npm/box3d.js@0.1.1/dist/box3d.inline.mjs";
 const INPUT_INTERVAL_MS = 66;
 const PING_INTERVAL_MS = 2000;
@@ -31,6 +31,7 @@ const metricIds = [
   "m-settled",
   "m-gap",
   "m-age",
+  "m-phase",
   "m-tick",
   "m-scheduler",
   "m-ack",
@@ -103,6 +104,7 @@ const selfMaterial = new THREE.MeshStandardMaterial({ color: 0x78d8c2, roughness
 const propMeshes = new Map();
 let selfMesh = null;
 const keys = new Set();
+const movementCodes = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 const rttSamples = [];
 const playerDeltaSamples = [];
 const propDeltaSamples = [];
@@ -124,7 +126,8 @@ let inputSeq = 0;
 let latestAck = 0;
 let latestTelemetry = null;
 let lastSnapshotAt = null;
-let lastSnapshotAgeMs = null;
+let lastSnapshotServerTime = null;
+let lastServerTick = null;
 let serverClockOffsetMs = null;
 let lastFrameAt = performance.now();
 let frameCounterStartedAt = performance.now();
@@ -426,6 +429,8 @@ function handleMessage(message) {
       throw new Error(`A2R contract mismatch: expected 60 Hz / 4 substeps, got ${simulation.simulationHz} / ${simulation.substeps}`);
     }
     latestTelemetry = message.state?.telemetry || latestTelemetry;
+    if (Number.isFinite(message.state?.tick)) lastServerTick = message.state.tick;
+    if (Number.isFinite(message.serverTime)) lastSnapshotServerTime = message.serverTime;
     seedLocalWorld(message.state);
     setNetwork("live · local physics", "live");
     clearNotice();
@@ -436,9 +441,8 @@ function handleMessage(message) {
     if (lastSnapshotAt !== null) pushSample(snapshotGapSamples, receivedAt - lastSnapshotAt);
     lastSnapshotAt = receivedAt;
     latestTelemetry = message.telemetry || latestTelemetry;
-    if (serverClockOffsetMs !== null && Number.isFinite(message.serverTime)) {
-      lastSnapshotAgeMs = Math.max(0, Date.now() + serverClockOffsetMs - message.serverTime);
-    }
+    if (Number.isFinite(message.tick)) lastServerTick = message.tick;
+    if (Number.isFinite(message.serverTime)) lastSnapshotServerTime = message.serverTime;
     sampleAuthorityDivergence(message);
     return;
   }
@@ -490,17 +494,21 @@ function connect() {
   socket.addEventListener("error", () => setNetwork("network error", "bad"));
 }
 
-function sendInput() {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+function sendInput(force = false) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return false;
   const input = currentInput();
+  const changed = inputChanged(lastSentInput, input);
+  if (!force && !changed) return false;
+
   inputSeq += 1;
-  if (inputChanged(lastSentInput, input)) {
+  if (changed) {
     lastIntentChangeSeq = inputSeq;
     lastIntentChangeAt = performance.now();
     lastSentInput = { ...input };
     settledDesyncStreak = 0;
   }
   socket.send(JSON.stringify({ type: "input", seq: inputSeq, x: input.x, z: input.z }));
+  return true;
 }
 
 function sendPing() {
@@ -513,9 +521,9 @@ function sendPing() {
 
 function startNetworkLoops() {
   stopNetworkLoops();
-  sendInput();
+  sendInput(true);
   sendPing();
-  inputTimer = setInterval(sendInput, INPUT_INTERVAL_MS);
+  inputTimer = setInterval(() => sendInput(true), INPUT_INTERVAL_MS);
   pingTimer = setInterval(sendPing, PING_INTERVAL_MS);
   hudTimer = setInterval(updateHud, HUD_INTERVAL_MS);
 }
@@ -543,7 +551,13 @@ function formatPair(samples, digits = 0) {
   return `${percentile(samples, 0.5).toFixed(digits)} / ${percentile(samples, 0.95).toFixed(digits)}`;
 }
 
+function estimatedSnapshotAgeMs() {
+  if (serverClockOffsetMs === null || lastSnapshotServerTime === null) return null;
+  return Math.max(0, Date.now() + serverClockOffsetMs - lastSnapshotServerTime);
+}
+
 function updateHud() {
+  const snapshotAgeMs = estimatedSnapshotAgeMs();
   metrics["m-rtt"].textContent = rttSamples.length ? `${formatPair(rttSamples)} ms` : "—";
   metrics["m-player-delta"].textContent = playerDeltaSamples.length ? formatPair(playerDeltaSamples, 3) : "—";
   metrics["m-prop-delta"].textContent = propDeltaSamples.length ? formatPair(propDeltaSamples, 3) : "—";
@@ -551,7 +565,12 @@ function updateHud() {
     metrics["m-settled"].textContent = `${percentile(settledPlayerSamples, 0.95).toFixed(3)} / ${percentile(settledPropSamples, 0.95).toFixed(3)}`;
   } else metrics["m-settled"].textContent = "—";
   metrics["m-gap"].textContent = snapshotGapSamples.length ? `${formatPair(snapshotGapSamples)} ms` : "—";
-  metrics["m-age"].textContent = lastSnapshotAgeMs === null ? "—" : `${lastSnapshotAgeMs.toFixed(0)} ms`;
+  metrics["m-age"].textContent = snapshotAgeMs === null ? "—" : `${snapshotAgeMs.toFixed(0)} ms`;
+  if (snapshotAgeMs !== null && Number.isFinite(lastServerTick)) {
+    const estimatedServerNowTick = lastServerTick + snapshotAgeMs / 1000 * simulation.simulationHz;
+    const phaseTicks = local.steps - estimatedServerNowTick;
+    metrics["m-phase"].textContent = `${phaseTicks >= 0 ? "+" : ""}${phaseTicks.toFixed(1)} ticks`;
+  } else metrics["m-phase"].textContent = "—";
   metrics["m-tick"].textContent = Number.isFinite(latestTelemetry?.tickRatio) ? latestTelemetry.tickRatio.toFixed(4) : "—";
   metrics["m-scheduler"].textContent = latestTelemetry ? `${latestTelemetry.droppedTicks ?? 0} / ${latestTelemetry.catchupSteps ?? 0}` : "—";
   metrics["m-ack"].textContent = `${latestAck} / ${inputSeq}`;
@@ -565,7 +584,8 @@ function resetSamples() {
   }
   pendingPings.clear();
   lastSnapshotAt = null;
-  lastSnapshotAgeMs = null;
+  lastSnapshotServerTime = null;
+  lastServerTick = null;
   serverClockOffsetMs = null;
   inputSeq = 0;
   latestAck = 0;
@@ -598,13 +618,21 @@ callsignInput.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
-  if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
-    event.preventDefault();
-    keys.add(event.code);
-  }
+  if (!movementCodes.has(event.code)) return;
+  event.preventDefault();
+  keys.add(event.code);
+  sendInput(false);
 });
-window.addEventListener("keyup", (event) => keys.delete(event.code));
-window.addEventListener("blur", () => keys.clear());
+window.addEventListener("keyup", (event) => {
+  if (!movementCodes.has(event.code)) return;
+  keys.delete(event.code);
+  sendInput(false);
+});
+window.addEventListener("blur", () => {
+  if (!keys.size) return;
+  keys.clear();
+  sendInput(false);
+});
 window.addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();

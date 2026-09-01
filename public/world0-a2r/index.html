@@ -12,8 +12,8 @@
 
   <section id="boot" class="boot-card">
     <div class="eyebrow">WORLD SLICE 0 · A2R</div>
-    <h1>Deterministic local physics candidate</h1>
-    <p>The browser runs the same pinned Box3D simulation as the server. Authoritative snapshots are measured, but they do <strong>not</strong> continuously pull the local player or crates.</p>
+    <h1>Local physical-contact candidate</h1>
+    <p>The browser runs the pinned Box3D runtime with the mirrored WS0 setup. Authoritative snapshots are delayed evidence: they are measured, but they do <strong>not</strong> continuously pull the local player or crates.</p>
     <label>
       Callsign
       <input id="callsign" maxlength="24" autocomplete="off" spellcheck="false" />
@@ -29,18 +29,19 @@
     </div>
     <div class="metrics">
       <div><span>RTT p50 / p95</span><strong id="m-rtt">—</strong></div>
-      <div><span>Authority Δ player p50 / p95</span><strong id="m-player-delta">—</strong></div>
-      <div><span>Authority Δ max prop p50 / p95</span><strong id="m-prop-delta">—</strong></div>
-      <div><span>Settled Δ p95 player / prop</span><strong id="m-settled">—</strong></div>
+      <div><span>Raw delayed snapshot Δ player p50 / p95</span><strong id="m-player-delta">—</strong></div>
+      <div><span>Raw delayed snapshot Δ max prop p50 / p95</span><strong id="m-prop-delta">—</strong></div>
+      <div><span>Settled delayed Δ p95 player / prop</span><strong id="m-settled">—</strong></div>
       <div><span>Snapshot gap p50 / p95</span><strong id="m-gap">—</strong></div>
-      <div><span>Snapshot age</span><strong id="m-age">—</strong></div>
+      <div><span>Snapshot age · estimated now</span><strong id="m-age">—</strong></div>
+      <div><span>Local phase vs est. server-now</span><strong id="m-phase">—</strong></div>
       <div><span>Server tick ratio</span><strong id="m-tick">—</strong></div>
-      <div><span>Dropped / catch-up</span><strong id="m-scheduler">—</strong></div>
+      <div><span>Server dropped / catch-up</span><strong id="m-scheduler">—</strong></div>
       <div><span>Input ack</span><strong id="m-ack">—</strong></div>
       <div><span>Local physics</span><strong id="m-local">—</strong></div>
       <div><span>FPS</span><strong id="m-fps">—</strong></div>
     </div>
-    <div class="baseline">SINGLE PLAYER · 60 HZ / 4 SUBSTEPS · NO LIVE RECONCILIATION</div>
+    <div class="baseline">SINGLE PLAYER · FRESH WORLD · 60 HZ / 4 SUBSTEPS · NO LIVE RECONCILIATION</div>
   </aside>
 
   <div id="controls" class="controls hidden">WASD / ARROWS · PUSH CRATES · HIT WALLS · REVERSE HARD</div>

@@ -29,5 +29,8 @@ jobs:
       - name: Run owner prediction lab
         run: node scripts/a2r-owner-lab.mjs
 
+      - name: Run full-world hybrid lab
+        run: node scripts/a2r-hybrid-lab.mjs
+
       - name: Validate branch
         run: npm run check

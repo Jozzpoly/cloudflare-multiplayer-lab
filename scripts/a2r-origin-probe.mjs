@@ -3,7 +3,8 @@ const ORIGINS = [
   { name: "staging", url: "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev" },
 ];
 
-const PATHS = ["/api/ping", "/world0/app.js", "/world0-a2r/app.js"];
+const CANARY_PATH = "/a2r-containment-canary.txt";
+const PATHS = ["/api/ping", "/world0/app.js", "/world0-a2r/app.js", CANARY_PATH];
 const AFFINITY_SAMPLE_COUNT = 16;
 
 function extractClientRevision(text) {
@@ -30,6 +31,7 @@ async function probe(origin, path, versionKey = null) {
       bytes: text.length,
     };
     if (path.endsWith(".js")) result.clientRevision = extractClientRevision(text);
+    if (path === CANARY_PATH && response.ok) result.canary = text.trim();
     if (path === "/api/ping") {
       try {
         const json = JSON.parse(text);
@@ -55,7 +57,9 @@ async function probe(origin, path, versionKey = null) {
 
 async function fingerprint(origin, versionKey) {
   const results = [];
-  for (const path of PATHS) results.push(await probe(origin, path, versionKey));
+  for (const path of ["/api/ping", "/world0/app.js", "/world0-a2r/app.js"]) {
+    results.push(await probe(origin, path, versionKey));
+  }
   const ping = results.find((result) => result.path === "/api/ping");
   const world0 = results.find((result) => result.path === "/world0/app.js");
   const a2r = results.find((result) => result.path === "/world0-a2r/app.js");

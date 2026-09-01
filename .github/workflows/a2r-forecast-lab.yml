@@ -26,5 +26,8 @@ jobs:
       - name: Run full A2R forecast lab
         run: npm run lab:a2r
 
+      - name: Run owner prediction lab
+        run: node scripts/a2r-owner-lab.mjs
+
       - name: Validate branch
         run: npm run check

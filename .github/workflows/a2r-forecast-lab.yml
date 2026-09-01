@@ -1,0 +1,30 @@
+name: A2R Forecast Lab
+
+on:
+  push:
+    branches: [world-slice-0-a2r-timeline-rebuild]
+
+permissions:
+  contents: read
+
+jobs:
+  forecast-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run full A2R forecast lab
+        run: npm run lab:a2r
+
+      - name: Validate branch
+        run: npm run check

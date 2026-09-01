@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev --env staging",
     "deploy": "npm run deploy:staging",
+    "deploy:preview": "node scripts/workers-preview-deploy.mjs",
     "deploy:staging": "node scripts/guard-staging-deploy.mjs && wrangler deploy --env staging",
     "deploy:production": "wrangler deploy",
     "generate:types": "wrangler types --env staging",
@@ -15,8 +16,9 @@
     "check:a2r": "node scripts/a2r-forecast-lab.mjs --ci",
     "validate:staging-contract": "node scripts/validate-staging-contract.mjs",
     "test:staging-deploy-guard": "node scripts/test-staging-deploy-guard.mjs",
+    "test:preview-deploy-router": "node scripts/test-workers-preview-deploy.mjs",
     "validate:worker": "wrangler deploy --dry-run --env staging --outdir .wrangler/dry-run",
-    "check": "npm run validate:staging-contract && npm run test:staging-deploy-guard && npm run check:client && npm run check:a2r && npm run typecheck && npm run validate:worker"
+    "check": "npm run validate:staging-contract && npm run test:staging-deploy-guard && npm run test:preview-deploy-router && npm run check:client && npm run check:a2r && npm run typecheck && npm run validate:worker"
   },
   "dependencies": {
     "box3d.js": "0.1.1"

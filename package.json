@@ -9,8 +9,10 @@
     "generate:types": "wrangler types --env staging",
     "typecheck": "npm run generate:types && tsc --noEmit",
     "check:client": "node --check public/app.js && node --check public/world0/app.js",
+    "lab:a2r": "node scripts/a2r-forecast-lab.mjs",
+    "check:a2r": "node scripts/a2r-forecast-lab.mjs --ci",
     "validate:worker": "wrangler deploy --dry-run --env staging --outdir .wrangler/dry-run",
-    "check": "npm run check:client && npm run typecheck && npm run validate:worker"
+    "check": "npm run check:client && npm run check:a2r && npm run typecheck && npm run validate:worker"
   },
   "dependencies": {
     "box3d.js": "0.1.1"

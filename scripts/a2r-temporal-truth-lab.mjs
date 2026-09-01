@@ -170,7 +170,7 @@ function run(scenario, network, seed) {
   const inputQueue = [];
   const authorityHistory = [snapshot(authority)];
   const clientHistory = [snapshot(client)];
-  const clientMeta = [{ active: false, contact: false, acked: true }];
+  const clientMeta = [{ active: false, contact: false }];
   let authorityInput = [0, 0];
   let authorityAck = 0;
   let seq = 0;
@@ -216,10 +216,13 @@ function run(scenario, network, seed) {
       clientMeta.push({
         active: localTick < activeUntilLocalTick,
         contact: playerNearAnyProp(clientState),
-        acked: authorityAck >= seq,
       });
     }
 
+    // Both histories use the original seed as index 0. A history shift thus
+    // includes the welcome/start lag. At a given wall time server-now is already
+    // welcomeDelay ticks ahead of the client history index, so the prediction
+    // lead relative to server-now is bestShift - welcomeDelay.
     const maxShift = Math.min(20, authorityHistory.length - clientHistory.length + welcomeDelay + 12);
     const candidates = [];
     for (let shift = 0; shift <= maxShift; shift += 1) {
@@ -273,18 +276,18 @@ function run(scenario, network, seed) {
       sameEpochPropP95: sameEpoch.activePropP95,
       sameEpochContactPlayerP95: sameEpoch.contactPlayerP95,
       sameEpochContactPropP95: sameEpoch.contactPropP95,
-      bestShiftTicks: best.shift,
+      bestHistoryShiftTicks: best.shift,
+      predictionLeadVsServerNowTicks: best.shift - welcomeDelay,
       bestShiftPlayerP95: best.activePlayerP95,
       bestShiftPropP95: best.activePropP95,
       bestShiftContactPlayerP95: best.contactPlayerP95,
       bestShiftContactPropP95: best.contactPropP95,
-      wallPlayerP95: percentile(wallPlayer, 0.95),
-      wallPropP95: percentile(wallProp, 0.95),
+      wallActivePlayerP95: percentile(wallPlayer, 0.95),
+      wallActivePropP95: percentile(wallProp, 0.95),
       settledWallPlayerP95: percentile(settledPlayer, 0.95),
       settledWallPropP95: percentile(settledProp, 0.95),
       finalWallPlayer: distanceXZ(finalClient[PLAYER].position, finalAuthority[PLAYER].position),
       finalWallProp: maxPropDistance(finalClient, finalAuthority),
-      phaseLagTicks: welcomeDelay,
       contactSamples: clientMeta.filter((m) => m.contact).length,
     };
   } finally {
@@ -305,8 +308,9 @@ for (let n = 0; n < NETWORKS.length; n += 1) {
 console.log("\nA2R temporal truth gate — current local-only runtime model");
 for (const entry of results) {
   const r = entry.result;
+  const lead = `${r.predictionLeadVsServerNowTicks >= 0 ? "+" : ""}${r.predictionLeadVsServerNowTicks}t`;
   console.log(
-    `  ${entry.network}/${entry.scenario} | welcome lag ${r.welcomeDelayTicks}t | same-epoch player/prop ${f(r.sameEpochPlayerP95)}/${f(r.sameEpochPropP95)} | best shift ${r.bestShiftTicks}t → ${f(r.bestShiftPlayerP95)}/${f(r.bestShiftPropP95)} | contact best ${f(r.bestShiftContactPlayerP95)}/${f(r.bestShiftContactPropP95)} | wall settled ${f(r.settledWallPlayerP95)}/${f(r.settledWallPropP95)} | final ${f(r.finalWallPlayer)}/${f(r.finalWallProp)} | contacts ${r.contactSamples}`,
+    `  ${entry.network}/${entry.scenario} | welcome ${r.welcomeDelayTicks}t | history align ${r.bestHistoryShiftTicks}t | lead vs server-now ${lead} | wall active player/prop ${f(r.wallActivePlayerP95)}/${f(r.wallActivePropP95)} | aligned ${f(r.bestShiftPlayerP95)}/${f(r.bestShiftPropP95)} | contact aligned ${f(r.bestShiftContactPlayerP95)}/${f(r.bestShiftContactPropP95)} | settled ${f(r.settledWallPlayerP95)}/${f(r.settledWallPropP95)} | final ${f(r.finalWallPlayer)}/${f(r.finalWallProp)} | contacts ${r.contactSamples}`,
   );
 }
 

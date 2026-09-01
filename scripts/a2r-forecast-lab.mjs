@@ -161,6 +161,7 @@ function createWorld({ enableContactEvents }) {
     shapeDef.baseMaterial.friction = 0.72;
     shapeDef.baseMaterial.restitution = 0.04;
     shapeDef.enableContactEvents = enableContactEvents;
+    shapeDef.enableHitEvents = enableContactEvents;
     const shape = b3.b3CreateBoxShape(body, shapeDef, 0.46, 0.46, 0.46);
     const id = `prop-${index}`;
     bodies.set(id, { id, body, shape, initial, kind: 'prop' });
@@ -178,6 +179,7 @@ function createWorld({ enableContactEvents }) {
   playerShapeDef.baseMaterial.friction = 0.8;
   playerShapeDef.baseMaterial.restitution = 0.02;
   playerShapeDef.enableContactEvents = enableContactEvents;
+  playerShapeDef.enableHitEvents = enableContactEvents;
   const playerShape = b3.b3CreateCapsuleShape(playerBody, playerShapeDef, {
     center1: [0, -0.45, 0],
     center2: [0, 0.45, 0],
@@ -293,7 +295,11 @@ function updateContactState(sim, tick, cooldownTicks) {
   for (let i = 0, n = b3.getNumContactEndEvents(sim.events); i < n; i += 1) {
     b3.getContactEndEventAt(sim.touch, sim.events, i);
     const pair = dynamicPairFromEvent(sim, sim.touch.shapeIdA, sim.touch.shapeIdB);
-    if (pair) sim.activePairs.delete(pair.key);
+    if (pair) {
+      sim.activePairs.delete(pair.key);
+      sim.collisionCooldownUntil.set(pair.a, tick + cooldownTicks);
+      sim.collisionCooldownUntil.set(pair.b, tick + cooldownTicks);
+    }
   }
 
   for (let i = 0, n = b3.getNumContactHitEvents(sim.events); i < n; i += 1) {
@@ -361,18 +367,24 @@ function applyForecastCorrection(sim, latestSnapshot, tick, params, metrics) {
       target.linearVelocity[1] - local.linearVelocity[1],
       target.linearVelocity[2] - local.linearVelocity[2],
     ];
-    let linearAccel = [
+    const positionErrorLength = vecLength(posError);
+    const velocityErrorLength = vecLength(velError);
+    const linearWithinDeadzone = positionErrorLength < params.positionDeadzone && velocityErrorLength < params.velocityDeadzone;
+    let linearAccel = linearWithinDeadzone ? [0, 0, 0] : [
       posError[0] * omegaP + velError[0] * omegaD,
       posError[1] * omegaP + velError[1] * omegaD,
       posError[2] * omegaP + velError[2] * omegaD,
     ];
     linearAccel = clampVector(linearAccel, params.maxLinearAccel * scale);
-    metrics.correctionAccel.push(vecLength(linearAccel));
-    b3.b3Body_SetLinearVelocity(record.body, [
-      local.linearVelocity[0] + linearAccel[0] * DT,
-      local.linearVelocity[1] + linearAccel[1] * DT,
-      local.linearVelocity[2] + linearAccel[2] * DT,
-    ]);
+    const linearAccelLength = vecLength(linearAccel);
+    metrics.correctionAccel.push(linearAccelLength);
+    if (linearAccelLength > EPS) {
+      b3.b3Body_SetLinearVelocity(record.body, [
+        local.linearVelocity[0] + linearAccel[0] * DT,
+        local.linearVelocity[1] + linearAccel[1] * DT,
+        local.linearVelocity[2] + linearAccel[2] * DT,
+      ]);
+    }
 
     if (record.kind === 'player') continue;
     const rotationError = rotationVectorToTarget(local.rotation, target.rotation);
@@ -381,17 +393,20 @@ function applyForecastCorrection(sim, latestSnapshot, tick, params, metrics) {
       target.angularVelocity[1] - local.angularVelocity[1],
       target.angularVelocity[2] - local.angularVelocity[2],
     ];
-    let angularAccel = [
+    const angularWithinDeadzone = vecLength(rotationError) < params.angleDeadzone && vecLength(angularVelError) < params.angularVelocityDeadzone;
+    let angularAccel = angularWithinDeadzone ? [0, 0, 0] : [
       rotationError[0] * omegaP + angularVelError[0] * omegaD,
       rotationError[1] * omegaP + angularVelError[1] * omegaD,
       rotationError[2] * omegaP + angularVelError[2] * omegaD,
     ];
     angularAccel = clampVector(angularAccel, params.maxAngularAccel * scale);
-    b3.b3Body_SetAngularVelocity(record.body, [
-      local.angularVelocity[0] + angularAccel[0] * DT,
-      local.angularVelocity[1] + angularAccel[1] * DT,
-      local.angularVelocity[2] + angularAccel[2] * DT,
-    ]);
+    if (vecLength(angularAccel) > EPS) {
+      b3.b3Body_SetAngularVelocity(record.body, [
+        local.angularVelocity[0] + angularAccel[0] * DT,
+        local.angularVelocity[1] + angularAccel[1] * DT,
+        local.angularVelocity[2] + angularAccel[2] * DT,
+      ]);
+    }
   }
 }
 
@@ -455,7 +470,7 @@ const SCENARIOS = {
 };
 
 function inputChanged(a, b) {
-  return !a || Math.abs(a[0] - b[0]) > 1e-9 || Math.abs(a[1] - b[1]) > 1e-9;
+  return !b || Math.abs(a[0] - b[0]) > 1e-9 || Math.abs(a[1] - b[1]) > 1e-9;
 }
 
 function enqueue(queue, deliverAtMs, payload) {
@@ -573,7 +588,7 @@ function aggregateResults(results) {
 
 function candidateGrid(ciMode) {
   if (ciMode) {
-    return [{ tau: 0.28, maxLinearAccel: 24, maxAngularAccel: 32, collisionScale: 0.2, rampMs: 220 }];
+    return [{ tau: 0.28, maxLinearAccel: 24, maxAngularAccel: 32, collisionScale: 0.2, rampMs: 220, positionDeadzone: 0.015, velocityDeadzone: 0.05, angleDeadzone: 0.02, angularVelocityDeadzone: 0.05 }];
   }
   const candidates = [];
   for (const tau of [0.18, 0.28, 0.4]) {
@@ -586,6 +601,10 @@ function candidateGrid(ciMode) {
             maxAngularAccel: maxLinearAccel * 1.35,
             collisionScale,
             rampMs,
+            positionDeadzone: 0.015,
+            velocityDeadzone: 0.05,
+            angleDeadzone: 0.02,
+            angularVelocityDeadzone: 0.05,
           });
         }
       }
@@ -631,7 +650,7 @@ for (let index = 0; index < candidates.length; index += 1) {
         scenarioName: scenarioNames[s],
         network: networks[n],
         params,
-        seed: 1000 + index * 97 + n * 17 + s,
+        seed: 1000 + n * 17 + s,
       });
       results.push({ network: networks[n].name, scenario: scenarioNames[s], summary });
     }
@@ -668,7 +687,7 @@ if (!ciMode) {
         scenarioName,
         network: { name: `${snapshotHz}hz`, oneWayMs: 63, jitterMs: 6, snapshotHz },
         params: best.params,
-        seed: 9000 + snapshotHz * 31 + s,
+        seed: 9000 + s,
       }),
     }));
     const aggregate = aggregateResults(results);

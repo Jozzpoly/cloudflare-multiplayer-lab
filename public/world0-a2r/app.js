@@ -1,4 +1,5 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js";
+import { FixedStepClock } from "./fixed-step-clock.js";
 
 const CLIENT_REVISION = "ws0-a2r-local-box3d-v1";
 const BOX3D_URL = "https://cdn.jsdelivr.net/npm/box3d.js@0.1.1/dist/box3d.inline.mjs";
@@ -9,7 +10,6 @@ const SAMPLE_LIMIT = 180;
 const PLAYER_ACCELERATION = 28;
 const PLAYER_DECELERATION = 36;
 const FIXED_DT = 1 / 60;
-const MAX_LOCAL_STEPS_PER_FRAME = 8;
 const SETTLED_AFTER_MS = 500;
 const DESYNC_WARN_DISTANCE = 0.5;
 const DESYNC_WARN_SNAPSHOTS = 3;
@@ -140,10 +140,10 @@ const local = {
   playerBody: null,
   propBodies: new Map(),
   initialized: false,
-  accumulator: 0,
   steps: 0,
   droppedSteps: 0,
 };
+const localClock = new FixedStepClock({ stepSeconds: FIXED_DT, maxStepsPerAdvance: 8 });
 
 const vec3Scratch = [0, 0, 0];
 const quatScratch = [0, 0, 0, 1];
@@ -238,7 +238,7 @@ function destroyLocalWorld() {
   local.playerBody = null;
   local.propBodies.clear();
   local.initialized = false;
-  local.accumulator = 0;
+  localClock.reset();
   local.steps = 0;
   local.droppedSteps = 0;
   settledDesyncStreak = 0;
@@ -312,7 +312,6 @@ function seedLocalWorld(state) {
   }
   local.playerBody = playerBody;
   local.initialized = true;
-  local.accumulator = 0;
 
   if (!selfMesh) selfMesh = createPlayerMesh();
   syncMeshesFromPhysics();
@@ -349,20 +348,12 @@ function applyLocalPlayerInput() {
 
 function stepLocalPhysics(frameDt) {
   if (!local.initialized || !local.world || unsupportedMultiplayer) return;
-  local.accumulator += Math.min(frameDt, 0.25);
-  let steps = 0;
-  while (local.accumulator + EPS >= FIXED_DT && steps < MAX_LOCAL_STEPS_PER_FRAME) {
+  localClock.advance(frameDt, () => {
     applyLocalPlayerInput();
     b3.b3World_Step(local.world, FIXED_DT, simulation.substeps || 4);
-    local.steps += 1;
-    steps += 1;
-    local.accumulator -= FIXED_DT;
-  }
-  if (local.accumulator >= FIXED_DT) {
-    const dropped = Math.floor(local.accumulator / FIXED_DT);
-    local.droppedSteps += dropped;
-    local.accumulator -= dropped * FIXED_DT;
-  }
+  });
+  local.steps = localClock.totalSteps;
+  local.droppedSteps = localClock.totalDroppedSteps;
 }
 
 function bodyPosition(body) {
@@ -622,7 +613,7 @@ window.addEventListener("resize", () => {
 
 function animate(now) {
   requestAnimationFrame(animate);
-  const dt = Math.min(0.1, Math.max(0, (now - lastFrameAt) / 1000));
+  const dt = Math.max(0, (now - lastFrameAt) / 1000);
   lastFrameAt = now;
   frameCounter += 1;
   const fpsElapsed = now - frameCounterStartedAt;

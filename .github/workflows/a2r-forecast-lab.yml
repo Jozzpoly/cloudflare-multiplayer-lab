@@ -38,6 +38,9 @@ jobs:
       - name: Run temporal truth gate
         run: node scripts/a2r-temporal-truth-lab.mjs
 
+      - name: Run stall/input-transition falsifier
+        run: node scripts/a2r-stall-input-lab.mjs
+
       - name: Run owner prediction lab
         run: node scripts/a2r-owner-lab.mjs
 

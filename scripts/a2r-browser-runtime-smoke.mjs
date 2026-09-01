@@ -123,6 +123,8 @@ async function browserState(sessionId) {
 let wrangler = null;
 let chromedriver = null;
 let sessionId = null;
+let lastLiveState = null;
+let lastExercisedState = null;
 
 try {
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
@@ -204,10 +206,12 @@ try {
 
   const live = await waitFor("A2R local WebSocket + physics startup", async () => {
     const state = await browserState(sessionId);
+    lastLiveState = state;
     const match = /^(\d+) steps · (\d+) dropped$/.exec(state?.local || "");
     if (state?.net === "live · local physics" && match && Number(match[1]) >= 30) return state;
     return false;
   }, 20_000);
+  console.log(`A2R browser live checkpoint · ${JSON.stringify(live)}`);
 
   await driverRequest(`/session/${sessionId}/actions`, {
     method: "POST",
@@ -227,6 +231,7 @@ try {
 
   const exercised = await waitFor("A2R exercised browser state", async () => {
     const state = await browserState(sessionId);
+    lastExercisedState = state;
     const localMatch = /^(\d+) steps · (\d+) dropped$/.exec(state?.local || "");
     const ackMatch = /^(\d+) \/ (\d+)$/.exec(state?.ack || "");
     if (!localMatch || !ackMatch) return false;
@@ -241,6 +246,8 @@ try {
     `A2R browser runtime smoke PASS · ${booted.bootStatus} · ${live.net} · ${exercised.local} · ack ${exercised.ack} · raw player Δ ${exercised.playerDelta} · phase ${exercised.phase}`,
   );
 } catch (error) {
+  if (lastLiveState) console.error(`\n--- last live browser state ---\n${JSON.stringify(lastLiveState)}`);
+  if (lastExercisedState) console.error(`\n--- last exercised browser state ---\n${JSON.stringify(lastExercisedState)}`);
   if (wrangler?.logs?.length) console.error(`\n--- wrangler tail ---\n${wrangler.logs.join("\n")}`);
   if (chromedriver?.logs?.length) console.error(`\n--- chromedriver tail ---\n${chromedriver.logs.join("\n")}`);
   throw error;

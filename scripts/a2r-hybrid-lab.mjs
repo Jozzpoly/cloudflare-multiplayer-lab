@@ -184,9 +184,20 @@ function aggregate(results){const out={};for(const k of Object.keys(results[0]))
 function score(s){return s.intentPlayerP95*3+s.intentPropP95*2+s.contactPlayerP95*3+s.contactPropP95*2+s.settledPlayerP95*2+s.settledPropP95*2+s.finalPlayer*2+s.finalProp*2+s.ownerAccelP95*.01+s.ownerJerkP95*.0005+s.sharedAccelP95*.005;}
 function f(v){return Number(v).toFixed(3);}
 
-const network={oneWayMs:63,jitterMs:6,snapshotHz:10};
-const ranked=POLICIES.map(policy=>{const details=Object.entries(SCENARIOS).map(([name,scenario],i)=>({name,result:run(scenario,policy,network,7300+i)})),summary=aggregate(details.map(d=>d.result));return{policy,details,summary,score:score(summary)};}).sort((a,b)=>a.score-b.score);
-console.log('\nA2R full-world hybrid lab — observed A2 latency');
+const NETWORKS=[
+  {name:'a2-observed',oneWayMs:63,jitterMs:6,snapshotHz:10},
+  {name:'jittery',oneWayMs:63,jitterMs:25,snapshotHz:10},
+  {name:'hostile',oneWayMs:100,jitterMs:20,snapshotHz:10},
+];
+const ranked=POLICIES.map(policy=>{
+  const details=[];
+  for(let n=0;n<NETWORKS.length;n++)for(const [name,scenario] of Object.entries(SCENARIOS)){
+    details.push({network:NETWORKS[n].name,name,result:run(scenario,policy,NETWORKS[n],7300+n*101+Object.keys(SCENARIOS).indexOf(name))});
+  }
+  const summary=aggregate(details.map(d=>d.result));
+  return{policy,details,summary,score:score(summary)};
+}).sort((a,b)=>a.score-b.score);
+console.log('\nA2R full-world hybrid stress lab');
 for(const e of ranked){const s=e.summary;console.log(`  ${e.policy.name} | score ${f(e.score)} | intent player/prop ${f(s.intentPlayerP95)}/${f(s.intentPropP95)} | contact ${f(s.contactPlayerP95)}/${f(s.contactPropP95)} | settled ${f(s.settledPlayerP95)}/${f(s.settledPropP95)} | final ${f(s.finalPlayer)}/${f(s.finalProp)} | owner jerk ${f(s.ownerJerkP95)} | shared accel ${f(s.sharedAccelP95)} | contactTicks ${s.contactTicks}`);}
-console.log('\nBest detail:');for(const d of ranked[0].details)console.log(`  ${d.name}: ${JSON.stringify(d.result)}`);
+console.log('\nBest detail:');for(const d of ranked[0].details)console.log(`  ${d.network}/${d.name}: ${JSON.stringify(d.result)}`);
 if(!ranked.every(e=>Object.values(e.summary).every(Number.isFinite)))throw new Error('non-finite hybrid lab result');

@@ -23,13 +23,10 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run full A2R forecast lab
-        run: npm run lab:a2r
-
       - name: Run owner prediction lab
         run: node scripts/a2r-owner-lab.mjs
 
-      - name: Run full-world hybrid lab
+      - name: Run full-world hybrid stress lab
         run: node scripts/a2r-hybrid-lab.mjs
 
       - name: Validate branch

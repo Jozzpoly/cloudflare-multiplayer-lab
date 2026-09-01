@@ -29,6 +29,9 @@ jobs:
       - name: Verify browser fixed-step clock
         run: node scripts/a2r-fixed-step-clock-smoke.mjs
 
+      - name: Run real local browser runtime smoke
+        run: node scripts/a2r-browser-runtime-smoke.mjs
+
       - name: Run owner prediction lab
         run: node scripts/a2r-owner-lab.mjs
 

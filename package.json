@@ -5,14 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --env staging",
-    "deploy": "wrangler deploy",
+    "deploy": "npm run deploy:staging",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy",
     "generate:types": "wrangler types --env staging",
     "typecheck": "npm run generate:types && tsc --noEmit",
     "check:client": "node --check public/app.js && node --check public/world0/app.js && node --check public/world0-a2r/fixed-step-clock.js && node --check public/world0-a2r/app.js",
     "lab:a2r": "node scripts/a2r-forecast-lab.mjs",
     "check:a2r": "node scripts/a2r-forecast-lab.mjs --ci",
+    "validate:staging-contract": "node scripts/validate-staging-contract.mjs",
     "validate:worker": "wrangler deploy --dry-run --env staging --outdir .wrangler/dry-run",
-    "check": "npm run check:client && npm run check:a2r && npm run typecheck && npm run validate:worker"
+    "check": "npm run validate:staging-contract && npm run check:client && npm run check:a2r && npm run typecheck && npm run validate:worker"
   },
   "dependencies": {
     "box3d.js": "0.1.1"

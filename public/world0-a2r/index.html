@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>World Slice 0 · A2R local physics</title>
+  <link rel="stylesheet" href="../world0/styles.css" />
+</head>
+<body>
+  <main id="viewport" aria-label="World Slice 0 A2R 3D viewport"></main>
+
+  <section id="boot" class="boot-card">
+    <div class="eyebrow">WORLD SLICE 0 · A2R</div>
+    <h1>Deterministic local physics candidate</h1>
+    <p>The browser runs the same pinned Box3D simulation as the server. Authoritative snapshots are measured, but they do <strong>not</strong> continuously pull the local player or crates.</p>
+    <label>
+      Callsign
+      <input id="callsign" maxlength="24" autocomplete="off" spellcheck="false" />
+    </label>
+    <button id="enter" type="button" disabled>Loading physics…</button>
+    <small id="boot-status">initializing · single-player A2R gate</small>
+  </section>
+
+  <aside id="hud" class="hud hidden">
+    <div class="hud-title">
+      <span>WS0 A2R · LOCAL BOX3D</span>
+      <span id="net" class="net">offline</span>
+    </div>
+    <div class="metrics">
+      <div><span>RTT p50 / p95</span><strong id="m-rtt">—</strong></div>
+      <div><span>Authority Δ player p50 / p95</span><strong id="m-player-delta">—</strong></div>
+      <div><span>Authority Δ max prop p50 / p95</span><strong id="m-prop-delta">—</strong></div>
+      <div><span>Settled Δ p95 player / prop</span><strong id="m-settled">—</strong></div>
+      <div><span>Snapshot gap p50 / p95</span><strong id="m-gap">—</strong></div>
+      <div><span>Snapshot age</span><strong id="m-age">—</strong></div>
+      <div><span>Server tick ratio</span><strong id="m-tick">—</strong></div>
+      <div><span>Dropped / catch-up</span><strong id="m-scheduler">—</strong></div>
+      <div><span>Input ack</span><strong id="m-ack">—</strong></div>
+      <div><span>Local physics</span><strong id="m-local">—</strong></div>
+      <div><span>FPS</span><strong id="m-fps">—</strong></div>
+    </div>
+    <div class="baseline">SINGLE PLAYER · 60 HZ / 4 SUBSTEPS · NO LIVE RECONCILIATION</div>
+  </aside>
+
+  <div id="controls" class="controls hidden">WASD / ARROWS · PUSH CRATES · HIT WALLS · REVERSE HARD</div>
+  <div id="notice" class="notice hidden"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

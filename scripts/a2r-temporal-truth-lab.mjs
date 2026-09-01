@@ -138,20 +138,44 @@ function finiteStates(states) {
 const SCENARIOS = {
   free: {
     durationSeconds: 5,
+    activeFromSeconds: 0,
     activeUntilSeconds: 1.0,
-    input(localSeconds) { return localSeconds < 1.0 ? [0, -1] : [0, 0]; },
+    input(t) { return t < 1.0 ? [0, -1] : [0, 0]; },
   },
   push: {
     durationSeconds: 7,
+    activeFromSeconds: 0,
     activeUntilSeconds: 2.2,
-    input(localSeconds) { return localSeconds < 2.2 ? [1, 0] : [0, 0]; },
+    input(t) { return t < 2.2 ? [1, 0] : [0, 0]; },
   },
   reversal: {
     durationSeconds: 8,
+    activeFromSeconds: 0,
     activeUntilSeconds: 3.6,
-    input(localSeconds) {
-      if (localSeconds < 1.9) return [1, 0];
-      if (localSeconds < 3.6) return [-1, 0];
+    input(t) {
+      if (t < 1.9) return [1, 0];
+      if (t < 3.6) return [-1, 0];
+      return [0, 0];
+    },
+  },
+  "delayed-push": {
+    durationSeconds: 8.5,
+    activeFromSeconds: 1.5,
+    activeUntilSeconds: 3.7,
+    input(t) {
+      if (t < 1.5) return [0, 0];
+      if (t < 3.7) return [1, 0];
+      return [0, 0];
+    },
+  },
+  "delayed-reversal": {
+    durationSeconds: 9.5,
+    activeFromSeconds: 1.5,
+    activeUntilSeconds: 5.1,
+    input(t) {
+      if (t < 1.5) return [0, 0];
+      if (t < 3.4) return [1, 0];
+      if (t < 5.1) return [-1, 0];
       return [0, 0];
     },
   },
@@ -179,6 +203,7 @@ function run(scenario, network, seed) {
 
   const welcomeDelay = delayTicks(network.oneWayMs, network.jitterMs, rng);
   const maxWallTicks = Math.round(scenario.durationSeconds * HZ) + welcomeDelay;
+  const activeFromLocalTick = Math.round(scenario.activeFromSeconds * HZ);
   const activeUntilLocalTick = Math.round(scenario.activeUntilSeconds * HZ);
 
   try {
@@ -214,15 +239,11 @@ function run(scenario, network, seed) {
       if (!finiteStates(clientState)) throw new Error(`non-finite client at local tick ${localTick}`);
       clientHistory.push(clientState);
       clientMeta.push({
-        active: localTick < activeUntilLocalTick,
+        active: localTick >= activeFromLocalTick && localTick < activeUntilLocalTick,
         contact: playerNearAnyProp(clientState),
       });
     }
 
-    // Both histories use the original seed as index 0. A history shift thus
-    // includes the welcome/start lag. At a given wall time server-now is already
-    // welcomeDelay ticks ahead of the client history index, so the prediction
-    // lead relative to server-now is bestShift - welcomeDelay.
     const maxShift = Math.min(20, authorityHistory.length - clientHistory.length + welcomeDelay + 12);
     const candidates = [];
     for (let shift = 0; shift <= maxShift; shift += 1) {
@@ -260,9 +281,11 @@ function run(scenario, network, seed) {
       const wallAuthorityTick = localTick + welcomeDelay;
       if (wallAuthorityTick >= authorityHistory.length) break;
       const c = clientHistory[localTick], a = authorityHistory[wallAuthorityTick];
-      wallPlayer.push(distanceXZ(c[PLAYER].position, a[PLAYER].position));
-      wallProp.push(maxPropDistance(c, a));
-      if (!clientMeta[localTick]?.active && localTick > activeUntilLocalTick + Math.round(0.8 * HZ)) {
+      if (clientMeta[localTick]?.active) {
+        wallPlayer.push(distanceXZ(c[PLAYER].position, a[PLAYER].position));
+        wallProp.push(maxPropDistance(c, a));
+      }
+      if (localTick > activeUntilLocalTick + Math.round(0.8 * HZ)) {
         settledPlayer.push(distanceXZ(c[PLAYER].position, a[PLAYER].position));
         settledProp.push(maxPropDistance(c, a));
       }
@@ -288,7 +311,7 @@ function run(scenario, network, seed) {
       settledWallPropP95: percentile(settledProp, 0.95),
       finalWallPlayer: distanceXZ(finalClient[PLAYER].position, finalAuthority[PLAYER].position),
       finalWallProp: maxPropDistance(finalClient, finalAuthority),
-      contactSamples: clientMeta.filter((m) => m.contact).length,
+      contactSamples: clientMeta.filter((m) => m.active && m.contact).length,
     };
   } finally {
     destroy(authority);
@@ -298,9 +321,10 @@ function run(scenario, network, seed) {
 
 function f(value) { return Number(value).toFixed(3); }
 const results = [];
+const scenarioNames = Object.keys(SCENARIOS);
 for (let n = 0; n < NETWORKS.length; n += 1) {
   for (const [name, scenario] of Object.entries(SCENARIOS)) {
-    const result = run(scenario, NETWORKS[n], 9100 + n * 101 + Object.keys(SCENARIOS).indexOf(name));
+    const result = run(scenario, NETWORKS[n], 9100 + n * 101 + scenarioNames.indexOf(name));
     results.push({ network: NETWORKS[n].name, scenario: name, result });
   }
 }
@@ -319,4 +343,11 @@ if (!results.every((entry) => Object.values(entry.result).every(Number.isFinite)
 }
 if (!results.some((entry) => entry.result.contactSamples > 0)) {
   throw new Error("temporal truth gate did not exercise any player-prop contact");
+}
+for (const network of NETWORKS) {
+  const immediate = results.find((entry) => entry.network === network.name && entry.scenario === "push").result;
+  const delayed = results.find((entry) => entry.network === network.name && entry.scenario === "delayed-push").result;
+  if (Math.abs(immediate.predictionLeadVsServerNowTicks - delayed.predictionLeadVsServerNowTicks) > 2) {
+    throw new Error(`${network.name} prediction lead changed materially after idle startup: ${immediate.predictionLeadVsServerNowTicks}t -> ${delayed.predictionLeadVsServerNowTicks}t`);
+  }
 }

@@ -32,6 +32,9 @@ jobs:
       - name: Run real local browser runtime smoke
         run: node scripts/a2r-browser-runtime-smoke.mjs
 
+      - name: Run browser contact proxy smoke
+        run: node scripts/a2r-browser-contact-smoke.mjs
+
       - name: Run temporal truth gate
         run: node scripts/a2r-temporal-truth-lab.mjs
 

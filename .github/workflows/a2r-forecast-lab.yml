@@ -23,6 +23,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Verify browser Box3D dependency
+        run: node scripts/a2r-browser-dependency-smoke.mjs
+
       - name: Run owner prediction lab
         run: node scripts/a2r-owner-lab.mjs
 

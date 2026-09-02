@@ -7,7 +7,7 @@ const PLAYER_SPEED = 5.2;
 const PLAYER_ACCELERATION = 28;
 const PLAYER_DECELERATION = 36;
 const WARMUP_TICKS = 120;
-const RUN_TICKS = 300;
+const RUN_TICKS = 360;
 const A_ID = 'player-a';
 const B_ID = 'player-b';
 const PROP_ID = 'prop-0';
@@ -177,37 +177,61 @@ function maxBodyError(a, b) {
 
 function compareTraces(authorityTrace, observerTrace, shiftTicks) {
   const ids = [A_ID, B_ID, PROP_ID];
-  const sameTime = Object.fromEntries(ids.map((id) => [id, 0]));
-  const phaseAligned = Object.fromEntries(ids.map((id) => [id, 0]));
+  const sameTimeMax = Object.fromEntries(ids.map((id) => [id, 0]));
+  const phaseAlignedMax = Object.fromEntries(ids.map((id) => [id, 0]));
+  const firstDivergenceTick = Object.fromEntries(ids.map((id) => [id, null]));
 
   for (let tick = 0; tick < authorityTrace.length; tick += 1) {
     for (const id of ids) {
-      sameTime[id] = Math.max(sameTime[id], maxBodyError(authorityTrace[tick][id], observerTrace[tick][id]));
+      const error = maxBodyError(authorityTrace[tick][id], observerTrace[tick][id]);
+      sameTimeMax[id] = Math.max(sameTimeMax[id], error);
+      if (firstDivergenceTick[id] === null && error > 1e-7) firstDivergenceTick[id] = tick;
     }
   }
 
   for (let tick = 0; tick + shiftTicks < observerTrace.length; tick += 1) {
     for (const id of ids) {
-      phaseAligned[id] = Math.max(
-        phaseAligned[id],
+      phaseAlignedMax[id] = Math.max(
+        phaseAlignedMax[id],
         maxBodyError(authorityTrace[tick][id], observerTrace[tick + shiftTicks][id]),
       );
     }
   }
 
-  const authorityInitial = authorityTrace[0];
-  const firstMotion = {};
-  for (const id of [B_ID, PROP_ID]) {
-    const threshold = 1e-4;
-    const aTick = authorityTrace.findIndex((sample) => vecDistance(sample[id].position, authorityInitial[id].position) > threshold);
-    const oTick = observerTrace.findIndex((sample) => vecDistance(sample[id].position, authorityInitial[id].position) > threshold);
-    firstMotion[id] = { authorityTick: aTick, observerTick: oTick, deltaTicks: aTick >= 0 && oTick >= 0 ? oTick - aTick : null };
-  }
+  const finalError = {};
+  const authorityFinal = authorityTrace.at(-1);
+  const observerFinal = observerTrace.at(-1);
+  for (const id of ids) finalError[id] = bodyError(authorityFinal[id], observerFinal[id]);
 
-  return { sameTime, phaseAligned, firstMotion };
+  return {
+    sameTimeMax,
+    phaseAlignedMax,
+    firstDivergenceTick,
+    finalError,
+    authorityFinal,
+    observerFinal,
+  };
 }
 
-function run(delayTicks) {
+const SCENARIOS = {
+  stationary: {
+    label: 'stationary-B phase control',
+    begin() {},
+  },
+  passiveVerticalB: {
+    label: 'passive solver-owned B vertical forcing',
+    begin(sim) {
+      const bState = state(sim.bodies.get(B_ID));
+      b3.b3Body_SetLinearVelocity(sim.bodies.get(B_ID), [
+        bState.linearVelocity[0],
+        6,
+        bState.linearVelocity[2],
+      ]);
+    },
+  },
+};
+
+function run(delayTicks, scenario) {
   const authority = createWorld();
   const observer = createWorld();
   try {
@@ -216,13 +240,14 @@ function run(delayTicks) {
       step(observer, [0, 0]);
     }
 
+    scenario.begin(authority);
+    scenario.begin(observer);
+
     const authorityTrace = [];
     const observerTrace = [];
     for (let tick = 0; tick < RUN_TICKS; tick += 1) {
-      const authorityInput = inputAt(tick);
-      const observerInput = inputAt(tick - delayTicks);
-      step(authority, authorityInput);
-      step(observer, observerInput);
+      step(authority, inputAt(tick));
+      step(observer, inputAt(tick - delayTicks));
       authorityTrace.push(snapshot(authority));
       observerTrace.push(snapshot(observer));
     }
@@ -235,23 +260,32 @@ function run(delayTicks) {
 }
 
 const delays = [0, 3, 6];
-const results = delays.map((delayTicks) => ({
-  delayTicks,
-  delayMs: delayTicks * DT * 1000,
-  ...run(delayTicks),
-}));
+const results = Object.fromEntries(Object.entries(SCENARIOS).map(([scenarioName, scenario]) => [
+  scenarioName,
+  delays.map((delayTicks) => ({
+    delayTicks,
+    delayMs: delayTicks * DT * 1000,
+    ...run(delayTicks, scenario),
+  })),
+]));
 
-const control = results[0];
-const controlMax = Math.max(
-  ...Object.values(control.sameTime),
-  ...Object.values(control.phaseAligned),
+for (const [scenarioName, scenarioResults] of Object.entries(results)) {
+  const control = scenarioResults[0];
+  const controlMax = Math.max(...Object.values(control.sameTimeMax));
+  if (controlMax > 1e-8) {
+    throw new Error(`RC0 invalid: ${scenarioName} 0 ms control diverged (${controlMax})`);
+  }
+}
+
+const stationaryPhaseResidual = Math.max(
+  ...results.stationary.slice(1).flatMap((result) => Object.values(result.phaseAlignedMax)),
 );
-if (controlMax > 1e-8) {
-  throw new Error(`RC0 invalid: 0 ms control diverged (${controlMax})`);
+if (stationaryPhaseResidual > 1e-8) {
+  throw new Error(`RC0 invalid: stationary phase control did not collapse under known delay (${stationaryPhaseResidual})`);
 }
 
 console.log(JSON.stringify({
-  experiment: 'RC0 stationary-B phase control',
+  experiment: 'RC0 one-sided causal contention',
   substrate: {
     box3d: '0.1.1',
     simulationHz: SIM_HZ,
@@ -259,11 +293,13 @@ console.log(JSON.stringify({
     playerSpeed: PLAYER_SPEED,
     playerAcceleration: PLAYER_ACCELERATION,
     playerDeceleration: PLAYER_DECELERATION,
+    note: 'B receives zero horizontal input in every scenario; passiveVerticalB changes only solver-owned Y velocity once after warmup.',
   },
   geometry: {
     playerA: [-2.2, 0.82, 0],
     prop: [0, 0.46, 0],
     playerB: [1.45, 0.82, 0],
   },
+  scenarioLabels: Object.fromEntries(Object.entries(SCENARIOS).map(([name, scenario]) => [name, scenario.label])),
   results,
 }, null, 2));

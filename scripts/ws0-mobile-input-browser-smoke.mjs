@@ -5,12 +5,17 @@ import { spawn, spawnSync } from "node:child_process";
 const HOST = "127.0.0.1";
 const WORKER_PORT = 8787;
 const DRIVER_PORT = 9515;
-const BASE_URL = `http://${HOST}:${WORKER_PORT}`;
+const LOCAL_BASE_URL = `http://${HOST}:${WORKER_PORT}`;
+const EXTERNAL_BASE_URL = process.env.WS0_BASE_URL?.trim().replace(/\/+$/, "") || null;
+const BASE_URL = EXTERNAL_BASE_URL || LOCAL_BASE_URL;
+const PRODUCTION_URL = process.env.WS0_PRODUCTION_URL?.trim().replace(/\/+$/, "") || null;
 const DRIVER_URL = `http://${HOST}:${DRIVER_PORT}`;
 const PROCESS_LOG_LIMIT = 180;
 const CLEAN_BASELINE_PROP_DELTA = 0.08;
 const MIN_NEW_AUTHORITY_PROP_MOTION = 0.5;
 const MAX_SETTLED_PASSIVE_PROP_DELTA = 0.08;
+const EXPECTED_CLIENT_REVISION = "ws0-a2r-two-client-intent-client-v1";
+const EXPECTED_TOUCH_REVISION = "ws0-human-touch-dpad-v1";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function appendLog(target, chunk) {
@@ -73,6 +78,33 @@ function findExecutable(candidates) {
   return null;
 }
 
+async function fetchCandidate(path) {
+  const response = await fetch(`${BASE_URL}${path}`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+  return { response, text: await response.text() };
+}
+
+async function candidateReady() {
+  const [page, app, touch, clock, ping] = await Promise.all([
+    fetchCandidate("/world0-two-client/"),
+    fetchCandidate("/world0-two-client/app.js"),
+    fetchCandidate("/world0-two-client/touch-controls.js"),
+    fetchCandidate("/world0-a2r/fixed-step-clock.js"),
+    fetchCandidate("/api/ping"),
+  ]);
+  return page.response.ok && app.response.ok && touch.response.ok && clock.response.ok && ping.response.ok &&
+    app.text.includes(EXPECTED_CLIENT_REVISION) && touch.text.includes(EXPECTED_TOUCH_REVISION);
+}
+
+async function assertProductionIsolation(label) {
+  if (!PRODUCTION_URL) return;
+  const response = await fetch(`${PRODUCTION_URL}/world0-two-client/touch-controls.js`, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(8000),
+  });
+  if (response.status !== 404) throw new Error(`${label}: production touch canary returned ${response.status}, expected 404`);
+  console.log(`${label}: production touch canary 404`);
+}
+
 async function driver(path, { method = "GET", body } = {}) {
   const response = await fetch(`${DRIVER_URL}${path}`, {
     method,
@@ -126,7 +158,7 @@ async function bootAndEnter(sessionId, callsign, { touch = false } = {}) {
   await driver(`/session/${sessionId}/url`, { method: "POST", body: { url: `${BASE_URL}/world0-two-client/${suffix}` } });
   await waitFor(`${callsign} bootstrap`, async () => execute(sessionId, `
     const status = document.querySelector('#boot-status')?.textContent || '';
-    return status.includes('ws0-a2r-two-client-intent-client-v1') && document.querySelector('#enter')?.disabled === false;
+    return status.includes(${JSON.stringify(EXPECTED_CLIENT_REVISION)}) && document.querySelector('#enter')?.disabled === false;
   `), 25_000);
   await execute(sessionId, `
     const input = document.querySelector('#callsign');
@@ -137,7 +169,8 @@ async function bootAndEnter(sessionId, callsign, { touch = false } = {}) {
   if (touch) {
     await waitFor(`${callsign} touch controls`, async () => {
       const snapshot = await touchState(sessionId);
-      return snapshot?.touchCapable === true && snapshot?.forced === true && snapshot?.visible === true ? snapshot : false;
+      return snapshot?.revision === EXPECTED_TOUCH_REVISION && snapshot?.touchCapable === true &&
+        snapshot?.forced === true && snapshot?.visible === true ? snapshot : false;
     }, 10_000);
   }
 }
@@ -181,17 +214,20 @@ let lastDesktop = null;
 let lastMobile = null;
 let lastTouch = null;
 try {
-  const npx = process.platform === "win32" ? "npx.cmd" : "npx";
-  wrangler = startManaged(npx, ["wrangler", "dev", "--env", "staging", "--ip", HOST, "--port", String(WORKER_PORT)], "wrangler");
-  await waitFor("local Wrangler", async () => {
-    const response = await fetch(`${BASE_URL}/api/ping`);
-    return response.ok && (await response.json())?.ok === true;
-  });
-
-  for (const path of ["/world0-two-client/", "/world0-two-client/app.js", "/world0-two-client/touch-controls.js", "/world0-a2r/fixed-step-clock.js"]) {
-    const response = await fetch(`${BASE_URL}${path}`);
-    if (!response.ok) throw new Error(`human mobile asset ${path} returned ${response.status}`);
+  if (!EXTERNAL_BASE_URL) {
+    const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+    wrangler = startManaged(npx, ["wrangler", "dev", "--env", "staging", "--ip", HOST, "--port", String(WORKER_PORT)], "wrangler");
+    await waitFor("local Wrangler", async () => {
+      const response = await fetch(`${BASE_URL}/api/ping`);
+      return response.ok && (await response.json())?.ok === true;
+    });
+  } else {
+    await waitFor("external desktop + mobile candidate assets", candidateReady, 120_000, 2000);
+    console.log(`EXTERNAL CANDIDATE READY · ${BASE_URL}`);
   }
+
+  if (!(await candidateReady())) throw new Error(`candidate assets/revisions do not match at ${BASE_URL}`);
+  await assertProductionIsolation("before desktop + mobile smoke");
 
   const chromedriverFromEnv = process.env.CHROMEWEBDRIVER
     ? join(process.env.CHROMEWEBDRIVER, process.platform === "win32" ? "chromedriver.exe" : "chromedriver")
@@ -221,7 +257,7 @@ try {
       s.hasRemoteBody === true && s.localSteps >= 45 && s.localDroppedSteps === 0 && s.peerInputCount > 0 &&
       Number.isFinite(s.divergence?.prop) && s.divergence.prop <= CLEAN_BASELINE_PROP_DELTA;
     return ready(sd) && ready(sm) && st?.visible === true ? { sd, sm, st } : false;
-  }, 25_000);
+  }, 35_000);
 
   const beforePeerDesktop = baseline.sd.peerInputCount;
   const beforeAckMobile = baseline.sm.latestAck;
@@ -233,7 +269,7 @@ try {
     baseline.sd.telemetry?.droppedTicks ?? 0,
     baseline.sm.telemetry?.droppedTicks ?? 0,
   );
-  console.log(`DESKTOP + MOBILE CLEAN BASELINE\nD ${JSON.stringify(baseline.sd)}\nM ${JSON.stringify(baseline.sm)}\nT ${JSON.stringify(baseline.st)}`);
+  console.log(`DESKTOP + MOBILE CLEAN BASELINE · ${EXTERNAL_BASE_URL ? "external" : "local"}\nD ${JSON.stringify(baseline.sd)}\nM ${JSON.stringify(baseline.sm)}\nT ${JSON.stringify(baseline.st)}`);
 
   // Slot 1 starts on the +X side. Holding touch-left crosses the shared prop row.
   // Desktop remains zero-input, so any locally reproduced desktop prop motion must
@@ -266,10 +302,11 @@ try {
     const finite = [sd.divergence.self, sd.divergence.remote, sd.divergence.prop, sm.divergence.self, sm.divergence.remote, sm.divergence.prop]
       .every((value) => Number.isFinite(value));
     return finite ? { sd, sm, st, authorityMotion } : false;
-  }, 20_000);
+  }, 25_000);
 
+  await assertProductionIsolation("after desktop + mobile smoke");
   console.log(
-    `DESKTOP + MOBILE CAUSAL SMOKE PASS · mobile touch authority prop motion ${exercised.authorityMotion.toFixed(3)} · ` +
+    `DESKTOP + MOBILE ${EXTERNAL_BASE_URL ? "PUBLIC " : ""}CAUSAL SMOKE PASS · mobile touch authority prop motion ${exercised.authorityMotion.toFixed(3)} · ` +
     `passive-desktop final prop Δ ${exercised.sd.divergence.prop.toFixed(3)}\n` +
     `D ${JSON.stringify(exercised.sd)}\nM ${JSON.stringify(exercised.sm)}\nT ${JSON.stringify(exercised.st)}`,
   );

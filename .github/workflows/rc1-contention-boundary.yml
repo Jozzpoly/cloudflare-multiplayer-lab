@@ -1,0 +1,43 @@
+name: RC1 Contention Boundary
+
+on:
+  pull_request:
+    paths:
+      - "public/world0-rc1/**"
+      - "scripts/rc1-contention-boundary.mjs"
+      - "src/world-slice-entry.ts"
+      - "src/world-slice-0-two-client.ts"
+      - ".github/workflows/rc1-contention-boundary.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contention-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax-check boundary probe
+        run: node --check scripts/rc1-contention-boundary.mjs
+
+      - name: Run fresh-world contention boundary map
+        run: node scripts/rc1-contention-boundary.mjs
+
+      - name: Preserve boundary evidence
+        if: always() && hashFiles('rc1-contention-boundary.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc1-contention-boundary
+          path: rc1-contention-boundary.json
+          if-no-files-found: error

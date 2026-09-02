@@ -225,4 +225,4 @@ const evidence={revision:REVISION,generatedAt:new Date().toISOString(),design:{b
   },
   boundary:"This is a timing/topology feasibility gate. It does not implement network clock synchronization, trusted tick validation, Box3D checkpoint storage, browser rollback or smoothing."},cells,summary};
 writeFileSync(OUTPUT,JSON.stringify(evidence,null,2));
-console.log(`\nF1 STRUCTURAL PASS · evidence written to ${OUTPUT}`);
+console.log(`\nF1 APPARATUS RUN COMPLETE · evidence written to ${OUTPUT}`);

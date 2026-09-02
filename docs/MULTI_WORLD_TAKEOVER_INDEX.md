@@ -17,7 +17,10 @@ This branch exists only to prepare a fresh ChatGPT project takeover. It intentio
 3. **`MULTI_WORLD_GROUNDING_REDTEAM.md`**  
    Corrections and attacks on the ledger. In particular: do not tie the smooth Owner result directly to the 212/235 ms second-client screenshot; do not mistake server six-player capacity for prediction/scaling evidence; do not treat Character Controller integration as a harmless movement upgrade.
 
-4. **`MULTI_WORLD_FRESH_TAKEOVER.md`**  
+4. **`MULTI_WORLD_HUMAN_TEST_CONTEXT.md`**  
+   Desktop/mobile product pressure and the real human-validation capability: 2 players as the normal human multiplayer crucible, 3 as a realistic stress test and 4 as an opportunistic stronger test rather than a current scale requirement. Camera/touch controls are real future product work, but must not silently fork physics/networking semantics.
+
+5. **`MULTI_WORLD_FRESH_TAKEOVER.md`**  
    Copy/use this as the startup mandate for the fresh ChatGPT project after final review. It instructs the new orchestrator to re-ground live and challenge the handoff before implementing.
 
 ## Exact anchors at package creation
@@ -38,7 +41,9 @@ All must be re-verified live by the fresh project.
 - no mutation of A2/A2R controls;
 - no automatic Character Controller import;
 - no declaration that Forecast, rollback, ownership or interaction islands are required;
-- no claim that the current backend/transport/render stack is final.
+- no claim that the current backend/transport/render stack is final;
+- no claim that four-player support is the current milestone merely because four human testers may sometimes be available;
+- no mobile-specific simulation fork.
 
 ## Expected first action in the new project
 

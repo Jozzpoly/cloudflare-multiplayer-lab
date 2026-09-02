@@ -1,6 +1,6 @@
 import { FixedStepClock } from "../world0-a2r/fixed-step-clock.js";
 
-const RC1_REVISION = "ws0-rc1-temporal-envelope-v1";
+const RC2_REVISION = "ws0-rc2-sparse-authority-closure-v1";
 const PROBE_REVISION = "ws0-a2r-two-client-intent-v1";
 const BOX3D_URL = "https://cdn.jsdelivr.net/npm/box3d.js@0.1.1/dist/box3d.inline.mjs";
 const FIXED_DT = 1 / 60;
@@ -12,9 +12,10 @@ const TRACKED_PROP_IDS = ["prop-0", "prop-1", "prop-2", "prop-3"];
 const HISTORY_LIMIT = 1200;
 const AUTHORITY_LIMIT = 240;
 const PEER_EVENT_LIMIT = 720;
+const CLOSURE_EVENT_LIMIT = 32;
 
 const params = new URLSearchParams(location.search);
-const callsign = params.get("player") || `rc1-${crypto.randomUUID().slice(0, 6)}`;
+const callsign = params.get("player") || `rc2-${crypto.randomUUID().slice(0, 6)}`;
 const remoteDelayMs = Math.max(0, Number(params.get("delayMs") || 0));
 const remoteJitterMs = Math.max(0, Number(params.get("jitterMs") || 0));
 const jitterSeed = Math.trunc(Number(params.get("jitterSeed") || 1));
@@ -42,12 +43,16 @@ let lastScheduledPeerApplyAt = -Infinity;
 let traceGeneration = 0;
 let traceTimers = [];
 let lastFrameAt = performance.now();
+let latestAuthorityProps = [];
+let latestAuthorityTick = NaN;
+let latestAuthorityServerTime = NaN;
 
 const peerQueue = [];
 const peerEvents = [];
 const localHistory = [];
 const authorityHistory = [];
 const appliedTraceEvents = [];
+const closureEvents = [];
 
 const local = {
   world: null,
@@ -62,7 +67,7 @@ const localClock = new FixedStepClock({ stepSeconds: FIXED_DT, maxStepsPerAdvanc
 
 function setStatus(text) {
   networkState = text;
-  if (statusElement) statusElement.textContent = `${RC1_REVISION}\n${text}`;
+  if (statusElement) statusElement.textContent = `${RC2_REVISION}\n${text}`;
 }
 
 function pushBounded(target, value, limit) {
@@ -72,6 +77,11 @@ function pushBounded(target, value, limit) {
 
 function finiteNumber(value, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
+}
+
+function vectorDistance(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return Infinity;
+  return Math.hypot(...a.map((value, index) => value - b[index]));
 }
 
 function moveToward2(currentX, currentZ, targetX, targetZ, maxDelta) {
@@ -155,7 +165,7 @@ function destroyLocalWorld() {
 function ensureRemote(player) {
   if (!player || player.sessionId === selfSessionId || !local.world) return;
   if (local.remote?.sessionId === player.sessionId) return;
-  if (local.remote) throw new Error("RC1 received more than one remote player");
+  if (local.remote) throw new Error("RC2 received more than one remote player");
   local.remote = {
     sessionId: player.sessionId,
     playerId: player.id,
@@ -177,9 +187,9 @@ function seedLocalWorld(state) {
   destroyLocalWorld();
   const players = state?.players || [];
   const props = state?.props || [];
-  if (players.length > 2) throw new Error("RC1 scope exceeded: more than two players");
+  if (players.length > 2) throw new Error("RC2 scope exceeded: more than two players");
   const self = players.find((player) => player.sessionId === selfSessionId);
-  if (!self) throw new Error("RC1 welcome missing self player");
+  if (!self) throw new Error("RC2 welcome missing self player");
 
   const worldDef = b3.b3DefaultWorldDef();
   worldDef.gravity = [0, -20, 0];
@@ -232,6 +242,20 @@ function bodyPosition(body) {
   return [out[0], out[1], out[2]];
 }
 
+function bodyLinearVelocity(body) {
+  if (!body) return null;
+  const out = [0, 0, 0];
+  b3.b3Body_GetLinearVelocity(out, body);
+  return [out[0], out[1], out[2]];
+}
+
+function bodyAngularVelocity(body) {
+  if (!body) return null;
+  const out = [0, 0, 0];
+  b3.b3Body_GetAngularVelocity(out, body);
+  return [out[0], out[1], out[2]];
+}
+
 function trackedRowFromBodies() {
   return TRACKED_PROP_IDS.map((id) => bodyPosition(local.propBodies.get(id)) || [NaN, NaN, NaN]);
 }
@@ -254,6 +278,54 @@ function recordLocalSample() {
     remote: local.remote ? bodyPosition(local.remote.body) : null,
     row: trackedRowFromBodies(),
   }, HISTORY_LIMIT);
+}
+
+function applyAuthorityPropsOnce(label = "manual") {
+  if (!local.initialized || !local.world) throw new Error("RC2 local world is not ready");
+  if (!latestAuthorityProps.length) throw new Error("RC2 has no authoritative prop snapshot yet");
+
+  const propEvents = [];
+  for (const prop of latestAuthorityProps) {
+    const body = local.propBodies.get(prop.id);
+    if (!body || !Array.isArray(prop.position) || prop.position.length !== 3 || !Array.isArray(prop.rotation) || prop.rotation.length !== 4) continue;
+
+    const beforePosition = bodyPosition(body);
+    const beforeLinear = bodyLinearVelocity(body);
+    const beforeAngular = bodyAngularVelocity(body);
+    b3.b3Body_SetTransform(body, [...prop.position], [...prop.rotation]);
+
+    const transformedLinear = bodyLinearVelocity(body);
+    const transformedAngular = bodyAngularVelocity(body);
+    if (vectorDistance(beforeLinear, transformedLinear) > 1e-12) b3.b3Body_SetLinearVelocity(body, beforeLinear);
+    if (vectorDistance(beforeAngular, transformedAngular) > 1e-12) b3.b3Body_SetAngularVelocity(body, beforeAngular);
+
+    const afterLinear = bodyLinearVelocity(body);
+    const afterAngular = bodyAngularVelocity(body);
+    propEvents.push({
+      id: prop.id,
+      beforePosition,
+      authorityPosition: [...prop.position],
+      positionCorrection: vectorDistance(beforePosition, prop.position),
+      preservedLinearVelocity: [...beforeLinear],
+      preservedAngularVelocity: [...beforeAngular],
+      linearVelocityMutation: vectorDistance(beforeLinear, afterLinear),
+      angularVelocityMutation: vectorDistance(beforeAngular, afterAngular),
+    });
+  }
+
+  const event = {
+    label: String(label),
+    wall: Date.now(),
+    perf: performance.now(),
+    localStep: local.steps,
+    authorityTick: latestAuthorityTick,
+    authorityServerTime: latestAuthorityServerTime,
+    propCount: propEvents.length,
+    props: propEvents,
+  };
+  pushBounded(closureEvents, event, CLOSURE_EVENT_LIMIT);
+  recordLocalSample();
+  return event;
 }
 
 function applyDuePeerInputs(now) {
@@ -315,7 +387,7 @@ function setSelfInput(x, z, source = "trace") {
 }
 
 function scheduleTrace(events, epochMs) {
-  if (!Array.isArray(events) || !Number.isFinite(epochMs)) throw new Error("invalid RC1 trace schedule");
+  if (!Array.isArray(events) || !Number.isFinite(epochMs)) throw new Error("invalid RC2 trace schedule");
   traceGeneration += 1;
   const generation = traceGeneration;
   for (const timer of traceTimers) clearTimeout(timer);
@@ -370,11 +442,18 @@ function recordAuthoritySnapshot(message) {
   if (local.remote && !players.some((player) => player.sessionId === local.remote.sessionId)) removeRemote(local.remote.sessionId);
 
   latestTelemetry = message.telemetry || latestTelemetry;
+  latestAuthorityTick = finiteNumber(message.tick, NaN);
+  latestAuthorityServerTime = finiteNumber(message.serverTime, NaN);
+  latestAuthorityProps = (message.props || []).map((prop) => ({
+    id: prop.id,
+    position: Array.isArray(prop.position) ? [...prop.position] : null,
+    rotation: Array.isArray(prop.rotation) ? [...prop.rotation] : null,
+  }));
   snapshotCount += 1;
   pushBounded(authorityHistory, {
-    serverTime: finiteNumber(message.serverTime, NaN),
+    serverTime: latestAuthorityServerTime,
     receivedWall: Date.now(),
-    tick: finiteNumber(message.tick, NaN),
+    tick: latestAuthorityTick,
     self: self?.position ? [...self.position] : null,
     remote: remote?.position ? [...remote.position] : null,
     row: trackedRowFromSnapshot(message.props),
@@ -386,7 +465,7 @@ function handleMessage(message) {
     selfSessionId = message.selfSessionId;
     simulation = { ...simulation, ...(message.simulation || {}) };
     if (simulation.simulationHz !== 60 || simulation.substeps !== 4) {
-      throw new Error(`RC1 contract mismatch: ${simulation.simulationHz} Hz / ${simulation.substeps} substeps`);
+      throw new Error(`RC2 contract mismatch: ${simulation.simulationHz} Hz / ${simulation.substeps} substeps`);
     }
     latestTelemetry = message.state?.telemetry || latestTelemetry;
     seedLocalWorld(message.state);
@@ -395,7 +474,7 @@ function handleMessage(message) {
   }
 
   if (message.type === "peer_input") {
-    if (message.probeRevision !== PROBE_REVISION) throw new Error(`RC1 peer revision mismatch: ${message.probeRevision}`);
+    if (message.probeRevision !== PROBE_REVISION) throw new Error(`RC2 peer revision mismatch: ${message.probeRevision}`);
     if (!Number.isFinite(message.seq) || !Number.isFinite(message.x) || !Number.isFinite(message.z)) return;
     queuePeerInput(message);
     return;
@@ -412,7 +491,7 @@ function handleMessage(message) {
     return;
   }
 
-  if (message.type === "error") throw new Error(`RC1 server error: ${message.error}`);
+  if (message.type === "error") throw new Error(`RC2 server error: ${message.error}`);
 }
 
 function connect() {
@@ -429,7 +508,7 @@ function connect() {
       handleMessage(JSON.parse(event.data));
     } catch (error) {
       setStatus(`error: ${error instanceof Error ? error.message : String(error)}`);
-      try { socket.close(1011, "rc1_candidate_error"); } catch { /* ignore */ }
+      try { socket.close(1011, "rc2_candidate_error"); } catch { /* ignore */ }
     }
   });
   socket.addEventListener("close", (event) => {
@@ -442,7 +521,7 @@ function connect() {
 
 function snapshot() {
   return {
-    revision: RC1_REVISION,
+    revision: RC2_REVISION,
     probeRevision: PROBE_REVISION,
     callsign,
     networkState,
@@ -465,6 +544,10 @@ function snapshot() {
     selfPosition: local.selfBody ? bodyPosition(local.selfBody) : null,
     remotePosition: local.remote ? bodyPosition(local.remote.body) : null,
     row: local.initialized ? trackedRowFromBodies() : null,
+    latestAuthorityTick,
+    latestAuthorityServerTime,
+    latestAuthorityPropCount: latestAuthorityProps.length,
+    closureCount: closureEvents.length,
   };
 }
 
@@ -473,6 +556,10 @@ function exportEvidence() {
     meta: snapshot(),
     traceEvents: appliedTraceEvents.map((event) => ({ ...event })),
     peerEvents: peerEvents.map((event) => ({ ...event })),
+    closureEvents: closureEvents.map((event) => ({
+      ...event,
+      props: event.props.map((prop) => ({ ...prop })),
+    })),
     localHistory: localHistory.map((sample) => ({
       ...sample,
       self: sample.self ? [...sample.self] : null,
@@ -488,7 +575,9 @@ function exportEvidence() {
   };
 }
 
-window.__RC1__ = { snapshot, scheduleTrace, setSelfInput, exportEvidence };
+const api = { snapshot, scheduleTrace, setSelfInput, applyAuthorityPropsOnce, exportEvidence };
+window.__RC1__ = api;
+window.__RC2__ = api;
 
 b3 = await (await import(BOX3D_URL)).default();
 setStatus("physics-ready");

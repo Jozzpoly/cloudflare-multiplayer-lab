@@ -3,6 +3,7 @@ name: WS0 F3.0 Canonical Timeline Discriminator
 on:
   push:
     branches: [ws0-sync-timeline-f3-buffered-input]
+  pull_request:
   workflow_dispatch:
 
 permissions:

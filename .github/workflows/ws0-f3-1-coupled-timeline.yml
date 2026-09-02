@@ -28,7 +28,7 @@ jobs:
         run: npm run check
 
       - name: Run F3.1 coupled discriminator
-        run: node scripts/ws0-f3-1-coupled-timeline.mjs
+        run: node scripts/ws0-f3-1-runner.mjs
 
       - name: Independently audit F3.1 evidence
         run: node scripts/ws0-f3-1-audit.mjs

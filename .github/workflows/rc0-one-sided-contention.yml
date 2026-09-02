@@ -1,0 +1,27 @@
+name: RC0 one-sided contention
+
+on:
+  push:
+    branches: [rc0-one-sided-causal-contention]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rc0:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run RC0
+        run: node scripts/rc0-one-sided-contention.mjs

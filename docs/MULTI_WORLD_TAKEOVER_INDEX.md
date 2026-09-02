@@ -1,86 +1,67 @@
-# Multi_World — Takeover package index
+# Multi_World — Takeover / documentation index
 
-Status: **HANDOFF READY / FRESH PROJECT MUST VERIFY LIVE BEFORE IMPLEMENTATION**  
-Branch: `multi-world-takeover-grounding`  
-Base specimen: A2R human-reference `2c9116267a0c8bba93061f759cefdb709e966e43`
+Status: **CURRENT HANDOFF READY — VERIFY LIVE BEFORE WRITES**  
+Canonical documentation branch: `multi-world-takeover-grounding`
 
-This branch exists only to prepare a fresh ChatGPT project takeover. It intentionally does not modify runtime, physics or deployment configuration.
+This branch is documentation/provenance only. It must not be treated as runtime authority. Live repo state, exact SHAs, CI/deployment evidence and the newest qualified issue #8 checkpoints remain higher technical authority.
 
-## Canonical reading order for the fresh project
+## Read this first
 
-1. **`MULTI_WORLD_PROJECT_SOUL.md`**  
-   Canonical purpose, product values, shared-world continuity pressure, boundaries and working method. Read this first so current substrates are not confused with project identity.
+1. **`MULTI_WORLD_CURRENT_STATE.md`**  
+   Short operational state: current live anchors, human result, T0–T5 evidence ladder, F1 causal-time frontier, repository hygiene and the exact first action for a fresh takeover.
 
-2. **`MULTI_WORLD_GROUNDING_V1.md`**  
-   Canonical consolidated grounding: exact controls, evidence classification, A2/A2R mechanical envelope, current unknowns, donor boundary and human/device validation pressure. Verify it live.
+2. **`MULTI_WORLD_PROJECT_SOUL.md`**  
+   Stable project purpose and values. Shared physical consequence, immediate embodiment and one shared truth matter more than preserving any current networking or engine architecture.
 
-3. **`MULTI_WORLD_HUMAN_TEST_CONTEXT.md`**  
-   Canonical supporting context on desktop/mobile, camera/touch controls and real human test capacity: 2 players as the normal human multiplayer crucible, 3 as a realistic early stress test, 4 as an opportunistic stronger test rather than a current scale requirement.
+3. **Issue #8 newest qualified checkpoints**  
+   Chronological repo-native evidence ledger. At this documentation checkpoint, the newest mechanism checkpoint is T5 comment `5515389350`; always verify whether a newer comment exists.
 
-4. **`MULTI_WORLD_FRESH_TAKEOVER_V1.md`**  
-   Final startup mandate for the new ChatGPT project. It requires live regrounding and an explicit challenge to the handoff before implementation.
+## Supporting canonical context
 
-## Audit/provenance material — not required startup reading
+4. **`MULTI_WORLD_GROUNDING_V1.md`**  
+   Earlier consolidated grounding and controls. Valuable context, but its A2R-era frontier is historical; do not let it override `MULTI_WORLD_CURRENT_STATE.md` or newer repo evidence.
 
-- `MULTI_WORLD_GROUNDING_LEDGER.md` — original broad v0 ledger;
-- `MULTI_WORLD_GROUNDING_REDTEAM.md` — critique that produced the accepted v1 corrections;
-- `MULTI_WORLD_FRESH_TAKEOVER.md` — older, heavier takeover draft.
+5. **`MULTI_WORLD_HUMAN_TEST_CONTEXT.md`**  
+   Human/device validation context and desktop/mobile testing pressure.
 
-Use these only if you need to understand why Grounding v1 or Takeover v1 is phrased cautiously.
+6. **`MULTI_WORLD_FRESH_TAKEOVER_V1.md`**  
+   Earlier startup mandate emphasizing live regrounding and falsification before implementation. Keep its method, not its historical frontier.
 
-## Exact anchors at latest preparation audit
+## Audit/provenance material — not startup reading
 
-### Multi_World
+- `MULTI_WORLD_GROUNDING_LEDGER.md` — broad original grounding ledger;
+- `MULTI_WORLD_GROUNDING_REDTEAM.md` — critique that produced Grounding v1;
+- `MULTI_WORLD_FRESH_TAKEOVER.md` — older/heavier takeover draft;
+- older gate docs — historical project reasoning and controls.
 
-- infrastructure control: `main@d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de`;
-- A2 preserved failed baseline: `world-slice-0-embodied-3d-place@ef26fce6f5f21e219a4d8f57943449f4d2a2abca`;
-- A2R human-reference: `world-slice-0-a2r-timeline-rebuild@2c9116267a0c8bba93061f759cefdb709e966e43`.
+Do not delete these merely because they are stale. They are provenance, not current-state instructions.
 
-All three matched live GitHub state during the final preparation audit.
+## Current authority anchors to verify live
 
-### Character Controller donor
+Expected at the 2026-09-02 maintenance checkpoint:
 
-Repository: `Jozzpoly/Box3d-Character-Controler`
+- `main@d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de` — infrastructure control;
+- PR #15 / `ws0-human-two-player-mobile-baseline@f6d6b2f275a0c097ab9ce1e26d86a9fa912391b1` — frozen desktop+mobile zero-reconciliation human control;
+- PR #22 / `e4fb8ef62d89fc7a21b05b241f1abcb1c3eb6a3d` — qualified T4 isolated history-repair evidence;
+- PR #23 / `a4263565a1b39de35f93f85c5ada01d8ef9147e3` — qualified T5 actor→shared-prop history-repair evidence;
+- issue #8 comment `5515389350` — latest qualified mechanism checkpoint at maintenance time;
+- active frontier branch `ws0-sync-history-feasibility-f1-causal-time` — **pre-result causal-time feasibility work**, not qualified evidence.
 
-Latest audit found:
+The F1 apparatus commit before maintenance cleanup is `09d3ea8e85f632ad8e6481ecec9fdc4743e13320`. Verify the live head because later maintenance-only commits may prune inherited workflows without changing experiment semantics.
 
-- live `main@5891fbf0b2a2a0f2cf5c41578d95b1aa72ac68ad`;
-- this head is a documentation/current-state grounding commit;
-- canonical implementation/behavior baseline recorded by that project: `f4877a46618a347c3be32edf7ddb39ab66a091bd`;
-- exact Owner-qualified Donor v1 mechanics specimen: `bc06ca98e94314af0ba888b74e1c4029429422e5`.
+## Repository hygiene convention
 
-Do not collapse live head, behavior baseline and mechanics specimen into one authority fact.
+From this checkpoint forward:
 
-## Deployment freshness audit
+- historical research branches remain immutable evidence;
+- completed research PRs should be closed rather than left as apparently active work;
+- PR #15 may remain intentionally open as the frozen human control;
+- active research branches should carry only normal CI plus the workflow required by the active experiment;
+- one-shot workflows stay preserved on historical branches and should not accumulate indefinitely on the current frontier;
+- `main` is not changed for documentation cleanup or experimental convenience.
 
-The final A2R staging/browser/cloud evidence remains recorded repo-natively in GitHub issue #8, including the Owner PLAY candidate checkpoint and the later smooth Owner judgement.
+## Expected first action in a fresh conversation
 
-During the final takeover preparation session, direct public HTTP re-probing of `workers.dev` could **not** be completed because the execution environment could not resolve those hosts. This is an environment limitation, not deployment evidence either way.
+Read `MULTI_WORLD_CURRENT_STATE.md`, verify its anchors live, then inspect the F1 branch and re-audit the causal-time experiment before executing it.
 
-Therefore the fresh project's first grounding must independently verify:
-
-- current production fingerprint/isolation;
-- current staging Worker/branch deployment;
-- A2R client revision on staging;
-- current CI/check state relevant to the selected base.
-
-Do not inherit deployment state merely from this package.
-
-## What this package deliberately does not do
-
-- no A3 implementation;
-- no new product repository;
-- no merge into `main`;
-- no mutation of A2/A2R controls;
-- no automatic Character Controller import;
-- no declaration that Forecast, rollback, ownership or interaction islands are required;
-- no claim that the current backend/transport/render stack is final;
-- no claim that four-player support is the current milestone merely because four human testers may sometimes be available;
-- no mobile-specific simulation fork;
-- no persistence/storage implementation merely because shared continuity is part of the long-term product soul.
-
-## Expected first action in the new project
-
-Use `MULTI_WORLD_FRESH_TAKEOVER_V1.md`, then produce the requested live grounding report before any implementation.
-
-The new project should be free to reject the provisional **remote causality / shared physical truth** framing if newer evidence identifies a more valuable unknown.
+Do **not** jump directly from T5 to browser rollback/history implementation. The unresolved question is whether the real three-stage timing topology requires history repair only on peers, to authority-apply time, or also on authority/source time.

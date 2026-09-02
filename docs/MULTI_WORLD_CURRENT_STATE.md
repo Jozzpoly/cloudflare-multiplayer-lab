@@ -27,9 +27,10 @@ Re-verify before writes, but the current handoff anchors are:
 - F3.0 canonical timeline/buffer feasibility: archived research lineage on `ws0-sync-timeline-f3-buffered-input`;
 - F3.1 coupled temporal discriminator: archived PR #28 / `72f298e7b3730194d69a9d989620c273138b2c34`;
 - F4 bounded scheduled client history: archived PR #29 / `ws0-sync-f4-bounded-scheduled-history@d33294e9052e37cf716d809e7dca551d1065df44`, issue comment `5517282802`;
-- active F5 branch: `ws0-f5-browser-scheduled-history@ca8fc10ee93fe91684ba2de2302e2650eeba0a21`.
+- F5 runtime/browser implementation candidate: `ca8fc10ee93fe91684ba2de2302e2650eeba0a21`;
+- active F5 branch head after docs-only pre-live contract amendment: `ws0-f5-browser-scheduled-history@0278add0f15f3c76f5b4d62912b207a359def181`.
 
-The active F5 head contains the isolated F5 server/protocol **and** bounded-history browser candidate. It is not merely a contract branch anymore.
+`ca8fc10… → 0278add…` changes only `docs/WS0_F5_BROWSER_SCHEDULED_HISTORY_CONTRACT.md`; the prepared runtime/browser code is unchanged.
 
 ## 3. Product truth
 
@@ -100,9 +101,13 @@ This is a candidate architecture, not a permanent project commitment.
 
 ## 6. F5 live candidate
 
-Active head:
+Active branch head:
 
-`ws0-f5-browser-scheduled-history@ca8fc10ee93fe91684ba2de2302e2650eeba0a21`
+`ws0-f5-browser-scheduled-history@0278add0f15f3c76f5b4d62912b207a359def181`
+
+Runtime/browser implementation candidate:
+
+`ca8fc10ee93fe91684ba2de2302e2650eeba0a21`
 
 Status:
 
@@ -124,15 +129,15 @@ Prepared evidence:
 - raw correction presentation;
 - desktop keyboard + minimal touch joystick for phone testing.
 
-Exact F5 preflight run `33694085298` passed full repo checks, protocol smoke, browser syntax check, staging type generation/dry-run and frozen-World0 diff guard.
+Implementation-head preflight run `33694085298` passed full repo checks, protocol smoke, browser syntax check, staging type generation/dry-run and frozen-World0 diff guard.
 
-The root Cloudflare connected build for F5 research pushes uses `npx wrangler versions upload`; successful build/version upload is not by itself evidence of production traffic promotion.
+The docs-only amendment head `0278add…` also passed F5 preflight (`33696290253`) and root Cloudflare connected build as a traffic-inert version upload. This remains preflight evidence only, not F5 runtime qualification.
 
 ### F5 corrections before live deployment
 
 Before staging deployment, keep scope small but improve evidence quality:
 
-1. align the written F5 contract with the implementation's canonical server-slot actor creation ordering; the old contract text still allowed self-first browser order;
+1. retain/verify canonical server-slot actor creation/application ordering where order can influence deterministic behavior;
 2. expose an explicit simulation/build fingerprint (`SimBuildId`-like experimental value) in handshake/telemetry;
 3. measure correction/resimulation CPU duration and useful browser frame-time burst metrics, especially for the phone;
 4. preserve raw correction presentation for the first Owner judgement;

@@ -149,6 +149,7 @@ function applyPlayerInput(body, input) {
 }
 
 function inputAt(experimentTick) {
+  if (experimentTick < 0) return [0, 0];
   const t = experimentTick * DT;
   if (t < 1.65) return [1, 0];
   return [0, 0];

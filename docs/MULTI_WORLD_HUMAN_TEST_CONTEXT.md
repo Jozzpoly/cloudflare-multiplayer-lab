@@ -1,7 +1,7 @@
 # Multi_World — Human test / device context
 
-Status: **TAKEOVER PREPARATION / PRODUCT PRESSURE, NOT IMMEDIATE FEATURE SCOPE**  
-Date boundary: **2026-09-02**
+Status: **CANONICAL SUPPORTING CONTEXT / PRODUCT PRESSURE, NOT IMMEDIATE FEATURE SCOPE**  
+Grounded: **2026-09-02**
 
 This document captures how Multi_World is expected to be used and tested by real people so that a fresh orchestrator does not optimize only for desktop automation or mistake mobile support for a late port.
 

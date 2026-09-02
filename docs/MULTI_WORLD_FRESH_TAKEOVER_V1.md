@@ -84,15 +84,16 @@ First positive Owner-tested local-full-Box3D reference. Preserve it as a control
 
 ### Character Controller donor authority
 
-`Jozzpoly/Box3d-Character-Controler`
+Repository: `Jozzpoly/Box3d-Character-Controler`
 
-Expected `main@f4877a46618a347c3be32edf7ddb39ab66a091bd`
+At handoff preparation:
 
-Current donor: **Donor v1 / A‴**
+- live `main@5891fbf0b2a2a0f2cf5c41578d95b1aa72ac68ad`;
+- current-state document records implementation/behavior baseline `f4877a46618a347c3be32edf7ddb39ab66a091bd`;
+- current donor remains **Donor v1 / A‴**;
+- exact Owner-qualified mechanics specimen remains `bc06ca98e94314af0ba888b74e1c4029429422e5`.
 
-Exact Owner-qualified mechanics specimen: `bc06ca98e94314af0ba888b74e1c4029429422e5`
-
-Treat it as qualified embodiment knowledge/donor, **not an automatic dependency**.
+Treat live repo head, behavior baseline and exact mechanics specimen as separate provenance facts. Treat Character Controller as qualified embodiment knowledge/donor, **not an automatic dependency**.
 
 ## Current research boundary — verify from Grounding v1 and issue #8
 

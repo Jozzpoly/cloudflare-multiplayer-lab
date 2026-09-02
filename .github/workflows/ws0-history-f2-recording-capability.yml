@@ -7,6 +7,7 @@ on:
       - "scripts/ws0-history-f2-recording-capability.mjs"
       - "scripts/ws0-history-f2-replay-branchability.mjs"
       - "scripts/ws0-history-f2-rolling-seed.mjs"
+      - "scripts/ws0-history-f2-generation-handoff.mjs"
       - ".github/workflows/ws0-history-f2-recording-capability.yml"
       - "package.json"
   workflow_dispatch:
@@ -33,12 +34,15 @@ jobs:
           node --check scripts/ws0-history-f2-recording-capability.mjs
           node --check scripts/ws0-history-f2-replay-branchability.mjs
           node --check scripts/ws0-history-f2-rolling-seed.mjs
+          node --check scripts/ws0-history-f2-generation-handoff.mjs
       - name: Probe exact recording surface
         run: WS0_HISTORY_F2_OUTPUT=ws0-history-f2-recording-capability.json node scripts/ws0-history-f2-recording-capability.mjs
       - name: Probe replay checkpoint branchability
         run: WS0_HISTORY_F2_BRANCH_OUTPUT=ws0-history-f2-replay-branchability.json node scripts/ws0-history-f2-replay-branchability.mjs
       - name: Probe rolling mid-contact recording seeds
         run: WS0_HISTORY_F2_ROLLING_OUTPUT=ws0-history-f2-rolling-seed.json node scripts/ws0-history-f2-rolling-seed.mjs
+      - name: Probe checkpoint generation handoff
+        run: WS0_HISTORY_F2_HANDOFF_OUTPUT=ws0-history-f2-generation-handoff.json node scripts/ws0-history-f2-generation-handoff.mjs
       - name: Preserve F2 evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,4 +52,5 @@ jobs:
             ws0-history-f2-recording-capability.json
             ws0-history-f2-replay-branchability.json
             ws0-history-f2-rolling-seed.json
+            ws0-history-f2-generation-handoff.json
           if-no-files-found: error

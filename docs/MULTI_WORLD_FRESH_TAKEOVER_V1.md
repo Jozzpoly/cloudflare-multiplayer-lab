@@ -1,5 +1,8 @@
 # Multi_World — Fresh Project Takeover v1
 
+Status: **FINAL STARTUP MANDATE / LIVE REGROUNDING REQUIRED BEFORE IMPLEMENTATION**  
+Grounded: **2026-09-02**
+
 Use this as the startup prompt for a fresh browser ChatGPT project.
 
 ---

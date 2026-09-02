@@ -1,206 +1,137 @@
 # Multi_World — Current state
 
-Status: **HANDOFF READY / ACTIVE FRONTIER = F3.0 CANONICAL TIMELINE + BUFFERED INPUT FEASIBILITY, PRE-EXECUTION**  
-Date: 2026-09-02
+Status: **HANDOFF READY / ACTIVE FRONTIER = F5 ISOLATED BROWSER SCHEDULED HISTORY, PRE-EXECUTION**  
+Date: 2026-09-03
 
-This file is the short operational entry point for continuing Multi_World. It does not replace issue #8, `MULTI_WORLD_SYNC_RESEARCH_PROGRAM.md`, or the historical research PRs; it states what is current and what must be verified live before writes.
+This file is the short operational entry point. Live repo/branch/CI and newest qualified issue #8 evidence outrank this summary.
 
 ## 1. Authority order
 
-For technical truth use, in order:
-
 1. live repo / exact branch / exact SHA / current CI or deployment evidence;
-2. newest qualified checkpoint in issue #8 and corresponding research PR/artifact;
-3. this current-state file plus `MULTI_WORLD_SYNC_RESEARCH_PROGRAM.md` and `MULTI_WORLD_PROJECT_SOUL.md` on `multi-world-takeover-grounding`;
-4. older plans, takeover drafts and conversation history.
+2. newest qualified issue #8 checkpoint and corresponding archived research PR/artifact;
+3. this file + `MULTI_WORLD_SYNC_RESEARCH_PROGRAM.md` + `MULTI_WORLD_PROJECT_SOUL.md`;
+4. older plans and conversation history.
 
-Plans are candidates, not commitments. Do not continue a numbered experiment merely because it exists.
+Plans are candidates, not commitments.
 
-## 2. Live anchors to verify first
+## 2. Live anchors
 
 - infrastructure control: `main@d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de`;
-- frozen desktop+mobile zero-reconciliation human control: PR #15 / `ws0-human-two-player-mobile-baseline@f6d6b2f275a0c097ab9ce1e26d86a9fa912391b1`;
-- T5 actor→shared-prop causal-relay checkpoint: archived PR #23 / `a4263565a1b39de35f93f85c5ada01d8ef9147e3`;
-- F1 causal-time checkpoint: archived PR #24 / `2872e7b3b5f369bbe9f7bfad7fcd555c9d16f710`; issue #8 comment `5516192962`;
-- F2 bounded full-physics checkpoint feasibility: archived PR #25 / `1c6807f1562d832753a7514cd6d2c1ea0100c0a3`; issue #8 comment `5516336021`;
-- superseded pre-result branch: `ws0-sync-history-f3-bounded-resim@1c6807f1562d832753a7514cd6d2c1ea0100c0a3` — created before the post-F2 architecture red-team, contains no F3 result and is not the active frontier;
-- active frontier branch: `ws0-sync-timeline-f3-buffered-input`, created fresh from exact qualified F2 head `1c6807f1562d832753a7514cd6d2c1ea0100c0a3`, currently pre-result.
+- frozen human control: PR #15 / `ws0-human-two-player-mobile-baseline@f6d6b2f275a0c097ab9ce1e26d86a9fa912391b1`;
+- T5 coupled causal relay: archived PR #23 / `a4263565a1b39de35f93f85c5ada01d8ef9147e3`;
+- F1 causal-time topology: archived PR #24 / `2872e7b3b5f369bbe9f7bfad7fcd555c9d16f710`, issue comment `5516192962`;
+- F2 bounded full-physics checkpoint substrate: archived PR #25 / `1c6807f1562d832753a7514cd6d2c1ea0100c0a3`, issue comment `5516336021`;
+- F3.0 canonical timeline/buffer feasibility: archived research lineage on `ws0-sync-timeline-f3-buffered-input`, qualified before F3.1;
+- F3.1 coupled temporal discriminator: archived PR #28 / `72f298e7b3730194d69a9d989620c273138b2c34`, qualified scheduled-forward semantics;
+- F4 bounded scheduled client history: archived PR #29 / `ws0-sync-f4-bounded-scheduled-history@d33294e9052e37cf716d809e7dca551d1065df44`, issue comment `5517282802`;
+- active frontier: `ws0-f5-browser-scheduled-history@5530b4002dc3318a094845f482f4494acca987ad`, contract only, **no browser result yet**.
 
-Always verify these live. Branch existence is not evidence.
+Always verify live before writes.
 
-## 3. Product truth currently established
+## 3. Product truth
 
-The first real simultaneous desktop+phone session proved two things at once:
+The real simultaneous desktop+phone control proved:
 
-- immediate full-local embodiment can feel clean and pleasant;
-- full local worlds + delayed remote intent + zero reconciliation do **not** preserve one shared physical truth under natural coupled interaction.
+- immediate full-local embodiment can feel clean;
+- delayed remote intent with zero reconciliation does not preserve one shared physical truth under coupled interaction.
 
-The human failure was cumulative and product-significant: actor disagreement propagated through later contacts into materially different shared prop/world states.
+The project objective remains **PLAYER INTENT ↔ PHYSICAL CONSEQUENCE ↔ SHARED TRUTH** for a small shared physical world. PR #15 remains untouched control evidence.
 
-The project purpose remains: preserve **PLAYER INTENT ↔ PHYSICAL CONSEQUENCE ↔ SHARED TRUTH** for a small shared world. PR #15 remains the untouched human control.
+## 4. Qualified synchronization ladder
 
-## 4. Qualified research ladder through F2
+### F1
+A common canonical event history is required. Remote-only repair leaves mixed histories. Authority-time and source-time common histories can both be mechanically coherent but place WAN-delay cost differently.
 
-- PR #16: direct player↔player contact is a proven causal amplifier;
-- T0 / PR #18: deterministic Node tick-domain lab reproduced the contact failure without wall-clock scheduler noise;
-- T1 / PR #19: fresh remote position/rotation/linear velocity is mechanically strong while self remains directly uncorrected;
-- T2 / PR #20: realistic snapshot age is a dominant constraint; stale hard state and naïve linear hard forecast damage active contact;
-- T3 / PR #21: simple stale-target velocity convergence rejected; local-contact reconciliation suspension retained only as an ingredient;
-- T4 / PR #22: history-aware late remote-input repair collapses the isolated contact fork in a favorable deterministic oracle;
-- T5 / PR #23: history repair prevents the actor fork from cascading into a divergent shared dynamic prop where the no-history control produces material prop divergence;
-- F1 / PR #24: a **common canonical event history** is required; remote-only repair is structurally insufficient. Authority-time and source-time common histories can both be mechanically coherent but place WAN-delay cost differently;
-- F2 / PR #25: exact `box3d.js@0.1.1` exposes enough recording/replay machinery for bounded, branchable, rolling **full-physics history**, including active-contact fidelity and generational ownership handoff.
+### F2
+Exact `box3d.js@0.1.1` recording/replay supplies bounded branchable full-physics history: live-contact snapshot seeds, backward seek, ordinary branching and generation handoff qualified.
 
-Completed research PRs remain closed/archived, unmerged, while their branches/artifacts/PR bodies remain provenance.
+### F3.0
+Canonical scheduled ticks + client prediction lead + authority input buffering are mechanically feasible over the declared deterministic latency/jitter sweep. The experiment also established the RTT-scale remote-information horizon that clients must reconcile. A fixed `L=8/B2` point was useful for the gate but is not a production tuning decision.
 
-## 5. F1/F2 interpretation after red-team
+### F3.1
+In the coupled T5 actor→shared-prop scenario, healthy scheduled-forward traces reproduced the intended source canonical physical history with **zero authority rollback**. Scheduled-forward and source-time-common produced identical measured client correction/history costs under the same real A→authority→B information path; source-time added authority rollback without reducing client correction.
 
-F1 compared receipt-live, partial repair, authority-apply-time common history and source-time common history. In its isolated lab:
+Representative carried corrections:
 
-- receipt-live diverged strongly;
-- remote-only repair left mixed histories;
-- `all-authority-tick` converged with a forward-only authority but incurred large local-self retiming (~0.38 m / 0.50 m max at 65/85 ms one-way);
-- `all-source` converged with authority history repair and much smaller isolated local-self replacement (~0.013 m / 0.016 m); coupled T5 remains stronger presentation-cost evidence (~0.050 m / 0.068 m).
+- 65 ms: max self ~`0.131 m`, relay ~`0.193 m`, max client rewind `9` ticks;
+- 85 ms: max self ~`0.185 m`, relay ~`0.277 m`, max client rewind `11` ticks;
+- 85 ms + burst/HOL: max client rewind `13` ticks.
 
-F2 then proved that recent complete physics checkpoints are mechanically feasible in the exact Box3D stack: deep live-contact seeds, backward seek, normal branching and generation handoff all qualified in the bounded lab.
+The near-boundary scheduled negative also proved that client↔client agreement does not imply client↔authority agreement when target-tick records miss authority consumption. Consumption/acceptance feedback is therefore required.
 
-**Important correction:** these results do **not** yet justify making source-time authority rollback the normal multiplayer clock.
+### F4
+F4 replaced F3.1 rebuild-from-session-seed with bounded recent complete-physics client history and qualified all three intended probes.
 
-The missing discriminator is a third timing family that F1 did not model as a first-class protocol:
+With the frozen experimental geometry `8`-tick segments / `24` retained ticks:
 
-> **canonical scheduled tick + client prediction lead + authority input buffer**
+- 65 ms: bounded history exactly matched F3.1; max replay `16` physics steps;
+- 85 ms: exact match; max replay `18`;
+- 85+HOL: exact match; max replay `20`;
+- strict pre-result bound was `21` steps;
+- max retained recording bytes in the small T5 lab: `186485 B`;
+- overlapping correction C2 restored from history already corrected by C1 and ended at canonical oracle residual `0`.
 
-In this family, normal client commands target a canonical future simulation tick and are intended to reach authority before that tick is consumed. Authority can therefore remain normally forward-only while clients use prediction history and reconciliation for uncertainty/error. Server rollback remains available as an exceptional/advanced mechanism unless evidence proves it necessary for normal shared physical consequence.
+F4c corrected an important identity assumption: RecPlayer creation ordinals are **recording-generation-local**, not globally stable. Stable host identity is `NetEntityId`; each replay generation explicitly rebinds `NetEntityId -> generation-local creationOrdinal -> current BodyId`. Snapshot-preserved body names are only the current experimental locator seam.
 
-This red-team supersedes the previously selected bounded-authority-resim F3 **before execution**. No qualified evidence is being discarded.
+Current strongest supported normal-flow hypothesis is therefore:
 
-## 6. Current architecture hypothesis — not a commitment
-
-Current strongest candidate to falsify is:
-
-`canonical server tick`
-
-→ `per-player ticked input buffers`
-
+`canonical scheduled target ticks`
+→ `authority future-input buffer + consumption feedback`
 → `normally forward-only authoritative Box3D`
+→ `complete predicted client Box3D world`
+→ `bounded recent full-physics client history`
+→ `client rollback/resimulation`
+→ `presentation separated from corrected physics truth`.
 
-→ `tick-tagged authoritative snapshots / acknowledgements`
+Authority rollback remains available as an exceptional/future mechanism, not the current normal-flow default.
 
-→ `client predicted full-physics world + bounded history`
+## 5. Deployment containment
 
-→ `client rollback/resimulation on prediction error`
+Cloudflare root build configuration was changed so the deploy command is `npx wrangler versions upload`. Research pushes may still create inactive Worker Versions/checks, but this command uploads a version rather than automatically routing production traffic to it. The production branch shown in Cloudflare remains the frozen human baseline. Continue to avoid treating a `Workers Builds` check alone as proof of production traffic change.
 
-→ `render presentation separated from corrected physics truth`
+## 6. Active frontier — F5 isolated browser scheduled history
 
-with F2-style authority rollback retained as a fallback/exception unless F3 evidence requires it for normal operation.
+Active branch: `ws0-f5-browser-scheduled-history@5530b4002dc3318a094845f482f4494acca987ad`.
 
-Do not promote this candidate by donor prestige. Multi_World must falsify it against its own coupled-physics problem.
+Frozen contract: `docs/WS0_F5_BROWSER_SCHEDULED_HISTORY_CONTRACT.md`.
 
-## 7. Active frontier — F3.0 canonical timeline / buffered-input feasibility
+Status: **PRE-EXECUTION / NO BROWSER RESULT**.
 
-**F3.0 deliberately contains no Box3D.** It is the cheapest meaningful discriminator before another physical-history implementation.
+F5 is not another offline timing-family comparison. It moves the qualified F3/F4 semantics into an isolated real two-browser runtime while preserving the old `/world0/ws` and PR #15 controls.
 
-Build a deterministic timing-domain apparatus that defines and distinguishes:
+Contract highlights:
 
-- canonical server tick;
-- client predicted tick;
-- confirmed authoritative tick;
-- input target tick;
-- per-player authority input-buffer occupancy;
-- uplink arrival;
-- server consumption;
-- relay/snapshot/ack arrival at clients;
-- remote-command knowledge relative to a client's already-predicted tick.
+- new isolated `WorldSliceF5`, binding `WORLD_SLICE_F5`, route `/world0-f5/ws`, surface `/world0-f5/`;
+- canonical authority boundary tick semantics;
+- client predicted timeline target `L=8` for this bounded gate;
+- one logical target-tick input per predicted tick, transport batching by 2;
+- authority validates/buffers future records, relays them, consumes exact tick records or hold-last, and emits authoritative consumption feedback;
+- bounded browser history initially retains the F4 8/24 geometry unchanged;
+- complete predicted client world includes both actors and shared props;
+- replay generation handoff performs explicit entity rebind;
+- same-canonical-tick diagnostics must not compare current predicted client state against an older authority snapshot;
+- first presentation is raw physical correction: no smoothing before Owner judgement;
+- first human gate is desktop + phone on one fresh isolated F5 run with direct player contact and shared-prop interaction.
 
-Initial bounded sweep:
+## 7. What F5 must not claim
 
-- one-way latency `35 / 65 / 85 / 120 ms`;
-- jitter `0 / 10 / 30 ms`;
-- several prediction/input lead depths;
-- smooth and bursty delivery phases;
-- logical input at simulation tick granularity, with transport batching parameterized rather than assuming one packet per tick.
+F5 does not yet earn:
 
-Primary outputs:
+- final prediction lead;
+- production clock synchronization/drift algorithm;
+- final checkpoint cadence or memory/CPU budget;
+- packet-loss/reconnect architecture;
+- final NetEntityId wire representation;
+- production presentation smoothing;
+- binary protocol / interest management / causal-island optimization;
+- changes to the frozen normal `/world0/ws` path.
 
-- authority on-time input rate;
-- command lead/deficit at authority in ticks;
-- input-buffer depth distribution;
-- missing/hold-last events;
-- remote input/state arrival relative to peer predicted tick;
-- implied client rollback horizon;
-- additional authoritative timeline delay vs immediate local predicted response.
+## 8. Natural next action
 
-The key question is not whether prediction eliminates latency. It is:
+1. verify F4 PR #29 / issue comment `5517282802` and active F5 head live;
+2. audit the frozen F5 contract against current Worker/DO/browser code before modifying runtime;
+3. implement the smallest isolated F5 server+browser vertical slice;
+4. run automated protocol/CI/dry-run validation;
+5. stop at the first faithful two-device raw-correction Owner gate or a concrete deployment/runtime blocker.
 
-> **Can a forward-only authority receive normal local commands in time with a reasonable prediction/buffer policy, while the apparatus honestly quantifies the remaining remote-human uncertainty that clients must reconcile?**
-
-Natural stop: establish whether the scheduled-tick family is feasible enough to deserve coupled Box3D comparison. Do not add checkpoint machinery to answer F3.0.
-
-## 8. Planned next gates — provisional and re-selected after every result
-
-### F3.1 — coupled-physics timing discriminator
-
-If F3.0 qualifies, replay its exact timing traces through the T5 actor-contact → shared-prop causal-relay scene and compare:
-
-1. receipt-live control;
-2. authority-apply-time/forward-authority common-history family;
-3. scheduled canonical tick + forward authority + client prediction/reconciliation;
-4. source-time common-history repair with authority rollback.
-
-Measure client↔client/client↔authority residuals, shared-prop causal disagreement, local correction magnitude, client resim horizon and authority rollback cost.
-
-### F4 — bounded reconciliation substrate
-
-Use F2 where the winning timing model actually needs history. If forward authority wins, prove client-side bounded full-physics reconciliation first. If authority rollback is required, qualify it there too.
-
-Before runtime integration, require stable `NetEntityId -> BodyId` remapping, bounded retention/cost, replay-safe event semantics and exact snapshot/ack tick semantics.
-
-### F5 — real two-client desktop+mobile vertical slice
-
-Only after F3/F4: smallest real ticked protocol, two predicted physical players, shared props, measurable reconciliation, PR #15 preserved as control. Then ask for Owner free play.
-
-### F6 — Network Chaos + observability
-
-Make latency/jitter/hitches and correction behavior explicit metrics rather than hidden environmental noise.
-
-### F7+ — optimize only when earned
-
-Prediction LOD / causal physics islands, binary wire format, delta compression, interest management, transport abstraction, authority placement, persistence and larger-world topology remain downstream of a good small shared-world vertical slice.
-
-The detailed decision tree is in `MULTI_WORLD_SYNC_RESEARCH_PROGRAM.md`.
-
-## 9. What is not earned
-
-Do not infer or implement by default:
-
-- source-time authority rollback as the normal protocol;
-- claim that authority rollback is unnecessary;
-- browser/server production rollback framework;
-- selective rollback by nearest-N/radius;
-- final prediction lead or input-buffer depth;
-- final snapshot/input/network cadence;
-- trusted client tick semantics without validation windows;
-- stable production use of internal Box3D recording behavior;
-- application entity-ID remapping across restored worlds;
-- custom Box3D fork;
-- browser smoothing as a substitute for physical correction;
-- binary protocol, matchmaking, persistence or transport rewrite;
-- deployment of research treatments onto frozen PR #15.
-
-## 10. Repository hygiene contract
-
-- `main` remains the infrastructure control unless separately promoted;
-- historical qualified research branches remain immutable provenance;
-- completed research PRs remain closed/archived and unmerged unless separately promoted;
-- PR #15 remains intentionally open as the frozen human control;
-- abandoned/superseded pre-result branches are not evidence and should be labeled as such in current docs;
-- active research should occur only on the current frontier branch with ordinary CI plus only the workflow needed by that experiment;
-- issue #8 is the chronological evidence ledger; this file is the short operational map.
-
-## 11. First action after takeover
-
-1. Verify live anchors above and newest issue #8 checkpoint.
-2. Read `MULTI_WORLD_SYNC_RESEARCH_PROGRAM.md`, F1 timing apparatus and exact T5 coupled-physics apparatus.
-3. Audit the F3.0 timing contract **before writing the simulator**: tick definitions, event ordering, prediction lead, batching, uplink/authority/relay ordering and predeclared discriminator metrics.
-4. If the contract remains sound, implement one bounded F3.0 apparatus + dedicated workflow/artifact.
-5. Stop at the F3.0 verdict. Do not automatically begin F3.1.
+Do not reopen F1–F4 unless new evidence falsifies their qualified conclusions.

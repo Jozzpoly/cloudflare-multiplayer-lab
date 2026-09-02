@@ -4,6 +4,11 @@ import { spawnSync } from "node:child_process";
 const DONOR = "scripts/rc1-integrated-causality-envelope.mjs";
 const GENERATED = "scripts/.ws0-player-contact-isolation.generated.mjs";
 const DELAYS = process.env.WS0_CONTACT_DELAYS || "0,65,85";
+const ACTOR_SYNC = process.env.WS0_ACTOR_SYNC || "none";
+const OUTPUT = process.env.WS0_CONTACT_OUTPUT || "ws0-player-contact-isolation.json";
+
+if (!["none", "transform", "state"].includes(ACTOR_SYNC)) throw new Error(`invalid WS0_ACTOR_SYNC: ${ACTOR_SYNC}`);
+if (!/^[A-Za-z0-9._-]+$/.test(OUTPUT)) throw new Error(`invalid WS0_CONTACT_OUTPUT: ${OUTPUT}`);
 
 const SCENARIOS = `const SCENARIOS = [
   {
@@ -63,6 +68,18 @@ const scenarioEnd = source.indexOf("\n];", source.indexOf("const SCENARIOS = [")
 if (scenarioEnd < 0) throw new Error("RC1 donor scenario block changed");
 source = source.slice(0, source.indexOf("const SCENARIOS = [")) + SCENARIOS + source.slice(scenarioEnd + 4);
 
+const oldUrls = [
+  '        const aUrl = `${BASE_URL}/world0-rc1/?player=A-${nonce}&delayMs=${delayMs}`;',
+  '        const bUrl = `${BASE_URL}/world0-rc1/?player=B-${nonce}&delayMs=${delayMs}`;',
+].join("\n");
+const encodedMode = encodeURIComponent(ACTOR_SYNC);
+const treatmentUrls = [
+  '        const aUrl = `${BASE_URL}/world0-rc1/?player=A-${nonce}&delayMs=${delayMs}&actorSync=' + encodedMode + '`;',
+  '        const bUrl = `${BASE_URL}/world0-rc1/?player=B-${nonce}&delayMs=${delayMs}&actorSync=' + encodedMode + '`;',
+].join("\n");
+if (!source.includes(oldUrls)) throw new Error("RC1 donor URL seam changed");
+source = source.replace(oldUrls, treatmentUrls);
+
 const oldNavigation = `        await navigate(a, aUrl);\n        await navigate(b, bUrl);`;
 const qualifiedNavigation = `        await navigate(a, aUrl);\n        await waitFor(\`\${scenario.name}/\${delayMs} A owns slot0\`, async () => {\n          const s = await state(a);\n          return s && s.networkState === \"live\" && s.playerCount === 1 &&\n            Array.isArray(s.selfPosition) && s.selfPosition[0] < -6 && s.selfPosition[2] < -1 ? s : false;\n        }, 25_000);\n        await navigate(b, bUrl);`;
 if (!source.includes(oldNavigation)) throw new Error("RC1 donor navigation seam changed");
@@ -73,8 +90,8 @@ const newGate = `        const movement = Math.max(analysisA.authorityRowMovemen
 if (!source.includes(oldGate)) throw new Error("RC1 donor shared-row qualification seam changed");
 source = source.replace(oldGate, newGate);
 
-source = source.replaceAll("RC1 integrated temporal causality envelope", "WS0 player-contact causal isolation");
-source = source.replaceAll("rc1-envelope.json", "ws0-player-contact-isolation.json");
+source = source.replaceAll("RC1 integrated temporal causality envelope", `WS0 player-contact causal isolation · actorSync=${ACTOR_SYNC}`);
+source = source.replaceAll("rc1-envelope.json", OUTPUT);
 source = source.replaceAll("RC1 STRUCTURAL RUN PASS", "WS0 PLAYER-CONTACT ISOLATION STRUCTURAL PASS");
 
 writeFileSync(GENERATED, source);

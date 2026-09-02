@@ -20,12 +20,12 @@ Plans are candidates, not commitments. Do not continue a numbered experiment mer
 
 - infrastructure control: `main@d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de`;
 - frozen desktop+mobile zero-reconciliation human control: PR #15 / `ws0-human-two-player-mobile-baseline@f6d6b2f275a0c097ab9ce1e26d86a9fa912391b1`;
-- T4 isolated history-repair checkpoint: PR #22 / `e4fb8ef62d89fc7a21b05b241f1abcb1c3eb6a3d`;
-- T5 actor→shared-prop causal-relay checkpoint: PR #23 / `a4263565a1b39de35f93f85c5ada01d8ef9147e3`;
+- T4 isolated history-repair checkpoint: archived PR #22 / `e4fb8ef62d89fc7a21b05b241f1abcb1c3eb6a3d`;
+- T5 actor→shared-prop causal-relay checkpoint: archived PR #23 / `a4263565a1b39de35f93f85c5ada01d8ef9147e3`;
 - newest durable mechanism checkpoint: issue #8 comment `5515389350`;
-- active feasibility branch: `ws0-sync-history-feasibility-f1-causal-time`.
+- active feasibility branch: `ws0-sync-history-feasibility-f1-causal-time@9f423983928b0f6798f4768bbb3b5bc9a05665ec`.
 
-The F1 apparatus anchor before maintenance cleanup is `09d3ea8e85f632ad8e6481ecec9fdc4743e13320`. F1 has not yet produced a qualified result. Verify the branch head live because maintenance-only commits may sit above this apparatus commit.
+F1 apparatus commit: `09d3ea8e85f632ad8e6481ecec9fdc4743e13320`. The current head adds only maintenance workflow pruning. F1 has **no PR, no dedicated workflow, no run, no artifact and no qualified result yet**.
 
 ## 3. Product truth currently established
 
@@ -50,7 +50,7 @@ The current research ladder is intentionally frozen as evidence:
 - T4 / PR #22: history-aware late remote-input repair collapses the isolated contact fork in a favorable deterministic oracle;
 - T5 / PR #23: the same history repair prevents the actor fork from cascading into a divergent shared dynamic prop where the no-history control does create material prop divergence.
 
-T5 ends the current question "does history mechanically help?" with a qualified **yes**. It does **not** earn a production rollback architecture.
+These completed research PRs are now archived/closed while their branches, artifacts and bodies remain provenance. T5 ends the current question "does history mechanically help?" with a qualified **yes**. It does **not** earn a production rollback architecture.
 
 ## 5. Current frontier — causal-time feasibility
 
@@ -69,7 +69,7 @@ F1 exists to discriminate the minimum time/history contract before any browser r
 3. peer replay to source time while authority remains receipt-time;
 4. source-time repair on authority and clients.
 
-The F1 script itself is **not evidence** until its design is re-audited, given a bounded workflow, run, artifact and explicit verdict.
+The F1 script itself is **not evidence** until its design is re-audited, given one bounded dedicated workflow, run, artifact and explicit verdict.
 
 ## 6. What is not earned
 
@@ -92,17 +92,18 @@ Long-term convention from this checkpoint:
 
 - `main` remains the infrastructure control unless a separate promotion decision is made;
 - historical research branches remain immutable provenance and are not cleaned by deleting evidence;
-- completed research PRs should be **closed**, not left open forever;
-- PR #15 may remain open intentionally as the frozen human control;
-- an open research PR should mean work is currently active, not merely historically interesting;
-- the active frontier should carry ordinary `ci.yml` plus only workflows needed by the current experiment;
+- completed research PRs are closed/archived rather than left apparently active;
+- PR #15 remains intentionally open as the frozen human control;
+- an open research PR should mean work is currently active;
+- the active frontier carries ordinary `ci.yml` plus only workflows needed by the current experiment;
+- F1 currently contains **only `ci.yml`** under `.github/workflows`; its eventual dedicated F1 workflow should be added only after design review;
 - one-shot historical workflows remain on their frozen evidence branches instead of being inherited indefinitely;
 - issue #8 is the chronological evidence ledger; this file is the short current-state map.
 
 ## 8. First action after takeover
 
 1. Verify the anchors above live.
-2. Inspect F1 branch head/diff and confirm workflow cleanup did not alter its script semantics.
+2. Inspect F1 head `9f423983...` and confirm `09d3ea8... → 9f423983...` changes only inherited workflow deletion.
 3. Re-audit the F1 causal-time contracts against the actual `input → authority → peer_input` path.
 4. If F1 is still the smallest discriminating falsifier, add only its dedicated workflow, run it and preserve artifact/provenance.
 5. If F1's model is wrong, correct the experiment before execution.

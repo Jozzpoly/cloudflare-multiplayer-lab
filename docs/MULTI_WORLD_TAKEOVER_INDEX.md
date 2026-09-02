@@ -1,79 +1,112 @@
 # Multi_World — Takeover / documentation index
 
-Status: **CURRENT HANDOFF READY — VERIFY LIVE BEFORE WRITES**  
+Status: **CURRENT HANDOFF READY — ACTIVE FRONTIER F5 PRE-EXECUTION**  
 Canonical documentation branch: `multi-world-takeover-grounding`
 
-This branch is documentation/provenance only. It is not runtime authority. Live repo state, exact SHAs, CI/deployment evidence and newest qualified issue #8 checkpoints remain higher technical authority.
+This branch is documentation/provenance only. Live repo state, exact SHAs, CI/deployment evidence and newest qualified issue #8 checkpoints remain higher technical authority.
 
 ## Read this first
 
 1. **`MULTI_WORLD_CURRENT_STATE.md`**  
-   Short operational map: current anchors, qualified evidence through F2, the post-F2 architecture correction and exact active F3.0 frontier.
+   Short operational map through qualified F4 and the active F5 browser frontier.
 
 2. **`MULTI_WORLD_SYNC_RESEARCH_PROGRAM.md`**  
-   Current synchronization decision tree. Separates timing semantics, authority input buffering, client prediction/history, reconciliation, presentation, prediction scope, replication, transport and observability. Defines F3.0/F3.1 and provisional farther gates without treating them as final architecture.
+   Synchronization decision tree separating timing semantics, authority buffering, prediction/history, reconciliation, presentation, prediction scope, replication, transport and observability. Its earlier F3/F4 descriptions are historical planning where superseded by qualified evidence.
 
 3. **`MULTI_WORLD_PROJECT_SOUL.md`**  
-   Stable product purpose and values. Shared physical consequence, immediate embodiment and one shared truth matter more than preserving any current networking/engine architecture.
+   Stable product purpose: immediate embodiment, meaningful shared physical consequence and one shared truth outrank preservation of any current architecture.
 
 4. **Issue #8 newest qualified checkpoints**  
-   Chronological repo-native evidence ledger. At this checkpoint the newest qualified mechanism result is F2 comment `5516336021`. The post-F2 frontier correction is a planning checkpoint only and must not be confused with experimental evidence.
+   Chronological evidence ledger. The newest qualified mechanism checkpoint at this takeover is F4 comment `5517282802`.
 
-## Supporting canonical context
+5. **Active F5 contract**  
+   `WS0_F5_BROWSER_SCHEDULED_HISTORY_CONTRACT.md` on branch `ws0-f5-browser-scheduled-history@5530b4002dc3318a094845f482f4494acca987ad`. Status: pre-execution / no browser result.
 
-5. **`MULTI_WORLD_GROUNDING_V1.md`** — earlier consolidated grounding; its A2R-era frontier is historical.
-6. **`MULTI_WORLD_HUMAN_TEST_CONTEXT.md`** — human/device validation context.
-7. **`MULTI_WORLD_FRESH_TAKEOVER_V1.md`** — older startup mandate; keep its live-regrounding method, not its historical frontier.
-
-## Audit/provenance material — not startup reading
-
-- `MULTI_WORLD_GROUNDING_LEDGER.md`;
-- `MULTI_WORLD_GROUNDING_REDTEAM.md`;
-- `MULTI_WORLD_FRESH_TAKEOVER.md`;
-- older gate docs and archived research PRs/branches.
-
-Do not delete stale historical material merely because it is not current. It is provenance, not current-state instruction.
-
-## Current authority anchors to verify live
-
-Expected at the 2026-09-02 revised synchronization checkpoint:
+## Current live anchors to verify
 
 - `main@d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de` — infrastructure control;
-- open PR #15 / `ws0-human-two-player-mobile-baseline@f6d6b2f275a0c097ab9ce1e26d86a9fa912391b1` — frozen desktop+mobile zero-reconciliation human control;
-- archived PR #23 / `a4263565a1b39de35f93f85c5ada01d8ef9147e3` — qualified T5 actor→shared-prop causal-relay evidence;
-- archived PR #24 / `2872e7b3b5f369bbe9f7bfad7fcd555c9d16f710` — qualified F1 causal-time evidence, issue #8 comment `5516192962`;
-- archived PR #25 / `1c6807f1562d832753a7514cd6d2c1ea0100c0a3` — qualified F2 bounded full-physics history substrate, issue #8 comment `5516336021`;
-- superseded pre-result branch `ws0-sync-history-f3-bounded-resim@1c6807f1562d832753a7514cd6d2c1ea0100c0a3` — no F3 result;
-- active frontier branch `ws0-sync-timeline-f3-buffered-input`, created fresh from exact F2 head — **F3.0 pre-execution**.
+- PR #15 / `ws0-human-two-player-mobile-baseline@f6d6b2f275a0c097ab9ce1e26d86a9fa912391b1` — frozen desktop+mobile human control;
+- PR #23 / `a4263565a1b39de35f93f85c5ada01d8ef9147e3` — T5 coupled actor→shared-prop causal relay;
+- PR #24 / `2872e7b3b5f369bbe9f7bfad7fcd555c9d16f710` — F1 common-history topology;
+- PR #25 / `1c6807f1562d832753a7514cd6d2c1ea0100c0a3` — F2 full-physics checkpoint substrate;
+- PR #28 / `72f298e7b3730194d69a9d989620c273138b2c34` — F3.1 coupled temporal-family discriminator;
+- PR #29 / `d33294e9052e37cf716d809e7dca551d1065df44` — F4 bounded scheduled client history, issue `5517282802`;
+- `ws0-f5-browser-scheduled-history@5530b4002dc3318a094845f482f4494acca987ad` — active pre-result branch.
 
-## Why the frontier changed after F2
+Completed research PRs are archived/closed and unmerged. Their branches, artifacts and issue checkpoints are provenance, not merge candidates by default.
 
-F1/F2 earned a common-history requirement and a strong bounded rollback/checkpoint mechanism, but did not prove that normal authoritative input must arrive late and force server rollback.
+## Qualified path in one screen
 
-A post-F2 architecture red-team identified a missing family: **canonical scheduled simulation ticks + client prediction lead + authority input buffering**. Professional donor systems use related patterns to let normal local input reach authority before its target tick while client history/reconciliation absorbs prediction error.
+Human control failure:
 
-Therefore the old bounded-authority-resim F3 was superseded before execution. F2 remains valuable mechanism evidence; source-time authority rollback remains a candidate/fallback, not the default conclusion.
+`full local worlds + delayed remote intent + zero reconciliation`
+→ cumulative actor disagreement
+→ divergent shared matter.
 
-## Active execution boundary
+Research:
 
-F3.0 is a deterministic **timing-domain** experiment only. It should answer whether the scheduled-tick/buffered-input family is mechanically plausible under the project's latency/jitter envelope and quantify the remaining uncertainty/rollback horizon for remote human causes.
+`T4/T5 history repair`
+→ `F1 common canonical history requirement`
+→ `F2 bounded branchable full-physics history`
+→ `F3.0 scheduled-tick/buffer timing feasibility`
+→ `F3.1 scheduled-forward authority matches source truth without authority rollback`
+→ `F4 bounded recent client history reproduces F3.1 exactly and survives overlapping corrections`.
 
-Do not add Box3D/checkpoint code merely to answer F3.0.
+Current supported normal-flow candidate:
 
-If F3.0 qualifies, F3.1 may drive its exact timing traces through the existing T5 coupled-physics scenario and compare forward-authority scheduled ticks against source-time authority rollback and prior controls.
+`canonical target ticks`
+→ `future authority input buffer`
+→ `forward-only authority`
+→ `consumption feedback`
+→ `complete predicted client physics`
+→ `bounded rollback/resimulation`
+→ `separate presentation layer`.
 
-## Repository hygiene convention
+This is still a candidate architecture, not final production truth.
 
-- historical qualified branches stay immutable;
-- completed research PRs remain closed/archived and unmerged unless separately promoted;
-- PR #15 remains intentionally open as the human control;
-- pre-result superseded branches are not evidence;
-- active research branches carry ordinary CI plus only the current experiment workflow;
-- `main` is not changed for documentation cleanup or experimental convenience;
-- issue #8 records chronological evidence/planning checkpoints; canonical docs record current operational meaning.
+## F4 facts that must survive takeover
+
+- 8-tick segment / 24-tick retained window was only the bounded lab candidate;
+- observed max replay for carried 65/85/HOL traces: `16 / 18 / 20` physics steps under frozen bound `21`;
+- max retained recording bytes in the small T5 lab: `186485 B`;
+- overlapping correction C2 restored from C1-corrected generation and ended at oracle residual `0`;
+- RecPlayer creation ordinals are **generation-local**;
+- stable identity is host `NetEntityId`, with explicit per-generation rebind to ordinal/BodyId;
+- body names are only an experimental preserved locator seam.
+
+## Active F5 execution boundary
+
+F5 exists to get out of the offline lab quickly.
+
+It must use isolated new routes/bindings and leave `/world0/ws` plus PR #15 untouched. It should implement:
+
+- real future target-tick records sampled from human input at the local predicted tick;
+- forward authority input consumption + feedback;
+- peer future-record relay;
+- complete local Box3D prediction;
+- F4 bounded history in-browser;
+- same-canonical-tick diagnostics;
+- raw correction presentation first.
+
+Natural stop: first faithful desktop+phone Owner test with runtime telemetry, or a concrete implementation/deployment blocker.
+
+Do not spend F5 on final smoothing, final cadence tuning, packet-loss architecture, binary protocol or causal-island optimization.
+
+## Deployment note
+
+Root Cloudflare build command has been corrected to `npx wrangler versions upload`. A research push may still produce a `Workers Builds` check and inactive Worker Version; that is not by itself evidence that production traffic switched to the research version. Continue to verify traffic separately when deployment state matters.
+
+## Supporting historical context
+
+- `MULTI_WORLD_GROUNDING_V1.md`;
+- `MULTI_WORLD_HUMAN_TEST_CONTEXT.md`;
+- `MULTI_WORLD_FRESH_TAKEOVER_V1.md`;
+- `MULTI_WORLD_GROUNDING_LEDGER.md`;
+- `MULTI_WORLD_GROUNDING_REDTEAM.md`;
+- older gate docs and archived research branches.
+
+Preserve them as provenance, but do not let historical frontiers override live evidence.
 
 ## Expected first action in a fresh conversation
 
-Read `MULTI_WORLD_CURRENT_STATE.md` and `MULTI_WORLD_SYNC_RESEARCH_PROGRAM.md`, verify live anchors, then audit the F3.0 tick/timing contract before implementing it.
-
-Do **not** jump directly to browser rollback, source-time authority rollback, binary protocol or causal-island optimization.
+Verify F4 issue/PR evidence and the live F5 head, read `MULTI_WORLD_CURRENT_STATE.md` plus the F5 contract, then audit current Worker/DO/browser seams before implementing the isolated F5 vertical slice.

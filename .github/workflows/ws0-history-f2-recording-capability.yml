@@ -1,0 +1,40 @@
+name: WS0 History F2 Recording Capability
+
+on:
+  push:
+    branches: [ws0-sync-history-feasibility-f2-checkpoint]
+    paths:
+      - "scripts/ws0-history-f2-recording-capability.mjs"
+      - ".github/workflows/ws0-history-f2-recording-capability.yml"
+      - "package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  history-f2-recording-capability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Validate exact frontier
+        run: |
+          npm run check
+          node --check scripts/ws0-history-f2-recording-capability.mjs
+      - name: Probe exact recording surface
+        run: WS0_HISTORY_F2_OUTPUT=ws0-history-f2-recording-capability.json node scripts/ws0-history-f2-recording-capability.mjs
+      - name: Preserve F2 capability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws0-history-f2-recording-capability
+          path: ws0-history-f2-recording-capability.json
+          if-no-files-found: error

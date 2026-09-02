@@ -7,7 +7,7 @@
   <style>
     :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     * { box-sizing: border-box; }
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0b1117; color: #d9e5ea; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0b1117; color: #d9e5ea; overscroll-behavior: none; }
     #viewport { position: fixed; inset: 0; }
     #viewport canvas { width: 100%; height: 100%; display: block; }
     .panel { position: fixed; z-index: 4; background: rgba(8,13,18,.88); border: 1px solid #34444d; border-radius: 10px; backdrop-filter: blur(8px); }
@@ -17,13 +17,51 @@
     #boot input, #boot button { width: 100%; padding: 10px 12px; margin-top: 8px; border-radius: 7px; border: 1px solid #435760; background: #111b22; color: inherit; }
     #boot button { cursor: pointer; background: #17312d; border-color: #39796b; }
     #boot button:disabled { opacity: .55; cursor: wait; }
-    #hud { top: 12px; left: 12px; min-width: 305px; padding: 10px 12px; font-size: 12px; line-height: 1.55; }
+    #hud { top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); min-width: 305px; padding: 10px 12px; font-size: 12px; line-height: 1.55; }
     #hud .title { font-weight: 700; color: #fff; margin-bottom: 4px; }
     #hud .row { display: flex; justify-content: space-between; gap: 16px; }
     #hud .value { color: #9fe1d2; text-align: right; }
     #hud .warn { color: #ffb86b; }
-    #notice { left: 50%; bottom: 18px; transform: translateX(-50%); max-width: min(760px, calc(100% - 24px)); padding: 9px 12px; font: 13px/1.4 system-ui, sans-serif; }
+    #notice { left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: min(760px, calc(100% - 24px)); padding: 9px 12px; font: 13px/1.4 system-ui, sans-serif; }
+    #touch-controls {
+      position: fixed;
+      z-index: 6;
+      left: max(16px, env(safe-area-inset-left));
+      bottom: max(16px, env(safe-area-inset-bottom));
+      width: 184px;
+      height: 184px;
+      display: none;
+      grid-template-columns: repeat(3, 58px);
+      grid-template-rows: repeat(3, 58px);
+      gap: 5px;
+      pointer-events: none;
+    }
+    #touch-controls.visible { display: grid; }
+    .touch-dir {
+      width: 58px;
+      height: 58px;
+      padding: 0;
+      border: 1px solid rgba(180,220,225,.55);
+      border-radius: 14px;
+      background: rgba(12,25,31,.76);
+      color: #efffff;
+      font: 700 26px/1 system-ui, sans-serif;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      pointer-events: auto;
+    }
+    .touch-dir.active { background: rgba(45,103,91,.88); border-color: rgba(167,255,230,.9); }
+    .touch-dir[data-dir="up"] { grid-column: 2; grid-row: 1; }
+    .touch-dir[data-dir="left"] { grid-column: 1; grid-row: 2; }
+    .touch-dir[data-dir="down"] { grid-column: 2; grid-row: 2; }
+    .touch-dir[data-dir="right"] { grid-column: 3; grid-row: 2; }
     .hidden { display: none !important; }
+    @media (max-width: 700px) {
+      #hud { min-width: 0; max-width: calc(100% - 24px); font-size: 11px; }
+      #notice { bottom: max(208px, calc(env(safe-area-inset-bottom) + 190px)); }
+    }
   </style>
 </head>
 <body>
@@ -49,6 +87,13 @@
     <div class="row"><span>RTT p50</span><span id="m-rtt" class="value">—</span></div>
   </aside>
   <div id="notice" class="panel hidden"></div>
+  <nav id="touch-controls" aria-label="Movement controls">
+    <button class="touch-dir" type="button" data-dir="up" aria-label="Move forward">▲</button>
+    <button class="touch-dir" type="button" data-dir="left" aria-label="Move left">◀</button>
+    <button class="touch-dir" type="button" data-dir="down" aria-label="Move backward">▼</button>
+    <button class="touch-dir" type="button" data-dir="right" aria-label="Move right">▶</button>
+  </nav>
   <script type="module" src="./app.js"></script>
+  <script type="module" src="./touch-controls.js"></script>
 </body>
 </html>

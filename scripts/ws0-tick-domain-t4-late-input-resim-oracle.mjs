@@ -507,7 +507,7 @@ for (const policy of POLICIES) {
   for (const delayMs of DELAYS_MS) {
     for (const scenario of SCENARIOS) {
       const group = cells.filter((cell) =>
-        cell.policy === policy && cell.delayMs === delayMs && cell.scenario === scenario
+        cell.policy === policy && cell.delayMs === delayMs && cell.scenario === scenario.name
       );
       summary.push({
         policy,

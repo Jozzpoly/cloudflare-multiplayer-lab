@@ -1,0 +1,39 @@
+name: WS0 Desktop Mobile Browser Gate
+
+on:
+  pull_request:
+    paths:
+      - "public/world0-two-client/**"
+      - "public/world0-a2r/fixed-step-clock.js"
+      - "src/world-slice-0-two-client.ts"
+      - "src/world-slice-entry.ts"
+      - "scripts/ws0-mobile-input-browser-smoke.mjs"
+      - "package.json"
+      - ".github/workflows/ws0-desktop-mobile-browser-gate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-mobile-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate mobile gate syntax
+        run: |
+          node --check public/world0-two-client/touch-controls.js
+          node --check scripts/ws0-mobile-input-browser-smoke.mjs
+
+      - name: Prove mobile touch causality into passive desktop world
+        run: node scripts/ws0-mobile-input-browser-smoke.mjs

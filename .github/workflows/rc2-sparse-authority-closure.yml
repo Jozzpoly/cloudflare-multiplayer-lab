@@ -1,0 +1,44 @@
+name: RC2 Sparse Authority Closure
+
+on:
+  pull_request:
+    paths:
+      - "public/world0-rc1/**"
+      - "scripts/rc2-sparse-authority-closure.mjs"
+      - "src/world-slice-entry.ts"
+      - "src/world-slice-0-two-client.ts"
+      - "package.json"
+      - ".github/workflows/rc2-sparse-authority-closure.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  sparse-authority-closure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax-check RC2 probe
+        run: node --check scripts/rc2-sparse-authority-closure.mjs
+
+      - name: Run sparse authority closure falsifier
+        run: node scripts/rc2-sparse-authority-closure.mjs
+
+      - name: Preserve RC2 evidence
+        if: always() && hashFiles('rc2-sparse-authority-closure.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc2-sparse-authority-closure
+          path: rc2-sparse-authority-closure.json
+          if-no-files-found: error

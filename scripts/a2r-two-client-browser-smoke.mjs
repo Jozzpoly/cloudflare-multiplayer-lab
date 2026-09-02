@@ -8,6 +8,9 @@ const DRIVER_PORT = 9515;
 const BASE_URL = `http://${HOST}:${WORKER_PORT}`;
 const DRIVER_URL = `http://${HOST}:${DRIVER_PORT}`;
 const PROCESS_LOG_LIMIT = 180;
+const CLEAN_BASELINE_PROP_DELTA = 0.08;
+const MIN_NEW_AUTHORITY_PROP_MOTION = 0.5;
+const MAX_SETTLED_PROP_DELTA = 0.08;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function appendLog(target, chunk) {
@@ -139,7 +142,7 @@ async function keyDrive(sessionId, key, durationMs) {
           { type: "keyDown", value: key },
           { type: "pause", duration: durationMs },
           { type: "keyUp", value: key },
-          { type: "pause", duration: 600 },
+          { type: "pause", duration: 900 },
         ],
       }],
     },
@@ -181,20 +184,30 @@ try {
   await bootAndEnter(a, "probe-a");
   await bootAndEnter(b, "probe-b");
 
-  const baseline = await waitFor("two-client local worlds", async () => {
+  // This is a harness-cleanliness precondition, not a product SLO. Before A
+  // acts we need both local worlds to already represent the same quiet props
+  // closely enough that a later shared-contact result is causally interpretable.
+  const baseline = await waitFor("clean two-client local-world baseline", async () => {
     const sa = await state(a);
     const sb = await state(b);
     lastA = sa;
     lastB = sb;
     const ready = (s) => s && s.networkState === "live · local self + delayed peer intent" && s.playerCount === 2 &&
-      s.hasRemoteBody === true && s.localSteps >= 30 && s.localDroppedSteps === 0 && s.peerInputCount > 0;
+      s.hasRemoteBody === true && s.localSteps >= 45 && s.localDroppedSteps === 0 && s.peerInputCount > 0 &&
+      Number.isFinite(s.divergence?.prop) && s.divergence.prop <= CLEAN_BASELINE_PROP_DELTA;
     return ready(sa) && ready(sb) ? { sa, sb } : false;
   }, 25_000);
 
   const beforePeerB = baseline.sb.peerInputCount;
+  const baselineAuthorityMotion = Math.max(
+    baseline.sa.telemetry?.maxPropDisplacement ?? 0,
+    baseline.sb.telemetry?.maxPropDisplacement ?? 0,
+  );
+  console.log(`TWO-CLIENT CLEAN BASELINE\nA ${JSON.stringify(baseline.sa)}\nB ${JSON.stringify(baseline.sb)}`);
+
   await keyDrive(a, "d", 1900);
 
-  const exercised = await waitFor("remote intent + shared contact path", async () => {
+  const exercised = await waitFor("delayed remote cause moves passive-client local prop", async () => {
     const sa = await state(a);
     const sb = await state(b);
     lastA = sa;
@@ -204,14 +217,31 @@ try {
     if (sb.peerInputCount <= beforePeerB || sb.peerInputSeq <= 0) return false;
     if (sa.latestAck <= 0 || sb.latestAck <= 0) return false;
     if ((sa.telemetry?.activePlayers ?? 0) !== 2 || (sb.telemetry?.activePlayers ?? 0) !== 2) return false;
-    if ((sa.telemetry?.maxPropDisplacement ?? 0) < 0.12) return false;
-    if ((sb.telemetry?.maxPropDisplacement ?? 0) < 0.12) return false;
+
+    const authorityMotion = Math.min(
+      sa.telemetry?.maxPropDisplacement ?? 0,
+      sb.telemetry?.maxPropDisplacement ?? 0,
+    );
+    if (authorityMotion - baselineAuthorityMotion < MIN_NEW_AUTHORITY_PROP_MOTION) return false;
+
+    // B never receives movement input in this trace. Its only local cause for
+    // following A's authoritative prop displacement is the delayed peer_input
+    // driving A's remote dynamic body through B's local Box3D world. A small
+    // final max prop delta therefore proves the passive local world actually
+    // reproduced the shared consequence; it cannot be satisfied by a static
+    // local prop while authority alone moves by >0.5 m.
+    if (!Number.isFinite(sb.divergence?.prop) || sb.divergence.prop > MAX_SETTLED_PROP_DELTA) return false;
+
     const finite = [sa.divergence.self, sa.divergence.remote, sa.divergence.prop, sb.divergence.self, sb.divergence.remote, sb.divergence.prop]
       .every((value) => Number.isFinite(value));
-    return finite ? { sa, sb } : false;
+    return finite ? { sa, sb, authorityMotion } : false;
   }, 20_000);
 
-  console.log(`TWO-CLIENT BROWSER SMOKE PASS\nA ${JSON.stringify(exercised.sa)}\nB ${JSON.stringify(exercised.sb)}`);
+  console.log(
+    `TWO-CLIENT BROWSER CAUSAL SMOKE PASS · authority prop motion ${exercised.authorityMotion.toFixed(3)} · ` +
+    `passive-B final prop Δ ${exercised.sb.divergence.prop.toFixed(3)}\n` +
+    `A ${JSON.stringify(exercised.sa)}\nB ${JSON.stringify(exercised.sb)}`,
+  );
 } catch (error) {
   if (lastA) console.error(`\n--- last A state ---\n${JSON.stringify(lastA)}`);
   if (lastB) console.error(`\n--- last B state ---\n${JSON.stringify(lastB)}`);

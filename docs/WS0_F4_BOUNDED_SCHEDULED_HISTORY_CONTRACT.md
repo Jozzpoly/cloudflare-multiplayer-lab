@@ -55,15 +55,19 @@ Raw Box3D `BodyId` is generation-local and MUST NOT be treated as network/applic
 
 `userData` is not a replay identity seam: the pinned Box3D snapshot intentionally clears host pointer/userData fields.
 
-Primary host identity for this gate:
+The pinned replay implementation also proves that **creation ordinals are recording-generation-local**. Within one player, creation ordinals are append-only and destroyed entities leave holes. But a fresh snapshot-seeded recording rebuilds its frame-0 ordinal table by walking the current live body slots. A fresh generation therefore may assign a different ordinal to the same surviving application entity.
 
-`NetEntityId -> creationOrdinal -> current-generation BodyId`
+Primary host identity for this gate is therefore:
 
-The host registry owns stable `NetEntityId` values and the corresponding Box3D creation ordinals. After every restore/generation handoff, the current `BodyId` is resolved through `b3RecPlayer_GetBodyId(player, creationOrdinal)` and validated with `b3Body_IsValid`.
+`NetEntityId -> generation-local creationOrdinal -> current-generation BodyId`
 
-Body names may be used only as an additional semantic tripwire. They are not the primary identity key.
+`NetEntityId` remains the stable application identity. At every fresh recording/player generation boundary, the host must explicitly rebind live `NetEntityId` values to that generation's ordinals before resolving ordinary `BodyId` handles.
 
-F4c must include create/destroy/create behavior so holes and ordinal lifetime are tested rather than assumed away.
+The current exact `box3d.js` binding preserves body names through snapshots and exposes `b3Body_SetName/GetName`; F4 may use a compact encoded body name as the **experimental generation-handoff locator** used to discover the new ordinal table. That locator is not promoted to final network identity and F4 does not claim debug names are the long-term production transport for `NetEntityId`.
+
+Within a generation, `b3RecPlayer_GetBodyId(player, creationOrdinal)` plus `b3Body_IsValid` is the supported ordinal -> live-handle path.
+
+F4c must include create/destroy/create behavior, an ordinal hole inside one generation, and a fresh recording generation that demonstrates explicit ordinal rebinding rather than assuming ordinal stability.
 
 ## Candidate retention geometry
 
@@ -72,11 +76,11 @@ F3.1's worst carried client rewind is 13 ticks. A provisional segment length of 
 For an 8-tick segment:
 
 - checkpoint-to-target prefix can be up to 7 ticks;
-- target-to-current correction can require up to 13 ticks;
-- bounded corrected replay is therefore expected to stay on the order of <=20 historical steps from a retained seed, with exact counts measured by the apparatus;
+- a 13-tick logical rewind means corrected execution includes ticks `T..now`, i.e. up to 14 corrected physics steps;
+- the strict candidate worst case is therefore `7 + 14 = 21` replayed physics steps from a retained seed to the corrected present;
 - retaining current + two previous 8-tick segments gives a 24-tick window and should cover the carried F3.1 horizon with margin.
 
-These are pre-result bounds to test. The apparatus must report actual restored checkpoint age, replayed physics steps, retained recording bytes, and generation rotations.
+These are pre-result bounds to test. The apparatus must report actual restored checkpoint age, seek prefix, corrected physics steps, total replayed physics steps, retained recording bytes, and generation rotations.
 
 ## F4 apparatus
 
@@ -93,7 +97,8 @@ Required evidence per trace:
 - actor/relay correction metrics compared with F3.1;
 - max logical rewind ticks;
 - max checkpoint age in ticks;
-- max actual physics steps replayed for one correction;
+- max seek prefix and corrected physics steps;
+- max total physics steps replayed for one correction (candidate bound: 21);
 - retained recording bytes;
 - recording/player generation rotations;
 - entity remap validation failures (must be zero).
@@ -115,10 +120,11 @@ Exercise at least one application entity through creation, destruction, and a la
 PASS requires:
 
 - stable host `NetEntityId` semantics;
-- correct creation-ordinal holes;
+- correct creation-ordinal holes within one recording generation;
 - destroyed ordinals resolve as invalid/null when appropriate;
 - new entities are not mistaken for recycled Box3D handles;
-- body-name tripwires, where used, agree with the host registry.
+- a fresh snapshot-seeded generation explicitly rebinds surviving `NetEntityId` values to its new generation-local ordinal table;
+- the experimental preserved-name locator agrees with the host registry wherever it is used.
 
 ## Controls / failure conditions
 
@@ -126,7 +132,7 @@ F4 is NOT qualified if any of the following is required to make it pass:
 
 - replay from session/global seed for normal correction;
 - manual reconstruction of hidden contact/solver state;
-- treating Box3D BodyId or userData as stable application identity;
+- treating Box3D BodyId, userData, or a prior generation's creation ordinal as stable application identity;
 - dropping shared matter from the repaired world;
 - silently discarding overlapping corrections;
 - changing the F3.1 canonical timing semantics after seeing F4 results;
@@ -136,7 +142,7 @@ F4 is NOT qualified if any of the following is required to make it pass:
 
 F4 ends when bounded recent history has either:
 
-1. reproduced the F3.1 coupled scheduled-forward truth, survived overlapping corrections, and demonstrated a sound entity remap seam; or
+1. reproduced the F3.1 coupled scheduled-forward truth, survived overlapping corrections, and demonstrated a sound generation-local entity remap seam; or
 2. exposed a concrete blocker in the exact F2 recording substrate that prevents one of those requirements.
 
 If F4 qualifies, the next gate should move quickly toward browser/runtime integration and human-visible reconciliation of the already-observed RTT-scale correction, rather than reopening another abstract temporal-family ladder.

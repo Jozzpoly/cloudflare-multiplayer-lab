@@ -1,0 +1,41 @@
+name: RC2 Post-Stop Moving Closure
+
+on:
+  pull_request:
+    paths:
+      - "public/world0-rc2/**"
+      - "scripts/rc2-poststop-moving-closure.mjs"
+      - "src/world-slice-entry.ts"
+      - "src/world-slice-0-two-client.ts"
+      - ".github/workflows/rc2-poststop-moving-closure.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  poststop-moving-qualified:
+    strategy:
+      fail-fast: false
+      matrix:
+        repeat: [1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      RC2_REPEAT: ${{ matrix.repeat }}
+      RC2_OUTPUT: rc2-poststop-moving-r${{ matrix.repeat }}.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: node --check scripts/rc2-poststop-moving-closure.mjs
+      - name: Run post-causality moving closure probe
+        run: node scripts/rc2-poststop-moving-closure.mjs
+      - name: Preserve post-stop evidence
+        if: always() && hashFiles(format('rc2-poststop-moving-r{0}.json', matrix.repeat)) != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc2-poststop-moving-r${{ matrix.repeat }}
+          path: rc2-poststop-moving-r${{ matrix.repeat }}.json
+          if-no-files-found: error

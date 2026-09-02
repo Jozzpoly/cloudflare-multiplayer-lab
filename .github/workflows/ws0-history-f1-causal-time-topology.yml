@@ -1,0 +1,41 @@
+name: WS0 History F1 Causal Time Topology
+
+on:
+  push:
+    branches: [ws0-sync-history-feasibility-f1-causal-time]
+    paths:
+      - "scripts/ws0-history-f1-causal-time-topology.mjs"
+      - ".github/workflows/ws0-history-f1-causal-time-topology.yml"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  history-f1-causal-time-topology:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Validate exact frontier
+        run: |
+          npm run check
+          node --check scripts/ws0-history-f1-causal-time-topology.mjs
+      - name: Run F1 causal-time apparatus
+        run: WS0_HISTORY_F1_OUTPUT=ws0-history-f1-causal-time-topology.json node scripts/ws0-history-f1-causal-time-topology.mjs
+      - name: Preserve F1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws0-history-f1-causal-time-topology
+          path: ws0-history-f1-causal-time-topology.json
+          if-no-files-found: error

@@ -1,7 +1,7 @@
-# Multi_World — Project Soul draft
+# Multi_World — Project Soul
 
-Status: **TAKEOVER DRAFT / PRODUCT INTENT, NOT ARCHITECTURE**  
-Date boundary: **2026-09-02**
+Status: **CANONICAL HANDOFF INTENT / PRODUCT DIRECTION, NOT ARCHITECTURE**  
+Grounded: **2026-09-02**
 
 ---
 
@@ -50,6 +50,12 @@ The world should increasingly support situations that were not individually scri
 The longer-term direction is a small persistent cooperative living-world / RPG-like experience, but **persistence, RPG systems, combat, economy, AI and progression are not current substrate requirements**.
 
 They should be added only when the shared-world foundation makes them meaningful rather than as scaffolding built in advance.
+
+### Shared continuity beyond one session
+
+The long-term world should not be conceptualized merely as a disposable match arena. Places, arrangements and consequences should be able to matter beyond one short session or one particular player's presence.
+
+This is a **directional product pressure**, not authorization to build persistence/storage architecture now. The immediate shared-physics work should stay small, but it should avoid assumptions that would make a persistent shared place fundamentally impossible later.
 
 ---
 

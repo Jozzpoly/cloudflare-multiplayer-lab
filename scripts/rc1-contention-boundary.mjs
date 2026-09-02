@@ -7,12 +7,18 @@ const WORKER_PORT = 8787;
 const DRIVER_PORT = 9515;
 const BASE_URL = `http://${HOST}:${WORKER_PORT}`;
 const DRIVER_URL = `http://${HOST}:${DRIVER_PORT}`;
-const DELAYS_MS = [40, 50, 60, 70, 80, 90, 100];
-const REPEATS = 2;
+const DEFAULT_DELAYS_MS = [40, 50, 60, 70, 80, 90, 100];
+const DELAYS_MS = process.env.RC1_BOUNDARY_DELAYS
+  ? process.env.RC1_BOUNDARY_DELAYS.split(",").map(Number).filter(Number.isFinite)
+  : DEFAULT_DELAYS_MS;
+const REPEATS = Math.max(1, Math.trunc(Number(process.env.RC1_BOUNDARY_REPEATS || 2)));
+const OUTPUT_PATH = process.env.RC1_BOUNDARY_OUTPUT || "rc1-contention-boundary.json";
 const STOP_AT_MS = 3500;
 const REST_SAMPLE_MS = [2000, 4000];
 const PROCESS_LOG_LIMIT = 160;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+if (!DELAYS_MS.length) throw new Error("RC1 boundary requires at least one finite delay");
 
 function appendLog(target, chunk) {
   target.push(...String(chunk).split(/\r?\n/).filter(Boolean));
@@ -217,8 +223,8 @@ try {
       finalAToBMax: Math.max(...group.map((r) => r.final.aToB)),
     };
   });
-  writeFileSync("rc1-contention-boundary.json", JSON.stringify({
-    revision: "ws0-rc1-contention-boundary-v1",
+  writeFileSync(OUTPUT_PATH, JSON.stringify({
+    revision: "ws0-rc1-contention-boundary-v2",
     generatedAt: new Date().toISOString(),
     design: { delaysMs: DELAYS_MS, repeats: REPEATS, restSampleMs: REST_SAMPLE_MS },
     summary,
@@ -226,7 +232,7 @@ try {
   }, null, 2));
   console.log("\nBoundary summary:");
   for (const row of summary) console.log(`${row.delayMs}ms actual≈${fmt(row.meanActualPeerDelayMs)} A↔B mean=${fmt(row.finalAToBMean)} range=${fmt(row.finalAToBMin)}..${fmt(row.finalAToBMax)}`);
-  console.log("RC1 CONTENTION BOUNDARY STRUCTURAL PASS");
+  console.log(`RC1 CONTENTION BOUNDARY STRUCTURAL PASS — ${OUTPUT_PATH}`);
 } catch (error) {
   if (wrangler?.logs?.length) console.error(`\n--- wrangler tail ---\n${wrangler.logs.join("\n")}`);
   if (chromedriver?.logs?.length) console.error(`\n--- chromedriver tail ---\n${chromedriver.logs.join("\n")}`);

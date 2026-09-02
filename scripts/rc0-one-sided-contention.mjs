@@ -11,7 +11,10 @@ const RUN_TICKS = 360;
 const A_ID = 'player-a';
 const B_ID = 'player-b';
 const PROP_ID = 'prop-0';
+const IDS = [A_ID, B_ID, PROP_ID];
 const EPS = 1e-12;
+const ASSERT_EPS = 1e-8;
+const DIVERGENCE_EPS = 1e-7;
 
 const b3 = await Box3D();
 
@@ -102,10 +105,6 @@ function createWorld() {
   return { world, bodies };
 }
 
-function destroyWorld(sim) {
-  b3.b3DestroyWorld(sim.world);
-}
-
 function state(body) {
   const position = [0, 0, 0];
   const rotation = [0, 0, 0, 1];
@@ -123,15 +122,17 @@ function state(body) {
   };
 }
 
-function finiteState(s) {
-  return [...s.position, ...s.rotation, ...s.linearVelocity, ...s.angularVelocity].every(Number.isFinite);
-}
-
 function snapshot(sim) {
   const result = {};
   for (const [id, body] of sim.bodies) {
     result[id] = state(body);
-    if (!finiteState(result[id])) throw new Error(`non-finite state: ${id}`);
+    const values = [
+      ...result[id].position,
+      ...result[id].rotation,
+      ...result[id].linearVelocity,
+      ...result[id].angularVelocity,
+    ];
+    if (!values.every(Number.isFinite)) throw new Error(`non-finite state: ${id}`);
   }
   return result;
 }
@@ -145,14 +146,23 @@ function applyPlayerInput(body, input) {
   const targetZ = inputZ * PLAYER_SPEED;
   const acceleration = hasInput ? PLAYER_ACCELERATION : PLAYER_DECELERATION;
   const [nextX, nextZ] = moveToward2(velocity[0], velocity[2], targetX, targetZ, acceleration * DT);
+  // Mirrors A2R: horizontal controller intent, solver-owned Y velocity.
   b3.b3Body_SetLinearVelocity(body, [nextX, velocity[1], nextZ]);
 }
 
-function inputAt(experimentTick) {
+function aInputAt(experimentTick) {
   if (experimentTick < 0) return [0, 0];
   const t = experimentTick * DT;
-  if (t < 1.65) return [1, 0];
-  return [0, 0];
+  return t < 1.65 ? [1, 0] : [0, 0];
+}
+
+function applyPassiveBVerticalImpulse(sim) {
+  const bState = state(sim.bodies.get(B_ID));
+  b3.b3Body_SetLinearVelocity(sim.bodies.get(B_ID), [
+    bState.linearVelocity[0],
+    6,
+    bState.linearVelocity[2],
+  ]);
 }
 
 function step(sim, aInput) {
@@ -170,122 +180,124 @@ function bodyError(a, b) {
   };
 }
 
-function maxBodyError(a, b) {
-  const e = bodyError(a, b);
-  return Math.max(e.position, e.rotation, e.linearVelocity, e.angularVelocity);
+function maxComponent(error) {
+  return Math.max(error.position, error.rotation, error.linearVelocity, error.angularVelocity);
 }
 
-function compareTraces(authorityTrace, observerTrace, shiftTicks) {
-  const ids = [A_ID, B_ID, PROP_ID];
-  const sameTimeMax = Object.fromEntries(ids.map((id) => [id, 0]));
-  const phaseAlignedMax = Object.fromEntries(ids.map((id) => [id, 0]));
-  const firstDivergenceTick = Object.fromEntries(ids.map((id) => [id, null]));
+function compare(traceA, traceB, offsetA = 0, offsetB = 0) {
+  const count = Math.min(traceA.length - offsetA, traceB.length - offsetB);
+  const max = Object.fromEntries(IDS.map((id) => [id, {
+    position: 0,
+    rotation: 0,
+    linearVelocity: 0,
+    angularVelocity: 0,
+  }]));
+  const firstDivergenceTick = Object.fromEntries(IDS.map((id) => [id, null]));
 
-  for (let tick = 0; tick < authorityTrace.length; tick += 1) {
-    for (const id of ids) {
-      const error = maxBodyError(authorityTrace[tick][id], observerTrace[tick][id]);
-      sameTimeMax[id] = Math.max(sameTimeMax[id], error);
-      if (firstDivergenceTick[id] === null && error > 1e-7) firstDivergenceTick[id] = tick;
+  for (let i = 0; i < count; i += 1) {
+    for (const id of IDS) {
+      const error = bodyError(traceA[i + offsetA][id], traceB[i + offsetB][id]);
+      for (const key of Object.keys(error)) max[id][key] = Math.max(max[id][key], error[key]);
+      if (firstDivergenceTick[id] === null && maxComponent(error) > DIVERGENCE_EPS) {
+        firstDivergenceTick[id] = i;
+      }
     }
   }
+  return { max, firstDivergenceTick };
+}
 
-  for (let tick = 0; tick + shiftTicks < observerTrace.length; tick += 1) {
-    for (const id of ids) {
-      phaseAlignedMax[id] = Math.max(
-        phaseAlignedMax[id],
-        maxBodyError(authorityTrace[tick][id], observerTrace[tick + shiftTicks][id]),
-      );
+function finalError(traceA, traceB) {
+  const result = {};
+  for (const id of IDS) result[id] = bodyError(traceA.at(-1)[id], traceB.at(-1)[id]);
+  return result;
+}
+
+function maxAcrossComparison(comparison) {
+  return Math.max(...IDS.flatMap((id) => Object.values(comparison.max[id])));
+}
+
+function runTrace({ aDelayTicks, bImpulseDelayTicks, enableBImpulse }) {
+  const sim = createWorld();
+  try {
+    for (let tick = 0; tick < WARMUP_TICKS; tick += 1) step(sim, [0, 0]);
+
+    const trace = [];
+    for (let tick = 0; tick < RUN_TICKS; tick += 1) {
+      if (enableBImpulse && tick === bImpulseDelayTicks) applyPassiveBVerticalImpulse(sim);
+      step(sim, aInputAt(tick - aDelayTicks));
+      trace.push(snapshot(sim));
     }
+    return trace;
+  } finally {
+    b3.b3DestroyWorld(sim.world);
   }
+}
 
-  const finalError = {};
-  const authorityFinal = authorityTrace.at(-1);
-  const observerFinal = observerTrace.at(-1);
-  for (const id of ids) finalError[id] = bodyError(authorityFinal[id], observerFinal[id]);
+function stationaryPhaseControl(delayTicks) {
+  const authority = runTrace({ aDelayTicks: 0, bImpulseDelayTicks: -1, enableBImpulse: false });
+  const delayed = runTrace({ aDelayTicks: delayTicks, bImpulseDelayTicks: -1, enableBImpulse: false });
+  return compare(authority, delayed, 0, delayTicks);
+}
+
+function passiveContention(delayTicks) {
+  // Authority/reference: both causes occur now.
+  const authority = runTrace({ aDelayTicks: 0, bImpulseDelayTicks: 0, enableBImpulse: true });
+
+  // Pure global-delay control: both causes are shifted together. This should
+  // remain an exact phase copy of authority and proves the harness itself.
+  const globallyDelayed = runTrace({
+    aDelayTicks: delayTicks,
+    bImpulseDelayTicks: delayTicks,
+    enableBImpulse: true,
+  });
+
+  // Mixed-causality world: B's local solver-owned event happens now, while
+  // remote A arrives late. This is the actual RC0 treatment.
+  const mixed = runTrace({ aDelayTicks: delayTicks, bImpulseDelayTicks: 0, enableBImpulse: true });
+
+  const globalPhaseControl = compare(authority, globallyDelayed, 0, delayTicks);
+  const mixedVsGlobalSameTime = compare(mixed, globallyDelayed);
+  const mixedVsAuthoritySameTime = compare(mixed, authority);
 
   return {
-    sameTimeMax,
-    phaseAlignedMax,
-    firstDivergenceTick,
-    finalError,
-    authorityFinal,
-    observerFinal,
+    globalPhaseControl,
+    mixedVsGlobalSameTime,
+    mixedVsAuthoritySameTime,
+    finalResidualMixedVsAuthority: finalError(mixed, authority),
   };
 }
 
-const SCENARIOS = {
-  stationary: {
-    label: 'stationary-B phase control',
-    begin() {},
-  },
-  passiveVerticalB: {
-    label: 'passive solver-owned B vertical forcing',
-    begin(sim) {
-      const bState = state(sim.bodies.get(B_ID));
-      b3.b3Body_SetLinearVelocity(sim.bodies.get(B_ID), [
-        bState.linearVelocity[0],
-        6,
-        bState.linearVelocity[2],
-      ]);
-    },
-  },
-};
-
-function run(delayTicks, scenario) {
-  const authority = createWorld();
-  const observer = createWorld();
-  try {
-    for (let tick = 0; tick < WARMUP_TICKS; tick += 1) {
-      step(authority, [0, 0]);
-      step(observer, [0, 0]);
-    }
-
-    scenario.begin(authority);
-    scenario.begin(observer);
-
-    const authorityTrace = [];
-    const observerTrace = [];
-    for (let tick = 0; tick < RUN_TICKS; tick += 1) {
-      step(authority, inputAt(tick));
-      step(observer, inputAt(tick - delayTicks));
-      authorityTrace.push(snapshot(authority));
-      observerTrace.push(snapshot(observer));
-    }
-
-    return compareTraces(authorityTrace, observerTrace, delayTicks);
-  } finally {
-    destroyWorld(authority);
-    destroyWorld(observer);
-  }
-}
-
 const delays = [0, 3, 6];
-const results = Object.fromEntries(Object.entries(SCENARIOS).map(([scenarioName, scenario]) => [
-  scenarioName,
-  delays.map((delayTicks) => ({
-    delayTicks,
-    delayMs: delayTicks * DT * 1000,
-    ...run(delayTicks, scenario),
-  })),
-]));
+const stationary = delays.map((delayTicks) => ({
+  delayTicks,
+  delayMs: delayTicks * DT * 1000,
+  phaseControl: stationaryPhaseControl(delayTicks),
+}));
 
-for (const [scenarioName, scenarioResults] of Object.entries(results)) {
-  const control = scenarioResults[0];
-  const controlMax = Math.max(...Object.values(control.sameTimeMax));
-  if (controlMax > 1e-8) {
-    throw new Error(`RC0 invalid: ${scenarioName} 0 ms control diverged (${controlMax})`);
-  }
+const passive = delays.map((delayTicks) => ({
+  delayTicks,
+  delayMs: delayTicks * DT * 1000,
+  ...passiveContention(delayTicks),
+}));
+
+for (const result of stationary) {
+  const max = maxAcrossComparison(result.phaseControl);
+  if (max > ASSERT_EPS) throw new Error(`stationary phase control failed at ${result.delayTicks} ticks: ${max}`);
+}
+for (const result of passive) {
+  const max = maxAcrossComparison(result.globalPhaseControl);
+  if (max > ASSERT_EPS) throw new Error(`global-delay phase control failed at ${result.delayTicks} ticks: ${max}`);
 }
 
-const stationaryPhaseResidual = Math.max(
-  ...results.stationary.slice(1).flatMap((result) => Object.values(result.phaseAlignedMax)),
-);
-if (stationaryPhaseResidual > 1e-8) {
-  throw new Error(`RC0 invalid: stationary phase control did not collapse under known delay (${stationaryPhaseResidual})`);
+function compactComparison(comparison) {
+  return {
+    max: comparison.max,
+    firstDivergenceTick: comparison.firstDivergenceTick,
+  };
 }
 
 console.log(JSON.stringify({
-  experiment: 'RC0 one-sided causal contention',
+  experiment: 'RC0 one-sided causal contention — mixed-causality discrimination',
   substrate: {
     box3d: '0.1.1',
     simulationHz: SIM_HZ,
@@ -293,13 +305,25 @@ console.log(JSON.stringify({
     playerSpeed: PLAYER_SPEED,
     playerAcceleration: PLAYER_ACCELERATION,
     playerDeceleration: PLAYER_DECELERATION,
-    note: 'B receives zero horizontal input in every scenario; passiveVerticalB changes only solver-owned Y velocity once after warmup.',
   },
-  geometry: {
-    playerA: [-2.2, 0.82, 0],
-    prop: [0, 0.46, 0],
-    playerB: [1.45, 0.82, 0],
+  contract: {
+    authority: 'A-now + passive-B-now',
+    globalDelayControl: 'A-delayed + passive-B-delayed',
+    mixedTreatment: 'A-delayed + passive-B-now',
+    bInput: 'zero X/Z input throughout; one +6 m/s solver-owned Y velocity event only',
+    geometry: { playerA: [-2.2, 0.82, 0], prop: [0, 0.46, 0], playerB: [1.45, 0.82, 0] },
   },
-  scenarioLabels: Object.fromEntries(Object.entries(SCENARIOS).map(([name, scenario]) => [name, scenario.label])),
-  results,
+  stationaryPhaseControls: stationary.map((r) => ({
+    delayTicks: r.delayTicks,
+    delayMs: r.delayMs,
+    phaseControl: compactComparison(r.phaseControl),
+  })),
+  passiveContention: passive.map((r) => ({
+    delayTicks: r.delayTicks,
+    delayMs: r.delayMs,
+    globalPhaseControl: compactComparison(r.globalPhaseControl),
+    mixedVsGlobalSameTime: compactComparison(r.mixedVsGlobalSameTime),
+    mixedVsAuthoritySameTime: compactComparison(r.mixedVsAuthoritySameTime),
+    finalResidualMixedVsAuthority: r.finalResidualMixedVsAuthority,
+  })),
 }, null, 2));

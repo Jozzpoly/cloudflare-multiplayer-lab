@@ -28,7 +28,7 @@ jobs:
         run: npm run check
 
       - name: Run F4 bounded scheduled history and overlap probes
-        run: node scripts/ws0-f4-bounded-scheduled-history.mjs
+        run: node scripts/ws0-f4-runner.mjs
 
       - name: Run F4 identity lifecycle probe
         run: node scripts/ws0-f4-identity-lifecycle.mjs

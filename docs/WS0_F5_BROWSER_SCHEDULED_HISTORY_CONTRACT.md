@@ -2,12 +2,22 @@
 
 Status: **PRE-EXECUTION / NO BROWSER RESULT**
 
+## 0. Pre-execution interpretation correction
+
+Before F5 runtime execution, the recovered F3.0/F3.1 evidence was re-audited specifically for human wall-time causality.
+
+F3.0 explicitly defines a client with prediction lead `L` as simulating canonical tick `S + L` while authority is at `S`, and says newly sampled local input is applied immediately to that currently predicted tick. F3.1 then compared scheduled-forward and source-time-common as different canonical-history policies. Their equal client correction/history cost is valid for the carried canonical histories, but it must **not** be expanded into a claim that both policies realize the same human wall-clock event on the same authoritative tick.
+
+Scheduled-forward intentionally maps a human action sampled now onto the client's current future canonical tick. Source-time authority rollback instead maps a late action into earlier authority history. Therefore the policies place wall-time/canonical-time cost differently even when their eventual client correction horizon is equal.
+
+F5 is the first live discriminator of whether the scheduled mapping is acceptable in actual play. It MUST preserve the no-future-human-knowledge rule below and expose measured prediction lead, authority consumption and raw correction rather than borrowing the more favorable interpretation of F3.1.
+
 ## 1. Qualified inputs
 
 F5 starts from F4 head `d33294e9052e37cf716d809e7dca551d1065df44` and does not reopen the already-qualified lab questions:
 
 - F3.0: an ahead-of-authority canonical prediction timeline can give a forward authority future input records under bounded delay, but real clock synchronization/drift was explicitly not proven.
-- F3.1: when scheduled target-tick records are available on time, a forward-only authority plus complete client history repair preserves one coupled actor/shared-matter history. In the carried real-peer timing traces, scheduled-forward and source-time authority rollback had identical client correction cost.
+- F3.1: when scheduled target-tick records are available on time, a forward-only authority plus complete client history repair preserves one coupled actor/shared-matter history. In the carried real-peer timing traces, scheduled-forward and source-time authority rollback had identical client correction/history cost for their respective canonical mappings; F5 does not treat that as proof of identical wall-clock feel.
 - F4: the F3.1 client correction semantics can be implemented with bounded recent `box3d.js@0.1.1` recording history. With the 8-tick segment candidate and 24-tick retained window, observed max replay was 16 / 18 / 20 physics steps for the carried 65 / 85 / 85+HOL traces, below the frozen 21-step bound. Corrected history can itself be corrected again, and entity rebinding must be generation-local.
 
 F5 moves those results into an actual two-browser runtime. It is not another offline temporal-family discriminator.
@@ -31,6 +41,8 @@ Use:
 - a separate DO instance name, optionally keyed by a short `run` query parameter.
 
 Existing `WORLD_SLICE_0`, `/world0/ws`, `/world0-two-client/` and PR #15 remain controls.
+
+For the first implementation, `WORLD_SLICE_F5`, its `exports` lifecycle entry and `/world0-f5/ws` worker-first asset route are **staging-only**. Root/production Durable Object bindings and lifecycle declarations remain unchanged. Creating the new staging Durable Object namespace requires an explicit `wrangler deploy --env staging`; ordinary root Connected Builds continue to use `wrangler versions upload` and must not apply the F5 lifecycle change.
 
 ## 4. Canonical tick semantics
 
@@ -91,6 +103,8 @@ For this bounded browser gate:
 - diagnostics report actual predicted lead and phase error signals.
 
 To avoid startup records being late merely because the second browser was still joining, the authority chooses a `protocolStartTick` sufficiently in the future and broadcasts one `f5_start` snapshot to both clients. Before that tick the canonical input is zero. Each browser may catch its local prediction world up, but only begins logical input generation at `protocolStartTick`.
+
+The first implementation may additionally require both browsers to explicitly send `f5_ready` before the authority schedules `protocolStartTick`. This is startup synchronization only; it does not alter the canonical input semantics.
 
 The activation delay is startup scaffolding, not evidence for a production lead.
 

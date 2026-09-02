@@ -1,27 +1,32 @@
 # Multi_World — Takeover package index
 
-Status: **PREPARED FOR FINAL POLISH / DO NOT MERGE INTO RUNTIME CONTROLS**  
+Status: **PREPARED FOR HANDOFF RED-TEAM / DO NOT MERGE INTO RUNTIME CONTROLS**  
 Branch: `multi-world-takeover-grounding`  
 Base specimen: A2R human-reference `2c9116267a0c8bba93061f759cefdb709e966e43`
 
 This branch exists only to prepare a fresh ChatGPT project takeover. It intentionally does not modify runtime, physics or deployment configuration.
 
-## Recommended reading order
+## Canonical reading order for the fresh project
 
 1. **`MULTI_WORLD_PROJECT_SOUL.md`**  
-   Stable purpose, values, boundaries and working method. Read this first to understand what the project is trying to become without confusing current substrates with identity.
+   Stable purpose, product values, boundaries and working method. Read this first so current substrates are not confused with project identity.
 
-2. **`MULTI_WORLD_GROUNDING_LEDGER.md`**  
-   Evidence inventory, exact controls, A2/A2R state, current mechanical contract, donor map and unresolved questions. This is the broad factual draft.
+2. **`MULTI_WORLD_GROUNDING_V1.md`**  
+   Canonical consolidated grounding: exact controls, evidence classification, A2/A2R mechanical envelope, current unknowns, donor boundary and human/device validation pressure. Verify it live.
 
-3. **`MULTI_WORLD_GROUNDING_REDTEAM.md`**  
-   Corrections and attacks on the ledger. In particular: do not tie the smooth Owner result directly to the 212/235 ms second-client screenshot; do not mistake server six-player capacity for prediction/scaling evidence; do not treat Character Controller integration as a harmless movement upgrade.
+3. **`MULTI_WORLD_HUMAN_TEST_CONTEXT.md`**  
+   Additional detail on desktop/mobile, camera/touch controls and real human test capacity: 2 players as the normal human multiplayer crucible, 3 as a realistic early stress test, 4 as an opportunistic stronger test rather than a current scale requirement.
 
-4. **`MULTI_WORLD_HUMAN_TEST_CONTEXT.md`**  
-   Desktop/mobile product pressure and the real human-validation capability: 2 players as the normal human multiplayer crucible, 3 as a realistic stress test and 4 as an opportunistic stronger test rather than a current scale requirement. Camera/touch controls are real future product work, but must not silently fork physics/networking semantics.
+4. **`MULTI_WORLD_FRESH_TAKEOVER_V1.md`**  
+   Startup mandate for the new ChatGPT project. It requires live regrounding and an explicit challenge to the handoff before implementation.
 
-5. **`MULTI_WORLD_FRESH_TAKEOVER.md`**  
-   Copy/use this as the startup mandate for the fresh ChatGPT project after final review. It instructs the new orchestrator to re-ground live and challenge the handoff before implementing.
+## Audit/provenance material — not required startup reading
+
+- `MULTI_WORLD_GROUNDING_LEDGER.md` — original broad v0 ledger;
+- `MULTI_WORLD_GROUNDING_REDTEAM.md` — critique that produced the accepted v1 corrections;
+- `MULTI_WORLD_FRESH_TAKEOVER.md` — older, heavier takeover draft.
+
+Use these only if you need to understand why Grounding v1 or Takeover v1 is phrased cautiously.
 
 ## Exact anchors at package creation
 
@@ -47,6 +52,6 @@ All must be re-verified live by the fresh project.
 
 ## Expected first action in the new project
 
-Use `MULTI_WORLD_FRESH_TAKEOVER.md`, then produce a live grounding report before any implementation.
+Use `MULTI_WORLD_FRESH_TAKEOVER_V1.md`, then produce the requested live grounding report before any implementation.
 
-The new project should be free to reject the provisional “remote causality” framing if newer evidence identifies a more valuable unknown.
+The new project should be free to reject the provisional **remote causality / shared physical truth** framing if newer evidence identifies a more valuable unknown.

@@ -1,0 +1,44 @@
+name: RC2 Post-Contact Closure Envelope
+
+on:
+  pull_request:
+    paths:
+      - "scripts/rc2-post-contact-closure.mjs"
+      - ".github/workflows/rc2-post-contact-closure.yml"
+      - "public/world0-rc2/**"
+      - "src/world-slice-entry.ts"
+      - "src/world-slice-0-two-client.ts"
+
+permissions:
+  contents: read
+
+jobs:
+  post-contact-closure:
+    strategy:
+      fail-fast: false
+      matrix:
+        offset_ms: [250, 1000]
+        repeat: [1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      RC2_POST_CONTACT_OFFSET_MS: ${{ matrix.offset_ms }}
+      RC2_REPEAT: ${{ matrix.repeat }}
+      RC2_OUTPUT: rc2-post-contact-${{ matrix.offset_ms }}ms-r${{ matrix.repeat }}.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Syntax-check post-contact probe
+        run: node --check scripts/rc2-post-contact-closure.mjs
+      - name: Run post-contact closure cell
+        run: node scripts/rc2-post-contact-closure.mjs
+      - name: Preserve post-contact evidence
+        if: always() && hashFiles(format('rc2-post-contact-{0}ms-r{1}.json', matrix.offset_ms, matrix.repeat)) != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc2-post-contact-${{ matrix.offset_ms }}ms-r${{ matrix.repeat }}
+          path: rc2-post-contact-${{ matrix.offset_ms }}ms-r${{ matrix.repeat }}.json
+          if-no-files-found: error

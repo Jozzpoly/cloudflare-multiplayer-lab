@@ -1,5 +1,5 @@
 import baseHandler, { World as BaseWorld } from "./index";
-import { WorldSlice0 } from "./world-slice-0";
+import { WorldSlice0 } from "./world-slice-0-two-client";
 
 export class World extends BaseWorld {}
 export { WorldSlice0 };

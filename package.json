@@ -13,10 +13,12 @@
     "check:client": "node --check public/app.js && node --check public/world0/app.js && node --check public/world0-a2r/fixed-step-clock.js && node --check public/world0-a2r/app.js",
     "lab:a2r": "node scripts/a2r-forecast-lab.mjs",
     "check:a2r": "node scripts/a2r-forecast-lab.mjs --ci",
+    "lab:rc0": "node scripts/rc0-one-sided-contention.mjs",
+    "check:rc0": "node scripts/rc0-one-sided-contention.mjs",
     "validate:staging-contract": "node scripts/validate-staging-contract.mjs",
     "test:staging-deploy-guard": "node scripts/test-staging-deploy-guard.mjs",
     "validate:worker": "wrangler deploy --dry-run --env staging --outdir .wrangler/dry-run",
-    "check": "npm run validate:staging-contract && npm run test:staging-deploy-guard && npm run check:client && npm run check:a2r && npm run typecheck && npm run validate:worker"
+    "check": "npm run validate:staging-contract && npm run test:staging-deploy-guard && npm run check:client && npm run check:a2r && npm run check:rc0 && npm run typecheck && npm run validate:worker"
   },
   "dependencies": {
     "box3d.js": "0.1.1"

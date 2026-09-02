@@ -1,112 +1,149 @@
 # Multi_World — Takeover / documentation index
 
-Status: **CURRENT HANDOFF READY — ACTIVE FRONTIER F5 PRE-EXECUTION**  
+Status: **CURRENT HANDOFF READY — F5 PRE-DEPLOY / FOUNDATION STRATEGY FROZEN**  
 Canonical documentation branch: `multi-world-takeover-grounding`
 
-This branch is documentation/provenance only. Live repo state, exact SHAs, CI/deployment evidence and newest qualified issue #8 checkpoints remain higher technical authority.
+This branch is documentation/provenance. Live repo state, exact SHAs, CI/deployment evidence and newest qualified issue #8 checkpoints remain higher technical authority.
 
-## Read this first
+## Read this first in a fresh conversation
 
-1. **`MULTI_WORLD_CURRENT_STATE.md`**  
-   Short operational map through qualified F4 and the active F5 browser frontier.
+1. **`MULTI_WORLD_PROJECT_SOUL.md`**  
+   Stable product purpose and guardrails.
 
-2. **`MULTI_WORLD_SYNC_RESEARCH_PROGRAM.md`**  
-   Synchronization decision tree separating timing semantics, authority buffering, prediction/history, reconciliation, presentation, prediction scope, replication, transport and observability. Its earlier F3/F4 descriptions are historical planning where superseded by qualified evidence.
+2. **`MULTI_WORLD_CURRENT_STATE.md`**  
+   Short operational truth through qualified F4 plus the prepared-but-unqualified F5 candidate.
 
-3. **`MULTI_WORLD_PROJECT_SOUL.md`**  
-   Stable product purpose: immediate embodiment, meaningful shared physical consequence and one shared truth outrank preservation of any current architecture.
+3. **`MULTI_WORLD_FOUNDATION_STRATEGY.md`**  
+   Current strategic transition: F5 Live Truth Gate → bounded Multiplayer Foundation v0 Qualification → Inhabitable World V0 → only evidence-earned optimization/continuity.
 
-4. **Issue #8 newest qualified checkpoints**  
-   Chronological evidence ledger. The newest qualified mechanism checkpoint at this takeover is F4 comment `5517282802`.
+4. **`MULTI_WORLD_FRESH_TAKEOVER_V2.md`**  
+   Current startup mandate for a fresh Browser ChatGPT conversation. It explicitly avoids repeating the old A2/A3 regrounding ceremony.
 
 5. **Active F5 contract**  
-   `WS0_F5_BROWSER_SCHEDULED_HISTORY_CONTRACT.md` on branch `ws0-f5-browser-scheduled-history@5530b4002dc3318a094845f482f4494acca987ad`. Status: pre-execution / no browser result.
+   `docs/WS0_F5_BROWSER_SCHEDULED_HISTORY_CONTRACT.md` on `ws0-f5-browser-scheduled-history`.
+
+6. **Issue #8 qualified evidence ledger**  
+   Use when exact provenance/result details are needed. F4 comment `5517282802` remains the newest fully qualified mechanism result until F5 earns a live result.
 
 ## Current live anchors to verify
 
+At handoff preparation:
+
 - `main@d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de` — infrastructure control;
-- PR #15 / `ws0-human-two-player-mobile-baseline@f6d6b2f275a0c097ab9ce1e26d86a9fa912391b1` — frozen desktop+mobile human control;
+- PR #15 / `ws0-human-two-player-mobile-baseline@f6d6b2f275a0c097ab9ce1e26d86a9fa912391b1` — frozen desktop+phone human zero-reconciliation control;
 - PR #23 / `a4263565a1b39de35f93f85c5ada01d8ef9147e3` — T5 coupled actor→shared-prop causal relay;
 - PR #24 / `2872e7b3b5f369bbe9f7bfad7fcd555c9d16f710` — F1 common-history topology;
-- PR #25 / `1c6807f1562d832753a7514cd6d2c1ea0100c0a3` — F2 full-physics checkpoint substrate;
-- PR #28 / `72f298e7b3730194d69a9d989620c273138b2c34` — F3.1 coupled temporal-family discriminator;
-- PR #29 / `d33294e9052e37cf716d809e7dca551d1065df44` — F4 bounded scheduled client history, issue `5517282802`;
-- `ws0-f5-browser-scheduled-history@5530b4002dc3318a094845f482f4494acca987ad` — active pre-result branch.
+- PR #25 / `1c6807f1562d832753a7514cd6d2c1ea0100c0a3` — F2 recording/checkpoint substrate;
+- PR #28 / `72f298e7b3730194d69a9d989620c273138b2c34` — F3.1 temporal discriminator;
+- PR #29 / `d33294e9052e37cf716d809e7dca551d1065df44` — F4 bounded scheduled client history, issue checkpoint `5517282802`;
+- F5 runtime implementation candidate: `ca8fc10ee93fe91684ba2de2302e2650eeba0a21`;
+- active F5 branch expected head after docs-only pre-live contract amendment: `0278add0f15f3c76f5b4d62912b207a359def181`.
 
-Completed research PRs are archived/closed and unmerged. Their branches, artifacts and issue checkpoints are provenance, not merge candidates by default.
+Always verify live before writes.
+
+Completed research PRs remain archived/closed and unmerged. Their branches/artifacts are evidence, not merge candidates by default.
 
 ## Qualified path in one screen
 
-Human control failure:
+Human control:
 
-`full local worlds + delayed remote intent + zero reconciliation`
-→ cumulative actor disagreement
+`complete local physics + delayed remote intent + no reconciliation`
+→ clean local embodiment
+→ coupled causal fork
 → divergent shared matter.
 
 Research:
 
 `T4/T5 history repair`
 → `F1 common canonical history requirement`
-→ `F2 bounded branchable full-physics history`
-→ `F3.0 scheduled-tick/buffer timing feasibility`
-→ `F3.1 scheduled-forward authority matches source truth without authority rollback`
-→ `F4 bounded recent client history reproduces F3.1 exactly and survives overlapping corrections`.
+→ `F2 branchable full-physics recording`
+→ `F3.0 scheduled timeline/input-buffer feasibility`
+→ `F3.1 scheduled forward authority preserves carried shared truth without normal authority rollback`
+→ `F4 bounded recent client history exactly reproduces F3.1 and survives overlapping correction`.
 
-Current supported normal-flow candidate:
+Current candidate normal flow:
 
 `canonical target ticks`
 → `future authority input buffer`
-→ `forward-only authority`
+→ `forward state authority`
 → `consumption feedback`
 → `complete predicted client physics`
 → `bounded rollback/resimulation`
-→ `separate presentation layer`.
+→ `separate presentation`.
 
-This is still a candidate architecture, not final production truth.
+Important limit: F3.1 did not prove identical human wall-clock realization for scheduled-forward vs source-time rollback. F5 is the live discriminator.
 
-## F4 facts that must survive takeover
+## F5 current boundary
 
-- 8-tick segment / 24-tick retained window was only the bounded lab candidate;
-- observed max replay for carried 65/85/HOL traces: `16 / 18 / 20` physics steps under frozen bound `21`;
-- max retained recording bytes in the small T5 lab: `186485 B`;
-- overlapping correction C2 restored from C1-corrected generation and ended at oracle residual `0`;
-- RecPlayer creation ordinals are **generation-local**;
-- stable identity is host `NetEntityId`, with explicit per-generation rebind to ordinal/BodyId;
-- body names are only an experimental preserved locator seam.
+F5 is **implemented enough for pre-deploy hardening**, not qualified.
 
-## Active F5 execution boundary
+Already prepared:
 
-F5 exists to get out of the offline lab quickly.
-
-It must use isolated new routes/bindings and leave `/world0/ws` plus PR #15 untouched. It should implement:
-
-- real future target-tick records sampled from human input at the local predicted tick;
-- forward authority input consumption + feedback;
+- isolated staging-only `WorldSliceF5` / `WORLD_SLICE_F5`;
+- real target-tick scheduled input protocol;
+- authority future buffers + consumption feedback;
 - peer future-record relay;
-- complete local Box3D prediction;
-- F4 bounded history in-browser;
-- same-canonical-tick diagnostics;
-- raw correction presentation first.
+- full local predicted Box3D world;
+- F4-style 8/24 bounded history in the browser;
+- corrected recording generations + explicit remap;
+- same-tick diagnostics;
+- raw corrections;
+- desktop + minimal phone controls.
 
-Natural stop: first faithful desktop+phone Owner test with runtime telemetry, or a concrete implementation/deployment blocker.
+Implementation-head preflight run `33694085298`: PASS.
 
-Do not spend F5 on final smoothing, final cadence tuning, packet-loss architecture, binary protocol or causal-island optimization.
+Before live deployment only small evidence hardening is authorized:
 
-## Deployment note
+- retain canonical server-slot simulation ordering;
+- add simple simulation/build fingerprint;
+- add correction/resimulation CPU duration + useful client frame-burst diagnostics;
+- verify isolated staging target/current branch;
+- rerun checks.
 
-Root Cloudflare build command has been corrected to `npx wrangler versions upload`. A research push may still produce a `Workers Builds` check and inactive Worker Version; that is not by itself evidence that production traffic switched to the research version. Continue to verify traffic separately when deployment state matters.
+Then deploy/smoke staging and stop at one desktop+phone Owner raw-correction session.
 
-## Supporting historical context
+## Strategic roadmap after F5
 
+Do not mechanically resume old `F6/F7/F8` labels.
+
+If F5 survives, use its actual telemetry/feel to design **Multiplayer Foundation v0 Qualification** around future-expensive semantic risks:
+
+- simulation identity (`WorldId`, `WorldEpoch`, tick, simulation build, network entity identity);
+- application determinism envelope;
+- network/clock/lead/hitch envelope;
+- join-in-progress/reconnect/restart;
+- rollback-safe gameplay and dynamic lifecycle;
+- mobile/client/authority performance;
+- causal observability/trace contract;
+- portability boundaries without premature generic framework extraction.
+
+Foundation v0 must have an explicit exit. Once qualified within a declared envelope, build **Inhabitable World V0** before doing optional mature-stack optimization unless evidence makes it blocking.
+
+See `MULTI_WORLD_FOUNDATION_STRATEGY.md` for the canonical strategy.
+
+## Long-term boundaries that must survive
+
+- logical `WorldId` is not one immortal Durable Object instance;
+- stable `NetEntityId` is not Box3D `BodyId` or replay ordinal;
+- persistent world state, active physics epoch state and rollback recording history are distinct;
+- simulation truth and render smoothing are distinct;
+- input authority and state authority are distinct;
+- replayable simulation effects and irreversible/committed effects must eventually be distinguished.
+
+Current Cloudflare/DO/WebSocket/Box3D/Three.js choices remain substrates, not project identity.
+
+## Historical docs
+
+Useful only as provenance unless resolving a disputed claim:
+
+- `MULTI_WORLD_SYNC_RESEARCH_PROGRAM.md` — synchronization program/history; its old post-F5 ladder is no longer automatic strategy;
 - `MULTI_WORLD_GROUNDING_V1.md`;
 - `MULTI_WORLD_HUMAN_TEST_CONTEXT.md`;
-- `MULTI_WORLD_FRESH_TAKEOVER_V1.md`;
-- `MULTI_WORLD_GROUNDING_LEDGER.md`;
-- `MULTI_WORLD_GROUNDING_REDTEAM.md`;
-- older gate docs and archived research branches.
-
-Preserve them as provenance, but do not let historical frontiers override live evidence.
+- `MULTI_WORLD_FRESH_TAKEOVER_V1.md` — **superseded startup mandate**;
+- grounding ledgers/red-team and older gate docs.
 
 ## Expected first action in a fresh conversation
 
-Verify F4 issue/PR evidence and the live F5 head, read `MULTI_WORLD_CURRENT_STATE.md` plus the F5 contract, then audit current Worker/DO/browser seams before implementing the isolated F5 vertical slice.
+Perform a compact live verification of docs/F5/control heads and latest F5 checks. Read Current State + Foundation Strategy + F5 contract. If no material contradiction exists, proceed autonomously into the small F5 pre-deploy evidence hardening and staging path.
+
+Do **not** repeat a broad takeover/research reconstruction simply because the conversation is new.

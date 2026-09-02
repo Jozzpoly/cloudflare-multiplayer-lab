@@ -1,0 +1,56 @@
+name: WS0 Actor State Sync Upper Bound
+
+on:
+  pull_request:
+    paths:
+      - "scripts/ws0-actor-state-sync-upper-bound.mjs"
+      - "scripts/ws0-player-contact-isolation.mjs"
+      - "scripts/rc1-integrated-causality-envelope.mjs"
+      - "public/world0-rc1/**"
+      - "src/world-slice-0-two-client.ts"
+      - "src/world-slice-entry.ts"
+      - ".github/workflows/ws0-actor-state-sync-upper-bound.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actor-state-sync-upper-bound:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate upper-bound apparatus
+        run: |
+          node --check scripts/ws0-player-contact-isolation.mjs
+          node --check scripts/ws0-actor-state-sync-upper-bound.mjs
+          node --check public/world0-rc1/runner.js
+
+      - name: Run actor state-sync upper bound
+        run: node scripts/ws0-actor-state-sync-upper-bound.mjs
+
+      - name: Verify preserved RC1 runner was restored
+        run: git diff --exit-code -- public/world0-rc1/runner.js
+
+      - name: Preserve actor state-sync evidence
+        if: always() && hashFiles('ws0-actor-state-sync-upper-bound.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws0-actor-state-sync-upper-bound
+          path: |
+            ws0-actor-state-sync-upper-bound.json
+            ws0-actor-state-none.json
+            ws0-actor-state-transform.json
+            ws0-actor-state-state.json
+          if-no-files-found: error

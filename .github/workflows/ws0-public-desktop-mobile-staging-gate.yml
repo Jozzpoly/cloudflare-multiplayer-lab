@@ -1,0 +1,59 @@
+name: WS0 Public Desktop Mobile Staging Gate
+
+on:
+  push:
+    branches: [ws0-human-two-player-mobile-baseline]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ws0-public-desktop-mobile-staging
+  cancel-in-progress: true
+
+jobs:
+  public-desktop-mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate public mobile gate syntax
+        run: |
+          node --check public/world0-two-client/touch-controls.js
+          node --check scripts/ws0-mobile-input-browser-smoke.mjs
+
+      - name: Wait for exact staging candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging="https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev"
+          for attempt in $(seq 1 90); do
+            app="$(curl -fsS --max-time 8 "$staging/world0-two-client/app.js" 2>/dev/null || true)"
+            touch="$(curl -fsS --max-time 8 "$staging/world0-two-client/touch-controls.js" 2>/dev/null || true)"
+            if grep -q 'ws0-a2r-two-client-intent-client-v1' <<<"$app" && grep -q 'ws0-human-touch-dpad-v1' <<<"$touch"; then
+              echo "Exact staging candidate ready on attempt $attempt"
+              exit 0
+            fi
+            if (( attempt % 10 == 0 )); then
+              echo "Still waiting for staging candidate · attempt $attempt/90"
+            fi
+            sleep 4
+          done
+          echo "Staging did not expose the expected desktop+mobile candidate within 6 minutes" >&2
+          exit 1
+
+      - name: Prove public mobile touch causality and production isolation
+        env:
+          WS0_BASE_URL: https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev
+          WS0_PRODUCTION_URL: https://cloudflare-multiplayer-lab.jozzpoly.workers.dev
+        run: node scripts/ws0-mobile-input-browser-smoke.mjs

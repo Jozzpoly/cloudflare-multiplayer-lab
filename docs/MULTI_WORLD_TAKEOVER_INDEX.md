@@ -1,6 +1,6 @@
 # Multi_World — Takeover package index
 
-Status: **HANDOFF-READY CANDIDATE / VERIFY LIVE IN FRESH PROJECT**  
+Status: **HANDOFF READY / FRESH PROJECT MUST VERIFY LIVE BEFORE IMPLEMENTATION**  
 Branch: `multi-world-takeover-grounding`  
 Base specimen: A2R human-reference `2c9116267a0c8bba93061f759cefdb709e966e43`
 
@@ -9,16 +9,16 @@ This branch exists only to prepare a fresh ChatGPT project takeover. It intentio
 ## Canonical reading order for the fresh project
 
 1. **`MULTI_WORLD_PROJECT_SOUL.md`**  
-   Stable purpose, product values, boundaries and working method. Read this first so current substrates are not confused with project identity.
+   Canonical purpose, product values, shared-world continuity pressure, boundaries and working method. Read this first so current substrates are not confused with project identity.
 
 2. **`MULTI_WORLD_GROUNDING_V1.md`**  
    Canonical consolidated grounding: exact controls, evidence classification, A2/A2R mechanical envelope, current unknowns, donor boundary and human/device validation pressure. Verify it live.
 
 3. **`MULTI_WORLD_HUMAN_TEST_CONTEXT.md`**  
-   Additional detail on desktop/mobile, camera/touch controls and real human test capacity: 2 players as the normal human multiplayer crucible, 3 as a realistic early stress test, 4 as an opportunistic stronger test rather than a current scale requirement.
+   Canonical supporting context on desktop/mobile, camera/touch controls and real human test capacity: 2 players as the normal human multiplayer crucible, 3 as a realistic early stress test, 4 as an opportunistic stronger test rather than a current scale requirement.
 
 4. **`MULTI_WORLD_FRESH_TAKEOVER_V1.md`**  
-   Compact startup mandate for the new ChatGPT project. It requires live regrounding and an explicit challenge to the handoff before implementation.
+   Final startup mandate for the new ChatGPT project. It requires live regrounding and an explicit challenge to the handoff before implementation.
 
 ## Audit/provenance material — not required startup reading
 
@@ -36,7 +36,7 @@ Use these only if you need to understand why Grounding v1 or Takeover v1 is phra
 - A2 preserved failed baseline: `world-slice-0-embodied-3d-place@ef26fce6f5f21e219a4d8f57943449f4d2a2abca`;
 - A2R human-reference: `world-slice-0-a2r-timeline-rebuild@2c9116267a0c8bba93061f759cefdb709e966e43`.
 
-All three still matched live GitHub state during the final preparation audit.
+All three matched live GitHub state during the final preparation audit.
 
 ### Character Controller donor
 
@@ -76,7 +76,8 @@ Do not inherit deployment state merely from this package.
 - no declaration that Forecast, rollback, ownership or interaction islands are required;
 - no claim that the current backend/transport/render stack is final;
 - no claim that four-player support is the current milestone merely because four human testers may sometimes be available;
-- no mobile-specific simulation fork.
+- no mobile-specific simulation fork;
+- no persistence/storage implementation merely because shared continuity is part of the long-term product soul.
 
 ## Expected first action in the new project
 

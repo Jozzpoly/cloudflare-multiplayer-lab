@@ -3,7 +3,7 @@ import Box3D from "box3d.js/inline";
 
 const b3 = await Box3D();
 
-const REVISION = "ws0-history-f1-causal-time-topology-v1";
+const REVISION = "ws0-history-f1-causal-time-topology-v2";
 const FIXED_DT = 1 / 60;
 const STEP_MS = 1000 / 60;
 const SUBSTEPS = 4;
@@ -15,7 +15,7 @@ const EPS = 1e-9;
 const PRE_ROLL_TICKS = 60;
 const LEG_DELAYS_MS = [65, 85];
 const DOWNLINK_PHASES_MS = [0, STEP_MS * 0.25, STEP_MS * 0.5, STEP_MS * 0.75];
-const POLICIES = ["receipt-live", "peer-authority-tick", "peer-source", "all-source"];
+const POLICIES = ["receipt-live", "peer-authority-tick", "peer-source", "all-authority-tick", "all-source"];
 const OUTPUT = process.env.WS0_HISTORY_F1_OUTPUT || "ws0-history-f1-causal-time-topology.json";
 
 const STARTS = { A: [-6.5, 0.82, -1.4], B: [6.5, 0.82, 0] };
@@ -90,6 +90,12 @@ function authorityApplyTick(event,legMs){return Math.ceil((event.atMs+legMs-EPS)
 function authorityApplyMs(event,legMs){return authorityApplyTick(event,legMs)*STEP_MS;}
 function sourceMap(e){return e.atMs;}
 function authorityMap(legMs){return(e)=>authorityApplyMs(e,legMs);}
+function authorityMetadataArrivalMap(legMs,phaseMs){return(e)=>authorityApplyMs(e,legMs)+legMs+phaseMs;}
+function peerArrivalMap(policy,legMs,phaseMs){
+  return policy==="peer-authority-tick"||policy==="all-authority-tick"
+    ? authorityMetadataArrivalMap(legMs,phaseMs)
+    : (e)=>e.atMs+2*legMs+phaseMs;
+}
 
 function rebuildThroughTick({actorOrder,applyOrder,knownA,knownB,tick,mapA,mapB}){
   const sim=createSimulation({actorOrder,applyOrder});preRoll(sim);const ca={index:0},cb={index:0};
@@ -104,8 +110,10 @@ function rebuildThroughTick({actorOrder,applyOrder,knownA,knownB,tick,mapA,mapB}
 function createAuthorityRuntime(policy){const sim=createSimulation();preRoll(sim);return{sim,knownA:0,knownB:0,arrA:{index:0},arrB:{index:0},resims:0,replayedTicks:0,maxReplayTicks:0,policy};}
 function createClientRuntime(selfId,policy){
   const actorOrder=selfId==="A"?["A","B"]:["B","A"],applyOrder=[...actorOrder],sim=createSimulation({actorOrder,applyOrder});preRoll(sim);
-  return{selfId,remoteId:selfId==="A"?"B":"A",selfTrace:selfId==="A"?SCENARIO.a:SCENARIO.b,remoteTrace:selfId==="A"?SCENARIO.b:SCENARIO.a,
-    actorOrder,applyOrder,sim,selfCursor:{index:0},remoteArrival:{index:0},knownRemote:0,resims:0,replayedTicks:0,maxReplayTicks:0,selfPositionReplacement:[],policy};
+  const selfTrace=selfId==="A"?SCENARIO.a:SCENARIO.b;
+  return{selfId,remoteId:selfId==="A"?"B":"A",selfTrace,remoteTrace:selfId==="A"?SCENARIO.b:SCENARIO.a,
+    actorOrder,applyOrder,sim,selfCursor:{index:0},selfAuthorityArrival:{index:0},knownSelfAuthority:0,selfEventIndex:new Map(selfTrace.map((e,i)=>[e,i])),
+    remoteArrival:{index:0},knownRemote:0,resims:0,replayedTicks:0,maxReplayTicks:0,selfPositionReplacement:[],policy};
 }
 function destroyAuthority(r){destroySimulation(r.sim);}
 function destroyClient(r){destroySimulation(r.sim);}
@@ -130,20 +138,37 @@ function advanceAuthority(runtime,tick,legMs){
 function advanceClient(runtime,tick,legMs,phaseMs){
   const t=tick*STEP_MS;
   applyEvents(runtime.selfTrace,runtime.selfCursor,t,runtime.sim.inputs,runtime.selfId);
-  const newly=countArrivals(runtime.remoteTrace,runtime.remoteArrival,t,(e)=>e.atMs+2*legMs+phaseMs);
+  const arrivalMap=peerArrivalMap(runtime.policy,legMs,phaseMs);
+  const newly=countArrivals(runtime.remoteTrace,runtime.remoteArrival,t,arrivalMap);
   runtime.knownRemote+=newly;
+
+  let newlySelfAuthority=0;
+  if(runtime.policy==="all-authority-tick"){
+    newlySelfAuthority=countArrivals(runtime.selfTrace,runtime.selfAuthorityArrival,t,authorityMetadataArrivalMap(legMs,phaseMs));
+    runtime.knownSelfAuthority+=newlySelfAuthority;
+  }
+
   if(runtime.policy==="receipt-live"){
     if(newly>0){const e=runtime.remoteTrace[runtime.knownRemote-1];runtime.sim.inputs[runtime.remoteId]={x:e.x,z:e.z};}
     stepSimulation(runtime.sim);return;
   }
-  if(newly===0){stepSimulation(runtime.sim);return;}
-  const latest=runtime.remoteTrace[runtime.knownRemote-1];runtime.sim.inputs[runtime.remoteId]={x:latest.x,z:latest.z};stepSimulation(runtime.sim);
+  if(newly===0&&newlySelfAuthority===0){stepSimulation(runtime.sim);return;}
+  if(newly>0){const latest=runtime.remoteTrace[runtime.knownRemote-1];runtime.sim.inputs[runtime.remoteId]={x:latest.x,z:latest.z};}
+  stepSimulation(runtime.sim);
   const before=actorState(runtime.sim,runtime.selfId);
-  const mapRemote=runtime.policy==="peer-authority-tick"?authorityMap(legMs):sourceMap;
+
+  let mapSelf=sourceMap;
+  let mapRemote=runtime.policy==="peer-authority-tick"?authorityMap(legMs):sourceMap;
+  if(runtime.policy==="all-authority-tick"){
+    const authoritySelf=authorityMap(legMs);
+    mapSelf=(e)=>((runtime.selfEventIndex.get(e)??Infinity)<runtime.knownSelfAuthority?authoritySelf(e):sourceMap(e));
+    mapRemote=authorityMap(legMs);
+  }
+
   const knownA=runtime.selfId==="A"?SCENARIO.a.length:runtime.knownRemote;
   const knownB=runtime.selfId==="B"?SCENARIO.b.length:runtime.knownRemote;
-  const mapA=runtime.selfId==="A"?sourceMap:mapRemote;
-  const mapB=runtime.selfId==="B"?sourceMap:mapRemote;
+  const mapA=runtime.selfId==="A"?mapSelf:mapRemote;
+  const mapB=runtime.selfId==="B"?mapSelf:mapRemote;
   const rebuilt=rebuildThroughTick({actorOrder:runtime.actorOrder,applyOrder:runtime.applyOrder,knownA,knownB,tick,mapA,mapB});
   const after=actorState(rebuilt,runtime.selfId);
   runtime.selfPositionReplacement.push(distance3(before.position,after.position));
@@ -196,7 +221,8 @@ for(const policy of POLICIES)for(const legMs of LEG_DELAYS_MS)for(const phaseMs 
   const cell=runCell({policy,legMs,phaseMs});assertCell(cell);cells.push(cell);
   console.log(`${policy.padEnd(20)} leg=${legMs} peer≈${2*legMs} phase=${phaseMs.toFixed(2).padStart(5)} `+
     `ABp95=${cell.clientSplit.p95.toFixed(3)}m ABfinal=${cell.clientSplit.final.toFixed(3)}m `+
-    `authP95=${cell.clientAuthority.p95.toFixed(3)}m authFinal=${cell.clientAuthority.final.toFixed(3)}m sourceFinal=${cell.clientSource.final.toFixed(3)}m`);
+    `authP95=${cell.clientAuthority.p95.toFixed(3)}m authFinal=${cell.clientAuthority.final.toFixed(3)}m sourceFinal=${cell.clientSource.final.toFixed(3)}m `+
+    `selfReplaceMax=${cell.maxSelfPositionReplacement.toFixed(3)}m`);
 }
 
 const summary=[];
@@ -213,16 +239,17 @@ console.log("\nF1 causal-time topology summary:");
 for(const r of summary)console.log(`${r.policy.padEnd(20)} leg=${r.legMs} peer≈${r.peerNominalMs}ms · `+
   `ABp95=${r.clientSplitP95Median.toFixed(3)}/${r.clientSplitP95Max.toFixed(3)}m ABfinalMax=${r.clientSplitFinalMax.toFixed(3)}m `+
   `client↔authP95=${r.clientAuthorityP95Median.toFixed(3)}m finalMax=${r.clientAuthorityFinalMax.toFixed(3)}m `+
-  `auth↔sourceFinalMax=${r.authoritySourceFinalMax.toFixed(3)}m`);
+  `auth↔sourceFinalMax=${r.authoritySourceFinalMax.toFixed(3)}m selfReplaceMax=${r.maxSelfPositionReplacement.toFixed(3)}m`);
 
 const evidence={revision:REVISION,generatedAt:new Date().toISOString(),design:{baseResearchHead:"a4263565a1b39de35f93f85c5ada01d8ef9147e3",box3d:"box3d.js@0.1.1",simulationHz:60,substeps:SUBSTEPS,scenario:SCENARIO,
-  topology:"self applies input at source tick; authority first learns it after one WAN leg; peer first learns it after a second WAN leg plus explicit phase",
+  topology:"self predicts at source tick; authority first applies after one WAN leg; source-time metadata can forward on receipt, while authority-apply metadata can only return after the authority step plus downlink",
   policies:{
-    "receipt-live":"Authority and peer both apply inputs only on receipt; no history.",
-    "peer-authority-tick":"Authority remains receipt-time. Peer resimulates newly known remote input to the discrete tick on which authority first applied it. Self remains source-time immediate.",
-    "peer-source":"Authority remains receipt-time. Peers resimulate newly known remote input to its original source time; clients may agree with each other while disagreeing with authority.",
-    "all-source":"Authority and peers both resimulate newly known input to original source time. This is the source-time canonical-history ceiling and implies authority history repair too."
+    "receipt-live":"Current class: authority and peer apply inputs only on receipt; no history.",
+    "peer-authority-tick":"Authority remains receipt-time. Peer repairs remote input to authority apply tick once that tick could be known. Self remains source-time prediction.",
+    "peer-source":"Authority remains receipt-time. Peers repair remote input to original source time; clients may agree with each other while disagreeing with authority.",
+    "all-authority-tick":"Authority remains forward-only receipt-time. Each client predicts self immediately, then repairs acknowledged self plus known remote inputs to authority-apply ticks, testing an authority-canonical client reconciliation path without server rollback.",
+    "all-source":"Authority and peers both repair newly known input to original source time. This is the source-time canonical-history ceiling and implies authority history repair too."
   },
-  boundary:"This is a timing/topology feasibility gate. It does not implement network clock synchronization, trusted tick validation, Box3D checkpoint storage, browser rollback or smoothing."},cells,summary};
+  boundary:"This is a timing/topology feasibility gate. Authority-tick policies assume a minimal future apply-tick acknowledgement/peer contract after the authoritative step. It does not implement trusted source-tick validation, Box3D checkpoint storage, browser rollback, smoothing, or a production protocol."},cells,summary};
 writeFileSync(OUTPUT,JSON.stringify(evidence,null,2));
 console.log(`\nF1 APPARATUS RUN COMPLETE · evidence written to ${OUTPUT}`);

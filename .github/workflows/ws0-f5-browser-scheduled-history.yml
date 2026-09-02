@@ -1,0 +1,33 @@
+name: WS0 F5 Browser Scheduled History
+
+on:
+  push:
+    branches: [ws0-f5-browser-scheduled-history]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  f5-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate F5 staging-only protocol substrate
+        run: npm run check
+
+      - name: Prove frozen WS0 control files are untouched
+        run: git diff --exit-code d33294e9052e37cf716d809e7dca551d1065df44 -- src/world-slice-0.ts src/world-slice-0-two-client.ts public/world0-two-client

@@ -1,11 +1,16 @@
 import baseHandler, { World as BaseWorld } from "./index";
 import { WorldSlice0 } from "./world-slice-0-two-client";
+import { WorldSliceF5 } from "./world-slice-f5";
 
 export class World extends BaseWorld {}
-export { WorldSlice0 };
+export { WorldSlice0, WorldSliceF5 };
 
 function worldSliceStub(env: Env, name: string) {
   return env.WORLD_SLICE_0.get(env.WORLD_SLICE_0.idFromName(name));
+}
+
+function worldSliceF5Stub(env: Env, name: string) {
+  return env.WORLD_SLICE_F5.get(env.WORLD_SLICE_F5.idFromName(name));
 }
 
 async function worldSlice0ApiResponse(request: Request, env: Env): Promise<Response> {
@@ -37,11 +42,27 @@ async function worldSlice0WebSocketResponse(request: Request, env: Env): Promise
   return world.fetch(request);
 }
 
+function worldSliceF5Instance(request: Request): string {
+  const url = new URL(request.url);
+  const run = (url.searchParams.get("run") ?? "manual").trim();
+  const safeRun = /^[A-Za-z0-9_-]{1,20}$/.test(run) ? run : "manual";
+  return `world-slice-f5-${safeRun}`;
+}
+
+async function worldSliceF5WebSocketResponse(request: Request, env: Env): Promise<Response> {
+  if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+    return new Response("Expected Upgrade: websocket", { status: 426, headers: { "content-type": "text/plain; charset=utf-8" } });
+  }
+  const world = worldSliceF5Stub(env, worldSliceF5Instance(request));
+  return world.fetch(request);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/world0") return worldSlice0ApiResponse(request, env);
     if (url.pathname === "/world0/ws") return worldSlice0WebSocketResponse(request, env);
+    if (url.pathname === "/world0-f5/ws") return worldSliceF5WebSocketResponse(request, env);
     return baseHandler.fetch(request, env);
   },
 } satisfies ExportedHandler<Env>;

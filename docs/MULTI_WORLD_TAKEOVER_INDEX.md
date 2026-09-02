@@ -19,11 +19,14 @@ This branch is documentation/provenance. Live repo state, exact SHAs, CI/deploym
 4. **`MULTI_WORLD_FRESH_TAKEOVER_V2.md`**  
    Current startup mandate for a fresh Browser ChatGPT conversation. It explicitly avoids repeating the old A2/A3 regrounding ceremony.
 
-5. **Active F5 contract**  
+5. **`MULTI_WORLD_HANDOFF_VALIDATION_2026-09-03.md`**  
+   Final operational transfer audit: draft F5 PR, latest PR-triggered CI, hidden-local-work audit, deployment continuity/manual staging gate and known unresolved items. This is a continuity record, not experimental evidence.
+
+6. **Active F5 contract**  
    `docs/WS0_F5_BROWSER_SCHEDULED_HISTORY_CONTRACT.md` on `ws0-f5-browser-scheduled-history`.
 
-6. **Issue #8 qualified evidence ledger**  
-   Use when exact provenance/result details are needed. F4 comment `5517282802` remains the newest fully qualified mechanism result until F5 earns a live result.
+7. **Issue #8 qualified evidence ledger**  
+   Use when exact provenance/result details are needed. F4 comment `5517282802` remains the newest fully qualified mechanism result until F5 earns a live result. Strategic handoff planning was separately recorded as comment `5518071783` and must not be treated as experimental evidence.
 
 ## Current live anchors to verify
 
@@ -37,11 +40,12 @@ At handoff preparation:
 - PR #28 / `72f298e7b3730194d69a9d989620c273138b2c34` — F3.1 temporal discriminator;
 - PR #29 / `d33294e9052e37cf716d809e7dca551d1065df44` — F4 bounded scheduled client history, issue checkpoint `5517282802`;
 - F5 runtime implementation candidate: `ca8fc10ee93fe91684ba2de2302e2650eeba0a21`;
-- active F5 branch expected head after docs-only pre-live contract amendment: `0278add0f15f3c76f5b4d62912b207a359def181`.
+- active F5 branch expected head after docs-only pre-live contract amendment: `0278add0f15f3c76f5b4d62912b207a359def181`;
+- draft PR #30 — F5 review/provenance surface against exact qualified F4 branch; **PRE-DEPLOY / NOT QUALIFIED / DO NOT MERGE**.
 
 Always verify live before writes.
 
-Completed research PRs remain archived/closed and unmerged. Their branches/artifacts are evidence, not merge candidates by default.
+Completed research PRs remain archived/closed and unmerged. Their branches/artifacts are evidence, not merge candidates by default. F5 PR #30 stays open/draft while the live gate is active; if F5 qualifies, archive/close it unmerged unless a separate product-integration decision earns a merge.
 
 ## Qualified path in one screen
 
@@ -90,7 +94,10 @@ Already prepared:
 - raw corrections;
 - desktop + minimal phone controls.
 
-Implementation-head preflight run `33694085298`: PASS.
+Implementation-head preflight run `33694085298`: PASS.  
+Docs-amended push preflight run `33696290253`: PASS.  
+Draft PR #30 exact-head standard `CI` run `33697088578`: PASS.  
+Draft PR #30 exact-head dedicated F5 run `33697088566`: PASS.
 
 Before live deployment only small evidence hardening is authorized:
 
@@ -101,6 +108,8 @@ Before live deployment only small evidence hardening is authorized:
 - rerun checks.
 
 Then deploy/smoke staging and stop at one desktop+phone Owner raw-correction session.
+
+Deployment continuity and the one possible manual Cloudflare staging-branch gate are recorded explicitly in `MULTI_WORLD_HANDOFF_VALIDATION_2026-09-03.md`.
 
 ## Strategic roadmap after F5
 
@@ -144,6 +153,6 @@ Useful only as provenance unless resolving a disputed claim:
 
 ## Expected first action in a fresh conversation
 
-Perform a compact live verification of docs/F5/control heads and latest F5 checks. Read Current State + Foundation Strategy + F5 contract. If no material contradiction exists, proceed autonomously into the small F5 pre-deploy evidence hardening and staging path.
+Perform a compact live verification of docs/F5/control heads, draft PR #30 and latest F5 checks. Read Current State + Foundation Strategy + Takeover V2 + final Handoff Validation + F5 contract. If no material contradiction exists, proceed autonomously into the small F5 pre-deploy evidence hardening and staging path.
 
 Do **not** repeat a broad takeover/research reconstruction simply because the conversation is new.

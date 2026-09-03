@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ws0-f5-staging-cloud-smoke
+  cancel-in-progress: true
+
 jobs:
   staging-cloud-smoke:
     runs-on: ubuntu-latest

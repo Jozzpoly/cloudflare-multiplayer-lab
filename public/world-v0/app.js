@@ -27,6 +27,7 @@ const EPS = 1e-9;
 
 const viewport = document.querySelector("#viewport");
 const boot = document.querySelector("#boot");
+const bootTitle = boot?.querySelector("h1");
 const callsignInput = document.querySelector("#callsign");
 const runInput = document.querySelector("#run");
 const enterButton = document.querySelector("#enter");
@@ -37,7 +38,7 @@ const joystickKnob = document.querySelector("#joystick-knob");
 const copyEvidenceButton = document.querySelector("#copy-evidence");
 const metricNames = ["net", "ticks", "guard", "corrections", "rewind", "replay", "rtt", "lease", "memory", "frame"];
 const metric = Object.fromEntries(metricNames.map((name) => [name, document.querySelector(`#m-${name}`)]));
-const required = [viewport, boot, callsignInput, runInput, enterButton, bootStatus, notice, joystick, joystickKnob, copyEvidenceButton, ...Object.values(metric)];
+const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, notice, joystick, joystickKnob, copyEvidenceButton, ...Object.values(metric)];
 if (required.some((value) => !value)) throw new Error("Shared Yard V0 UI incomplete");
 
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
@@ -51,7 +52,7 @@ runInput.value = urlParams.get("run") || storedRun || randomRun;
 
 let b3 = null;
 enterButton.disabled = true;
-bootStatus.textContent = `${WORLD_V0_BROWSER_UI_REVISION} · loading Box3D`;
+bootStatus.textContent = "Loading physics…";
 try {
   const module = await import(WORLD_V0_BOX3D_URL);
   b3 = await module.default();
@@ -64,7 +65,7 @@ try {
   const missing = recordingFns.filter((name) => typeof b3[name] !== "function");
   if (missing.length) throw new Error(`Box3D recording capability missing: ${missing.join(", ")}`);
   enterButton.disabled = false;
-  bootStatus.textContent = `${WORLD_V0_CLIENT_SIM_REVISION} · ${WORLD_V0_BOX3D_PACKAGE} recording ready`;
+  bootStatus.textContent = "Ready · share the same Run key with another player";
 } catch (error) {
   bootStatus.textContent = error instanceof Error ? error.message : String(error);
   enterButton.textContent = "Box3D failed";
@@ -91,6 +92,7 @@ const propMeshes = new Map();
 let selfMesh = null;
 let remoteMesh = null;
 let visualContractBuiltFor = null;
+let spatialCueCount = 0;
 
 function clearWorldVisuals() {
   while (worldVisualRoot.children.length) worldVisualRoot.remove(worldVisualRoot.children[0]);
@@ -98,6 +100,102 @@ function clearWorldVisuals() {
   selfMesh = null;
   remoteMesh = null;
   visualContractBuiltFor = null;
+  spatialCueCount = 0;
+}
+
+function makePresenceLabel(text, color) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 64;
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "rgba(7, 13, 17, 0.72)";
+  context.fillRect(24, 13, 208, 38);
+  context.strokeStyle = "rgba(220, 245, 244, 0.14)";
+  context.strokeRect(24.5, 13.5, 207, 37);
+  context.fillStyle = color;
+  context.font = "700 23px system-ui";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text, 128, 32);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
+  label.scale.set(1.75, 0.44, 1);
+  label.userData.presenceText = text;
+  return label;
+}
+
+function makeGroundRing(color) {
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.5,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.56, 0.7, 40), material);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.024;
+  return ring;
+}
+
+function makeGroundText(text, color, position, scale = 1) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 96;
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = color;
+  context.globalAlpha = 0.6;
+  context.font = "700 34px system-ui";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text, 256, 48);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.4 * scale, 0.64 * scale),
+    new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 0.56, depthWrite: false, side: THREE.DoubleSide }),
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(position[0], 0.028, position[2]);
+  worldVisualRoot.add(mesh);
+  return mesh;
+}
+
+function makeZonePlane(size, position, color) {
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(size[0], size[1]),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.075, depthWrite: false, side: THREE.DoubleSide }),
+  );
+  plane.rotation.x = -Math.PI / 2;
+  plane.position.set(position[0], 0.02, position[2]);
+  worldVisualRoot.add(plane);
+  return plane;
+}
+
+function buildSpatialCues(state) {
+  const props = new Map((state?.props || []).map((prop) => [prop.id, prop]));
+  const definitions = [
+    { ids: ["prop-0", "prop-1", "prop-2", "prop-3", "prop-4", "prop-5"], label: "COLLISION YARD", size: [6.7, 4.1], labelOffset: [0, -2.25], color: 0x62a8c6, textColor: "#89cde1", textScale: 0.88 },
+    { ids: ["prop-6", "prop-7", "prop-8"], label: "TOWER", size: [4.1, 4.0], labelOffset: [0, -1.95], color: 0xd9a166, textColor: "#efc28b", textScale: 0.7 },
+    { ids: ["prop-9", "prop-10", "prop-11"], label: "IMPULSE LANE", size: [5.3, 2.3], labelOffset: [0, 1.4], color: 0x6fc6af, textColor: "#90e2ca", textScale: 0.76 },
+  ];
+  for (const definition of definitions) {
+    const members = definition.ids.map((id) => props.get(id)).filter(Boolean);
+    if (members.length !== definition.ids.length) continue;
+    const centerX = members.reduce((sum, prop) => sum + prop.position[0], 0) / members.length;
+    const centerZ = members.reduce((sum, prop) => sum + prop.position[2], 0) / members.length;
+    makeZonePlane(definition.size, [centerX, 0, centerZ], definition.color);
+    makeGroundText(
+      definition.label,
+      definition.textColor,
+      [centerX + definition.labelOffset[0], 0, centerZ + definition.labelOffset[1]],
+      definition.textScale,
+    );
+    spatialCueCount += 2;
+  }
 }
 
 function buildArenaVisual(contract) {
@@ -105,7 +203,7 @@ function buildArenaVisual(contract) {
   clearWorldVisuals();
   visualContractBuiltFor = contract.simBuildId;
   const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x27343d, roughness: 0.92 });
-  const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x3d4b55, roughness: 0.84 });
+  const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x3d4b55, roughness: 0.84, transparent: true, opacity: 0.56 });
   for (const box of contract.arena.staticBoxes || []) {
     const [hx, hy, hz] = box.halfExtents;
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2), box.id === "ground" ? floorMaterial : wallMaterial);
@@ -114,20 +212,35 @@ function buildArenaVisual(contract) {
   }
   const grid = new THREE.GridHelper(20, 20, 0x52707c, 0x30434d);
   grid.position.y = 0.006;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.24;
   worldVisualRoot.add(grid);
 }
 
 function createPlayerMesh(isSelf) {
-  const material = new THREE.MeshStandardMaterial({ color: isSelf ? 0x76d8c0 : 0xe7a16e, roughness: 0.56 });
+  const color = isSelf ? 0x76d8c0 : 0xe7a16e;
+  const material = new THREE.MeshStandardMaterial({ color, roughness: 0.56 });
   const group = new THREE.Group();
   const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.9, 14), material);
   const top = new THREE.Mesh(new THREE.SphereGeometry(0.35, 14, 10), material);
   const bottom = new THREE.Mesh(new THREE.SphereGeometry(0.35, 14, 10), material);
   top.position.y = 0.45;
   bottom.position.y = -0.45;
-  group.add(cylinder, top, bottom);
-  worldVisualRoot.add(group);
+  const label = makePresenceLabel(isSelf ? "YOU" : "PEER", isSelf ? "#94f6de" : "#ffc18b");
+  label.position.set(0, 1.3, 0);
+  group.add(cylinder, top, bottom, label);
+  const ring = makeGroundRing(color);
+  worldVisualRoot.add(group, ring);
+  group.userData.presenceRing = ring;
+  group.userData.presenceLabel = label;
   return group;
+}
+
+function propColor(id) {
+  const numeric = Number(String(id).replace("prop-", ""));
+  if (numeric >= 6 && numeric <= 8) return 0x956a45;
+  if (numeric >= 9 && numeric <= 11) return 0xc28f58;
+  return 0xb68a55;
 }
 
 function getPropMesh(id) {
@@ -136,7 +249,7 @@ function getPropMesh(id) {
     const half = simulation?.propPhysics?.halfExtents || [0.46, 0.46, 0.46];
     mesh = new THREE.Mesh(
       new THREE.BoxGeometry(half[0] * 2, half[1] * 2, half[2] * 2),
-      new THREE.MeshStandardMaterial({ color: 0xb68a55, roughness: 0.74 }),
+      new THREE.MeshStandardMaterial({ color: propColor(id), roughness: 0.74 }),
     );
     worldVisualRoot.add(mesh);
     propMeshes.set(id, mesh);
@@ -965,6 +1078,7 @@ function handleStart(message) {
   protocolStartTick = message.protocolStartTick;
   buildArenaVisual(contract);
   const sim = createSimulationFromState(message.state);
+  buildSpatialCues(message.state);
   createHistory(sim);
   compareStateGuard(0, message.state.stateGuard);
   updatePhaseFromStart(message, performance.now());
@@ -1061,6 +1175,7 @@ function connect() {
     pendingPings.clear();
     networkState = `closed ${event.code}`;
     joystick.classList.remove("active");
+    updateProductStatus();
     if (!runtimeFailed) showNotice("Shared Yard connection ended. World V0 intentionally requires a fresh epoch after disconnect.");
   });
   socket.addEventListener("error", () => { networkState = "network error"; });
@@ -1080,6 +1195,11 @@ function advancePrediction() {
   if (localState.boundaryTick < targetBoundary - MAX_PREDICTION_STEPS_PER_FRAME) networkState = "prediction backlog";
 }
 
+function syncPresence(mesh, position) {
+  const ring = mesh?.userData?.presenceRing;
+  if (ring) ring.position.set(position[0], 0.024, position[2]);
+}
+
 function syncMeshes() {
   if (!localState?.sim || !selfSessionId || !remoteSessionId) return;
   if (!selfMesh) selfMesh = createPlayerMesh(true);
@@ -1087,12 +1207,16 @@ function syncMeshes() {
   const selfBody = localState.sim.actorBodies.get(selfSessionId);
   const remoteBody = localState.sim.actorBodies.get(remoteSessionId);
   if (selfBody) {
-    selfMesh.position.fromArray(bodyPosition(selfBody));
+    const position = bodyPosition(selfBody);
+    selfMesh.position.fromArray(position);
     selfMesh.quaternion.fromArray(bodyRotation(selfBody)).normalize();
+    syncPresence(selfMesh, position);
   }
   if (remoteBody) {
-    remoteMesh.position.fromArray(bodyPosition(remoteBody));
+    const position = bodyPosition(remoteBody);
+    remoteMesh.position.fromArray(position);
     remoteMesh.quaternion.fromArray(bodyRotation(remoteBody)).normalize();
+    syncPresence(remoteMesh, position);
   }
   for (const [id, body] of localState.sim.propBodies) {
     const mesh = getPropMesh(id);
@@ -1101,10 +1225,16 @@ function syncMeshes() {
   }
 }
 
+function cameraPresetName() {
+  return innerWidth <= 720 && innerHeight > innerWidth ? "portrait-wide-follow" : "desktop-follow";
+}
+
 function updateCamera() {
   if (!selfMesh) return;
-  camera.position.set(selfMesh.position.x + 7.2, selfMesh.position.y + 6.2, selfMesh.position.z + 8.4);
-  camera.lookAt(selfMesh.position.x, selfMesh.position.y + 0.45, selfMesh.position.z);
+  const portrait = cameraPresetName() === "portrait-wide-follow";
+  const offset = portrait ? [9.4, 8.4, 11.8] : [7.4, 6.3, 8.7];
+  camera.position.set(selfMesh.position.x + offset[0], selfMesh.position.y + offset[1], selfMesh.position.z + offset[2]);
+  camera.lookAt(selfMesh.position.x, selfMesh.position.y + 0.42, selfMesh.position.z);
 }
 
 function recordFrame(now) {
@@ -1131,6 +1261,13 @@ function buildEvidence() {
     runtimeFailed,
     localBoundaryTick: localState?.boundaryTick ?? null,
     protocolStartTick,
+    presentation: {
+      selfPresence: selfMesh?.userData?.presenceLabel?.userData?.presenceText || null,
+      remotePresence: remoteMesh?.userData?.presenceLabel?.userData?.presenceText || null,
+      spatialCueCount,
+      cameraPreset: cameraPresetName(),
+      cameraFov: camera.fov,
+    },
     metrics: JSON.parse(JSON.stringify(metrics)),
     rtt: {
       samples: rttSamples.length,
@@ -1157,6 +1294,24 @@ function buildEvidence() {
 
 window.__sharedYardV0Evidence = buildEvidence;
 
+function productStatusText() {
+  if (runtimeFailed) return "Runtime problem · open Diagnostics";
+  if (networkState === "waiting for peer") return "Waiting for peer · use the same Run key";
+  if (networkState === "peer joined" || networkState === "both connected · ready" || networkState === "ready · awaiting start") return "Peer found · synchronizing Shared Yard";
+  if (networkState.startsWith("live")) return "Shared Yard live · move and interact";
+  if (networkState === "connecting" || networkState === "syncing") return "Connecting to Shared Yard…";
+  if (networkState.startsWith("closed")) return "Connection ended · start a fresh run";
+  if (networkState.startsWith("epoch ended")) return "World epoch ended · start a fresh run";
+  if (networkState === "prediction backlog") return "Catching up…";
+  return "Ready · share the same Run key with another player";
+}
+
+function updateProductStatus() {
+  if (!boot.classList.contains("compact")) return;
+  bootTitle.textContent = "Shared Yard";
+  bootStatus.textContent = productStatusText();
+}
+
 function updateHud() {
   metric.net.textContent = networkState;
   metric.ticks.textContent = localState ? `B(${localState.boundaryTick}) · start ${protocolStartTick ?? "—"}` : "—";
@@ -1168,6 +1323,7 @@ function updateHud() {
   metric.lease.textContent = `${metrics.leaseExpiredSeen} expired · late ${metrics.serverLate}`;
   metric.memory.textContent = formatBytes(metrics.maxRetainedBytes);
   metric.frame.textContent = frameSamples.length ? `${percentile(frameSamples, 0.95).toFixed(1)} ms p95 · ${metrics.maxFrameMs.toFixed(1)} max` : "—";
+  updateProductStatus();
 }
 
 function resetProtocolState() {
@@ -1236,7 +1392,9 @@ function enterWorld() {
   clearNotice();
   playing = true;
   boot.classList.add("compact");
+  bootTitle.textContent = "Shared Yard";
   networkState = "connecting";
+  updateProductStatus();
   connect();
 }
 
@@ -1296,12 +1454,15 @@ joystick.addEventListener("pointerup", releaseJoystick);
 joystick.addEventListener("pointercancel", releaseJoystick);
 
 function resize() {
+  const portrait = innerWidth <= 720 && innerHeight > innerWidth;
   camera.aspect = innerWidth / innerHeight;
+  camera.fov = portrait ? 62 : 55;
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   renderer.setSize(innerWidth, innerHeight);
 }
 addEventListener("resize", resize);
+resize();
 
 function frame(now) {
   requestAnimationFrame(frame);

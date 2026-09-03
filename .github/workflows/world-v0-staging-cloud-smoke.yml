@@ -19,7 +19,8 @@ jobs:
     # surfaces without making pass/fail depend on two requestAnimationFrame loops
     # surviving an arbitrarily starved hosted runner for ~150 active ticks.
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    # Outer CI budget only; causal/runtime thresholds remain inside the probes.
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,7 +97,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[runtime-qualify]') || contains(github.event.head_commit.message, '[remote-staging]')
     needs: local-regression
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    # Outer CI budget only; exact-state/dead-man thresholds remain unchanged.
+    timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4

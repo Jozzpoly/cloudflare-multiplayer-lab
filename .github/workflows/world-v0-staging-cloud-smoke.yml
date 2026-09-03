@@ -30,3 +30,31 @@ jobs:
 
       - name: Verify staging assets, authority semantics, dead-man and production isolation
         run: node scripts/world-v0-staging-cloud-smoke.mjs
+
+  chromium-exact-state:
+    needs: staging-cloud-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Syntax-check real Chromium falsifier
+        run: node --check scripts/world-v0-chromium-cloud-smoke.mjs
+
+      - name: Run two real Chromium Shared Yard clients with exact-state guard
+        run: node scripts/world-v0-chromium-cloud-smoke.mjs
+
+      - name: Upload Chromium evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-chromium-cloud-evidence
+          path: world-v0-chromium-cloud-evidence.json
+          if-no-files-found: warn
+          retention-days: 14

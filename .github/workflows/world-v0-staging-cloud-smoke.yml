@@ -42,20 +42,16 @@ jobs:
           cat world-v0-local-wrangler.log
           exit 1
 
-      - name: Prepare local target variants of canonical runtime falsifiers
+      - name: Exercise real Workerd authority, identity and canonical dead-man
+        env:
+          MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
+        run: node scripts/world-v0-authority-runtime-smoke.mjs
+
+      - name: Prepare local target variant of real Chromium falsifier
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync, writeFileSync } from "node:fs";
-
-          let authority = readFileSync("scripts/world-v0-staging-cloud-smoke.mjs", "utf8");
-          authority = authority
-            .replace('const STAGING = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev";', 'const STAGING = "http://127.0.0.1:8787";')
-            .replace('const PRODUCTION = "https://cloudflare-multiplayer-lab.jozzpoly.workers.dev";', 'const PRODUCTION = "http://127.0.0.1:8787";')
-            .replace('const WS_URL = "wss://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/ws";', 'const WS_URL = "ws://127.0.0.1:8787/world-v0/ws";')
-            .replace('await assertProductionIsolation("before World V0 staging smoke");', 'console.log("local Workerd: production-isolation check intentionally skipped");')
-            .replace('await assertProductionIsolation("after World V0 staging smoke");', 'console.log("local Workerd: production-isolation check intentionally skipped");');
-          writeFileSync("scripts/.world-v0-local-authority-smoke.mjs", authority);
-
           let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
           chromium = chromium.replace(
             'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";',
@@ -63,9 +59,6 @@ jobs:
           );
           writeFileSync("scripts/.world-v0-local-chromium-smoke.mjs", chromium);
           NODE
-
-      - name: Exercise real Workerd authority, identity and canonical dead-man
-        run: node scripts/.world-v0-local-authority-smoke.mjs
 
       - name: Run two real Chromium clients against exact Workerd with same-boundary guard
         env:
@@ -103,11 +96,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Syntax-check Shared Yard staging smoke
-        run: node --check scripts/world-v0-staging-cloud-smoke.mjs
+      - name: Syntax-check Shared Yard staging authority smoke
+        run: node --check scripts/world-v0-authority-runtime-smoke.mjs
 
-      - name: Verify staging assets, authority semantics, dead-man and production isolation
-        run: node scripts/world-v0-staging-cloud-smoke.mjs
+      - name: Verify staging authority, identity, dead-man and production isolation
+        run: node scripts/world-v0-authority-runtime-smoke.mjs
 
   chromium-exact-state:
     if: github.event_name == 'workflow_dispatch'

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <title>Multi_World · Shared Yard Product Lab</title>
+  <style>
+    :root{color-scheme:dark;--bg:#091016;--panel:rgba(10,18,24,.78);--line:rgba(173,215,221,.18);--text:#eef8f6;--muted:#9eb1b5;--mint:#75dcc2;--amber:#efad69;--blue:#72a7dc;--danger:#ff8e8e}
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none}
+    #view{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}
+    .glass{background:var(--panel);border:1px solid var(--line);box-shadow:0 18px 55px rgba(0,0,0,.32);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+    #top{position:fixed;z-index:5;left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));top:max(14px,env(safe-area-inset-top));display:flex;align-items:flex-start;justify-content:space-between;gap:10px;pointer-events:none}
+    #brand{padding:11px 13px;border-radius:13px;pointer-events:auto;max-width:min(440px,75vw)}
+    .eyebrow{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--mint);font-weight:750}.title{margin:3px 0 1px;font-size:20px;font-weight:780;letter-spacing:-.02em}.sub{font-size:11px;color:var(--muted);line-height:1.35}
+    #labtag{pointer-events:auto;padding:8px 10px;border-radius:999px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#cde7e2;white-space:nowrap}
+    #modes{position:fixed;z-index:6;left:50%;transform:translateX(-50%);bottom:max(16px,env(safe-area-inset-bottom));display:flex;gap:5px;padding:5px;border-radius:14px;max-width:calc(100vw - 24px)}
+    button{border:0;color:var(--muted);background:transparent;font:inherit;cursor:pointer}.mode{padding:10px 12px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}.mode.active{background:rgba(117,220,194,.16);color:#e8fff9;box-shadow:inset 0 0 0 1px rgba(117,220,194,.28)}
+    #actions{position:fixed;z-index:6;right:max(14px,env(safe-area-inset-right));bottom:max(82px,calc(env(safe-area-inset-bottom) + 72px));display:grid;gap:7px}.action{width:42px;height:42px;border-radius:12px;font-size:15px;color:#d7e7e8;display:grid;place-items:center}
+    #card{position:fixed;z-index:5;left:max(14px,env(safe-area-inset-left));bottom:max(82px,calc(env(safe-area-inset-bottom) + 72px));width:min(330px,calc(100vw - 84px));padding:12px 13px;border-radius:13px;pointer-events:none}.card-title{font-size:12px;font-weight:760;margin-bottom:4px}.card-copy{font-size:10.5px;line-height:1.45;color:var(--muted)}.legend{display:flex;flex-wrap:wrap;gap:7px 10px;margin-top:9px;font-size:9.5px;color:#c1d0d2}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px}.runtime{background:var(--mint)}.mock{background:var(--amber)}.decor{background:var(--blue)}
+    #hint{position:fixed;z-index:4;left:50%;top:50%;transform:translate(-50%,-50%);font-size:11px;color:rgba(225,240,239,.48);pointer-events:none;transition:opacity .6s}.hidden{opacity:0}
+    #orientation{position:fixed;z-index:4;top:50%;right:max(14px,env(safe-area-inset-right));transform:translateY(-50%);writing-mode:vertical-rl;font-size:9px;letter-spacing:.12em;color:rgba(199,220,222,.35);text-transform:uppercase;pointer-events:none}
+    @media(max-width:700px){#brand{max-width:78vw}.title{font-size:17px}.sub{font-size:10px}#labtag{font-size:8px;padding:7px 8px}#card{bottom:max(78px,calc(env(safe-area-inset-bottom) + 68px));width:min(270px,calc(100vw - 74px));padding:10px 11px}.card-copy{font-size:9.8px}#actions{bottom:max(78px,calc(env(safe-area-inset-bottom) + 68px));right:10px}.action{width:38px;height:38px}.mode{padding:9px 8px;font-size:9.5px}#modes{bottom:max(10px,env(safe-area-inset-bottom));width:calc(100vw - 20px);justify-content:space-between}.mode{flex:1}#orientation{display:none}}
+  </style>
+</head>
+<body>
+  <div id="view"></div>
+  <div id="top">
+    <section id="brand" class="glass">
+      <div class="eyebrow">Multi_World · Product Lab</div>
+      <div class="title">Shared Yard V0.5</div>
+      <div class="sub">Presentation sandbox over the remote-qualified V0 footprint. No multiplayer claims are made here.</div>
+    </section>
+    <div id="labtag" class="glass">presentation only</div>
+  </div>
+  <section id="card" class="glass">
+    <div class="card-title" id="card-title"></div>
+    <div class="card-copy" id="card-copy"></div>
+    <div class="legend"><span><i class="dot runtime"></i>qualified-runtime object</span><span><i class="dot mock"></i>candidate mock</span><span><i class="dot decor"></i>presentation cue</span></div>
+  </section>
+  <div id="actions">
+    <button class="action glass" id="reset" title="Reset camera">↺</button>
+    <button class="action glass" id="topview" title="Top view">⌖</button>
+  </div>
+  <div id="modes" class="glass">
+    <button class="mode active" data-mode="baseline">Qualified V0</button>
+    <button class="mode" data-mode="presence">Presence pass</button>
+    <button class="mode" data-mode="playground">Playground concept</button>
+  </div>
+  <div id="hint">drag to orbit · pinch/wheel to zoom</div>
+  <div id="orientation">authored footprint · 20 × 20 m</div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js";
+
+    const view = document.querySelector('#view');
+    const cardTitle = document.querySelector('#card-title');
+    const cardCopy = document.querySelector('#card-copy');
+    const hint = document.querySelector('#hint');
+    const modes = [...document.querySelectorAll('.mode')];
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x091016);
+    scene.fog = new THREE.FogExp2(0x091016, 0.025);
+    const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.05, 80);
+    const renderer = new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    view.append(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xbde0e1,0x182228,1.75));
+    const sun = new THREE.DirectionalLight(0xffffff,3.1); sun.position.set(7,14,9); sun.castShadow = true; scene.add(sun);
+    const fill = new THREE.DirectionalLight(0x7fb8d8,0.7); fill.position.set(-8,6,-10); scene.add(fill);
+
+    const root = new THREE.Group(); scene.add(root);
+    const runtimeRoot = new THREE.Group(); const decorRoot = new THREE.Group(); const mockRoot = new THREE.Group();
+    root.add(runtimeRoot,decorRoot,mockRoot);
+
+    const mat = {
+      floor:new THREE.MeshStandardMaterial({color:0x26343b,roughness:.96,metalness:0}),
+      wall:new THREE.MeshStandardMaterial({color:0x344750,roughness:.88}),
+      barricade:new THREE.MeshStandardMaterial({color:0xa97848,roughness:.72}),
+      tower:new THREE.MeshStandardMaterial({color:0x9d7047,roughness:.72}),
+      train:new THREE.MeshStandardMaterial({color:0xbd8b54,roughness:.72}),
+      self:new THREE.MeshStandardMaterial({color:0x6ed9be,roughness:.5}),
+      remote:new THREE.MeshStandardMaterial({color:0xea9f62,roughness:.5}),
+      mock:new THREE.MeshStandardMaterial({color:0xe8ad6a,roughness:.58,transparent:true,opacity:.88}),
+      mockDark:new THREE.MeshStandardMaterial({color:0x8d633c,roughness:.66,transparent:true,opacity:.86}),
+      accent:new THREE.MeshStandardMaterial({color:0x6ea5d0,roughness:.68,transparent:true,opacity:.72}),
+    };
+
+    function box(group,size,pos,material,rotationY=0){const g=new THREE.BoxGeometry(...size);const m=new THREE.Mesh(g,material);m.position.set(...pos);m.rotation.y=rotationY;m.castShadow=true;m.receiveShadow=true;group.add(m);return m}
+    function cylinder(group,r,h,pos,material){const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,24),material);m.position.set(...pos);m.castShadow=true;group.add(m);return m}
+    function planeMark(size,pos,color,opacity=.18){const m=new THREE.Mesh(new THREE.PlaneGeometry(...size),new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.set(...pos);decorRoot.add(m);return m}
+    function ringMark(radius,pos,color,opacity=.55){const m=new THREE.Mesh(new THREE.RingGeometry(radius*.82,radius,48),new THREE.MeshBasicMaterial({color,transparent:true,opacity,side:THREE.DoubleSide,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.set(...pos);decorRoot.add(m);return m}
+    function labelSprite(text,color='#ffffff',scale=1){const c=document.createElement('canvas');const x=c.getContext('2d');c.width=512;c.height=128;x.clearRect(0,0,c.width,c.height);x.font='700 44px system-ui';x.textAlign='center';x.textBaseline='middle';x.fillStyle='rgba(5,10,13,.76)';x.fillRect(28,30,456,68);x.strokeStyle='rgba(255,255,255,.12)';x.strokeRect(28.5,30.5,455,67);x.fillStyle=color;x.fillText(text,256,65);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;const s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthTest:false}));s.scale.set(3.5*scale,.875*scale,1);return s}
+
+    // Authored V0 footprint, exactly matching the qualified layout dimensions/positions.
+    box(runtimeRoot,[20,1,20],[0,-.5,0],mat.floor);
+    box(runtimeRoot,[1,4,20],[-9.5,1.5,0],mat.wall); box(runtimeRoot,[1,4,20],[9.5,1.5,0],mat.wall);
+    box(runtimeRoot,[20,4,1],[0,1.5,-9.5],mat.wall); box(runtimeRoot,[20,4,1],[0,1.5,9.5],mat.wall);
+    const propDefs=[
+      [-.96,.46,-.48,'barricade'],[0,.46,-.48,'barricade'],[.96,.46,-.48,'barricade'],[-.96,.46,.48,'barricade'],[0,.46,.48,'barricade'],[.96,.46,.48,'barricade'],
+      [3.4,.46,-3.2,'tower'],[3.4,1.38,-3.2,'tower'],[3.4,2.3,-3.2,'tower'],[-4,.46,3.3,'train'],[-3.06,.46,3.3,'train'],[-2.12,.46,3.3,'train']
+    ];
+    propDefs.forEach(([x,y,z,k])=>box(runtimeRoot,[.92,.92,.92],[x,y,z],mat[k]));
+
+    function player(pos,material,name,color){const g=new THREE.Group();const body=cylinder(g,.35,.9,[0,0,0],material);const cap=new THREE.SphereGeometry(.35,20,12);const top=new THREE.Mesh(cap,material);top.position.y=.45;top.castShadow=true;const bottom=top.clone();bottom.position.y=-.45;g.add(top,bottom);const nose=box(g,[.14,.16,.48],[0,.05,-.38],material);nose.rotation.x=.1;const ring=ringMark(.72,[pos[0],.012,pos[2]],color,.62);const label=labelSprite(name,color,1);label.position.set(0,1.45,0);g.add(label);g.position.set(...pos);runtimeRoot.add(g);return {g,ring}}
+    const p0=player([-6.5,.82,-1.4],mat.self,'YOU','#8ff4d9');
+    const p1=player([6.5,.82,0],mat.remote,'PEER','#ffc08a');
+
+    const grid=new THREE.GridHelper(20,20,0x58747d,0x31454c);grid.position.y=.012;grid.material.transparent=true;grid.material.opacity=.24;runtimeRoot.add(grid);
+
+    // Presence/product cues. No physics semantics.
+    planeMark([6.8,4.2],[0,.017,0],0x64a9c7,.09);
+    planeMark([4,4.2],[3.4,.018,-3.2],0xdba164,.09);
+    planeMark([5.4,2.3],[-3.05,.018,3.3],0x70c7b1,.09);
+    const zoneA=labelSprite('COLLISION YARD','#8bcde0',.82);zoneA.position.set(0,.12,-2.05);zoneA.material.opacity=.72;decorRoot.add(zoneA);
+    const zoneB=labelSprite('TOWER','#efc187',.72);zoneB.position.set(3.4,.12,-5.0);zoneB.material.opacity=.68;decorRoot.add(zoneB);
+    const zoneC=labelSprite('IMPULSE LANE','#8be1c8',.72);zoneC.position.set(-3.05,.12,4.65);zoneC.material.opacity=.68;decorRoot.add(zoneC);
+    for(let i=-8;i<=8;i+=2){const marker=box(decorRoot,[.07,.025,.52],[i,.025,-8.85],mat.accent);marker.castShadow=false}
+
+    // Product-lab-only candidate affordances. Deliberately fixed/authored, not runtime entities.
+    box(mockRoot,[2.5,1.25,1.25],[0, .625,4.9],mat.mockDark);
+    const heavy=labelSprite('HEAVY · 2 PLAYER?','#ffd09c',.68);heavy.position.set(0,1.65,4.9);mockRoot.add(heavy);
+    box(mockRoot,[4.1,.34,.42],[-4.7,.66,-2.6],mat.mock,.18);
+    const ball=new THREE.Mesh(new THREE.SphereGeometry(.7,28,18),mat.mock);ball.position.set(5.2,.72,3.9);ball.castShadow=true;mockRoot.add(ball);
+    const ramp=box(mockRoot,[3.2,.25,2.5],[4.9,.35,-5.8],mat.mock,.0);ramp.rotation.x=-.17;
+    const archL=box(mockRoot,[.38,2.8,.38],[-1.6,1.4,6.9],mat.mock);const archR=box(mockRoot,[.38,2.8,.38],[1.6,1.4,6.9],mat.mock);box(mockRoot,[3.55,.38,.38],[0,2.62,6.9],mat.mock);
+    planeMark([4.5,3.1],[0,.019,5.4],0xeab16e,.11); planeMark([5.2,3.3],[4.9,.019,-5.4],0xeab16e,.09);
+
+    let mode='baseline';
+    const copy={
+      baseline:['Qualified V0','Exact authored footprint: 2 capsule actors + 12 runtime props. Useful as the visual control, not as the target experience.'],
+      presence:['Presence pass','Same qualified physical footprint. Only spatial language, player identity, zone cues and readability are added. This is the lowest-risk path into product feel.'],
+      playground:['Playground concept','Presence pass plus presentation-only mock affordances: a heavy co-op block, beam, ball, ramp and gate. None of these exist in multiplayer physics yet; they are candidates for the next bounded bet.']
+    };
+    function setMode(next){mode=next;modes.forEach(b=>b.classList.toggle('active',b.dataset.mode===next));decorRoot.visible=next!=='baseline';mockRoot.visible=next==='playground';const [t,c]=copy[next];cardTitle.textContent=t;cardCopy.textContent=c;}
+    modes.forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));setMode('baseline');
+
+    const target=new THREE.Vector3(0,.6,0);let yaw=.72,pitch=.58,distance=16;let pointer=null,lastX=0,lastY=0;let pinchDistance=null;
+    function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+    function updateCamera(){const cp=Math.cos(pitch);camera.position.set(target.x+Math.sin(yaw)*cp*distance,target.y+Math.sin(pitch)*distance,target.z+Math.cos(yaw)*cp*distance);camera.lookAt(target)}
+    function resetCamera(){yaw=.72;pitch=.58;distance=16;target.set(0,.6,0);updateCamera()}
+    function topCamera(){yaw=0;pitch=1.34;distance=18;target.set(0,0,0);updateCamera()}
+    renderer.domElement.addEventListener('pointerdown',e=>{pointer=e.pointerId;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId);hint.classList.add('hidden')});
+    renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerId!==pointer)return;const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;yaw-=dx*.006;pitch=clamp(pitch+dy*.004,-.05,1.38)});
+    function release(e){if(e.pointerId===pointer)pointer=null}renderer.domElement.addEventListener('pointerup',release);renderer.domElement.addEventListener('pointercancel',release);
+    renderer.domElement.addEventListener('wheel',e=>{distance=clamp(distance+e.deltaY*.012,7,25);hint.classList.add('hidden');e.preventDefault()},{passive:false});
+    renderer.domElement.addEventListener('touchstart',e=>{if(e.touches.length===2){pinchDistance=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)}},{passive:true});
+    renderer.domElement.addEventListener('touchmove',e=>{if(e.touches.length===2&&pinchDistance){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);distance=clamp(distance+(pinchDistance-d)*.025,7,25);pinchDistance=d}},{passive:true});
+    renderer.domElement.addEventListener('touchend',()=>{pinchDistance=null},{passive:true});
+    document.querySelector('#reset').addEventListener('click',resetCamera);document.querySelector('#topview').addEventListener('click',topCamera);
+    resetCamera();setTimeout(()=>hint.classList.add('hidden'),4500);
+
+    addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.75));renderer.setSize(innerWidth,innerHeight)});
+    const clock=new THREE.Clock();
+    function frame(){requestAnimationFrame(frame);const t=clock.getElapsedTime();p0.ring.material.opacity=.46+Math.sin(t*2.2)*.13;p1.ring.material.opacity=.46+Math.sin(t*2.2+1.2)*.13;updateCamera();renderer.render(scene,camera)}frame();
+  </script>
+</body>
+</html>

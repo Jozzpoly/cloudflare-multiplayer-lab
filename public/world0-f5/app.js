@@ -1,8 +1,10 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js";
 
-const CLIENT_REVISION = "ws0-f5-browser-client-v1";
+const CLIENT_REVISION = "ws0-f5-browser-client-v2-evidence";
+const EXPECTED_SERVER_REVISION = "ws0-f5-authority-v1";
 const PROTOCOL_REVISION = "ws0-f5-scheduled-input-v1";
 const BOX3D_URL = "https://cdn.jsdelivr.net/npm/box3d.js@0.1.1/dist/box3d.inline.mjs";
+const BOX3D_PACKAGE = "box3d.js@0.1.1";
 const FIXED_DT = 1 / 60;
 const STEP_MS = 1000 / 60;
 const SEGMENT_TICKS = 8;
@@ -17,6 +19,10 @@ const HUD_INTERVAL_MS = 200;
 const PLAYER_ACCELERATION = 28;
 const PLAYER_DECELERATION = 36;
 const DEFAULT_PLAYER_SPEED = 5.2;
+const CORRECTION_TIMING_RETAIN = 128;
+const FRAME_TIMING_RETAIN = 240;
+const LONG_FRAME_MS = 34;
+const CORRECTION_FRAME_WINDOW_MS = 150;
 const EPS = 1e-9;
 
 const viewport = document.querySelector("#viewport");
@@ -152,6 +158,10 @@ function percentile(values, p) {
   const sorted = [...values].sort((a,b) => a-b);
   return sorted[Math.min(sorted.length-1, Math.max(0, Math.ceil(sorted.length*p)-1))];
 }
+function pushBoundedSample(values, value, retain) {
+  values.push(value);
+  if (values.length > retain) values.splice(0, values.length-retain);
+}
 function moveToward2(cx, cz, tx, tz, maxDelta) {
   const dx=tx-cx, dz=tz-cz, d=Math.hypot(dx,dz);
   if (d<=maxDelta || d<1e-9) return [tx,tz];
@@ -166,6 +176,26 @@ function formatBytes(value) {
   if (value < 1024) return `${value} B`;
   return `${(value/1024).toFixed(1)} KiB`;
 }
+function deriveSimBuildId(serverRevision, contract) {
+  const box3d = contract?.box3dRuntime || {};
+  return [
+    "ws0-f5-sim-v1",
+    `server=${serverRevision || "unknown"}`,
+    `client=${CLIENT_REVISION}`,
+    `protocol=${PROTOCOL_REVISION}`,
+    `box3d=${box3d.package || "unknown"}:${box3d.build || "unknown"}`,
+    `hz=${contract?.simulationHz ?? "unknown"}`,
+    `substeps=${contract?.substeps ?? "unknown"}`,
+    `snapshotHz=${contract?.snapshotHz ?? "unknown"}`,
+    `lead=${contract?.predictionLeadTicks ?? "unknown"}`,
+    `batch=${contract?.inputBatchSize ?? "unknown"}`,
+    `speed=${contract?.playerSpeed ?? "unknown"}`,
+    `accel=${contract?.playerAcceleration ?? "unknown"}`,
+    `decel=${contract?.playerDeceleration ?? "unknown"}`,
+    `history=${SEGMENT_TICKS}/${RETAIN_TICKS}`,
+    `recording=${RECORDING_CAPACITY}`,
+  ].join("|");
+}
 
 let playing = false;
 let socket = null;
@@ -176,6 +206,8 @@ let selfSessionId = null;
 let remoteSessionId = null;
 let selfSlot = null;
 let protocolStartTick = null;
+let serverRevision = null;
+let simBuildId = null;
 let simulation = {
   simulationHz: 60,
   substeps: 4,
@@ -187,12 +219,16 @@ let simulation = {
 };
 const pendingPings = new Map();
 const rttSamples = [];
+const correctionDurationSamples = [];
+const frameDeltaSamples = [];
 let pingTimer = null;
 let hudTimer = null;
 let phaseAnchor = null;
 let localState = null;
 let batchSeq = 0;
 let pendingBatch = [];
+let lastFrameAt = null;
+let correctionFrameWindowUntil = 0;
 const intendedSelf = new Map();
 const peerRemote = new Map();
 const consumedByTick = new Map();
@@ -214,6 +250,14 @@ const metrics = {
   maxRewind: 0,
   latestReplaySteps: 0,
   maxReplaySteps: 0,
+  latestCorrectionDurationMs: 0,
+  maxCorrectionDurationMs: 0,
+  latestFrameDeltaMs: 0,
+  maxFrameDeltaMs: 0,
+  longFrames: 0,
+  correctionBurstFrames: 0,
+  maxCorrectionBurstFrameMs: 0,
+  correctionBurstLongFrames: 0,
   maxRetainedBytes: 0,
   generationRotations: 0,
   remapFailures: 0,
@@ -527,6 +571,7 @@ function correctFrom(targetTick,reason) {
   if (!localState || targetTick >= localState.boundaryTick) return false;
   const currentBoundary = localState.boundaryTick;
   if (!usedInputsChangedAt(targetTick)) return false;
+  const correctionStartedAt = performance.now();
   const before = captureDynamic(localState.sim);
 
   finalizeActiveRecording("correction-cut");
@@ -561,11 +606,16 @@ function correctFrom(targetTick,reason) {
   const after = captureDynamic(localState.sim);
   const delta = correctionDelta(before,after);
   const rewind = currentBoundary-targetTick;
+  const correctionDurationMs = Math.max(0, performance.now()-correctionStartedAt);
+  pushBoundedSample(correctionDurationSamples, correctionDurationMs, CORRECTION_TIMING_RETAIN);
   metrics.corrections += 1;
   metrics.latestRewind = rewind;
   metrics.maxRewind = Math.max(metrics.maxRewind,rewind);
   metrics.latestReplaySteps = replayed;
   metrics.maxReplaySteps = Math.max(metrics.maxReplaySteps,replayed);
+  metrics.latestCorrectionDurationMs = correctionDurationMs;
+  metrics.maxCorrectionDurationMs = Math.max(metrics.maxCorrectionDurationMs,correctionDurationMs);
+  correctionFrameWindowUntil = Math.max(correctionFrameWindowUntil, performance.now()+CORRECTION_FRAME_WINDOW_MS);
   metrics.latestCorrection = delta;
   metrics.maxCorrection.self = Math.max(metrics.maxCorrection.self,delta.self);
   metrics.maxCorrection.remote = Math.max(metrics.maxCorrection.remote,delta.remote);
@@ -642,21 +692,37 @@ function updatePhaseFromStart(message,receivedAt) {
   const medianRtt = rttSamples.length ? percentile(rttSamples,0.5) : 0;
   phaseAnchor = { tick:message.boundaryTick + medianRtt/(2*STEP_MS), at:receivedAt };
 }
+function adoptHandshakeIdentity(message, phase) {
+  if (message.revision !== EXPECTED_SERVER_REVISION) throw new Error(`${phase} server revision mismatch ${message.revision}`);
+  const contract = message.simulation || {};
+  if (contract.box3dRuntime?.package !== BOX3D_PACKAGE) throw new Error(`${phase} Box3D package mismatch ${contract.box3dRuntime?.package}`);
+  const derived = deriveSimBuildId(message.revision, contract);
+  if (simBuildId && simBuildId !== derived) throw new Error(`${phase} simulation fingerprint drift`);
+  serverRevision = message.revision;
+  simBuildId = derived;
+}
 function resetProtocolState() {
   intendedSelf.clear();
   peerRemote.clear();
   consumedByTick.clear();
   usedByTick.clear();
   diagnosticSamples.clear();
+  correctionDurationSamples.splice(0);
+  frameDeltaSamples.splice(0);
   pendingBatch = [];
   batchSeq = 0;
   protocolStartTick = null;
   remoteSessionId = null;
+  serverRevision = null;
+  simBuildId = null;
   phaseAnchor = null;
+  lastFrameAt = null;
+  correctionFrameWindowUntil = 0;
   Object.assign(metrics,{
     generatedInputRecords:0,sentBatches:0,serverLate:0,serverRejected:0,consumedSelfFresh:0,consumedSelfMissing:0,
-    peerFutureRecords:0,consumedFreshTotal:0,consumedMissingTotal:0,corrections:0,latestRewind:0,maxRewind:0,latestReplaySteps:0,maxReplaySteps:0,maxRetainedBytes:0,
-    generationRotations:0,remapFailures:0,
+    peerFutureRecords:0,consumedFreshTotal:0,consumedMissingTotal:0,corrections:0,latestRewind:0,maxRewind:0,latestReplaySteps:0,maxReplaySteps:0,
+    latestCorrectionDurationMs:0,maxCorrectionDurationMs:0,latestFrameDeltaMs:0,maxFrameDeltaMs:0,longFrames:0,correctionBurstFrames:0,maxCorrectionBurstFrameMs:0,correctionBurstLongFrames:0,
+    maxRetainedBytes:0,generationRotations:0,remapFailures:0,
   });
   metrics.latestCorrection={self:0,remote:0,prop:0};
   metrics.maxCorrection={self:0,remote:0,prop:0};
@@ -704,6 +770,7 @@ function handleConsumed(message) {
   maybeCorrect([tick],"authority-consumed");
 }
 function compareSnapshot(message) {
+  if (serverRevision && message.revision !== serverRevision) throw new Error(`snapshot server revision drift ${message.revision}`);
   const boundaryTick = message.boundaryTick;
   if (!Number.isInteger(boundaryTick)) return;
   const predicted = diagnosticSamples.get(boundaryTick);
@@ -727,6 +794,7 @@ function compareSnapshot(message) {
 }
 function handleStart(message) {
   if (message.protocolRevision !== PROTOCOL_REVISION) throw new Error(`start protocol mismatch ${message.protocolRevision}`);
+  adoptHandshakeIdentity(message,"start");
   if (!Number.isInteger(message.protocolStartTick) || !Number.isInteger(message.boundaryTick)) throw new Error("invalid F5 start tick contract");
   if (message.boundaryTick !== 0) throw new Error(`first F5 gate expects B(0) seed, got B(${message.boundaryTick})`);
   simulation={...simulation,...(message.simulation || {})};
@@ -749,6 +817,7 @@ function handleStart(message) {
 function handleMessage(message) {
   if (message.type === "f5_welcome") {
     if (message.protocolRevision !== PROTOCOL_REVISION) throw new Error(`welcome protocol mismatch ${message.protocolRevision}`);
+    adoptHandshakeIdentity(message,"welcome");
     selfSessionId=message.selfSessionId;
     selfSlot=message.slot;
     simulation={...simulation,...(message.simulation || {})};
@@ -846,6 +915,23 @@ function updateCamera() {
   camera.position.set(selfMesh.position.x+7.2,selfMesh.position.y+6.2,selfMesh.position.z+8.4);
   camera.lookAt(selfMesh.position.x,selfMesh.position.y+0.45,selfMesh.position.z);
 }
+function recordFrameDelta(now) {
+  if (lastFrameAt === null) {
+    lastFrameAt = now;
+    return;
+  }
+  const delta = Math.max(0, now-lastFrameAt);
+  lastFrameAt = now;
+  metrics.latestFrameDeltaMs = delta;
+  metrics.maxFrameDeltaMs = Math.max(metrics.maxFrameDeltaMs,delta);
+  pushBoundedSample(frameDeltaSamples,delta,FRAME_TIMING_RETAIN);
+  if (delta >= LONG_FRAME_MS) metrics.longFrames += 1;
+  if (now <= correctionFrameWindowUntil) {
+    metrics.correctionBurstFrames += 1;
+    metrics.maxCorrectionBurstFrameMs = Math.max(metrics.maxCorrectionBurstFrameMs,delta);
+    if (delta >= LONG_FRAME_MS) metrics.correctionBurstLongFrames += 1;
+  }
+}
 function updateHud() {
   const estimate=authorityTickEstimate();
   const boundary=localState?.boundaryTick;
@@ -861,7 +947,7 @@ function updateHud() {
   metric.peer.textContent=String(metrics.peerFutureRecords);
   metric.corrections.textContent=String(metrics.corrections);
   metric.rewind.textContent=`${metrics.latestRewind} / ${metrics.maxRewind} ticks`;
-  metric.replay.textContent=`${metrics.latestReplaySteps} / ${metrics.maxReplaySteps}`;
+  metric.replay.textContent=`${metrics.latestReplaySteps} / ${metrics.maxReplaySteps} · ${metrics.latestCorrectionDurationMs.toFixed(2)} / ${metrics.maxCorrectionDurationMs.toFixed(2)} ms`;
   metric.memory.textContent=formatBytes(metrics.maxRetainedBytes);
   metric.generations.textContent=String(metrics.generationRotations);
   metric.remap.textContent=String(metrics.remapFailures);
@@ -936,7 +1022,11 @@ window.__WS0_F5__={
     const estimate=authorityTickEstimate();
     return {
       clientRevision:CLIENT_REVISION,
+      serverRevision,
       protocolRevision:PROTOCOL_REVISION,
+      simBuildId,
+      simulationContract:{...simulation},
+      browserBox3dPackage:BOX3D_PACKAGE,
       playing,networkState,runKey,selfSessionId,remoteSessionId,selfSlot,protocolStartTick,
       authorityTickEstimate:estimate,
       localPredictedBoundaryTick:localState?.boundaryTick??null,
@@ -949,6 +1039,26 @@ window.__WS0_F5__={
       peerFutureRecords:metrics.peerFutureRecords,
       corrections:metrics.corrections,latestRewindTicks:metrics.latestRewind,maxRewindTicks:metrics.maxRewind,
       latestReplaySteps:metrics.latestReplaySteps,maxReplaySteps:metrics.maxReplaySteps,
+      correctionTimingMs:{
+        latest:metrics.latestCorrectionDurationMs,
+        max:metrics.maxCorrectionDurationMs,
+        p50:correctionDurationSamples.length?percentile(correctionDurationSamples,0.5):0,
+        p95:correctionDurationSamples.length?percentile(correctionDurationSamples,0.95):0,
+        samples:correctionDurationSamples.length,
+      },
+      frameTimingMs:{
+        latest:metrics.latestFrameDeltaMs,
+        max:metrics.maxFrameDeltaMs,
+        p50:frameDeltaSamples.length?percentile(frameDeltaSamples,0.5):0,
+        p95:frameDeltaSamples.length?percentile(frameDeltaSamples,0.95):0,
+        samples:frameDeltaSamples.length,
+        longFrameThreshold:LONG_FRAME_MS,
+        longFrames:metrics.longFrames,
+        correctionBurstWindow:CORRECTION_FRAME_WINDOW_MS,
+        correctionBurstFrames:metrics.correctionBurstFrames,
+        maxCorrectionBurstFrame:metrics.maxCorrectionBurstFrameMs,
+        correctionBurstLongFrames:metrics.correctionBurstLongFrames,
+      },
       maxRetainedRecordingBytes:metrics.maxRetainedBytes,replayGenerationRotations:metrics.generationRotations,entityRemapFailures:metrics.remapFailures,
       correction:{latest:{...metrics.latestCorrection},max:{...metrics.maxCorrection}},
       sameTickResidual:{latest:{...metrics.latestSameTick},max:{...metrics.maxSameTick}},
@@ -958,9 +1068,10 @@ window.__WS0_F5__={
   },
 };
 
-function animate() {
+function animate(now) {
   requestAnimationFrame(animate);
   if (playing) {
+    recordFrameDelta(now);
     try {
       advancePrediction();
       syncMeshes();
@@ -973,6 +1084,8 @@ function animate() {
       try { socket?.close(1011,"f5_prediction_error"); } catch { /* close race */ }
       playing=false;
     }
+  } else {
+    lastFrameAt = now;
   }
   renderer.render(scene,camera);
 }

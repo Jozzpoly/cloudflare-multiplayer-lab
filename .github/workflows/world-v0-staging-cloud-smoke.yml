@@ -1,4 +1,4 @@
-name: World V0 Runtime Qualification
+name: World V0 Validation
 
 on:
   push:
@@ -9,11 +9,80 @@ permissions:
   contents: read
 
 concurrency:
-  group: world-v0-runtime-qualification
+  group: world-v0-validation
   cancel-in-progress: true
 
 jobs:
+  local-regression:
+    # Stable, causal default gate for ordinary product/presentation iteration.
+    # It exercises the real Workerd authority contract and a rendered browser
+    # surface without making pass/fail depend on two requestAnimationFrame loops
+    # surviving an arbitrarily starved hosted runner for ~150 active ticks.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Start Shared Yard Worker/assets in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-local-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "local Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-local-wrangler.log
+          exit 1
+
+      - name: Exercise real Workerd authority, identity and canonical dead-man
+        env:
+          MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
+        run: node scripts/world-v0-authority-runtime-smoke.mjs
+
+      - name: Render Shared Yard Product Lab at desktop and mobile viewports
+        env:
+          MW_WORLD_V0_LAB_BASE_URL: http://127.0.0.1:8787
+        run: node scripts/world-v0-product-lab-smoke.mjs
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload local regression / visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-local-regression-evidence
+          path: |
+            world-v0-product-lab-evidence.json
+            world-v0-product-lab-desktop.png
+            world-v0-product-lab-mobile.png
+            world-v0-local-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
   local-workerd-chromium:
+    # This remains the exact two-browser qualification gate. Its criteria are
+    # intentionally unchanged. Run it when the actual browser runtime/physics
+    # blast radius warrants qualification, not for every static visual edit.
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[runtime-qualify]') || contains(github.event.head_commit.message, '[remote-staging]')
+    needs: local-regression
     runs-on: ubuntu-24.04
     timeout-minutes: 6
     steps:
@@ -42,13 +111,7 @@ jobs:
           cat world-v0-local-wrangler.log
           exit 1
 
-      - name: Exercise real Workerd authority, identity and canonical dead-man
-        env:
-          MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
-          MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
-        run: node scripts/world-v0-authority-runtime-smoke.mjs
-
-      - name: Prepare local target variant of real Chromium falsifier
+      - name: Prepare local target variant of exact Chromium falsifier
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync, writeFileSync } from "node:fs";
@@ -60,7 +123,7 @@ jobs:
           writeFileSync("scripts/.world-v0-local-chromium-smoke.mjs", chromium);
           NODE
 
-      - name: Run two real Chromium clients against exact Workerd with same-boundary guard
+      - name: Run two real Chromium clients with same-boundary guard
         env:
           MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-chromium-local-evidence.json
         run: node scripts/.world-v0-local-chromium-smoke.mjs
@@ -72,7 +135,7 @@ jobs:
             kill "$(cat /tmp/world-v0-wrangler.pid)" 2>/dev/null || true
           fi
 
-      - name: Upload local Workerd + Chromium evidence
+      - name: Upload local exact-state qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -84,11 +147,10 @@ jobs:
           retention-days: 14
 
   staging-cloud-smoke:
-    # Remote staging is intentionally opt-in while the isolated Cloudflare
-    # staging Worker is pointed at the frozen F5 evidence branch. After its
-    # production branch is changed to world-v0-shared-yard, a commit whose
-    # message contains [remote-staging] performs the deploy+qualification push.
+    # Remote staging qualification is explicit. [remote-staging] both deploys
+    # through Workers Builds and requests the remote machine gate.
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[remote-staging]')
+    needs: local-regression
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

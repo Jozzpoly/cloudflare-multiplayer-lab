@@ -24,10 +24,11 @@
     #hud .row { display: flex; justify-content: space-between; gap: 14px; }
     #hud .value { color: #9fe1d2; text-align: right; }
     #hud .warn { color: #ffb86b; }
+    #copy-evidence { position: fixed; z-index: 6; top: 10px; right: 10px; padding: 8px 10px; border-radius: 7px; border: 1px solid #435760; background: rgba(17,27,34,.92); color: #d9e5ea; font: 600 12px/1 system-ui, sans-serif; cursor: pointer; touch-action: manipulation; }
     #notice { left: 50%; bottom: 16px; transform: translateX(-50%); max-width: min(760px, calc(100% - 24px)); padding: 9px 12px; font: 13px/1.4 system-ui, sans-serif; }
     #joystick { position: fixed; z-index: 5; left: max(18px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); width: 132px; height: 132px; border-radius: 50%; border: 1px solid rgba(173,211,223,.45); background: rgba(9,18,24,.42); display: none; touch-action: none; }
     #joystick-knob { position:absolute; width:58px; height:58px; left:37px; top:37px; border-radius:50%; background:rgba(120,216,194,.62); border:1px solid rgba(210,255,245,.72); transform:translate(0,0); }
-    @media (pointer: coarse), (max-width: 720px) { #joystick.active { display:block; } #hud { max-height: 48vh; font-size:10px; } }
+    @media (pointer: coarse), (max-width: 720px) { #joystick.active { display:block; } #hud { max-height: 48vh; font-size:10px; } #copy-evidence { font-size: 11px; } }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -70,8 +71,30 @@
     <div class="row"><span>remote latest / max</span><span id="m-same-remote" class="value">—</span></div>
     <div class="row"><span>prop latest / max</span><span id="m-same-prop" class="value">—</span></div>
   </aside>
+  <button id="copy-evidence" type="button" title="Copy full F5 telemetry snapshot">Copy evidence</button>
   <div id="joystick"><div id="joystick-knob"></div></div>
   <div id="notice" class="panel hidden"></div>
+  <script>
+    document.querySelector("#copy-evidence").addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      const snapshot = window.__WS0_F5__?.snapshot?.();
+      if (!snapshot) {
+        const previous = button.textContent;
+        button.textContent = "Not ready";
+        setTimeout(() => { button.textContent = previous; }, 900);
+        return;
+      }
+      const json = JSON.stringify(snapshot, null, 2);
+      try {
+        await navigator.clipboard.writeText(json);
+        const previous = button.textContent;
+        button.textContent = "Copied";
+        setTimeout(() => { button.textContent = previous; }, 900);
+      } catch {
+        window.prompt("Copy F5 evidence JSON", json);
+      }
+    });
+  </script>
   <script type="module" src="./app.js"></script>
 </body>
 </html>

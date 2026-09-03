@@ -18,8 +18,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - name: Install dependencies
+        run: npm install
       - name: Run first-divergent-tick lab
         run: node scripts/foundation-v0-q1a-determinism.mjs
       - name: Upload Q1a evidence

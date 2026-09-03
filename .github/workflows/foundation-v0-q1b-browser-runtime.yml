@@ -1,0 +1,45 @@
+name: Foundation v0 Q1b Browser Runtime
+
+on:
+  push:
+    branches:
+      - foundation-v0-q1-determinism-envelope
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  q1b-browser-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Syntax-check Q1b apparatus
+        run: |
+          node --check public/foundation-q1b/sim-core.js
+          node --check public/foundation-q1b/app.js
+          node --check scripts/foundation-v0-q1b-browser-runtime.mjs
+      - name: Confirm browser runtime
+        run: |
+          command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser
+          (google-chrome --version || google-chrome-stable --version || chromium --version || chromium-browser --version)
+      - name: Run Node-Chromium exact-state envelope
+        run: node scripts/foundation-v0-q1b-browser-runtime.mjs
+      - name: Upload Q1b evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundation-v0-q1b-browser-runtime
+          path: |
+            foundation-v0-q1b-node.json
+            foundation-v0-q1b-chromium.json
+            foundation-v0-q1b-chromium-perturb.json
+            foundation-v0-q1b-summary.json
+          if-no-files-found: warn
+          retention-days: 14

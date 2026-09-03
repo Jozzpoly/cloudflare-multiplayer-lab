@@ -1,6 +1,8 @@
 name: WS0 F5 Staging Cloud Smoke
 
 on:
+  push:
+    branches: [ws0-f5-browser-scheduled-history]
   workflow_dispatch:
 
 permissions:

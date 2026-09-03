@@ -149,6 +149,7 @@ export class SharedYardV0 extends DurableObject<Env> {
   private props: SharedYardProp[] = [];
   private readonly players = new Map<WebSocket, SharedYardPlayer>();
   private loopTimer: ReturnType<typeof setInterval> | null = null;
+  private epochPinTimer: ReturnType<typeof setInterval> | null = null;
   private lastPumpAt = 0;
   private accumulatorMs = 0;
   private tick = 0;
@@ -158,6 +159,19 @@ export class SharedYardV0 extends DurableObject<Env> {
   private catchupSteps = 0;
   private failure: string | null = null;
   private resetting = false;
+
+  // Field initialization runs after the DurableObject base constructor. If a
+  // hibernation-enabled WebSocket survived an unexpected object re-creation,
+  // close it immediately instead of restoring an incomplete physics epoch.
+  private readonly restoredSocketsClosed = this.closeRestoredSockets();
+
+  private closeRestoredSockets(): number {
+    const sockets = this.ctx.getWebSockets();
+    for (const socket of sockets) {
+      try { socket.close(1012, "world_epoch_lost_restart_required"); } catch { /* recovery close only */ }
+    }
+    return sockets.length;
+  }
 
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
@@ -223,7 +237,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         },
         ...this.identityPayload(),
       });
-      try { ws.close(1008, "world_identity_mismatch"); } catch { /* close race */ }
+      try { ws.close(1008, "world_identity_mismatch"; } catch { /* close race */ }
       return;
     }
 
@@ -314,6 +328,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       input: new WorldV0ScheduledInputBuffer(),
     };
 
+    this.ensureEpochPinned();
     this.ctx.acceptWebSocket(server, ["shared-yard-v0-player"]);
     this.players.set(server, player);
     this.send(server, {
@@ -426,13 +441,28 @@ export class SharedYardV0 extends DurableObject<Env> {
     });
     b3.b3Body_SetMotionLocks(body, {
       linearX: false,
-      linearY: false,
+      linarY: false,
       linearZ: false,
       angularX: WORLD_V0_PLAYER_PHYSICS.angularLocks[0],
       angularY: WORLD_V0_PLAYER_PHYSICS.angularLocks[1],
       angularZ: WORLD_V0_PLAYER_PHYSICS.angularLocks[2],
     });
     return body;
+  }
+
+  private ensureEpochPinned(): void {
+    if (this.epochPinTimer) return;
+    // acceptWebSocket() enables hibernation. The first World V0 envelope has no
+    // reconstruction contract, so a live epoch must remain non-hibernateable.
+    // Cloudflare documents scheduled callbacks as a hibernation blocker.
+    this.epochPinTimer = setInterval(() => {
+      if (!this.world) this.stopEpochPin();
+    }, 1000);
+  }
+
+  private stopEpochPin(): void {
+    if (this.epochPinTimer) clearInterval(this.epochPinTimer);
+    this.epochPinTimer = null;
   }
 
   private startLoop(): void {
@@ -498,7 +528,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       const input = active
         ? player.input.consume(targetTick)
         : { targetTick, x: 0, z: 0, fresh: false, source: "held" as const, missingStreak: 0 };
-      this.applyIntent(player.body, input.x, input.z);
+      this.applyIntent(player.body, input.x, input.zi;
       consumed.push({
         sessionId: player.sessionId,
         playerId: player.playerId,
@@ -658,6 +688,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       }
       this.players.clear();
       this.stopLoop();
+      this.stopEpochPin();
       this.destroyWorld();
       this.protocolStartTick = null;
       this.tick = 0;

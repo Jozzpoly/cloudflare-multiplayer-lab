@@ -58,6 +58,8 @@ Simulation-relevant traffic is bound to:
 
 A new physical history receives a new random `WorldEpoch`. Stale or mismatched epoch/build traffic is rejected; it is never applied optimistically.
 
+Because the first V0 envelope has no Durable Object hibernation reconstruction contract, an accepted active epoch is intentionally pinned in memory from the first player connection until epoch teardown. If a hibernation-API socket is ever observed after object re-initialization, the constructor closes it with `world_epoch_lost_restart_required` rather than restoring an incomplete physics epoch. This is a V0 lifecycle safeguard, not a long-term hosting commitment.
+
 The V0 input lease is currently `36` consecutive missing canonical input records (~600 ms at 60 Hz). Before expiry the authority may hold the last consumed input exactly as F5 did. At expiry it consumes neutral input for that boundary, records `lease_expired`, then ends the epoch. `36` is a V0 parameter, not a permanent architecture constant.
 
 ## Exact same-boundary state guard

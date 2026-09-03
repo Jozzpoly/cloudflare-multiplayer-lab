@@ -10,9 +10,9 @@
   <div id="viewport"></div>
 
   <section id="boot" class="panel">
-    <div class="eyebrow">MULTI_WORLD · INHABITABLE WORLD V0</div>
-    <h1>Shared Yard</h1>
-    <p id="boot-status">Loading…</p>
+    <div class="eyebrow">MULTI_WORLD · SHARED YARD</div>
+    <h1>Enter the yard</h1>
+    <p id="boot-status" aria-live="polite">Loading…</p>
     <div class="inputs">
       <label>Callsign <input id="callsign" maxlength="24" autocomplete="off" placeholder="Jozz"></label>
       <label>Run <input id="run" maxlength="20" autocomplete="off"></label>
@@ -20,19 +20,22 @@
     </div>
   </section>
 
-  <aside id="hud" class="panel hud">
-    <div><span>network</span><strong id="m-net">idle</strong></div>
-    <div><span>ticks</span><strong id="m-ticks">—</strong></div>
-    <div><span>exact guard</span><strong id="m-guard">—</strong></div>
-    <div><span>corrections</span><strong id="m-corrections">0</strong></div>
-    <div><span>rewind latest/max</span><strong id="m-rewind">0 / 0</strong></div>
-    <div><span>replay latest/max</span><strong id="m-replay">0 / 0</strong></div>
-    <div><span>RTT</span><strong id="m-rtt">—</strong></div>
-    <div><span>input lease</span><strong id="m-lease">—</strong></div>
-    <div><span>history memory</span><strong id="m-memory">—</strong></div>
-    <div><span>frame</span><strong id="m-frame">—</strong></div>
-    <button id="copy-evidence">Copy evidence</button>
-  </aside>
+  <details id="hud" class="panel hud">
+    <summary><span>Diagnostics</span><span class="hud-chevron">⌄</span></summary>
+    <div class="hud-body">
+      <div><span>network</span><strong id="m-net">idle</strong></div>
+      <div><span>ticks</span><strong id="m-ticks">—</strong></div>
+      <div><span>exact guard</span><strong id="m-guard">—</strong></div>
+      <div><span>corrections</span><strong id="m-corrections">0</strong></div>
+      <div><span>rewind latest/max</span><strong id="m-rewind">0 / 0</strong></div>
+      <div><span>replay latest/max</span><strong id="m-replay">0 / 0</strong></div>
+      <div><span>RTT</span><strong id="m-rtt">—</strong></div>
+      <div><span>input lease</span><strong id="m-lease">—</strong></div>
+      <div><span>history memory</span><strong id="m-memory">—</strong></div>
+      <div><span>frame</span><strong id="m-frame">—</strong></div>
+      <button id="copy-evidence">Copy evidence</button>
+    </div>
+  </details>
 
   <div id="notice" class="notice hidden"></div>
 

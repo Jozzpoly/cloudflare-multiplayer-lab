@@ -11,7 +11,8 @@ const OUTPUT = process.env.MW_WORLD_V0_LAB_OUTPUT || "world-v0-product-lab-evide
 const MODES = [
   { key: "baseline", title: "Qualified V0" },
   { key: "presence", title: "Presence pass" },
-  { key: "playground", title: "Playground concept" },
+  { key: "core", title: "Core playset" },
+  { key: "broad", title: "Broad playset" },
 ];
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
@@ -161,17 +162,18 @@ try {
   }
 
   await setViewport(cdp, sessionId, { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  await waitFor(cdp, sessionId, `document.readyState === "complete" && document.querySelector("canvas") instanceof HTMLCanvasElement && document.querySelectorAll(".mode").length === 3 && !!window.__worldV0ProductLabState`, "Product Lab desktop boot");
+  await waitFor(cdp, sessionId, `document.readyState === "complete" && document.querySelector("canvas") instanceof HTMLCanvasElement && document.querySelectorAll(".mode").length === 4 && !!window.__worldV0ProductLabState`, "Product Lab desktop boot");
   const boot = await cdp.evaluate(sessionId, `({
     title: document.title,
     heading: document.querySelector(".title")?.textContent,
     modes: [...document.querySelectorAll(".mode")].map((node) => node.textContent.trim()),
     canvas: { width: document.querySelector("canvas")?.width || 0, height: document.querySelector("canvas")?.height || 0 },
     bodyOverflow: getComputedStyle(document.body).overflow,
+    state: window.__worldV0ProductLabState,
   })`);
   assert(boot.title.includes("Product Lab"), `unexpected title ${boot.title}`);
   assert(boot.heading === "Shared Yard V0.5", `unexpected heading ${boot.heading}`);
-  assert(JSON.stringify(boot.modes) === JSON.stringify(["Qualified V0", "Presence", "Playground"]), `mode contract drift ${JSON.stringify(boot.modes)}`);
+  assert(JSON.stringify(boot.modes) === JSON.stringify(["V0", "Presence", "Core set", "Broad set"]), `mode contract drift ${JSON.stringify(boot.modes)}`);
   assert(boot.canvas.width > 1000 && boot.canvas.height > 600, `desktop canvas too small ${JSON.stringify(boot.canvas)}`);
 
   const screenshots = { desktop: {}, mobile: {} };
@@ -183,12 +185,14 @@ try {
   const mobileState = await cdp.evaluate(sessionId, `({
     width: innerWidth,
     height: innerHeight,
+    camera: window.__worldV0ProductLabState?.camera,
     modesRect: (() => { const r = document.querySelector("#modes").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
     cardRect: (() => { const r = document.querySelector("#card").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
     brandRect: (() => { const r = document.querySelector("#brand").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
     tagRect: (() => { const r = document.querySelector("#labtag").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
   })`);
   assert(mobileState.width === 390, `mobile viewport drift ${mobileState.width}`);
+  assert(mobileState.camera?.fov >= 56 && mobileState.camera?.distance >= 26, `mobile camera framing contract drift ${JSON.stringify(mobileState.camera)}`);
   for (const [name, rect] of Object.entries({ modes: mobileState.modesRect, card: mobileState.cardRect, brand: mobileState.brandRect, tag: mobileState.tagRect })) {
     assert(rect.left >= 0 && rect.right <= 390, `mobile ${name} clipped horizontally ${JSON.stringify(rect)}`);
     assert(rect.top >= 0 && rect.bottom <= 844, `mobile ${name} clipped vertically ${JSON.stringify(rect)}`);
@@ -196,12 +200,17 @@ try {
   assert(mobileState.cardRect.bottom < mobileState.modesRect.top, `mobile card overlaps mode bar ${JSON.stringify({ card: mobileState.cardRect, modes: mobileState.modesRect })}`);
   for (const mode of MODES) screenshots.mobile[mode.key] = await captureMode(cdp, sessionId, "mobile", mode);
 
+  // Deep-link semantics are part of the Lab's low-attention review contract.
+  await cdp.call("Page.navigate", { url: `${PAGE_URL}?mode=core` }, sessionId);
+  await waitFor(cdp, sessionId, `window.__worldV0ProductLabState?.mode === "core" && document.querySelector("#card-title")?.textContent === "Core playset"`, "Product Lab deep link");
+
   evidence.verdict = "WORLD_V0_PRODUCT_LAB_RENDER_PASS";
   evidence.boot = boot;
   evidence.mobile = mobileState;
   evidence.screenshots = screenshots;
+  evidence.deepLink = { mode: "core", pass: true };
   writeFileSync(OUTPUT, `${JSON.stringify(evidence, null, 2)}\n`);
-  console.log(`${evidence.verdict} · ${version} · captures=6`);
+  console.log(`${evidence.verdict} · ${version} · captures=8 · deepLink=core`);
 } catch (error) {
   evidence.error = error instanceof Error ? error.stack || error.message : String(error);
   evidence.stderrTail = Buffer.concat(stderr).toString("utf8").slice(-8000);

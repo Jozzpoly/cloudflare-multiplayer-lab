@@ -1,0 +1,23 @@
+name: WS0 F5 Staging Cloud Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  staging-cloud-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify F5 staging revision, two-peer WebSocket runtime and production isolation
+        run: node scripts/ws0-f5-staging-cloud-smoke.mjs

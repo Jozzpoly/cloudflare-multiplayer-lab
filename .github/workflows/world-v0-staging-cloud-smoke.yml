@@ -1,4 +1,4 @@
-name: World V0 Staging Cloud Smoke
+name: World V0 Runtime Qualification
 
 on:
   push:
@@ -9,11 +9,89 @@ permissions:
   contents: read
 
 concurrency:
-  group: world-v0-staging-cloud-smoke
+  group: world-v0-runtime-qualification
   cancel-in-progress: true
 
 jobs:
+  local-workerd-chromium:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Start exact Shared Yard Worker in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-local-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "local Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-local-wrangler.log
+          exit 1
+
+      - name: Prepare local target variants of canonical runtime falsifiers
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+
+          let authority = readFileSync("scripts/world-v0-staging-cloud-smoke.mjs", "utf8");
+          authority = authority
+            .replace('const STAGING = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev";', 'const STAGING = "http://127.0.0.1:8787";')
+            .replace('const PRODUCTION = "https://cloudflare-multiplayer-lab.jozzpoly.workers.dev";', 'const PRODUCTION = "http://127.0.0.1:8787";')
+            .replace('const WS_URL = "wss://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/ws";', 'const WS_URL = "ws://127.0.0.1:8787/world-v0/ws";')
+            .replace('await assertProductionIsolation("before World V0 staging smoke");', 'console.log("local Workerd: production-isolation check intentionally skipped");')
+            .replace('await assertProductionIsolation("after World V0 staging smoke");', 'console.log("local Workerd: production-isolation check intentionally skipped");');
+          writeFileSync("scripts/.world-v0-local-authority-smoke.mjs", authority);
+
+          let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
+          chromium = chromium.replace(
+            'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";',
+            'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";',
+          );
+          writeFileSync("scripts/.world-v0-local-chromium-smoke.mjs", chromium);
+          NODE
+
+      - name: Exercise real Workerd authority, identity and canonical dead-man
+        run: node scripts/.world-v0-local-authority-smoke.mjs
+
+      - name: Run two real Chromium clients against exact Workerd with same-boundary guard
+        env:
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-chromium-local-evidence.json
+        run: node scripts/.world-v0-local-chromium-smoke.mjs
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload local Workerd + Chromium evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-local-workerd-chromium-evidence
+          path: |
+            world-v0-chromium-local-evidence.json
+            world-v0-local-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
   staging-cloud-smoke:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -32,6 +110,7 @@ jobs:
         run: node scripts/world-v0-staging-cloud-smoke.mjs
 
   chromium-exact-state:
+    if: github.event_name == 'workflow_dispatch'
     needs: staging-cloud-smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 5

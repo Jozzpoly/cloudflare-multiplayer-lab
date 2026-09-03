@@ -15,11 +15,11 @@ concurrency:
 jobs:
   local-regression:
     # Stable, causal default gate for ordinary product/presentation iteration.
-    # It exercises the real Workerd authority contract and a rendered browser
-    # surface without making pass/fail depend on two requestAnimationFrame loops
+    # It exercises the real Workerd authority contract and rendered browser
+    # surfaces without making pass/fail depend on two requestAnimationFrame loops
     # surviving an arbitrarily starved hosted runner for ~150 active ticks.
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,10 +52,15 @@ jobs:
           MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
         run: node scripts/world-v0-authority-runtime-smoke.mjs
 
-      - name: Render Shared Yard Product Lab at desktop and mobile viewports
+      - name: Render Shared Yard Product Lab decision matrix
         env:
           MW_WORLD_V0_LAB_BASE_URL: http://127.0.0.1:8787
         run: node scripts/world-v0-product-lab-smoke.mjs
+
+      - name: Render real Shared Yard runtime shell at desktop and mobile viewports
+        env:
+          MW_WORLD_V0_SHELL_BASE_URL: http://127.0.0.1:8787
+        run: node scripts/world-v0-runtime-shell-smoke.mjs
 
       - name: Stop local Workerd
         if: always()
@@ -72,6 +77,8 @@ jobs:
           path: |
             world-v0-product-lab-evidence.json
             world-v0-product-lab-*.png
+            world-v0-runtime-shell-evidence.json
+            world-v0-runtime-shell-*.png
             world-v0-local-wrangler.log
           if-no-files-found: warn
           retention-days: 14

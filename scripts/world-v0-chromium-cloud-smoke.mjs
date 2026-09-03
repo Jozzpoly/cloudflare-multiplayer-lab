@@ -14,6 +14,15 @@ const RUN_TIMEOUT_MS = 35_000;
 const MIN_GUARD_MATCHES = 20;
 const MIN_ACTIVE_TICKS = 150;
 const OUTPUT = process.env.MW_WORLD_V0_CHROMIUM_OUTPUT || "world-v0-chromium-cloud-evidence.json";
+const CHROME_MODE = process.env.MW_WORLD_V0_CHROME_MODE || "current";
+const CHROME_MODE_ARGS = {
+  current: ["--disable-gpu"],
+  "swangle-webgl": ["--use-gl=angle", "--use-angle=swiftshader-webgl", "--enable-unsafe-swiftshader"],
+};
+if (!Object.hasOwn(CHROME_MODE_ARGS, CHROME_MODE)) {
+  throw new Error(`Unsupported MW_WORLD_V0_CHROME_MODE ${CHROME_MODE}`);
+}
+const LAUNCHER_ARGS = CHROME_MODE_ARGS[CHROME_MODE];
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -122,7 +131,7 @@ async function startBrowserClient(binary, index, url) {
   const child = spawn(binary, [
     "--headless=new",
     "--no-sandbox",
-    "--disable-gpu",
+    ...LAUNCHER_ARGS,
     "--disable-dev-shm-usage",
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows",
@@ -203,6 +212,28 @@ async function evidence(client) {
     client.page.sessionId,
     `window.__sharedYardV0Evidence ? window.__sharedYardV0Evidence() : null`,
   );
+}
+
+async function graphicsInfo(client) {
+  try {
+    return await client.cdp.evaluate(
+      client.page.sessionId,
+      `(() => {
+        const canvas = document.querySelector("#viewport canvas");
+        const gl = canvas?.getContext("webgl2") || canvas?.getContext("webgl");
+        if (!gl) return { available: false };
+        const ext = gl.getExtension("WEBGL_debug_renderer_info");
+        return {
+          available: true,
+          vendor: ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
+          renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+          version: gl.getParameter(gl.VERSION),
+        };
+      })()`,
+    );
+  } catch (error) {
+    return { available: false, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 async function dispatchMovement(client, code, down) {
@@ -299,6 +330,7 @@ try {
   validateFinalEvidence(finalB, "clientB");
   assert(finalA.identity.worldEpoch === finalB.identity.worldEpoch, "final Chromium WorldEpoch disagreement");
   assert(finalA.identity.simBuildId === finalB.identity.simBuildId, "final Chromium SimBuildId disagreement");
+  const graphics = await Promise.all(clients.map(graphicsInfo));
 
   const result = {
     verdict: "WORLD_V0_PASS_REAL_CHROMIUM_EXACT_STATE_ENVELOPE",
@@ -311,10 +343,14 @@ try {
     runtime: {
       chromeBinary,
       chromeVersion: detectedChromeVersion,
-      clients: clients.map((client) => ({
+      launcherMode: CHROME_MODE,
+      launcherArgs: LAUNCHER_ARGS,
+      clients: clients.map((client, index) => ({
         port: client.port,
         browserProduct: client.debuggerInfo.Browser || null,
         userAgent: client.debuggerInfo["User-Agent"] || null,
+        graphics: graphics[index],
+        stderrTail: Buffer.concat(client.stderr).toString("utf8").slice(-8000),
       })),
     },
     runKey,
@@ -323,7 +359,8 @@ try {
     nonClaim: "This qualifies the actual Shared Yard V0 browser/Worker path on GitHub-hosted Linux x64 Chrome only. It does not qualify Android Chromium performance, Firefox/WebKit, reconnect/bootstrap, persistence or runtime entity lifecycle.",
   };
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
-  console.log(`${result.verdict} · ${detectedChromeVersion}`);
+  console.log(`${result.verdict} · ${detectedChromeVersion} · launcher=${CHROME_MODE}`);
+  console.log(`launcherArgs=${JSON.stringify(LAUNCHER_ARGS)} graphics=${JSON.stringify(result.runtime.clients.map((client) => client.graphics))}`);
   console.log(`epoch=${result.identity.worldEpoch} guards=${finalA.metrics.guardMatches}/${finalB.metrics.guardMatches} corrections=${finalA.metrics.corrections}/${finalB.metrics.corrections}`);
   console.log(`boundaries=${finalA.localBoundaryTick}/${finalB.localBoundaryTick} start=${finalA.protocolStartTick}`);
 } catch (error) {
@@ -332,6 +369,8 @@ try {
     generatedAt: new Date().toISOString(),
     error: error instanceof Error ? error.stack || error.message : String(error),
     chromeVersion: detectedChromeVersion,
+    launcherMode: CHROME_MODE,
+    launcherArgs: LAUNCHER_ARGS,
     runKey,
     clients: [],
   };
@@ -340,6 +379,7 @@ try {
       index: client.index,
       port: client.port,
       stderrTail: Buffer.concat(client.stderr).toString("utf8").slice(-8000),
+      graphics: await graphicsInfo(client),
       evidence: null,
     };
     try { item.evidence = await evidence(client); }
@@ -347,6 +387,7 @@ try {
     diagnostic.clients.push(item);
   }
   writeFileSync(OUTPUT, JSON.stringify(diagnostic, null, 2));
+  console.error(`launcherFailure=${JSON.stringify({ launcherMode: CHROME_MODE, launcherArgs: LAUNCHER_ARGS, clients: diagnostic.clients.map((client) => ({ index: client.index, graphics: client.graphics })) })}`);
   console.error(diagnostic.error);
   process.exitCode = 1;
 } finally {

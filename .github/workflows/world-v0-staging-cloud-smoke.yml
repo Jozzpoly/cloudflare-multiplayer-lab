@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Falsify peer-order authority stimulus coupling
+        run: node scripts/world-v0-authority-stimulus-smoke.mjs
+
       - name: Start Shared Yard Worker/assets in local Workerd
         run: |
           npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-local-wrangler.log 2>&1 &
@@ -50,6 +53,7 @@ jobs:
         env:
           MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
+          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-authority-local-evidence.json
         run: node scripts/world-v0-authority-runtime-smoke.mjs
 
       - name: Render Shared Yard Product Lab decision matrix
@@ -75,6 +79,7 @@ jobs:
         with:
           name: world-v0-local-regression-evidence
           path: |
+            world-v0-authority-local-evidence.json
             world-v0-product-lab-evidence.json
             world-v0-product-lab-*.png
             world-v0-runtime-shell-evidence.json
@@ -85,12 +90,13 @@ jobs:
 
   local-workerd-chromium:
     # This remains the exact two-browser qualification gate. Its criteria are
-    # intentionally unchanged. Run it when the actual browser runtime/physics
-    # blast radius warrants qualification, not for every static visual edit.
+    # intentionally unchanged. During VQ-H1 it also records a bounded same-SHA
+    # launcher A/B; the current launcher remains the gating baseline until
+    # evidence explicitly earns a default change.
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[runtime-qualify]') || contains(github.event.head_commit.message, '[remote-staging]')
     needs: local-regression
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -129,10 +135,33 @@ jobs:
           writeFileSync("scripts/.world-v0-local-chromium-smoke.mjs", chromium);
           NODE
 
-      - name: Run two real Chromium clients with same-boundary guard
+      - name: Run current Chromium launcher baseline
+        id: chromium_current
+        continue-on-error: true
         env:
-          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-chromium-local-evidence.json
+          MW_WORLD_V0_CHROME_MODE: current
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-chromium-local-current-evidence.json
         run: node scripts/.world-v0-local-chromium-smoke.mjs
+
+      - name: Run explicit documented SwANGLE WebGL candidate
+        id: chromium_swangle
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-chromium-local-swangle-evidence.json
+        run: node scripts/.world-v0-local-chromium-smoke.mjs
+
+      - name: Preserve canonical local exact-state gate while recording A/B
+        env:
+          CURRENT_OUTCOME: ${{ steps.chromium_current.outcome }}
+          SWANGLE_OUTCOME: ${{ steps.chromium_swangle.outcome }}
+        run: |
+          echo "current launcher: ${CURRENT_OUTCOME}"
+          echo "swangle-webgl candidate: ${SWANGLE_OUTCOME}"
+          if [ "${CURRENT_OUTCOME}" != "success" ]; then
+            echo "Current canonical launcher did not pass; VQ-H1 must inspect evidence before changing defaults."
+            exit 1
+          fi
 
       - name: Stop local Workerd
         if: always()
@@ -141,13 +170,14 @@ jobs:
             kill "$(cat /tmp/world-v0-wrangler.pid)" 2>/dev/null || true
           fi
 
-      - name: Upload local exact-state qualification evidence
+      - name: Upload local exact-state qualification and launcher A/B evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: world-v0-local-workerd-chromium-evidence
+          name: world-v0-local-workerd-chromium-evidence-attempt-${{ github.run_attempt }}
           path: |
-            world-v0-chromium-local-evidence.json
+            world-v0-chromium-local-current-evidence.json
+            world-v0-chromium-local-swangle-evidence.json
             world-v0-local-wrangler.log
           if-no-files-found: warn
           retention-days: 14
@@ -169,10 +199,24 @@ jobs:
           node-version: 22
 
       - name: Syntax-check Shared Yard staging authority smoke
-        run: node --check scripts/world-v0-authority-runtime-smoke.mjs
+        run: |
+          node --check scripts/world-v0-authority-stimulus.mjs
+          node scripts/world-v0-authority-stimulus-smoke.mjs
+          node --check scripts/world-v0-authority-runtime-smoke.mjs
 
       - name: Verify staging authority, identity, dead-man and production isolation
+        env:
+          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-authority-staging-evidence.json
         run: node scripts/world-v0-authority-runtime-smoke.mjs
+
+      - name: Upload staging authority evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-authority-staging-evidence-attempt-${{ github.run_attempt }}
+          path: world-v0-authority-staging-evidence.json
+          if-no-files-found: warn
+          retention-days: 14
 
   chromium-exact-state:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[remote-staging]')
@@ -198,7 +242,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: world-v0-chromium-cloud-evidence
+          name: world-v0-chromium-cloud-evidence-attempt-${{ github.run_attempt }}
           path: world-v0-chromium-cloud-evidence.json
           if-no-files-found: warn
           retention-days: 14

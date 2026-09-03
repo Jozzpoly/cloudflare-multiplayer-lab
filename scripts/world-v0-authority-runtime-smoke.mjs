@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import {
   WORLD_V0_BROWSER_UI_REVISION,
   WORLD_V0_CLIENT_SIM_REVISION,
@@ -6,6 +7,7 @@ import {
   WORLD_V0_EXPECTED_SIM_BUILD_ID,
   WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
 } from "../public/world-v0/build-contract.js";
+import { deriveWorldV0AuthorityProbe } from "./world-v0-authority-stimulus.mjs";
 
 const BASE = (process.env.MW_WORLD_V0_BASE_URL || "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev").replace(/\/$/, "");
 const wsBase = new URL(BASE);
@@ -18,6 +20,8 @@ const SMOKE_TIMEOUT_MS = Number(process.env.MW_WORLD_V0_SMOKE_TIMEOUT_MS || 25_0
 const TOTAL_PROBE_RECORDS = 120;
 const SAFE_FORWARD_TICKS = 24;
 const EXPECTED_GUARD_LENGTH = 14 * 13 * 8;
+const EVENT_ORDER_RETAIN = 24;
+const OUTPUT = process.env.MW_WORLD_V0_AUTHORITY_OUTPUT || "world-v0-authority-evidence.json";
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
@@ -108,6 +112,7 @@ function createPeer(playerId, runKey) {
     welcome: null,
     identity: null,
     start: null,
+    probe: null,
     latestBoundaryTick: 0,
     batchSeq: 0,
     acceptedRecords: 0,
@@ -120,6 +125,8 @@ function createPeer(playerId, runKey) {
     leaseExpiredSeen: 0,
     epochEnded: null,
     closed: false,
+    close: null,
+    eventOrder: [],
     initialProps: new Map(),
     maxPropDisplacement: 0,
   };
@@ -142,13 +149,54 @@ async function runTwoPeerAuthoritySmoke() {
   assert(typeof WebSocket === "function", "Node runtime has no global WebSocket support");
   const runKey = `ci-yard-${Date.now().toString(36)}`;
   const peers = [createPeer(`ciA-${Date.now()}`, runKey), createPeer(`ciB-${Date.now()}`, runKey)];
-  const inputs = [{ x: 1, z: 0 }, { x: -1, z: 0 }];
   const guardByBoundary = new Map();
   let sharedGuardSamples = 0;
   let nextProbeTick = null;
   let scheduledRecords = 0;
   let timeout = null;
   let settled = false;
+  let stimulusValidated = false;
+  let eventSequence = 0;
+
+  const recordEvent = (peer, type, details = undefined) => {
+    peer.eventOrder.push({ seq: ++eventSequence, type, ...(details ? { details } : {}) });
+    if (peer.eventOrder.length > EVENT_ORDER_RETAIN) peer.eventOrder.shift();
+  };
+
+  const peerEvidence = (peer, peerIndex) => ({
+    peerIndex,
+    playerId: peer.playerId,
+    slot: peer.welcome?.slot ?? null,
+    selfSessionId: peer.welcome?.selfSessionId ?? null,
+    protocolStartTick: peer.start?.protocolStartTick ?? null,
+    b0ActorPosition: peer.probe?.actorPosition ?? null,
+    target: peer.probe?.target ?? null,
+    input: peer.probe?.input ?? null,
+    acceptedRecords: peer.acceptedRecords,
+    lateRecords: peer.lateRecords,
+    rejectedRecords: peer.rejectedRecords,
+    relayedRecords: peer.relayedRecords,
+    consumedFreshSelf: peer.consumedFreshSelf,
+    consumedFreshRemote: peer.consumedFreshRemote,
+    latestBoundaryTick: peer.latestBoundaryTick,
+    finiteSnapshots: peer.finiteSnapshots,
+    maxPropDisplacement: peer.maxPropDisplacement,
+    leaseExpiredSeen: peer.leaseExpiredSeen,
+    epochEndedSeen: Boolean(peer.epochEnded),
+    epochEndReason: peer.epochEnded?.reason ?? null,
+    closed: peer.closed,
+    close: peer.close,
+    eventOrder: peer.eventOrder,
+  });
+
+  const authorityEvidence = () => ({
+    runKey,
+    target: BASE,
+    scheduledRecords,
+    sharedGuardSamples,
+    stimulusValidated,
+    peers: peers.map(peerEvidence),
+  });
 
   const cleanup = () => {
     if (timeout) clearTimeout(timeout);
@@ -160,19 +208,38 @@ async function runTwoPeerAuthoritySmoke() {
   return await new Promise((resolve, reject) => {
     const fail = (error) => {
       if (settled) return;
+      const message = error instanceof Error ? error.message : String(error);
+      const diagnostic = authorityEvidence();
       settled = true;
       cleanup();
-      reject(error instanceof Error ? error : new Error(String(error)));
+      const failure = new Error(`${message} · authorityEvidence=${JSON.stringify(diagnostic)}`, { cause: error instanceof Error ? error : undefined });
+      failure.authorityEvidence = diagnostic;
+      reject(failure);
+    };
+
+    const validateStimulus = () => {
+      if (stimulusValidated || peers.some((peer) => !peer.start || !peer.identity || !peer.probe)) return;
+      const slots = peers.map((peer) => peer.welcome?.slot);
+      assert(slots.every(Number.isInteger), `authority slots missing ${JSON.stringify(slots)}`);
+      assert(new Set(slots).size === 2, `authority slots are not distinct ${JSON.stringify(slots)}`);
+      assert(peers[0].start.protocolStartTick === peers[1].start.protocolStartTick, `protocolStartTick drift ${peers[0].start.protocolStartTick} !== ${peers[1].start.protocolStartTick}`);
+      assert(
+        JSON.stringify(peers[0].probe.target) === JSON.stringify(peers[1].probe.target),
+        `B(0) central target drift ${JSON.stringify(peers.map((peer) => peer.probe.target))}`,
+      );
+      stimulusValidated = true;
     };
 
     const feedForwardWindow = () => {
-      if (peers.some((peer) => !peer.start || !peer.identity) || scheduledRecords >= TOTAL_PROBE_RECORDS) return;
+      if (peers.some((peer) => !peer.start || !peer.identity || !peer.probe) || scheduledRecords >= TOTAL_PROBE_RECORDS) return;
+      validateStimulus();
+      if (!stimulusValidated) return;
       if (nextProbeTick === null) nextProbeTick = peers[0].start.protocolStartTick;
       const minBoundary = Math.min(...peers.map((peer) => peer.latestBoundaryTick));
       const safeHorizon = minBoundary + SAFE_FORWARD_TICKS;
       while (scheduledRecords < TOTAL_PROBE_RECORDS && nextProbeTick + 1 <= safeHorizon) {
-        sendBatch(peers[0], nextProbeTick, inputs[0]);
-        sendBatch(peers[1], nextProbeTick, inputs[1]);
+        sendBatch(peers[0], nextProbeTick, peers[0].probe.input);
+        sendBatch(peers[1], nextProbeTick, peers[1].probe.input);
         nextProbeTick += 2;
         scheduledRecords += 2;
       }
@@ -181,9 +248,11 @@ async function runTwoPeerAuthoritySmoke() {
     const maybePass = () => {
       if (settled || peers.some((peer) => !peer.closed)) return;
       try {
+        assert(stimulusValidated, "authority physical stimulus was never validated");
         assert(scheduledRecords === TOTAL_PROBE_RECORDS, `scheduled only ${scheduledRecords}/${TOTAL_PROBE_RECORDS} records`);
         for (const peer of peers) {
           assert(peer.start, `${peer.playerId}: missing start`);
+          assert(peer.probe, `${peer.playerId}: missing B(0)-derived probe`);
           assert(peer.acceptedRecords >= TOTAL_PROBE_RECORDS - 2, `${peer.playerId}: accepted ${peer.acceptedRecords}`);
           assert(peer.lateRecords <= 2, `${peer.playerId}: excessive late records ${peer.lateRecords}`);
           assert(peer.rejectedRecords === 0, `${peer.playerId}: rejected ${peer.rejectedRecords}`);
@@ -204,20 +273,8 @@ async function runTwoPeerAuthoritySmoke() {
           identity: peers[0].identity,
           scheduledRecords,
           sharedGuardSamples,
-          peers: peers.map((peer) => ({
-            playerId: peer.playerId,
-            slot: peer.welcome.slot,
-            acceptedRecords: peer.acceptedRecords,
-            lateRecords: peer.lateRecords,
-            relayedRecords: peer.relayedRecords,
-            consumedFreshSelf: peer.consumedFreshSelf,
-            consumedFreshRemote: peer.consumedFreshRemote,
-            finiteSnapshots: peer.finiteSnapshots,
-            leaseExpiredSeen: peer.leaseExpiredSeen,
-            maxPropDisplacement: peer.maxPropDisplacement,
-            epochEndReason: peer.epochEnded.reason,
-            latestBoundaryTick: peer.latestBoundaryTick,
-          })),
+          stimulusValidated,
+          peers: peers.map(peerEvidence),
         };
         settled = true;
         cleanup();
@@ -227,34 +284,28 @@ async function runTwoPeerAuthoritySmoke() {
       }
     };
 
-    timeout = setTimeout(() => fail(new Error(`World V0 authority smoke timeout · scheduled=${scheduledRecords} · ${JSON.stringify(peers.map((peer) => ({
-      playerId: peer.playerId,
-      start: peer.start?.protocolStartTick ?? null,
-      latestBoundaryTick: peer.latestBoundaryTick,
-      acceptedRecords: peer.acceptedRecords,
-      lateRecords: peer.lateRecords,
-      relayedRecords: peer.relayedRecords,
-      freshSelf: peer.consumedFreshSelf,
-      freshRemote: peer.consumedFreshRemote,
-      snapshots: peer.finiteSnapshots,
-      leaseExpiredSeen: peer.leaseExpiredSeen,
-      epochEnd: peer.epochEnded?.reason ?? null,
-      closed: peer.closed,
-      maxPropDisplacement: peer.maxPropDisplacement,
-    })))}`)), SMOKE_TIMEOUT_MS);
+    timeout = setTimeout(() => fail(new Error(`World V0 authority smoke timeout after ${SMOKE_TIMEOUT_MS}ms`)), SMOKE_TIMEOUT_MS);
 
     peers.forEach((peer, peerIndex) => {
-      peer.ws.addEventListener("error", () => fail(new Error(`WebSocket error for ${peer.playerId}`)));
-      peer.ws.addEventListener("close", () => {
+      peer.ws.addEventListener("error", () => {
+        recordEvent(peer, "ws_error");
+        fail(new Error(`WebSocket error for ${peer.playerId}`));
+      });
+      peer.ws.addEventListener("close", (event) => {
         peer.closed = true;
-        if (!peer.epochEnded && !settled) fail(new Error(`${peer.playerId} closed before epoch-ended evidence`));
+        peer.close = { code: event.code, reason: event.reason, wasClean: event.wasClean };
+        recordEvent(peer, "ws_close", peer.close);
+        if (!peer.epochEnded && !settled) fail(new Error(`${peer.playerId} closed before world_v0_epoch_ended evidence`));
         else maybePass();
       });
       peer.ws.addEventListener("message", async (event) => {
         try {
           const raw = typeof event.data === "string" ? event.data : await event.data.text();
           const message = JSON.parse(raw);
-          if (message.type === "world_v0_error") throw new Error(`World V0 server error ${message.error}`);
+          if (message.type === "world_v0_error") {
+            recordEvent(peer, "world_v0_error", { error: message.error ?? null });
+            throw new Error(`World V0 server error ${message.error}`);
+          }
 
           if (message.type === "world_v0_welcome") {
             assert(message.revision === WORLD_V0_EXPECTED_SERVER_REVISION, `server revision drift ${message.revision}`);
@@ -265,6 +316,7 @@ async function runTwoPeerAuthoritySmoke() {
             peer.welcome = message;
             peer.identity = identityFrom(message);
             peer.latestBoundaryTick = message.state?.boundaryTick ?? 0;
+            recordEvent(peer, "world_v0_welcome", { slot: message.slot, selfSessionId: message.selfSessionId, boundaryTick: peer.latestBoundaryTick });
             peer.ws.send(JSON.stringify({ type: "world_v0_ready", ...peer.identity }));
             return;
           }
@@ -278,7 +330,14 @@ async function runTwoPeerAuthoritySmoke() {
             assertDynamicSnapshot(message.state);
             peer.start = message;
             peer.latestBoundaryTick = 0;
+            peer.probe = deriveWorldV0AuthorityProbe(message.state, peer.welcome.selfSessionId);
             peer.initialProps = new Map((message.state.props || []).map((prop) => [prop.id, [...prop.position]]));
+            recordEvent(peer, "world_v0_start", {
+              protocolStartTick: message.protocolStartTick,
+              actorPosition: peer.probe.actorPosition,
+              target: peer.probe.target,
+              input: peer.probe.input,
+            });
             feedForwardWindow();
             return;
           }
@@ -337,6 +396,7 @@ async function runTwoPeerAuthoritySmoke() {
 
           if (message.type === "world_v0_epoch_ended") {
             peer.epochEnded = message;
+            recordEvent(peer, "world_v0_epoch_ended", { reason: message.reason ?? null, boundaryTick: message.boundaryTick ?? null });
             return;
           }
         } catch (error) {
@@ -407,9 +467,36 @@ async function runIdentityMismatchSmoke() {
   });
 }
 
-await assertProductionIsolation("before World V0 authority smoke");
-await waitForExpectedTarget();
-const sharedYard = await runTwoPeerAuthoritySmoke();
-const identityMismatch = await runIdentityMismatchSmoke();
-await assertProductionIsolation("after World V0 authority smoke");
-console.log(`WORLD V0 AUTHORITY RUNTIME SMOKE PASS · ${JSON.stringify({ sharedYard, identityMismatch })}`);
+const evidence = {
+  verdict: "WORLD_V0_FAIL_AUTHORITY_RUNTIME_SMOKE",
+  generatedAt: new Date().toISOString(),
+  provenance: {
+    githubSha: process.env.GITHUB_SHA || null,
+    githubRunId: process.env.GITHUB_RUN_ID || null,
+    githubRunAttempt: process.env.GITHUB_RUN_ATTEMPT || null,
+  },
+  target: BASE,
+  productionIsolation: { skipped: SKIP_PRODUCTION_ISOLATION, before: false, after: false },
+  sharedYard: null,
+  identityMismatch: null,
+  failureAuthority: null,
+  error: null,
+};
+
+try {
+  await assertProductionIsolation("before World V0 authority smoke");
+  evidence.productionIsolation.before = true;
+  await waitForExpectedTarget();
+  evidence.sharedYard = await runTwoPeerAuthoritySmoke();
+  evidence.identityMismatch = await runIdentityMismatchSmoke();
+  await assertProductionIsolation("after World V0 authority smoke");
+  evidence.productionIsolation.after = true;
+  evidence.verdict = "WORLD_V0_PASS_AUTHORITY_RUNTIME_SMOKE";
+  writeFileSync(OUTPUT, JSON.stringify(evidence, null, 2));
+  console.log(`WORLD V0 AUTHORITY RUNTIME SMOKE PASS · ${JSON.stringify({ sharedYard: evidence.sharedYard, identityMismatch: evidence.identityMismatch })}`);
+} catch (error) {
+  evidence.error = error instanceof Error ? error.stack || error.message : String(error);
+  evidence.failureAuthority = error?.authorityEvidence ?? null;
+  writeFileSync(OUTPUT, JSON.stringify(evidence, null, 2));
+  throw error;
+}

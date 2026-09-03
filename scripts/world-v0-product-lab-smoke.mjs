@@ -161,7 +161,7 @@ try {
   }
 
   await setViewport(cdp, sessionId, { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  await waitFor(cdp, sessionId, `document.readyState === "complete" && document.querySelector("canvas") instanceof HTMLCanvasElement && document.querySelectorAll(".mode").length === 3 && window.__worldV0ProductLabState`, "Product Lab desktop boot");
+  await waitFor(cdp, sessionId, `document.readyState === "complete" && document.querySelector("canvas") instanceof HTMLCanvasElement && document.querySelectorAll(".mode").length === 3 && !!window.__worldV0ProductLabState`, "Product Lab desktop boot");
   const boot = await cdp.evaluate(sessionId, `({
     title: document.title,
     heading: document.querySelector(".title")?.textContent,

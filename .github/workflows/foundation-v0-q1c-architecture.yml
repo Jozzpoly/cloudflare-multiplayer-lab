@@ -1,0 +1,74 @@
+name: Foundation v0 Q1c Architecture
+
+on:
+  push:
+    branches:
+      - foundation-v0-q1-determinism-envelope
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x64
+            runner: ubuntu-24.04
+            arch: x64
+          - label: arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Confirm native architecture
+        run: |
+          node -p "process.version + ' ' + process.platform + '/' + process.arch"
+          test "$(node -p 'process.arch')" = "${{ matrix.arch }}"
+      - name: Generate canonical and perturbed traces
+        env:
+          MW_Q1C_LABEL: ${{ matrix.label }}
+          MW_Q1C_EXPECTED_ARCH: ${{ matrix.arch }}
+        run: node scripts/foundation-v0-q1c-node-trace.mjs
+      - name: Upload native trace evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundation-v0-q1c-${{ matrix.label }}
+          path: foundation-v0-q1c-${{ matrix.label }}.json
+          retention-days: 14
+
+  compare:
+    needs: trace
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Download native traces
+        uses: actions/download-artifact@v4
+        with:
+          pattern: foundation-v0-q1c-*
+          path: q1c-artifacts
+      - name: Compare x64 and ARM64 exact histories
+        run: node scripts/foundation-v0-q1c-compare.mjs
+      - name: Upload Q1c summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundation-v0-q1c-summary
+          path: foundation-v0-q1c-summary.json
+          if-no-files-found: warn
+          retention-days: 14

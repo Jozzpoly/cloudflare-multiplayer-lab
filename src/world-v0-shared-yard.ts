@@ -96,25 +96,37 @@ function normalizeRunKey(raw: string | null): string {
   return RUN_KEY_PATTERN.test(value) ? value : "manual";
 }
 
-function readVec3(getter: (out: Vec3, body: BodyId) => void, body: BodyId): Vec3 {
+function bodyPosition(body: BodyId): Vec3 {
   const out: Vec3 = [0, 0, 0];
-  getter(out, body);
+  b3.b3Body_GetPosition(out, body);
   return [out[0], out[1], out[2]];
 }
 
-function readQuat(body: BodyId): Quat {
+function bodyRotation(body: BodyId): Quat {
   const out: Quat = [0, 0, 0, 1];
   b3.b3Body_GetRotation(out, body);
   return [out[0], out[1], out[2], out[3]];
 }
 
+function bodyLinearVelocity(body: BodyId): Vec3 {
+  const out: Vec3 = [0, 0, 0];
+  b3.b3Body_GetLinearVelocity(out, body);
+  return [out[0], out[1], out[2]];
+}
+
+function bodyAngularVelocity(body: BodyId): Vec3 {
+  const out: Vec3 = [0, 0, 0];
+  b3.b3Body_GetAngularVelocity(out, body);
+  return [out[0], out[1], out[2]];
+}
+
 function readDynamicState(netEntityId: string, body: BodyId): DynamicState {
   return {
     netEntityId,
-    position: readVec3(b3.b3Body_GetPosition, body),
-    rotation: readQuat(body),
-    linearVelocity: readVec3(b3.b3Body_GetLinearVelocity, body),
-    angularVelocity: readVec3(b3.b3Body_GetAngularVelocity, body),
+    position: bodyPosition(body),
+    rotation: bodyRotation(body),
+    linearVelocity: bodyLinearVelocity(body),
+    angularVelocity: bodyAngularVelocity(body),
   };
 }
 
@@ -160,9 +172,9 @@ export class SharedYardV0 extends DurableObject<Env> {
   private failure: string | null = null;
   private resetting = false;
 
-  // Field initialization runs after the DurableObject base constructor. If a
-  // hibernation-enabled WebSocket survived an unexpected object re-creation,
-  // close it immediately instead of restoring an incomplete physics epoch.
+  // World V0 has no hibernation reconstruction contract. If an object instance
+  // is ever recreated while Hibernation API sockets survived, close those
+  // sockets immediately instead of pretending the lost Box3D epoch continued.
   private readonly restoredSocketsClosed = this.closeRestoredSockets();
 
   private closeRestoredSockets(): number {
@@ -185,7 +197,9 @@ export class SharedYardV0 extends DurableObject<Env> {
         boundaryTick: this.tick,
         protocolStartTick: this.protocolStartTick,
         players: this.players.size,
-        active: this.loopTimer !== null,
+        physicsLoopActive: this.loopTimer !== null,
+        epochPinned: this.epochPinTimer !== null,
+        restoredSocketsClosed: this.restoredSocketsClosed,
         droppedTicks: this.droppedTicks,
         catchupSteps: this.catchupSteps,
         failure: this.failure,
@@ -237,7 +251,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         },
         ...this.identityPayload(),
       });
-      try { ws.close(1008, "world_identity_mismatch"; } catch { /* close race */ }
+      this.endEpoch(`world_identity_mismatch:${player.netEntityId}`);
       return;
     }
 
@@ -316,8 +330,10 @@ export class SharedYardV0 extends DurableObject<Env> {
 
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket];
     const slot = this.players.size;
+    const start = WORLD_V0_PLAYER_STARTS[slot];
+    if (!start) return json({ ok: false, error: "world_v0_slot_missing" }, 500);
     const netEntityId = `actor:${slot}`;
-    const body = this.createPlayerBody(WORLD_V0_PLAYER_STARTS[slot]);
+    const body = this.createPlayerBody(start);
     const player: SharedYardPlayer = {
       playerId,
       sessionId: crypto.randomUUID(),
@@ -346,7 +362,12 @@ export class SharedYardV0 extends DurableObject<Env> {
     this.broadcast({
       type: "world_v0_roster",
       boundaryTick: this.tick,
-      players: this.snapshotState().players.map(({ id, sessionId, slot, netEntityId }) => ({ id, sessionId, slot, netEntityId })),
+      players: this.snapshotState().players.map(({ id, sessionId, slot: playerSlot, netEntityId: entityId }) => ({
+        id,
+        sessionId,
+        slot: playerSlot,
+        netEntityId: entityId,
+      })),
       ...this.identityPayload(),
     });
     return new Response(null, { status: 101, webSocket: client });
@@ -441,7 +462,7 @@ export class SharedYardV0 extends DurableObject<Env> {
     });
     b3.b3Body_SetMotionLocks(body, {
       linearX: false,
-      linarY: false,
+      linearY: false,
       linearZ: false,
       angularX: WORLD_V0_PLAYER_PHYSICS.angularLocks[0],
       angularY: WORLD_V0_PLAYER_PHYSICS.angularLocks[1],
@@ -454,7 +475,6 @@ export class SharedYardV0 extends DurableObject<Env> {
     if (this.epochPinTimer) return;
     // acceptWebSocket() enables hibernation. The first World V0 envelope has no
     // reconstruction contract, so a live epoch must remain non-hibernateable.
-    // Cloudflare documents scheduled callbacks as a hibernation blocker.
     this.epochPinTimer = setInterval(() => {
       if (!this.world) this.stopEpochPin();
     }, 1000);
@@ -507,7 +527,12 @@ export class SharedYardV0 extends DurableObject<Env> {
       if (!this.sampleScene().finite) throw new Error("non_finite_world_state");
     } catch (error) {
       this.failure = error instanceof Error ? error.message : String(error);
-      this.broadcast({ type: "world_v0_error", error: this.failure, boundaryTick: this.tick, ...this.identityPayloadSafe() });
+      this.broadcast({
+        type: "world_v0_error",
+        error: this.failure,
+        boundaryTick: this.tick,
+        ...this.identityPayloadSafe(),
+      });
       this.endEpoch(`authority_failure:${this.failure}`);
     }
   }
@@ -528,7 +553,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       const input = active
         ? player.input.consume(targetTick)
         : { targetTick, x: 0, z: 0, fresh: false, source: "held" as const, missingStreak: 0 };
-      this.applyIntent(player.body, input.x, input.zi;
+      this.applyIntent(player.body, input.x, input.z);
       consumed.push({
         sessionId: player.sessionId,
         playerId: player.playerId,
@@ -562,7 +587,7 @@ export class SharedYardV0 extends DurableObject<Env> {
   }
 
   private applyIntent(body: BodyId, inputX: number, inputZ: number): void {
-    const velocity = readVec3(b3.b3Body_GetLinearVelocity, body);
+    const velocity = bodyLinearVelocity(body);
     const hasInput = Math.hypot(inputX, inputZ) > 0.01;
     const [nextX, nextZ] = moveToward2(
       velocity[0],

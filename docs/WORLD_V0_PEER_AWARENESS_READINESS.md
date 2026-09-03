@@ -4,7 +4,7 @@
 
 **Purpose:** preparation and decision contract only. This document does **not** authorize implementation of a camera change, establishing shot, off-screen PEER indicator, physics expansion, merge, or Foundation redesign.
 
-**Prepared after:** `world-v0-shared-yard@49fbd46cd656f0c38897df64e7a6916e3edb25d9`
+**Prepared from clean runtime checkpoint:** `world-v0-shared-yard@49fbd46cd656f0c38897df64e7a6916e3edb25d9`
 
 ---
 
@@ -51,6 +51,10 @@ Local exact-state L2 evidence on `9572329f...`:
 - rollback/replay was exercised on both clients;
 - harsh headless timing remains a correctness stress, **not** performance qualification.
 
+Qualified Git tree:
+
+`50a68de38db2b40eeaf8be5e73def3100d3aee05`
+
 ### Premature hypothesis retained only as provenance
 
 `b5da62f20921e0372769c260941c850969b46693`
@@ -61,13 +65,21 @@ This commit added only a six-line hidden DOM scaffold for an off-screen PEER ind
 
 `49fbd46cd656f0c38897df64e7a6916e3edb25d9`
 
-The premature scaffold was withdrawn and `public/world-v0/index.html` restored exactly to the qualified `9572329f...` blob. This cleanup passed:
+The premature scaffold was withdrawn and `public/world-v0/index.html` restored exactly to the qualified `9572329f...` blob.
+
+Crucially, the cleanup commit has the **exact same Git tree** as qualified `9572329f...`:
+
+`50a68de38db2b40eeaf8be5e73def3100d3aee05`
+
+So the runtime/source tree at the clean preparation checkpoint is not merely similar to the qualified baseline — it is byte-identical as a Git tree. Later readiness-document commits change documentation only.
+
+The cleanup checkpoint passed:
 
 - repository CI;
 - frozen-F5 preflight;
 - World V0 ordinary local-regression (authority + Product Lab + real rendered shell).
 
-L2 was intentionally not requested for this exact static restoration.
+L2 was intentionally not requested for this exact static restoration because the restored runtime tree already has the earlier L2 qualification above.
 
 ---
 
@@ -147,7 +159,7 @@ Analytic projection of the other spawn body under this camera geometry gives app
 
 | View | slot 0 sees PEER | slot 1 sees PEER | Interpretation |
 | --- | ---: | ---: | --- |
-| desktop current | NDC `(3.665? no — desktop ≈ 2.347, -1.969)` | NDC `(-0.503, 0.355)` | slot 0 strongly off-screen; slot 1 on-screen |
+| desktop current | NDC `(2.347, -1.969)` | NDC `(-0.503, 0.355)` | slot 0 strongly off-screen; slot 1 on-screen |
 | portrait current | NDC `(3.665, -0.851)` | NDC `(-1.319, 0.257)` | slot 0 far off-screen; slot 1 only slightly outside frame |
 
 The exact values are diagnostic geometry, not a product SLO. The important result is the asymmetry.
@@ -176,7 +188,7 @@ With symmetric inward portrait framing at the current FOV, simply pulling the ca
 
 Approximate camera-distance scale needed for the peer horizontal NDC magnitude:
 
-| scale vs current portrait offset | peer |x NDC| |
+| scale vs current portrait offset | peer \|x NDC\| |
 | ---: | ---: |
 | 1.00× | 1.319 |
 | 1.25× | 1.128 |

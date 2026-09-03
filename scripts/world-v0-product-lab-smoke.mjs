@@ -8,6 +8,11 @@ const PAGE_URL = `${BASE}/world-v0-lab/`;
 const DEBUG_PORT = 9333;
 const TIMEOUT_MS = 20_000;
 const OUTPUT = process.env.MW_WORLD_V0_LAB_OUTPUT || "world-v0-product-lab-evidence.json";
+const MODES = [
+  { key: "baseline", title: "Qualified V0" },
+  { key: "presence", title: "Presence pass" },
+  { key: "playground", title: "Playground concept" },
+];
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
@@ -100,7 +105,7 @@ async function setViewport(cdp, sessionId, { width, height, deviceScaleFactor, m
     screenWidth: width, screenHeight: height,
     screenOrientation: mobile ? { type: "portraitPrimary", angle: 0 } : { type: "landscapePrimary", angle: 90 },
   }, sessionId);
-  await sleep(250);
+  await sleep(300);
 }
 
 async function screenshot(cdp, sessionId, filename) {
@@ -109,6 +114,13 @@ async function screenshot(cdp, sessionId, filename) {
   assert(bytes.length > 20_000, `${filename}: screenshot suspiciously small (${bytes.length} bytes)`);
   writeFileSync(filename, bytes);
   return { filename, bytes: bytes.length };
+}
+
+async function captureMode(cdp, sessionId, viewportName, mode) {
+  await cdp.evaluate(sessionId, `document.querySelector('[data-mode="${mode.key}"]').click(); true`);
+  await waitFor(cdp, sessionId, `document.querySelector("#card-title")?.textContent === ${JSON.stringify(mode.title)} && window.__worldV0ProductLabState?.mode === ${JSON.stringify(mode.key)}`, `${viewportName} ${mode.key}`);
+  await sleep(180);
+  return await screenshot(cdp, sessionId, `world-v0-product-lab-${viewportName}-${mode.key}.png`);
 }
 
 const chrome = findChrome();
@@ -149,7 +161,7 @@ try {
   }
 
   await setViewport(cdp, sessionId, { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  await waitFor(cdp, sessionId, `document.readyState === "complete" && document.querySelector("canvas") instanceof HTMLCanvasElement && document.querySelectorAll(".mode").length === 3`, "Product Lab desktop boot");
+  await waitFor(cdp, sessionId, `document.readyState === "complete" && document.querySelector("canvas") instanceof HTMLCanvasElement && document.querySelectorAll(".mode").length === 3 && window.__worldV0ProductLabState`, "Product Lab desktop boot");
   const boot = await cdp.evaluate(sessionId, `({
     title: document.title,
     heading: document.querySelector(".title")?.textContent,
@@ -159,34 +171,37 @@ try {
   })`);
   assert(boot.title.includes("Product Lab"), `unexpected title ${boot.title}`);
   assert(boot.heading === "Shared Yard V0.5", `unexpected heading ${boot.heading}`);
-  assert(JSON.stringify(boot.modes) === JSON.stringify(["Qualified V0", "Presence pass", "Playground concept"]), `mode contract drift ${JSON.stringify(boot.modes)}`);
+  assert(JSON.stringify(boot.modes) === JSON.stringify(["Qualified V0", "Presence", "Playground"]), `mode contract drift ${JSON.stringify(boot.modes)}`);
   assert(boot.canvas.width > 1000 && boot.canvas.height > 600, `desktop canvas too small ${JSON.stringify(boot.canvas)}`);
 
-  await cdp.evaluate(sessionId, `document.querySelector('[data-mode="presence"]').click(); true`);
-  await waitFor(cdp, sessionId, `document.querySelector("#card-title")?.textContent === "Presence pass"`, "Presence mode");
-  const desktop = await screenshot(cdp, sessionId, "world-v0-product-lab-desktop.png");
+  const screenshots = { desktop: {}, mobile: {} };
+  for (const mode of MODES) screenshots.desktop[mode.key] = await captureMode(cdp, sessionId, "desktop", mode);
 
   await setViewport(cdp, sessionId, { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
-  await cdp.evaluate(sessionId, `document.querySelector('[data-mode="playground"]').click(); true`);
-  await waitFor(cdp, sessionId, `document.querySelector("#card-title")?.textContent === "Playground concept" && innerWidth === 390`, "Product Lab mobile playground");
+  await cdp.evaluate(sessionId, `document.querySelector("#reset").click(); true`);
+  await waitFor(cdp, sessionId, `innerWidth === 390 && window.__worldV0ProductLabState?.mobile === true`, "Product Lab mobile framing");
   const mobileState = await cdp.evaluate(sessionId, `({
     width: innerWidth,
     height: innerHeight,
-    title: document.querySelector("#card-title")?.textContent,
     modesRect: (() => { const r = document.querySelector("#modes").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
     cardRect: (() => { const r = document.querySelector("#card").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
+    brandRect: (() => { const r = document.querySelector("#brand").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
+    tagRect: (() => { const r = document.querySelector("#labtag").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
   })`);
   assert(mobileState.width === 390, `mobile viewport drift ${mobileState.width}`);
-  assert(mobileState.modesRect.left >= 0 && mobileState.modesRect.right <= 390, `mobile mode bar clipped ${JSON.stringify(mobileState.modesRect)}`);
-  assert(mobileState.cardRect.left >= 0 && mobileState.cardRect.right <= 390, `mobile card clipped ${JSON.stringify(mobileState.cardRect)}`);
-  const mobile = await screenshot(cdp, sessionId, "world-v0-product-lab-mobile.png");
+  for (const [name, rect] of Object.entries({ modes: mobileState.modesRect, card: mobileState.cardRect, brand: mobileState.brandRect, tag: mobileState.tagRect })) {
+    assert(rect.left >= 0 && rect.right <= 390, `mobile ${name} clipped horizontally ${JSON.stringify(rect)}`);
+    assert(rect.top >= 0 && rect.bottom <= 844, `mobile ${name} clipped vertically ${JSON.stringify(rect)}`);
+  }
+  assert(mobileState.cardRect.bottom < mobileState.modesRect.top, `mobile card overlaps mode bar ${JSON.stringify({ card: mobileState.cardRect, modes: mobileState.modesRect })}`);
+  for (const mode of MODES) screenshots.mobile[mode.key] = await captureMode(cdp, sessionId, "mobile", mode);
 
   evidence.verdict = "WORLD_V0_PRODUCT_LAB_RENDER_PASS";
   evidence.boot = boot;
   evidence.mobile = mobileState;
-  evidence.screenshots = { desktop, mobile };
+  evidence.screenshots = screenshots;
   writeFileSync(OUTPUT, `${JSON.stringify(evidence, null, 2)}\n`);
-  console.log(`${evidence.verdict} · ${version} · desktop=${desktop.bytes}B mobile=${mobile.bytes}B`);
+  console.log(`${evidence.verdict} · ${version} · captures=6`);
 } catch (error) {
   evidence.error = error instanceof Error ? error.stack || error.message : String(error);
   evidence.stderrTail = Buffer.concat(stderr).toString("utf8").slice(-8000);

@@ -71,8 +71,7 @@ jobs:
           name: world-v0-local-regression-evidence
           path: |
             world-v0-product-lab-evidence.json
-            world-v0-product-lab-desktop.png
-            world-v0-product-lab-mobile.png
+            world-v0-product-lab-*.png
             world-v0-local-wrangler.log
           if-no-files-found: warn
           retention-days: 14

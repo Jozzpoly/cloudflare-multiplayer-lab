@@ -41,7 +41,7 @@
       "assets": {
         "directory": "./public",
         "binding": "ASSETS",
-        "run_worker_first": ["/api/*", "/game/*", "/world0/ws", "/world0-f5/ws"]
+        "run_worker_first": ["/api/*", "/game/*", "/world0/ws", "/world0-f5/ws", "/world-v0/ws"]
       },
       "durable_objects": {
         "bindings": [
@@ -56,6 +56,10 @@
           {
             "name": "WORLD_SLICE_F5",
             "class_name": "WorldSliceF5"
+          },
+          {
+            "name": "SHARED_YARD_V0",
+            "class_name": "SharedYardV0"
           }
         ]
       },
@@ -73,6 +77,10 @@
           "storage": "sqlite"
         },
         "WorldSliceF5": {
+          "type": "durable-object",
+          "storage": "sqlite"
+        },
+        "SharedYardV0": {
           "type": "durable-object",
           "storage": "sqlite"
         }

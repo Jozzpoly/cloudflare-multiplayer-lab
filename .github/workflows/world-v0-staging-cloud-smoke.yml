@@ -1,0 +1,32 @@
+name: World V0 Staging Cloud Smoke
+
+on:
+  push:
+    branches: [world-v0-shared-yard]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-staging-cloud-smoke
+  cancel-in-progress: true
+
+jobs:
+  staging-cloud-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Syntax-check Shared Yard staging smoke
+        run: node --check scripts/world-v0-staging-cloud-smoke.mjs
+
+      - name: Verify staging assets, authority semantics, dead-man and production isolation
+        run: node scripts/world-v0-staging-cloud-smoke.mjs

@@ -16,8 +16,9 @@
     "validate:staging-contract": "node scripts/validate-staging-contract.mjs",
     "test:staging-deploy-guard": "node scripts/test-staging-deploy-guard.mjs",
     "test:f5-protocol": "node --experimental-strip-types scripts/ws0-f5-protocol-smoke.ts",
+    "test:world-v0-protocol": "node --experimental-strip-types scripts/world-v0-protocol-smoke.ts",
     "validate:worker": "wrangler deploy --dry-run --env staging --outdir .wrangler/dry-run",
-    "check": "npm run validate:staging-contract && npm run test:staging-deploy-guard && npm run test:f5-protocol && npm run check:client && npm run check:a2r && npm run typecheck && npm run validate:worker"
+    "check": "npm run validate:staging-contract && npm run test:staging-deploy-guard && npm run test:f5-protocol && npm run test:world-v0-protocol && npm run check:client && npm run check:a2r && npm run typecheck && npm run validate:worker"
   },
   "dependencies": {
     "box3d.js": "0.1.1"

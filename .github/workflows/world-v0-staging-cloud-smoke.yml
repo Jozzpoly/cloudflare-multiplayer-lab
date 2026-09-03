@@ -90,9 +90,9 @@ jobs:
 
   local-workerd-chromium:
     # This remains the exact two-browser qualification gate. Its criteria are
-    # intentionally unchanged. During VQ-H1 it also records a bounded same-SHA
-    # launcher A/B; the current launcher remains the gating baseline until
-    # evidence explicitly earns a default change.
+    # intentionally unchanged. VQ-H1 A/B on run 33811025618 earned explicit
+    # SwANGLE as the canonical harness launcher: the previous current mode is
+    # retained here only as a same-SHA comparator, not as the gating path.
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[runtime-qualify]') || contains(github.event.head_commit.message, '[remote-staging]')
     needs: local-regression
     runs-on: ubuntu-24.04
@@ -135,7 +135,7 @@ jobs:
           writeFileSync("scripts/.world-v0-local-chromium-smoke.mjs", chromium);
           NODE
 
-      - name: Run current Chromium launcher baseline
+      - name: Record previous current Chromium launcher comparator
         id: chromium_current
         continue-on-error: true
         env:
@@ -143,7 +143,7 @@ jobs:
           MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-chromium-local-current-evidence.json
         run: node scripts/.world-v0-local-chromium-smoke.mjs
 
-      - name: Run explicit documented SwANGLE WebGL candidate
+      - name: Run canonical explicit SwANGLE WebGL launcher
         id: chromium_swangle
         continue-on-error: true
         env:
@@ -151,15 +151,15 @@ jobs:
           MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-chromium-local-swangle-evidence.json
         run: node scripts/.world-v0-local-chromium-smoke.mjs
 
-      - name: Preserve canonical local exact-state gate while recording A/B
+      - name: Preserve canonical SwANGLE exact-state gate while recording comparator
         env:
           CURRENT_OUTCOME: ${{ steps.chromium_current.outcome }}
           SWANGLE_OUTCOME: ${{ steps.chromium_swangle.outcome }}
         run: |
           echo "current launcher: ${CURRENT_OUTCOME}"
           echo "swangle-webgl candidate: ${SWANGLE_OUTCOME}"
-          if [ "${CURRENT_OUTCOME}" != "success" ]; then
-            echo "Current canonical launcher did not pass; VQ-H1 must inspect evidence before changing defaults."
+          if [ "${SWANGLE_OUTCOME}" != "success" ]; then
+            echo "Canonical explicit SwANGLE launcher did not pass; VQ-H1 remains blocked."
             exit 1
           fi
 
@@ -236,6 +236,8 @@ jobs:
         run: node --check scripts/world-v0-chromium-cloud-smoke.mjs
 
       - name: Run two real Chromium Shared Yard clients with exact-state guard
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
         run: node scripts/world-v0-chromium-cloud-smoke.mjs
 
       - name: Upload Chromium evidence

@@ -84,7 +84,11 @@ jobs:
           retention-days: 14
 
   staging-cloud-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    # Remote staging is intentionally opt-in while the isolated Cloudflare
+    # staging Worker is pointed at the frozen F5 evidence branch. After its
+    # production branch is changed to world-v0-shared-yard, a commit whose
+    # message contains [remote-staging] performs the deploy+qualification push.
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[remote-staging]')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -103,7 +107,7 @@ jobs:
         run: node scripts/world-v0-authority-runtime-smoke.mjs
 
   chromium-exact-state:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[remote-staging]')
     needs: staging-cloud-smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 5

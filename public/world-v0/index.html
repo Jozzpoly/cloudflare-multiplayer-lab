@@ -16,7 +16,10 @@
     <div class="inputs">
       <label>Callsign <input id="callsign" maxlength="24" autocomplete="off" placeholder="Jozz"></label>
       <label>Run <input id="run" maxlength="20" autocomplete="off"></label>
-      <button id="enter">Enter yard</button>
+      <div class="entry-actions">
+        <button id="enter">Enter yard</button>
+        <button id="inspect-solo" type="button" disabled>Inspect solo</button>
+      </div>
     </div>
   </section>
 
@@ -52,6 +55,6 @@
     <div id="camera-gimbal-knob"></div>
   </div>
 
-  <script type="module" src="/world-v0/app.js"></script>
+  <script type="module" src="/world-v0/solo-inspection.js"></script>
 </body>
 </html>

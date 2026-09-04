@@ -1,0 +1,138 @@
+name: World V0 Inspect Solo Qualification
+
+on:
+  push:
+    branches: [world-v0-inspect-solo]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-inspect-solo-qualification
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Verify frozen authority and Inspect solo apparatus
+        run: |
+          set -euo pipefail
+          FOUNDATION=b27de8b04c27777250c47e7e936674e0f147fdfa
+          git cat-file -e "$FOUNDATION^{commit}"
+          node --check public/world-v0/app.js
+          node --check public/world-v0/build-contract.js
+          node --check public/world-v0/solo-inspection-core.js
+          node --check public/world-v0/solo-inspection.js
+          node --check scripts/world-v0-solo-inspection-core-smoke.mjs
+          node --check scripts/world-v0-solo-inspection-browser-smoke.mjs
+          node scripts/world-v0-solo-inspection-core-smoke.mjs
+          git diff --check
+          if ! git diff --quiet "$FOUNDATION" -- src/world-v0-shared-yard.ts src/world-v0-contract.ts src/world-v0-protocol.ts; then
+            echo "Inspect solo changed frozen authority/simulation files."
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import {
+            WORLD_V0_BROWSER_UI_REVISION,
+            WORLD_V0_CLIENT_SIM_REVISION,
+            WORLD_V0_EXPECTED_SERVER_REVISION,
+            WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          } from "./public/world-v0/build-contract.js";
+          if (WORLD_V0_BROWSER_UI_REVISION !== "shared-yard-v0-browser-ui-v7-solo-inspection") throw new Error(`unexpected UI ${WORLD_V0_BROWSER_UI_REVISION}`);
+          if (WORLD_V0_CLIENT_SIM_REVISION !== "shared-yard-v0-browser-sim-v1") throw new Error("client sim drift");
+          if (WORLD_V0_EXPECTED_SERVER_REVISION !== "shared-yard-v0-authority-v1") throw new Error("authority drift");
+          if (WORLD_V0_EXPECTED_PROTOCOL_REVISION !== "shared-yard-v0-scheduled-input-v1") throw new Error("protocol drift");
+          if (WORLD_V0_EXPECTED_STATE_GUARD_REVISION !== "shared-yard-v0-f32-state-v1") throw new Error("guard drift");
+          if (WORLD_V0_EXPECTED_SIM_BUILD_ID !== "shared-yard-v0-sim-579c7aa172198390") throw new Error("SimBuild drift");
+          NODE
+      - name: Preserve full repository regression suite
+        run: npm run check
+      - name: Start isolated local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-inspect-solo-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-inspect-solo-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "local Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-inspect-solo-wrangler.log
+          exit 1
+      - name: Prove authority baseline unchanged
+        env:
+          MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
+          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-inspect-solo-authority.json
+        run: node scripts/world-v0-authority-runtime-smoke.mjs
+      - name: Preserve normal multiplayer interaction path
+        env:
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-inspect-solo-normal-interaction.json
+        run: node scripts/world-v0-playable-interaction-smoke.mjs
+      - name: Prove one-browser real-authority Inspect solo
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-inspect-solo-evidence.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
+      - name: Preserve normal epoch lifecycle
+        env:
+          MW_WORLD_V0_SESSION_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SESSION_OUTPUT: world-v0-inspect-solo-session.json
+        run: node scripts/world-v0-session-friction-smoke.mjs
+      - name: Preserve desktop and portrait shell
+        env:
+          MW_WORLD_V0_SHELL_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SHELL_OUTPUT: world-v0-inspect-solo-shell.json
+        run: node scripts/world-v0-runtime-shell-smoke.mjs
+      - name: Prepare local exact-state falsifier
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
+          const remote = 'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";';
+          const local = 'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";';
+          if (!chromium.includes(remote)) throw new Error("exact-state local-target anchor drift");
+          chromium = chromium.replace(remote, local);
+          writeFileSync("scripts/.world-v0-inspect-solo-exact.mjs", chromium);
+          NODE
+      - name: Preserve normal two-Chromium exact-state envelope
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-inspect-solo-exact.json
+        run: node scripts/.world-v0-inspect-solo-exact.mjs
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-inspect-solo-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-inspect-solo-wrangler.pid)" 2>/dev/null || true
+          fi
+      - name: Upload Inspect solo evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-inspect-solo-qualification-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-inspect-solo-authority.json
+            world-v0-inspect-solo-normal-interaction.json
+            world-v0-inspect-solo-evidence.json
+            world-v0-inspect-solo-session.json
+            world-v0-inspect-solo-shell.json
+            world-v0-runtime-shell-*.png
+            world-v0-inspect-solo-exact.json
+            world-v0-inspect-solo-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

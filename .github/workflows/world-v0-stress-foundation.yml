@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  manifest-and-topology-contract:
+  manifest-retention-topology-contract:
     runs-on: ubuntu-24.04
     timeout-minutes: 6
     steps:
@@ -32,10 +32,14 @@ jobs:
         run: |
           node --check public/world-v0-stress/phenomenon-manifest.js
           node --check scripts/world-v0-stress-manifest-smoke.mjs
+          node --check scripts/world-v0-history-retention-contract-smoke.mjs
           node --check scripts/world-v0-topology-replay-probe.mjs
 
       - name: Falsify Chaos DNA reproducibility
         run: node scripts/world-v0-stress-manifest-smoke.mjs
+
+      - name: Falsify strict history-retention coverage model
+        run: node scripts/world-v0-history-retention-contract-smoke.mjs
 
       - name: Probe recording/replay across topology changes
         run: node scripts/world-v0-topology-replay-probe.mjs

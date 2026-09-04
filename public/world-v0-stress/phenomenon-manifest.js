@@ -174,7 +174,9 @@ export function generateStressManifest({ scenario, count, seed = 0x51f15e, durat
   if (!WORLD_V0_STRESS_SCENARIOS.includes(scenario)) throw new Error(`unknown_stress_scenario:${scenario}`);
   if (!Number.isInteger(count) || count < 1) throw new Error(`invalid_stress_count:${count}`);
   if (!Number.isInteger(durationTicks) || durationTicks < 1) throw new Error(`invalid_stress_duration:${durationTicks}`);
-  const normalizedSeed = Number(seed) >>> 0;
+  // quiet-width is intentionally the seed-independent state-width control. Its
+  // Chaos DNA must therefore not change merely because a dead seed argument did.
+  const normalizedSeed = scenario === "quiet-width" ? 0 : (Number(seed) >>> 0);
   const extent = Math.max(14, Math.ceil(Math.sqrt(count)) * 1.05);
   const rand = xorshift32(normalizedSeed);
   const bodies = [];

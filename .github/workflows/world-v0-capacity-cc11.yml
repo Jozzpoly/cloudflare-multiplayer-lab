@@ -1,0 +1,86 @@
+name: World V0 Capacity CC1.1
+
+on:
+  push:
+    branches: [world-v0-capacity-cartography]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-capacity-cc11
+  cancel-in-progress: true
+
+jobs:
+  history-replay-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax-check CC1.1 apparatus
+        run: |
+          node --check public/world-v0-capacity-cc11/app.js
+          node --check scripts/world-v0-capacity-cc11-smoke.mjs
+          node --check scripts/world-v0-capacity-cc11-normalize.mjs
+
+      - name: Start local Worker/assets
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-capacity-cc11-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-capacity-cc11-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "local Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-capacity-cc11-wrangler.log
+          exit 1
+
+      - name: Run high-count production-like history/replay boundary search
+        env:
+          MW_WORLD_V0_CAPACITY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_CAPACITY_COUNTS: 384,512,640,768,896
+          MW_WORLD_V0_CAPACITY_SCENARIOS: hetero-pile,ram-chain,wake-churn
+          MW_WORLD_V0_CAPACITY_TICKS: "144"
+          MW_WORLD_V0_CAPACITY_REPEATS: "2"
+          MW_WORLD_V0_CAPACITY_STOP_AFTER_BREAK: "1"
+          MW_WORLD_V0_CAPACITY_TIMEOUT_MS: "1200000"
+          MW_WORLD_V0_CAPACITY_CC11_OUTPUT: world-v0-capacity-cc11-evidence.json
+        run: node scripts/world-v0-capacity-cc11-smoke.mjs
+
+      - name: Normalize failure precedence and boundaries
+        if: always()
+        run: |
+          if [ -f world-v0-capacity-cc11-evidence.json ]; then
+            node scripts/world-v0-capacity-cc11-normalize.mjs world-v0-capacity-cc11-evidence.json
+          fi
+
+      - name: Stop local Worker
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-capacity-cc11-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-capacity-cc11-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload CC1.1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-capacity-cc11-evidence-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-capacity-cc11-evidence.json
+            world-v0-capacity-cc11-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

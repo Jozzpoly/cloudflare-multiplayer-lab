@@ -190,10 +190,7 @@ try {
   const joystickReleased = await cdp.evaluate(mobile.sessionId, `window.__sharedYardV0PlayableControl()`);
   assert(Math.hypot(joystickReleased.rawInput.x, joystickReleased.rawInput.z) < 1e-6, `joystick did not release ${JSON.stringify(joystickReleased.rawInput)}`);
 
-  const persisted = await cdp.evaluate(mobile.sessionId, `(() => { window.dispatchEvent(new Event("pagehide")); return window.__sharedYardV0LastEvidence?.(); })()`);
-  assert(persisted?.persistedReason === "pagehide", `last-session persistence missing ${JSON.stringify(persisted)}`);
-  assert(persisted?.uiRevision === EXPECTED_UI, `persisted UI revision drift ${persisted?.uiRevision}`);
-
+  // Preserve the live multiplayer verdict before exercising lifecycle persistence.
   const finalMobile = await cdp.evaluate(mobile.sessionId, `window.__sharedYardV0Evidence()`);
   const finalDesktop = await cdp.evaluate(desktop.sessionId, `window.__sharedYardV0Evidence()`);
   for (const [label, evidence] of [["mobile", finalMobile], ["desktop", finalDesktop]]) {
@@ -203,6 +200,11 @@ try {
     assert(evidence.metrics.guardMatches >= 1, `${label} missing exact B0`);
   }
   assert(finalDesktop.presentation.cameraPreset === "desktop-orbit", `desktop camera preset ${finalDesktop.presentation.cameraPreset}`);
+
+  // Lifecycle evidence is intentionally tested only after the live verdict has been captured.
+  const persisted = await cdp.evaluate(mobile.sessionId, `(() => { window.dispatchEvent(new Event("pagehide")); return window.__sharedYardV0LastEvidence?.(); })()`);
+  assert(persisted?.persistedReason === "pagehide", `last-session persistence missing ${JSON.stringify(persisted)}`);
+  assert(persisted?.uiRevision === EXPECTED_UI, `persisted UI revision drift ${persisted?.uiRevision}`);
 
   Object.assign(result, {
     verdict: "WORLD_V0_PLAYABLE_A1_PASS",

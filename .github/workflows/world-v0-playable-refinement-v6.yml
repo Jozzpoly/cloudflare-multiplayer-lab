@@ -37,11 +37,12 @@ jobs:
           node --check scripts/apply-world-v0-playable-refinement-v6.mjs
           node --check scripts/apply-world-v0-playable-refinement-v6-runtime.mjs
           node --check scripts/apply-world-v0-playable-refinement-v6-tests.mjs
+          node --check scripts/apply-world-v0-playable-refinement-v6-regression.mjs
 
       - name: Apply guarded v6 runtime and regression patches
         run: |
           node scripts/apply-world-v0-playable-refinement-v6-runtime.mjs
-          node scripts/apply-world-v0-playable-refinement-v6-tests.mjs
+          node scripts/apply-world-v0-playable-refinement-v6-regression.mjs
 
       - name: Verify generated syntax and bounded working-tree diff
         run: |

@@ -6,18 +6,18 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: world-v0-playable-refinement-v6
   cancel-in-progress: true
 
 jobs:
-  qualify-and-materialize:
+  qualify-materialized-v6:
     runs-on: ubuntu-24.04
     timeout-minutes: 18
     steps:
-      - name: Checkout refinement candidate
+      - name: Checkout materialized v6
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -30,21 +30,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Syntax-check refinement apparatus
-        run: |
-          node --check public/world-v0/playable-control.js
-          node --check scripts/world-v0-playable-control-smoke.mjs
-          node --check scripts/apply-world-v0-playable-refinement-v6.mjs
-          node --check scripts/apply-world-v0-playable-refinement-v6-runtime.mjs
-          node --check scripts/apply-world-v0-playable-refinement-v6-tests.mjs
-          node --check scripts/apply-world-v0-playable-refinement-v6-regression.mjs
-
-      - name: Apply guarded v6 runtime and regression patches
-        run: |
-          node scripts/apply-world-v0-playable-refinement-v6-runtime.mjs
-          node scripts/apply-world-v0-playable-refinement-v6-regression.mjs
-
-      - name: Verify generated syntax and bounded working-tree diff
+      - name: Verify materialized v6 contract and protected baseline
         run: |
           set -euo pipefail
           BASE=460e47c4053ad53d13632dc75734e57e570c0657
@@ -52,25 +38,46 @@ jobs:
           node --check public/world-v0/app.js
           node --check public/world-v0/build-contract.js
           node --check public/world-v0/playable-control.js
+          node --check scripts/world-v0-playable-control-smoke.mjs
           node --check scripts/world-v0-playable-interaction-smoke.mjs
           node --check scripts/world-v0-session-friction-smoke.mjs
           node --check scripts/world-v0-runtime-shell-smoke.mjs
           git diff --check
-          changed="$(git diff --name-only)"
-          printf '%s\n' "$changed"
-          bad="$(printf '%s\n' "$changed" | grep -Ev '^(public/world-v0/app.js|scripts/world-v0-playable-interaction-smoke.mjs|scripts/world-v0-session-friction-smoke.mjs|scripts/world-v0-runtime-shell-smoke.mjs)$' || true)"
-          if [ -n "$bad" ]; then
-            echo "Unexpected v6 generated diff:"
-            echo "$bad"
-            exit 1
-          fi
-          for required in \
-            public/world-v0/app.js \
-            scripts/world-v0-playable-interaction-smoke.mjs \
-            scripts/world-v0-session-friction-smoke.mjs \
-            scripts/world-v0-runtime-shell-smoke.mjs; do
-            printf '%s\n' "$changed" | grep -qx "$required" || { echo "Missing expected generated diff: $required"; exit 1; }
-          done
+          test -z "$(git status --porcelain --untracked-files=no)"
+          node --input-type=module <<'NODE'
+          import {
+            WORLD_V0_BROWSER_UI_REVISION,
+            WORLD_V0_CLIENT_SIM_REVISION,
+            WORLD_V0_EXPECTED_SERVER_REVISION,
+            WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          } from "./public/world-v0/build-contract.js";
+          import { WORLD_V0_PLAYABLE_CONTROL_REVISION } from "./public/world-v0/playable-control.js";
+
+          const expected = {
+            ui: "shared-yard-v0-browser-ui-v6-camera-evidence-refinement",
+            clientSim: "shared-yard-v0-browser-sim-v1",
+            server: "shared-yard-v0-authority-v1",
+            protocol: "shared-yard-v0-scheduled-input-v1",
+            guard: "shared-yard-v0-f32-state-v1",
+            sim: "shared-yard-v0-sim-579c7aa172198390",
+            control: "shared-yard-v0-playable-control-v2",
+          };
+          const actual = {
+            ui: WORLD_V0_BROWSER_UI_REVISION,
+            clientSim: WORLD_V0_CLIENT_SIM_REVISION,
+            server: WORLD_V0_EXPECTED_SERVER_REVISION,
+            protocol: WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            guard: WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            sim: WORLD_V0_EXPECTED_SIM_BUILD_ID,
+            control: WORLD_V0_PLAYABLE_CONTROL_REVISION,
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (actual[key] !== value) throw new Error(`materialized v6 ${key} drift: ${actual[key]} != ${value}`);
+          }
+          console.log("WORLD_V0_MATERIALIZED_V6_CONTRACT_PASS", JSON.stringify(actual));
+          NODE
           if ! git diff --quiet "$BASE" -- src/world-v0-shared-yard.ts src/world-v0-contract.ts src/world-v0-protocol.ts; then
             echo "V6 changed protected authority/simulation files relative to playable v5 baseline."
             git diff --stat "$BASE" -- src/world-v0-shared-yard.ts src/world-v0-contract.ts src/world-v0-protocol.ts
@@ -127,10 +134,10 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync, writeFileSync } from "node:fs";
           let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
-          chromium = chromium.replace(
-            'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";',
-            'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";',
-          );
+          const remote = 'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";';
+          const local = 'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";';
+          if (!chromium.includes(remote)) throw new Error("exact-state local-target anchor drift");
+          chromium = chromium.replace(remote, local);
           writeFileSync("scripts/.world-v0-refinement-v6-exact.mjs", chromium);
           NODE
 
@@ -162,20 +169,3 @@ jobs:
             world-v0-refinement-v6-wrangler.log
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Materialize qualified v6 generated patch
-        if: success()
-        run: |
-          git config user.name "Jozzpoly"
-          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
-          git add \
-            public/world-v0/app.js \
-            scripts/world-v0-playable-interaction-smoke.mjs \
-            scripts/world-v0-session-friction-smoke.mjs \
-            scripts/world-v0-runtime-shell-smoke.mjs
-          if git diff --cached --quiet; then
-            echo "Playable refinement v6 generated patch already materialized"
-            exit 0
-          fi
-          git commit -m "feat(world-v0): refine camera agency and evidence [runtime-qualify]"
-          git push origin HEAD:world-v0-playable-refinement-v6

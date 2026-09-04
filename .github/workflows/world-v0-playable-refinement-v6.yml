@@ -20,7 +20,7 @@ jobs:
       - name: Checkout refinement candidate
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -35,15 +35,19 @@ jobs:
           node --check public/world-v0/playable-control.js
           node --check scripts/world-v0-playable-control-smoke.mjs
           node --check scripts/apply-world-v0-playable-refinement-v6.mjs
+          node --check scripts/apply-world-v0-playable-refinement-v6-runtime.mjs
           node --check scripts/apply-world-v0-playable-refinement-v6-tests.mjs
 
       - name: Apply guarded v6 runtime and regression patches
         run: |
-          node scripts/apply-world-v0-playable-refinement-v6.mjs
+          node scripts/apply-world-v0-playable-refinement-v6-runtime.mjs
           node scripts/apply-world-v0-playable-refinement-v6-tests.mjs
 
       - name: Verify generated syntax and bounded working-tree diff
         run: |
+          set -euo pipefail
+          BASE=460e47c4053ad53d13632dc75734e57e570c0657
+          git cat-file -e "$BASE^{commit}"
           node --check public/world-v0/app.js
           node --check public/world-v0/build-contract.js
           node --check public/world-v0/playable-control.js
@@ -66,7 +70,11 @@ jobs:
             scripts/world-v0-runtime-shell-smoke.mjs; do
             printf '%s\n' "$changed" | grep -qx "$required" || { echo "Missing expected generated diff: $required"; exit 1; }
           done
-          test -z "$(git diff 460e47c4053ad53d13632dc75734e57e570c0657 --name-only -- src/world-v0-shared-yard.ts src/world-v0-contract.ts src/world-v0-protocol.ts)"
+          if ! git diff --quiet "$BASE" -- src/world-v0-shared-yard.ts src/world-v0-contract.ts src/world-v0-protocol.ts; then
+            echo "V6 changed protected authority/simulation files relative to playable v5 baseline."
+            git diff --stat "$BASE" -- src/world-v0-shared-yard.ts src/world-v0-contract.ts src/world-v0-protocol.ts
+            exit 1
+          fi
 
       - name: Falsify permissive camera math
         run: node scripts/world-v0-playable-control-smoke.mjs

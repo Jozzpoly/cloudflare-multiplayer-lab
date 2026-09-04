@@ -1,4 +1,4 @@
-name: World V0 Playable A1
+name: World V0 Playable Frontier
 
 on:
   push:
@@ -6,21 +6,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: world-v0-playable-a1
+  group: world-v0-playable-frontier
   cancel-in-progress: true
 
 jobs:
-  qualify-and-materialize:
+  qualify-playable-frontier:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 18
     steps:
-      - name: Checkout candidate branch
+      - name: Checkout playable frontier
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -30,46 +30,70 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Syntax-check playable apparatus
+      - name: Verify committed frontier and frozen authority contract
         run: |
-          node --check public/world-v0/playable-control.js
-          node --check scripts/world-v0-playable-control-smoke.mjs
-          node --check scripts/world-v0-playable-a1-smoke.mjs
-          node --check scripts/world-v0-playable-interaction-smoke.mjs
-          node --check scripts/apply-world-v0-playable-a1.mjs
-          node --check scripts/apply-world-v0-playable-regression.mjs
-
-      - name: Falsify camera-relative control math
-        run: node scripts/world-v0-playable-control-smoke.mjs
-
-      - name: Apply guarded playable patches in working tree
-        run: |
-          if grep -q 'movementMapping: "camera-relative-v1"' public/world-v0/app.js && \
-             grep -q 'shared-yard-v0-browser-ui-v4-playable-control' public/world-v0/build-contract.js; then
-            echo "A1 runtime migration already materialized; preserving exact runtime bytes"
-          else
-            node scripts/apply-world-v0-playable-a1.mjs
-          fi
-          node scripts/apply-world-v0-playable-regression.mjs
-
-      - name: Verify generated syntax and bounded diff
-        run: |
+          set -euo pipefail
+          FOUNDATION=b27de8b04c27777250c47e7e936674e0f147fdfa
+          git cat-file -e "$FOUNDATION^{commit}"
           node --check public/world-v0/app.js
           node --check public/world-v0/build-contract.js
+          node --check public/world-v0/playable-control.js
+          node --check scripts/world-v0-playable-control-smoke.mjs
+          node --check scripts/world-v0-playable-interaction-smoke.mjs
+          node --check scripts/world-v0-session-friction-smoke.mjs
           node --check scripts/world-v0-runtime-shell-smoke.mjs
           git diff --check
-          git diff --name-only
-          bad="$(git diff --name-only | grep -Ev '^(public/world-v0/app.js|public/world-v0/build-contract.js|scripts/world-v0-runtime-shell-smoke.mjs)$' || true)"
-          if [ -n "$bad" ]; then
-            echo "Unexpected playable materialization diff:"
-            echo "$bad"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          node --input-type=module <<'NODE'
+          import {
+            WORLD_V0_BROWSER_UI_REVISION,
+            WORLD_V0_CLIENT_SIM_REVISION,
+            WORLD_V0_EXPECTED_SERVER_REVISION,
+            WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          } from "./public/world-v0/build-contract.js";
+          import { WORLD_V0_PLAYABLE_CONTROL_REVISION } from "./public/world-v0/playable-control.js";
+
+          const frozen = {
+            clientSim: "shared-yard-v0-browser-sim-v1",
+            server: "shared-yard-v0-authority-v1",
+            protocol: "shared-yard-v0-scheduled-input-v1",
+            guard: "shared-yard-v0-f32-state-v1",
+            sim: "shared-yard-v0-sim-579c7aa172198390",
+          };
+          const actual = {
+            ui: WORLD_V0_BROWSER_UI_REVISION,
+            control: WORLD_V0_PLAYABLE_CONTROL_REVISION,
+            clientSim: WORLD_V0_CLIENT_SIM_REVISION,
+            server: WORLD_V0_EXPECTED_SERVER_REVISION,
+            protocol: WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            guard: WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            sim: WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          };
+          if (typeof actual.ui !== "string" || actual.ui.length < 1) throw new Error("playable UI revision missing");
+          if (typeof actual.control !== "string" || actual.control.length < 1) throw new Error("playable control revision missing");
+          for (const [key, value] of Object.entries(frozen)) {
+            if (actual[key] !== value) throw new Error(`playable frontier ${key} drift: ${actual[key]} != ${value}`);
+          }
+          console.log("WORLD_V0_PLAYABLE_FRONTIER_CONTRACT_PASS", JSON.stringify(actual));
+          NODE
+          if ! git diff --quiet "$FOUNDATION" -- src/world-v0-shared-yard.ts src/world-v0-contract.ts src/world-v0-protocol.ts; then
+            echo "Playable frontier changed frozen authority/simulation files relative to qualified Shared Yard V0."
+            git diff --stat "$FOUNDATION" -- src/world-v0-shared-yard.ts src/world-v0-contract.ts src/world-v0-protocol.ts
             exit 1
           fi
 
-      - name: Start candidate Worker/assets in local Workerd
+      - name: Falsify playable control math
+        run: node scripts/world-v0-playable-control-smoke.mjs
+
+      - name: Preserve full repository regression suite
+        run: npm run check
+
+      - name: Start frontier Worker/assets in local Workerd
         run: |
-          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playable-a1-wrangler.log 2>&1 &
-          echo $! > /tmp/world-v0-playable-a1-wrangler.pid
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playable-frontier-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-playable-frontier-wrangler.pid
           for i in {1..60}; do
             if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
               echo "local Workerd ready"
@@ -77,26 +101,32 @@ jobs:
             fi
             sleep 1
           done
-          cat world-v0-playable-a1-wrangler.log
+          cat world-v0-playable-frontier-wrangler.log
           exit 1
 
-      - name: Exercise authority baseline unchanged
+      - name: Prove authority and simulation baseline unchanged
         env:
           MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
-          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-playable-a1-authority.json
+          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-playable-frontier-authority.json
         run: node scripts/world-v0-authority-runtime-smoke.mjs
 
-      - name: Exercise isolated rendered controls
+      - name: Prove rendered playable interactions
         env:
           MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
-          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-playable-a1-evidence.json
+          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-playable-frontier-interaction.json
         run: node scripts/world-v0-playable-interaction-smoke.mjs
 
-      - name: Exercise legacy runtime-shell regression against playable contract
+      - name: Prove normal epoch end and fresh restart semantics
+        env:
+          MW_WORLD_V0_SESSION_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SESSION_OUTPUT: world-v0-playable-frontier-session.json
+        run: node scripts/world-v0-session-friction-smoke.mjs
+
+      - name: Preserve desktop and portrait runtime shell
         env:
           MW_WORLD_V0_SHELL_BASE_URL: http://127.0.0.1:8787
-          MW_WORLD_V0_SHELL_OUTPUT: world-v0-runtime-shell-evidence.json
+          MW_WORLD_V0_SHELL_OUTPUT: world-v0-playable-frontier-shell.json
         run: node scripts/world-v0-runtime-shell-smoke.mjs
 
       - name: Prepare local exact-state Chromium falsifier
@@ -104,50 +134,38 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync, writeFileSync } from "node:fs";
           let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
-          chromium = chromium.replace(
-            'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";',
-            'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";',
-          );
-          writeFileSync("scripts/.world-v0-playable-a1-exact.mjs", chromium);
+          const remote = 'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";';
+          const local = 'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";';
+          if (!chromium.includes(remote)) throw new Error("frontier exact-state local-target anchor drift");
+          chromium = chromium.replace(remote, local);
+          writeFileSync("scripts/.world-v0-playable-frontier-exact.mjs", chromium);
           NODE
 
-      - name: Preserve exact-state under camera-relative input
+      - name: Preserve exact-state causal envelope
         env:
           MW_WORLD_V0_CHROME_MODE: swangle-webgl
-          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playable-a1-exact.json
-        run: node scripts/.world-v0-playable-a1-exact.mjs
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playable-frontier-exact.json
+        run: node scripts/.world-v0-playable-frontier-exact.mjs
 
       - name: Stop local Workerd
         if: always()
         run: |
-          if [ -f /tmp/world-v0-playable-a1-wrangler.pid ]; then
-            kill "$(cat /tmp/world-v0-playable-a1-wrangler.pid)" 2>/dev/null || true
+          if [ -f /tmp/world-v0-playable-frontier-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-playable-frontier-wrangler.pid)" 2>/dev/null || true
           fi
 
-      - name: Upload playable evidence
+      - name: Upload playable frontier evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: world-v0-playable-a1-evidence-attempt-${{ github.run_attempt }}
+          name: world-v0-playable-frontier-evidence-attempt-${{ github.run_attempt }}
           path: |
-            world-v0-playable-a1-authority.json
-            world-v0-playable-a1-evidence.json
-            world-v0-playable-a1-exact.json
-            world-v0-runtime-shell-evidence.json
+            world-v0-playable-frontier-authority.json
+            world-v0-playable-frontier-interaction.json
+            world-v0-playable-frontier-session.json
+            world-v0-playable-frontier-shell.json
             world-v0-runtime-shell-*.png
-            world-v0-playable-a1-wrangler.log
+            world-v0-playable-frontier-exact.json
+            world-v0-playable-frontier-wrangler.log
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Materialize qualified playable maintenance patch
-        if: success()
-        run: |
-          git config user.name "Jozzpoly"
-          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
-          git add public/world-v0/app.js public/world-v0/build-contract.js scripts/world-v0-runtime-shell-smoke.mjs
-          if git diff --cached --quiet; then
-            echo "Playable runtime/regression patch already materialized"
-            exit 0
-          fi
-          git commit -m "test(world-v0): align playable regression shell [runtime-qualify]"
-          git push origin HEAD:world-v0-playable-frontier

@@ -105,9 +105,11 @@ function makeBody(index, count, scenario, rand, extent) {
   const targetSide = Math.max(3, Math.ceil(Math.sqrt(Math.max(1, count - 1))));
   const tx = targetIndex % targetSide;
   const tz = Math.floor(targetIndex / targetSide);
+  const jitterX = (rand() - 0.5) * 0.06;
+  const jitterZ = (rand() - 0.5) * 0.06;
   return {
     ...base,
-    position: [0.5 + tx * 0.54, 0.40 + (targetIndex % 4) * 0.18, (tz - (targetSide - 1) / 2) * 0.54],
+    position: [0.5 + tx * 0.54 + jitterX, 0.40 + (targetIndex % 4) * 0.18, (tz - (targetSide - 1) / 2) * 0.54 + jitterZ],
     halfExtents: [hx * 0.82, hy * 0.82, hz * 0.82],
     density: Math.max(1.0, density * 0.35),
     friction: 0.5,

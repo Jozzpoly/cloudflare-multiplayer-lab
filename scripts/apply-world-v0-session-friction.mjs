@@ -18,7 +18,7 @@ const joystick = document.querySelector("#joystick");
 const joystickKnob = document.querySelector("#joystick-knob");
 const copyEvidenceButton = document.querySelector("#copy-evidence");
 const metricNames = ["net", "ticks", "guard", "corrections", "rewind", "replay", "rtt", "lease", "memory", "frame"];
-const metric = Object.fromEntries(metricNames.map((name) => [name, document.querySelector(\`#m-\${name}\`)]));
+const metric = Object.fromEntries(metricNames.map((name) => [name, document.querySelector(`#m-${name}`)]));
 const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, notice, joystick, joystickKnob, copyEvidenceButton, ...Object.values(metric)];`,
 `const enterButton = document.querySelector("#enter");
 const bootStatus = document.querySelector("#boot-status");
@@ -30,13 +30,13 @@ const joystick = document.querySelector("#joystick");
 const joystickKnob = document.querySelector("#joystick-knob");
 const copyEvidenceButton = document.querySelector("#copy-evidence");
 const metricNames = ["net", "ticks", "guard", "corrections", "rewind", "replay", "rtt", "lease", "memory", "frame"];
-const metric = Object.fromEntries(metricNames.map((name) => [name, document.querySelector(\`#m-\${name}\`)]));
+const metric = Object.fromEntries(metricNames.map((name) => [name, document.querySelector(`#m-${name}`)]));
 const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, sessionActions, copyInviteButton, restartRoundButton, notice, joystick, joystickKnob, copyEvidenceButton, ...Object.values(metric)];`,
 "session DOM contract");
 
 app = replaceOnce(app,
 `function expectedWorldId() {
-  return \`shared-yard-v0-\${runKey}\`;
+  return ` + "`shared-yard-v0-${runKey}`" + `;
 }`,
 `function sessionRunKey() {
   return runKey || runInput.value.trim();
@@ -65,17 +65,17 @@ function updateSessionActions() {
 }
 
 function expectedWorldId() {
-  return \`shared-yard-v0-\${runKey}\`;
+  return ` + "`shared-yard-v0-${runKey}`" + `;
 }`,
 "session helpers");
 
 app = replaceOnce(app,
-`    networkState = \`epoch ended · \${message.reason}\`;
-    showNotice(\`Shared Yard epoch ended: \${message.reason}. Start a fresh run.\`);
+`    networkState = ` + "`epoch ended · ${message.reason}`" + `;
+    showNotice(` + "`Shared Yard epoch ended: ${message.reason}. Start a fresh run.`" + `);
     persistLastSessionEvidence("epoch-ended");
     return;`,
-`    networkState = \`epoch ended · \${message.reason}\`;
-    showNotice(\`Shared Yard round ended: \${message.reason}. Restart when ready.\`);
+`    networkState = ` + "`epoch ended · ${message.reason}`" + `;
+    showNotice(` + "`Shared Yard round ended: ${message.reason}. Restart when ready.`" + `);
     persistLastSessionEvidence("epoch-ended");
     updateProductStatus();
     return;`,
@@ -175,7 +175,7 @@ copyInviteButton.addEventListener("click", async () => {
     copyInviteButton.textContent = "Invite copied";
     setTimeout(() => { copyInviteButton.textContent = "Copy invite"; }, 1200);
   } catch {
-    console.log(\`Shared Yard invite: \${text}\`);
+    console.log(` + "`Shared Yard invite: ${text}`" + `);
     showNotice("Clipboard unavailable; invite link written to console.");
   }
 });
@@ -243,8 +243,5 @@ a1Workflow = replaceOnce(
   "future-safe A1 migration marker",
 );
 writeFileSync(a1WorkflowPath, a1Workflow);
-
-const regressionPath = "scripts/apply-world-v0-playable-regression.mjs";
-writeFileSync(regressionPath, `import { readFileSync, writeFileSync } from "node:fs";\n\nfunction replaceOptional(text, before, after, label) {\n  const count = text.split(before).length - 1;\n  if (count > 1) throw new Error(\`playable regression anchor \${label}: expected at most 1, found \${count}\`);\n  return count === 1 ? text.replace(before, after) : text;\n}\n\nconst path = "scripts/world-v0-runtime-shell-smoke.mjs";\nlet text = readFileSync(path, "utf8");\ntext = replaceOptional(text, 'const EXPECTED_UI_REVISION = "shared-yard-v0-browser-ui-v3-presence";', 'const EXPECTED_UI_REVISION = "shared-yard-v0-browser-ui-v4-playable-control";', "legacy UI revision");\ntext = replaceOptional(text, '"portrait-wide-follow"', '"portrait-orbit"', "portrait camera preset");\ntext = replaceOptional(text, '"desktop-follow"', '"desktop-orbit"', "desktop camera preset");\nif (!text.includes('cameraControlRevision === "shared-yard-v0-playable-control-v1"')) {\n  const anchor = '  assert(runtime.evidence?.presentation?.cameraPreset === expectedCamera, \\`camera preset drift \\${JSON.stringify(runtime.evidence?.presentation)}\\`);';\n  const after = anchor + '\\n  assert(runtime.evidence?.presentation?.cameraControlRevision === "shared-yard-v0-playable-control-v1", \\`camera control revision drift \\${JSON.stringify(runtime.evidence?.presentation)}\\`);\\n  assert(runtime.evidence?.presentation?.movementMapping === "camera-relative-v1", \\`movement mapping drift \\${JSON.stringify(runtime.evidence?.presentation)}\\`);\\n  assert(runtime.evidence?.runtimeFailureReason === null, \\`unexpected runtime failure reason \\${runtime.evidence?.runtimeFailureReason}\\`);';\n  if (!text.includes(anchor)) throw new Error("playable regression anchor evidence assertions missing");\n  text = text.replace(anchor, after);\n}\nwriteFileSync(path, text);\nconsole.log("WORLD_V0_PLAYABLE_REGRESSION_PATCH_APPLIED");\n`);
 
 console.log("WORLD_V0_SESSION_FRICTION_PATCH_APPLIED");

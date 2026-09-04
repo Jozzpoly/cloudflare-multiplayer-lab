@@ -1,0 +1,44 @@
+name: World V0 Capacity SP1B0 Allocation Probe
+
+on:
+  push:
+    branches: [world-v0-capacity-sp1b0-allocation]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-capacity-sp1b0-allocation
+  cancel-in-progress: true
+
+jobs:
+  recording-allocation-observability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax-check allocation probe
+        run: node --check scripts/world-v0-recording-allocation-probe.mjs
+
+      - name: Probe fresh-instance recording allocation
+        run: node scripts/world-v0-recording-allocation-probe.mjs | tee world-v0-recording-allocation-probe.json
+
+      - name: Upload SP1B0 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-capacity-sp1b0-allocation-attempt-${{ github.run_attempt }}
+          path: world-v0-recording-allocation-probe.json
+          if-no-files-found: error
+          retention-days: 14

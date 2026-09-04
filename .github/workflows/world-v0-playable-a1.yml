@@ -30,26 +30,35 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Syntax-check A1 apparatus
+      - name: Syntax-check playable apparatus
         run: |
           node --check public/world-v0/playable-control.js
           node --check scripts/world-v0-playable-control-smoke.mjs
           node --check scripts/world-v0-playable-a1-smoke.mjs
           node --check scripts/apply-world-v0-playable-a1.mjs
+          node --check scripts/apply-world-v0-playable-regression.mjs
 
       - name: Falsify camera-relative control math
         run: node scripts/world-v0-playable-control-smoke.mjs
 
-      - name: Apply guarded A1 runtime patch in working tree
-        run: node scripts/apply-world-v0-playable-a1.mjs
+      - name: Apply guarded playable patches in working tree
+        run: |
+          node scripts/apply-world-v0-playable-a1.mjs
+          node scripts/apply-world-v0-playable-regression.mjs
 
-      - name: Verify generated runtime syntax and bounded diff
+      - name: Verify generated syntax and bounded diff
         run: |
           node --check public/world-v0/app.js
           node --check public/world-v0/build-contract.js
+          node --check scripts/world-v0-runtime-shell-smoke.mjs
           git diff --check
           git diff --name-only
-          test "$(git diff --name-only | sort | tr '\n' ' ')" = "public/world-v0/app.js public/world-v0/build-contract.js "
+          bad="$(git diff --name-only | grep -Ev '^(public/world-v0/app.js|public/world-v0/build-contract.js|scripts/world-v0-runtime-shell-smoke.mjs)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected playable materialization diff:"
+            echo "$bad"
+            exit 1
+          fi
 
       - name: Start candidate Worker/assets in local Workerd
         run: |
@@ -78,6 +87,12 @@ jobs:
           MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-playable-a1-evidence.json
         run: node scripts/world-v0-playable-a1-smoke.mjs
 
+      - name: Exercise legacy runtime-shell regression against playable contract
+        env:
+          MW_WORLD_V0_SHELL_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SHELL_OUTPUT: world-v0-runtime-shell-evidence.json
+        run: node scripts/world-v0-runtime-shell-smoke.mjs
+
       - name: Prepare local exact-state Chromium falsifier
         run: |
           node --input-type=module <<'NODE'
@@ -103,7 +118,7 @@ jobs:
             kill "$(cat /tmp/world-v0-playable-a1-wrangler.pid)" 2>/dev/null || true
           fi
 
-      - name: Upload A1 evidence
+      - name: Upload playable evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -112,19 +127,21 @@ jobs:
             world-v0-playable-a1-authority.json
             world-v0-playable-a1-evidence.json
             world-v0-playable-a1-exact.json
+            world-v0-runtime-shell-evidence.json
+            world-v0-runtime-shell-*.png
             world-v0-playable-a1-wrangler.log
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Materialize qualified A1 runtime patch
+      - name: Materialize qualified playable maintenance patch
         if: success()
         run: |
           git config user.name "Jozzpoly"
           git config user.email "100104127+Jozzpoly@users.noreply.github.com"
-          git add public/world-v0/app.js public/world-v0/build-contract.js
+          git add public/world-v0/app.js public/world-v0/build-contract.js scripts/world-v0-runtime-shell-smoke.mjs
           if git diff --cached --quiet; then
-            echo "A1 runtime patch already materialized"
+            echo "Playable runtime/regression patch already materialized"
             exit 0
           fi
-          git commit -m "feat(world-v0): make Shared Yard controls playable [runtime-qualify]"
+          git commit -m "test(world-v0): align playable regression shell [runtime-qualify]"
           git push origin HEAD:world-v0-playable-frontier

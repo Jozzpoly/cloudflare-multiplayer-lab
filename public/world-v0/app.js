@@ -39,13 +39,16 @@ const callsignInput = document.querySelector("#callsign");
 const runInput = document.querySelector("#run");
 const enterButton = document.querySelector("#enter");
 const bootStatus = document.querySelector("#boot-status");
+const sessionActions = document.querySelector("#session-actions");
+const copyInviteButton = document.querySelector("#copy-invite");
+const restartRoundButton = document.querySelector("#restart-round");
 const notice = document.querySelector("#notice");
 const joystick = document.querySelector("#joystick");
 const joystickKnob = document.querySelector("#joystick-knob");
 const copyEvidenceButton = document.querySelector("#copy-evidence");
 const metricNames = ["net", "ticks", "guard", "corrections", "rewind", "replay", "rtt", "lease", "memory", "frame"];
 const metric = Object.fromEntries(metricNames.map((name) => [name, document.querySelector(`#m-${name}`)]));
-const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, notice, joystick, joystickKnob, copyEvidenceButton, ...Object.values(metric)];
+const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, sessionActions, copyInviteButton, restartRoundButton, notice, joystick, joystickKnob, copyEvidenceButton, ...Object.values(metric)];
 if (required.some((value) => !value)) throw new Error("Shared Yard V0 UI incomplete");
 
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
@@ -430,6 +433,32 @@ const metrics = {
   maxFrameMs: 0,
   longFrames: 0,
 };
+
+function sessionRunKey() {
+  return runKey || runInput.value.trim();
+}
+
+function buildInviteUrl() {
+  const url = new URL(location.href);
+  url.search = "";
+  url.hash = "";
+  const key = sessionRunKey();
+  if (RUN_KEY_PATTERN.test(key)) url.searchParams.set("run", key);
+  return url.toString();
+}
+
+function canRestartRound() {
+  return !runtimeFailed && networkState.startsWith("closed") && (!socket || socket.readyState === WebSocket.CLOSED);
+}
+
+function updateSessionActions() {
+  const compact = boot.classList.contains("compact");
+  const inviteVisible = compact && (networkState === "waiting for peer" || networkState.startsWith("closed") || networkState.startsWith("epoch ended"));
+  const restartVisible = compact && canRestartRound();
+  copyInviteButton.classList.toggle("hidden", !inviteVisible);
+  restartRoundButton.classList.toggle("hidden", !restartVisible);
+  sessionActions.classList.toggle("hidden", !inviteVisible && !restartVisible);
+}
 
 function expectedWorldId() {
   return `shared-yard-v0-${runKey}`;
@@ -1179,8 +1208,9 @@ function handleMessage(message) {
   if (message.type === "world_v0_epoch_ended") {
     assertMessageIdentity(message, "epoch-ended");
     networkState = `epoch ended · ${message.reason}`;
-    showNotice(`Shared Yard epoch ended: ${message.reason}. Start a fresh run.`);
+    showNotice(`Shared Yard round ended: ${message.reason}. Restart when ready.`);
     persistLastSessionEvidence("epoch-ended");
+    updateProductStatus();
     return;
   }
   if (message.type === "world_v0_error") {
@@ -1214,8 +1244,10 @@ function connect() {
   });
   socket.addEventListener("message", (event) => {
     if (typeof event.data !== "string") return;
-    try { handleMessage(JSON.parse(event.data)); }
-    catch (error) { candidateError(error); }
+    try {
+      handleMessage(JSON.parse(event.data));
+      updateProductStatus();
+    } catch (error) { candidateError(error); }
   });
   socket.addEventListener("close", (event) => {
     playing = false;
@@ -1228,7 +1260,7 @@ function connect() {
     joystick.classList.remove("active");
     persistLastSessionEvidence("socket-close");
     updateProductStatus();
-    if (!runtimeFailed) showNotice("Shared Yard connection ended. World V0 intentionally requires a fresh epoch after disconnect.");
+    if (!runtimeFailed) showNotice("Shared Yard round ended. Restart when ready; the next round uses a fresh world epoch.");
   });
   socket.addEventListener("error", () => { networkState = "network error"; });
 }
@@ -1332,6 +1364,10 @@ function buildEvidence() {
       rawInput: rawCurrentInput(),
       worldInputPreview: currentInput(),
     },
+    session: {
+      inviteUrl: buildInviteUrl(),
+      restartAvailable: canRestartRound(),
+    },
     metrics: JSON.parse(JSON.stringify(metrics)),
     rtt: {
       samples: rttSamples.length,
@@ -1382,6 +1418,12 @@ window.__sharedYardV0LastEvidence = () => {
   }
 };
 addEventListener("pagehide", () => persistLastSessionEvidence("pagehide"));
+window.__sharedYardV0Session = () => ({
+  inviteUrl: buildInviteUrl(),
+  restartAvailable: canRestartRound(),
+  runKey: sessionRunKey(),
+  networkState,
+});
 
 function productStatusText() {
   if (runtimeFailed) return "Runtime problem · open Diagnostics";
@@ -1389,13 +1431,14 @@ function productStatusText() {
   if (networkState === "peer joined" || networkState === "both connected · ready" || networkState === "ready · awaiting start") return "Peer found · synchronizing Shared Yard";
   if (networkState.startsWith("live")) return "Shared Yard live · move · drag to look · interact";
   if (networkState === "connecting" || networkState === "syncing") return "Connecting to Shared Yard…";
-  if (networkState.startsWith("closed")) return "Connection ended · start a fresh run";
-  if (networkState.startsWith("epoch ended")) return "World epoch ended · start a fresh run";
+  if (networkState.startsWith("closed")) return "Round ended · restart when ready";
+  if (networkState.startsWith("epoch ended")) return "Round ending · preparing fresh epoch";
   if (networkState === "prediction backlog") return "Catching up…";
   return "Ready · share the same Run key with another player";
 }
 
 function updateProductStatus() {
+  updateSessionActions();
   if (!boot.classList.contains("compact")) return;
   bootTitle.textContent = "Shared Yard";
   bootStatus.textContent = productStatusText();
@@ -1438,6 +1481,11 @@ function resetProtocolState() {
   simulation = null;
   phaseAnchor = null;
   lastFrameAt = null;
+  keys.clear();
+  touchInput = zeroInput();
+  joystickPointer = null;
+  joystickKnob.style.transform = "translate(0, 0)";
+  cameraOrbit.pointerId = null;
   runtimeFailed = false;
   runtimeFailureReason = null;
   runtimeFailureAt = null;
@@ -1479,6 +1527,11 @@ function enterWorld() {
   }
   localStorage.setItem("shared-yard-v0-callsign", callsign);
   localStorage.setItem("shared-yard-v0-run", runKey);
+  const shareUrl = new URL(location.href);
+  shareUrl.search = "";
+  shareUrl.hash = "";
+  shareUrl.searchParams.set("run", runKey);
+  history.replaceState(null, "", shareUrl);
   resetProtocolState();
   clearNotice();
   playing = true;
@@ -1490,6 +1543,21 @@ function enterWorld() {
 }
 
 enterButton.addEventListener("click", enterWorld);
+copyInviteButton.addEventListener("click", async () => {
+  const text = buildInviteUrl();
+  try {
+    await navigator.clipboard.writeText(text);
+    copyInviteButton.textContent = "Invite copied";
+    setTimeout(() => { copyInviteButton.textContent = "Copy invite"; }, 1200);
+  } catch {
+    console.log(`Shared Yard invite: ${text}`);
+    showNotice("Clipboard unavailable; invite link written to console.");
+  }
+});
+restartRoundButton.addEventListener("click", () => {
+  if (!canRestartRound()) return;
+  enterWorld();
+});
 copyEvidenceButton.addEventListener("click", async () => {
   const text = JSON.stringify(buildEvidence(), null, 2);
   try {

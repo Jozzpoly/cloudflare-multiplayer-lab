@@ -9,7 +9,7 @@ const PAGE_URL = `${BASE}/world-v0/`;
 const DEBUG_PORT = 9556;
 const TIMEOUT_MS = 30_000;
 const OUTPUT = process.env.MW_WORLD_V0_PLAYABLE_OUTPUT || "world-v0-playable-a1-evidence.json";
-const EXPECTED_UI = "shared-yard-v0-browser-ui-v4-playable-control";
+const EXPECTED_UI = "shared-yard-v0-browser-ui-v5-session-friction";
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }

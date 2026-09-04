@@ -8,7 +8,7 @@ const PAGE_URL = `${BASE}/world-v0/`;
 const DEBUG_PORT = 9444;
 const TIMEOUT_MS = 30_000;
 const OUTPUT = process.env.MW_WORLD_V0_SHELL_OUTPUT || "world-v0-runtime-shell-evidence.json";
-const EXPECTED_UI_REVISION = "shared-yard-v0-browser-ui-v3-presence";
+const EXPECTED_UI_REVISION = "shared-yard-v0-browser-ui-v4-playable-control";
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
@@ -160,6 +160,9 @@ function assertLivePresence(runtime, expectedCamera) {
   assert(runtime.evidence?.presentation?.remotePresence === "PEER", `remote presence missing ${JSON.stringify(runtime.evidence?.presentation)}`);
   assert(runtime.evidence?.presentation?.spatialCueCount === 6, `spatial cue contract drift ${JSON.stringify(runtime.evidence?.presentation)}`);
   assert(runtime.evidence?.presentation?.cameraPreset === expectedCamera, `camera preset drift ${JSON.stringify(runtime.evidence?.presentation)}`);
+  assert(runtime.evidence?.presentation?.cameraControlRevision === "shared-yard-v0-playable-control-v1", `camera control revision drift ${JSON.stringify(runtime.evidence?.presentation)}`);
+  assert(runtime.evidence?.presentation?.movementMapping === "camera-relative-v1", `movement mapping drift ${JSON.stringify(runtime.evidence?.presentation)}`);
+  assert(runtime.evidence?.runtimeFailureReason === null, `unexpected runtime failure reason ${runtime.evidence?.runtimeFailureReason}`);
   assert(runtime.evidence?.metrics?.guardMismatches === 0, `state guard mismatch ${JSON.stringify(runtime.evidence?.metrics?.firstStateMismatch)}`);
   assert((runtime.evidence?.metrics?.guardMatches || 0) >= 1, `B(0) exact guard not observed ${runtime.evidence?.metrics?.guardMatches}`);
 }
@@ -261,8 +264,8 @@ try {
   await waitFor(cdp, peer.sessionId, liveReady, "desktop Shared Yard live presence");
   const primaryLive = await readRuntime(cdp, primary.sessionId);
   const peerLive = await readRuntime(cdp, peer.sessionId);
-  assertLivePresence(primaryLive, "portrait-wide-follow");
-  assertLivePresence(peerLive, "desktop-follow");
+  assertLivePresence(primaryLive, "portrait-orbit");
+  assertLivePresence(peerLive, "desktop-orbit");
   screenshots.mobileLive = await screenshot(cdp, primary.sessionId, "world-v0-runtime-shell-mobile-live.png");
   screenshots.desktopLive = await screenshot(cdp, peer.sessionId, "world-v0-runtime-shell-desktop-live.png");
 

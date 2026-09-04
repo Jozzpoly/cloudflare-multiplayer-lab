@@ -1,0 +1,130 @@
+name: World V0 Playable A1
+
+on:
+  push:
+    branches: [world-v0-playable-frontier]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-playable-a1
+  cancel-in-progress: true
+
+jobs:
+  qualify-and-materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout candidate branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax-check A1 apparatus
+        run: |
+          node --check public/world-v0/playable-control.js
+          node --check scripts/world-v0-playable-control-smoke.mjs
+          node --check scripts/world-v0-playable-a1-smoke.mjs
+          node --check scripts/apply-world-v0-playable-a1.mjs
+
+      - name: Falsify camera-relative control math
+        run: node scripts/world-v0-playable-control-smoke.mjs
+
+      - name: Apply guarded A1 runtime patch in working tree
+        run: node scripts/apply-world-v0-playable-a1.mjs
+
+      - name: Verify generated runtime syntax and bounded diff
+        run: |
+          node --check public/world-v0/app.js
+          node --check public/world-v0/build-contract.js
+          git diff --check
+          git diff --name-only
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = "public/world-v0/app.js public/world-v0/build-contract.js "
+
+      - name: Start candidate Worker/assets in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playable-a1-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-playable-a1-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "local Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-playable-a1-wrangler.log
+          exit 1
+
+      - name: Exercise authority baseline unchanged
+        env:
+          MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
+          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-playable-a1-authority.json
+        run: node scripts/world-v0-authority-runtime-smoke.mjs
+
+      - name: Exercise rendered orbit camera and mobile joystick
+        env:
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-playable-a1-evidence.json
+        run: node scripts/world-v0-playable-a1-smoke.mjs
+
+      - name: Prepare local exact-state Chromium falsifier
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
+          chromium = chromium.replace(
+            'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";',
+            'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";',
+          );
+          writeFileSync("scripts/.world-v0-playable-a1-exact.mjs", chromium);
+          NODE
+
+      - name: Preserve exact-state under camera-relative input
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playable-a1-exact.json
+        run: node scripts/.world-v0-playable-a1-exact.mjs
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-playable-a1-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-playable-a1-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload A1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playable-a1-evidence-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-playable-a1-authority.json
+            world-v0-playable-a1-evidence.json
+            world-v0-playable-a1-exact.json
+            world-v0-playable-a1-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Materialize qualified A1 runtime patch
+        if: success()
+        run: |
+          git config user.name "Jozzpoly"
+          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
+          git add public/world-v0/app.js public/world-v0/build-contract.js
+          if git diff --cached --quiet; then
+            echo "A1 runtime patch already materialized"
+            exit 0
+          fi
+          git commit -m "feat(world-v0): make Shared Yard controls playable [runtime-qualify]"
+          git push origin HEAD:world-v0-playable-frontier

@@ -13,6 +13,13 @@ import {
   firstWorldV0StateDifference,
   packWorldV0State,
 } from "./state-guard.js";
+import {
+  WORLD_V0_PLAYABLE_CONTROL_REVISION,
+  cameraRelativeInput,
+  clampOrbit,
+  orbitFromOffset,
+  orbitOffset,
+} from "./playable-control.js";
 
 const FIXED_DT = 1 / 60;
 const STEP_MS = 1000 / 60;
@@ -80,6 +87,8 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "hi
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.domElement.style.touchAction = "none";
+renderer.domElement.style.overscrollBehavior = "none";
 viewport.append(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xb9d7e5, 0x27313a, 2));
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -93,6 +102,38 @@ let selfMesh = null;
 let remoteMesh = null;
 let visualContractBuiltFor = null;
 let spatialCueCount = 0;
+
+const CAMERA_DEFAULT_OFFSETS = {
+  desktop: [7.4, 6.3, 8.7],
+  portrait: [9.4, 8.4, 11.8],
+};
+const cameraOrbit = {
+  yaw: 0,
+  pitch: 0,
+  distance: 0,
+  userAdjusted: false,
+  pointerId: null,
+  lastX: 0,
+  lastY: 0,
+};
+
+function portraitViewport() {
+  return innerWidth <= 720 && innerHeight > innerWidth;
+}
+
+function defaultCameraOrbit() {
+  return orbitFromOffset(portraitViewport() ? CAMERA_DEFAULT_OFFSETS.portrait : CAMERA_DEFAULT_OFFSETS.desktop);
+}
+
+function resetCameraOrbit() {
+  const next = defaultCameraOrbit();
+  cameraOrbit.yaw = next.yaw;
+  cameraOrbit.pitch = next.pitch;
+  cameraOrbit.distance = next.distance;
+  cameraOrbit.userAdjusted = false;
+}
+
+resetCameraOrbit();
 
 function clearWorldVisuals() {
   while (worldVisualRoot.children.length) worldVisualRoot.remove(worldVisualRoot.children[0]);
@@ -273,10 +314,14 @@ function keyboardInput() {
   return length > 1 ? { x: x / length, z: z / length } : { x, z };
 }
 
-function currentInput() {
+function rawCurrentInput() {
   const keyboard = keyboardInput();
   if (Math.hypot(keyboard.x, keyboard.z) > 0.01) return keyboard;
   return { ...touchInput };
+}
+
+function currentInput() {
+  return cameraRelativeInput(rawCurrentInput(), cameraOrbit.yaw);
 }
 
 function sameInput(a, c) {
@@ -329,6 +374,8 @@ function formatBytes(value) {
 
 let playing = false;
 let runtimeFailed = false;
+let runtimeFailureReason = null;
+let runtimeFailureAt = null;
 let socket = null;
 let networkState = "idle";
 let callsign = "";
@@ -1133,6 +1180,7 @@ function handleMessage(message) {
     assertMessageIdentity(message, "epoch-ended");
     networkState = `epoch ended · ${message.reason}`;
     showNotice(`Shared Yard epoch ended: ${message.reason}. Start a fresh run.`);
+    persistLastSessionEvidence("epoch-ended");
     return;
   }
   if (message.type === "world_v0_error") {
@@ -1146,9 +1194,12 @@ function candidateError(error) {
   runtimeFailed = true;
   playing = false;
   const text = error instanceof Error ? error.message : String(error);
+  runtimeFailureReason = text;
+  runtimeFailureAt = new Date().toISOString();
   networkState = "FOUNDATION / runtime failure";
   showNotice(text);
   console.error(error);
+  persistLastSessionEvidence("runtime-failure");
   try { socket?.close(1011, "world_v0_candidate_error"); } catch { /* close race */ }
 }
 
@@ -1175,6 +1226,7 @@ function connect() {
     pendingPings.clear();
     networkState = `closed ${event.code}`;
     joystick.classList.remove("active");
+    persistLastSessionEvidence("socket-close");
     updateProductStatus();
     if (!runtimeFailed) showNotice("Shared Yard connection ended. World V0 intentionally requires a fresh epoch after disconnect.");
   });
@@ -1226,15 +1278,15 @@ function syncMeshes() {
 }
 
 function cameraPresetName() {
-  return innerWidth <= 720 && innerHeight > innerWidth ? "portrait-wide-follow" : "desktop-follow";
+  return portraitViewport() ? "portrait-orbit" : "desktop-orbit";
 }
 
 function updateCamera() {
   if (!selfMesh) return;
-  const portrait = cameraPresetName() === "portrait-wide-follow";
-  const offset = portrait ? [9.4, 8.4, 11.8] : [7.4, 6.3, 8.7];
-  camera.position.set(selfMesh.position.x + offset[0], selfMesh.position.y + offset[1], selfMesh.position.z + offset[2]);
-  camera.lookAt(selfMesh.position.x, selfMesh.position.y + 0.42, selfMesh.position.z);
+  const offset = orbitOffset(cameraOrbit);
+  const targetY = selfMesh.position.y + 0.42;
+  camera.position.set(selfMesh.position.x + offset[0], targetY + offset[1], selfMesh.position.z + offset[2]);
+  camera.lookAt(selfMesh.position.x, targetY, selfMesh.position.z);
 }
 
 function recordFrame(now) {
@@ -1259,6 +1311,8 @@ function buildEvidence() {
     runKey,
     networkState,
     runtimeFailed,
+    runtimeFailureReason,
+    runtimeFailureAt,
     localBoundaryTick: localState?.boundaryTick ?? null,
     protocolStartTick,
     presentation: {
@@ -1267,6 +1321,16 @@ function buildEvidence() {
       spatialCueCount,
       cameraPreset: cameraPresetName(),
       cameraFov: camera.fov,
+      cameraControlRevision: WORLD_V0_PLAYABLE_CONTROL_REVISION,
+      cameraOrbit: {
+        yaw: cameraOrbit.yaw,
+        pitch: cameraOrbit.pitch,
+        distance: cameraOrbit.distance,
+        userAdjusted: cameraOrbit.userAdjusted,
+      },
+      movementMapping: "camera-relative-v1",
+      rawInput: rawCurrentInput(),
+      worldInputPreview: currentInput(),
     },
     metrics: JSON.parse(JSON.stringify(metrics)),
     rtt: {
@@ -1292,13 +1356,38 @@ function buildEvidence() {
   };
 }
 
+function persistLastSessionEvidence(reason) {
+  try {
+    const payload = { ...buildEvidence(), persistedReason: reason };
+    localStorage.setItem("shared-yard-v0-last-evidence", JSON.stringify(payload));
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 window.__sharedYardV0Evidence = buildEvidence;
+window.__sharedYardV0PlayableControl = () => ({
+  revision: WORLD_V0_PLAYABLE_CONTROL_REVISION,
+  cameraOrbit: { ...cameraOrbit },
+  rawInput: rawCurrentInput(),
+  worldInput: currentInput(),
+});
+window.__sharedYardV0LastEvidence = () => {
+  try {
+    const raw = localStorage.getItem("shared-yard-v0-last-evidence");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+addEventListener("pagehide", () => persistLastSessionEvidence("pagehide"));
 
 function productStatusText() {
   if (runtimeFailed) return "Runtime problem · open Diagnostics";
   if (networkState === "waiting for peer") return "Waiting for peer · use the same Run key";
   if (networkState === "peer joined" || networkState === "both connected · ready" || networkState === "ready · awaiting start") return "Peer found · synchronizing Shared Yard";
-  if (networkState.startsWith("live")) return "Shared Yard live · move and interact";
+  if (networkState.startsWith("live")) return "Shared Yard live · move · drag to look · interact";
   if (networkState === "connecting" || networkState === "syncing") return "Connecting to Shared Yard…";
   if (networkState.startsWith("closed")) return "Connection ended · start a fresh run";
   if (networkState.startsWith("epoch ended")) return "World epoch ended · start a fresh run";
@@ -1350,6 +1439,8 @@ function resetProtocolState() {
   phaseAnchor = null;
   lastFrameAt = null;
   runtimeFailed = false;
+  runtimeFailureReason = null;
+  runtimeFailureAt = null;
   Object.assign(metrics, {
     corrections: 0,
     latestRewind: 0,
@@ -1431,7 +1522,7 @@ function updateJoystick(event) {
   let dy = (event.clientY - cy) / (rect.height * 0.36);
   const length = Math.hypot(dx, dy);
   if (length > 1) { dx /= length; dy /= length; }
-  touchInput = { x: dx, z: -dy };
+  touchInput = { x: dx, z: dy };
   joystickKnob.style.transform = `translate(${dx * 34}px, ${dy * 34}px)`;
 }
 
@@ -1453,8 +1544,66 @@ function releaseJoystick(event) {
 joystick.addEventListener("pointerup", releaseJoystick);
 joystick.addEventListener("pointercancel", releaseJoystick);
 
+function beginCameraPointer(event) {
+  if (!playing || cameraOrbit.pointerId !== null) return;
+  if (event.pointerType === "mouse" && event.button !== 0 && event.button !== 2) return;
+  cameraOrbit.pointerId = event.pointerId;
+  cameraOrbit.lastX = event.clientX;
+  cameraOrbit.lastY = event.clientY;
+  try { renderer.domElement.setPointerCapture(event.pointerId); } catch { /* browser may not expose capture */ }
+  event.preventDefault();
+}
+
+function moveCameraPointer(event) {
+  if (event.pointerId !== cameraOrbit.pointerId) return;
+  const dx = event.clientX - cameraOrbit.lastX;
+  const dy = event.clientY - cameraOrbit.lastY;
+  cameraOrbit.lastX = event.clientX;
+  cameraOrbit.lastY = event.clientY;
+  const next = clampOrbit({
+    yaw: cameraOrbit.yaw - dx * 0.006,
+    pitch: cameraOrbit.pitch + dy * 0.004,
+    distance: cameraOrbit.distance,
+  });
+  cameraOrbit.yaw = next.yaw;
+  cameraOrbit.pitch = next.pitch;
+  cameraOrbit.distance = next.distance;
+  cameraOrbit.userAdjusted = true;
+  event.preventDefault();
+}
+
+function endCameraPointer(event) {
+  if (event.pointerId !== cameraOrbit.pointerId) return;
+  cameraOrbit.pointerId = null;
+  try { renderer.domElement.releasePointerCapture(event.pointerId); } catch { /* capture may already be gone */ }
+  event.preventDefault();
+}
+
+renderer.domElement.addEventListener("pointerdown", beginCameraPointer);
+renderer.domElement.addEventListener("pointermove", moveCameraPointer);
+renderer.domElement.addEventListener("pointerup", endCameraPointer);
+renderer.domElement.addEventListener("pointercancel", endCameraPointer);
+renderer.domElement.addEventListener("contextmenu", (event) => event.preventDefault());
+renderer.domElement.addEventListener("wheel", (event) => {
+  if (!playing) return;
+  const next = clampOrbit({
+    yaw: cameraOrbit.yaw,
+    pitch: cameraOrbit.pitch,
+    distance: cameraOrbit.distance + event.deltaY * 0.012,
+  });
+  cameraOrbit.distance = next.distance;
+  cameraOrbit.userAdjusted = true;
+  event.preventDefault();
+}, { passive: false });
+renderer.domElement.addEventListener("dblclick", (event) => {
+  if (!playing) return;
+  resetCameraOrbit();
+  event.preventDefault();
+});
+
 function resize() {
-  const portrait = innerWidth <= 720 && innerHeight > innerWidth;
+  const portrait = portraitViewport();
+  if (!cameraOrbit.userAdjusted) resetCameraOrbit();
   camera.aspect = innerWidth / innerHeight;
   camera.fov = portrait ? 62 : 55;
   camera.updateProjectionMatrix();

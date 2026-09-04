@@ -27,8 +27,15 @@ for (const scenario of WORLD_V0_STRESS_SCENARIOS) {
   const changedSeed = generateStressManifest({ ...args, seed: args.seed + 1 });
   const changedCount = generateStressManifest({ ...args, count: 97 });
   assert(changedCount.phenomenonId !== a.phenomenonId, `${scenario}: count change did not change phenomenonId`);
-  if (scenario !== "quiet-width") {
-    assert(changedSeed.phenomenonId !== a.phenomenonId, `${scenario}: seed change did not change phenomenonId`);
+
+  if (scenario === "quiet-width") {
+    assert(a.seed === 0 && changedSeed.seed === 0, "quiet-width: dead input seed was not canonicalized to zero");
+    assert(changedSeed.phenomenonId === a.phenomenonId, "quiet-width: dead seed changed phenomenonId");
+    assert(stressChaosDNA(changedSeed) === stressChaosDNA(a), "quiet-width: dead seed changed Chaos DNA");
+    assert(JSON.stringify(changedSeed) === JSON.stringify(a), "quiet-width: dead seed changed physical manifest");
+  } else {
+    assert(changedSeed.phenomenonId !== a.phenomenonId, `${scenario}: live seed change did not change phenomenonId`);
+    assert(stressChaosDNA(changedSeed) !== stressChaosDNA(a), `${scenario}: live seed change did not change Chaos DNA`);
   }
 
   if (scenario === "wake-churn") {
@@ -41,6 +48,7 @@ for (const scenario of WORLD_V0_STRESS_SCENARIOS) {
   evidence.scenarios[scenario] = {
     phenomenonId: a.phenomenonId,
     chaosDNA: stressChaosDNA(a),
+    effectiveSeed: a.seed,
     bodies: a.bodies.length,
     events: a.events.length,
     changedSeedId: changedSeed.phenomenonId,

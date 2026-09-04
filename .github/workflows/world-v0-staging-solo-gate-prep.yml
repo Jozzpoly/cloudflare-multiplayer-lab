@@ -1,0 +1,109 @@
+name: World V0 Staging Solo Gate Prep
+
+on:
+  push:
+    branches: [world-v0-staging-solo-gate-prep]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Patch delivery workflow only
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/world-v0-playable-staging-remote.yml')
+          t = p.read_text()
+
+          syntax_anchor = '          node --check scripts/world-v0-chromium-cloud-smoke.mjs\n'
+          syntax_extra = (
+            '          node --check public/world-v0/solo-inspection-core.js\n'
+            '          node --check public/world-v0/solo-inspection.js\n'
+            '          node --check scripts/world-v0-solo-inspection-core-smoke.mjs\n'
+            '          node --check scripts/world-v0-solo-inspection-browser-smoke.mjs\n'
+            '          node scripts/world-v0-solo-inspection-core-smoke.mjs\n'
+          )
+          if syntax_extra not in t:
+            if syntax_anchor not in t: raise SystemExit('syntax anchor missing')
+            t = t.replace(syntax_anchor, syntax_anchor + syntax_extra, 1)
+
+          shell_block = '''      - name: Prove remote desktop and portrait shell
+        id: shell
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_SHELL_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_SHELL_OUTPUT: world-v0-playable-staging-shell.json
+        run: node scripts/world-v0-runtime-shell-smoke.mjs
+
+'''
+          solo_block = '''      - name: Prove remote one-browser real-authority Inspect solo
+        id: solo
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-playable-staging-solo-inspection.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
+
+'''
+          if solo_block not in t:
+            if shell_block not in t: raise SystemExit('shell block anchor missing')
+            t = t.replace(shell_block, shell_block + solo_block, 1)
+
+          old_gate = '''        env:
+          INTERACTION: ${{ steps.interaction.outcome }}
+          SESSION: ${{ steps.session.outcome }}
+          SHELL: ${{ steps.shell.outcome }}
+        run: |
+          echo "interaction=${INTERACTION} session=${SESSION} shell=${SHELL}"
+          test "${INTERACTION}" = success
+          test "${SESSION}" = success
+          test "${SHELL}" = success
+'''
+          new_gate = '''        env:
+          INTERACTION: ${{ steps.interaction.outcome }}
+          SESSION: ${{ steps.session.outcome }}
+          SHELL: ${{ steps.shell.outcome }}
+          SOLO: ${{ steps.solo.outcome }}
+        run: |
+          echo "interaction=${INTERACTION} session=${SESSION} shell=${SHELL} solo=${SOLO}"
+          test "${INTERACTION}" = success
+          test "${SESSION}" = success
+          test "${SHELL}" = success
+          test "${SOLO}" = success
+'''
+          if new_gate not in t:
+            if old_gate not in t: raise SystemExit('presentation gate anchor missing')
+            t = t.replace(old_gate, new_gate, 1)
+
+          artifact_anchor = '            world-v0-playable-staging-shell.json\n'
+          artifact_extra = '            world-v0-playable-staging-solo-inspection.json\n'
+          if artifact_extra not in t:
+            if artifact_anchor not in t: raise SystemExit('artifact anchor missing')
+            t = t.replace(artifact_anchor, artifact_anchor + artifact_extra, 1)
+
+          p.write_text(t)
+          PY
+      - name: Verify exact bounded diff
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(git diff --name-only)" = ".github/workflows/world-v0-playable-staging-remote.yml"
+          grep -Fq 'Prove remote one-browser real-authority Inspect solo' .github/workflows/world-v0-playable-staging-remote.yml
+          grep -Fq 'test "${SOLO}" = success' .github/workflows/world-v0-playable-staging-remote.yml
+          grep -Fq 'world-v0-playable-staging-solo-inspection.json' .github/workflows/world-v0-playable-staging-remote.yml
+      - name: Materialize verified workflow blob
+        run: |
+          git config user.name "Jozzpoly"
+          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
+          git add .github/workflows/world-v0-playable-staging-remote.yml
+          git commit -m "ci(world-v0): require remote Inspect solo gate"
+          git push origin HEAD:world-v0-staging-solo-gate-prep

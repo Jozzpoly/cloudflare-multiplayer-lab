@@ -11,11 +11,26 @@ class HistoryModel {
     this.boundaryTick = 0;
     this.segments = [];
     this.active = { startTick: 0, frames: 0 };
-    this.maxFinalizedSegments = 0;
+    this.maxTransientFinalizedSegments = 0;
+    this.maxRetainedFinalizedSegments = 0;
   }
 
   cloneSegment(segment) {
     return { ...segment };
+  }
+
+  observeTransient() {
+    this.maxTransientFinalizedSegments = Math.max(
+      this.maxTransientFinalizedSegments,
+      this.segments.length,
+    );
+  }
+
+  observeRetained() {
+    this.maxRetainedFinalizedSegments = Math.max(
+      this.maxRetainedFinalizedSegments,
+      this.segments.length,
+    );
   }
 
   finalizeActive() {
@@ -31,7 +46,7 @@ class HistoryModel {
     };
     this.segments.push(segment);
     this.active = null;
-    this.maxFinalizedSegments = Math.max(this.maxFinalizedSegments, this.segments.length);
+    this.observeTransient();
     return segment;
   }
 
@@ -45,7 +60,7 @@ class HistoryModel {
       if (this.policy === "strict") return segment.validEndTick > cutoff;
       return segment.validEndTick >= cutoff;
     });
-    this.maxFinalizedSegments = Math.max(this.maxFinalizedSegments, this.segments.length);
+    this.observeRetained();
   }
 
   step({ trim = true } = {}) {
@@ -132,10 +147,19 @@ function runSchedule(policy, schedule, endTick = 160) {
       model.correction(targetTick);
       const after = model.missingTargets();
       assert(after.length === 0, `coverage hole after correction policy=${policy} B(${model.boundaryTick}) target=${targetTick} missing=${after.join(",")}`);
-      trace.push({ boundaryTick: model.boundaryTick, targetTick, finalizedSegments: model.segments.length });
+      trace.push({
+        boundaryTick: model.boundaryTick,
+        targetTick,
+        finalizedSegments: model.segments.length,
+      });
     }
   }
-  return { policy, maxFinalizedSegments: model.maxFinalizedSegments, trace };
+  return {
+    policy,
+    maxTransientFinalizedSegments: model.maxTransientFinalizedSegments,
+    maxRetainedFinalizedSegments: model.maxRetainedFinalizedSegments,
+    trace,
+  };
 }
 
 function xorshift32(seed) {
@@ -154,8 +178,18 @@ for (let boundary = RETAIN_TICKS; boundary <= 96; boundary += 1) {
     const schedule = new Map([[boundary, [target]]]);
     const inclusive = runSchedule("inclusive", schedule, 112);
     const strict = runSchedule("strict", schedule, 112);
-    assert(strict.maxFinalizedSegments <= inclusive.maxFinalizedSegments, `strict retained more than inclusive at B(${boundary}) target=${target}`);
-    exhaustiveCases.push({ boundary, target, inclusiveMax: inclusive.maxFinalizedSegments, strictMax: strict.maxFinalizedSegments });
+    assert(
+      strict.maxRetainedFinalizedSegments <= inclusive.maxRetainedFinalizedSegments,
+      `strict retained more steady-state history than inclusive at B(${boundary}) target=${target}`,
+    );
+    exhaustiveCases.push({
+      boundary,
+      target,
+      inclusiveRetainedMax: inclusive.maxRetainedFinalizedSegments,
+      strictRetainedMax: strict.maxRetainedFinalizedSegments,
+      inclusiveTransientMax: inclusive.maxTransientFinalizedSegments,
+      strictTransientMax: strict.maxTransientFinalizedSegments,
+    });
   }
 }
 
@@ -172,14 +206,34 @@ for (let seed = 1; seed <= 512; seed += 1) {
   }
   const inclusive = runSchedule("inclusive", schedule, 240);
   const strict = runSchedule("strict", schedule, 240);
-  assert(strict.maxFinalizedSegments <= inclusive.maxFinalizedSegments, `strict retained more than inclusive random seed=${seed}`);
-  randomCases.push({ seed, corrections: [...schedule.values()].reduce((sum, list) => sum + list.length, 0), inclusiveMax: inclusive.maxFinalizedSegments, strictMax: strict.maxFinalizedSegments });
+  assert(
+    strict.maxRetainedFinalizedSegments <= inclusive.maxRetainedFinalizedSegments,
+    `strict retained more steady-state history than inclusive random seed=${seed}`,
+  );
+  randomCases.push({
+    seed,
+    corrections: [...schedule.values()].reduce((sum, list) => sum + list.length, 0),
+    inclusiveRetainedMax: inclusive.maxRetainedFinalizedSegments,
+    strictRetainedMax: strict.maxRetainedFinalizedSegments,
+    inclusiveTransientMax: inclusive.maxTransientFinalizedSegments,
+    strictTransientMax: strict.maxTransientFinalizedSegments,
+  });
 }
 
 const baselineInclusive = runSchedule("inclusive", new Map(), 160);
 const baselineStrict = runSchedule("strict", new Map(), 160);
-assert(baselineInclusive.maxFinalizedSegments === 4, `expected inclusive baseline max 4, got ${baselineInclusive.maxFinalizedSegments}`);
-assert(baselineStrict.maxFinalizedSegments === 3, `expected strict baseline max 3, got ${baselineStrict.maxFinalizedSegments}`);
+assert(
+  baselineInclusive.maxRetainedFinalizedSegments === 4,
+  `expected inclusive retained baseline max 4, got ${baselineInclusive.maxRetainedFinalizedSegments}`,
+);
+assert(
+  baselineStrict.maxRetainedFinalizedSegments === 3,
+  `expected strict retained baseline max 3, got ${baselineStrict.maxRetainedFinalizedSegments}`,
+);
+assert(
+  baselineStrict.maxTransientFinalizedSegments === 4,
+  `expected strict transient rotation peak 4, got ${baselineStrict.maxTransientFinalizedSegments}`,
+);
 
 const verdict = {
   verdict: "WORLD_V0_HISTORY_RETENTION_STRICT_COVERAGE_PASS",
@@ -191,10 +245,14 @@ const verdict = {
   exhaustiveSingleCorrectionCases: exhaustiveCases.length,
   deterministicRandomSchedules: randomCases.length,
   baseline: {
-    inclusiveMaxFinalizedSegments: baselineInclusive.maxFinalizedSegments,
-    strictMaxFinalizedSegments: baselineStrict.maxFinalizedSegments,
-    reductionFraction: 1 - baselineStrict.maxFinalizedSegments / baselineInclusive.maxFinalizedSegments,
+    inclusiveMaxRetainedFinalizedSegments: baselineInclusive.maxRetainedFinalizedSegments,
+    strictMaxRetainedFinalizedSegments: baselineStrict.maxRetainedFinalizedSegments,
+    inclusiveMaxTransientFinalizedSegments: baselineInclusive.maxTransientFinalizedSegments,
+    strictMaxTransientFinalizedSegments: baselineStrict.maxTransientFinalizedSegments,
+    steadyStateReductionFraction:
+      1 - baselineStrict.maxRetainedFinalizedSegments / baselineInclusive.maxRetainedFinalizedSegments,
   },
+  interpretation: "retained steady-state count is measured after trim; transient rotation peak is preserved separately",
   claimBoundary: "model-level interval/coverage evidence only; no product runtime change authorized",
 };
 

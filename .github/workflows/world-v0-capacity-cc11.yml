@@ -1,8 +1,9 @@
 name: World V0 Capacity CC1.1
 
+# Legacy CC1.1 provenance workflow. Manual only. Its original `history-capacity`
+# normalizer is retained with the artifact history so the red-team correction is
+# auditable, but it must not run automatically on new capacity commits.
 on:
-  push:
-    branches: [world-v0-capacity-cartography]
   workflow_dispatch:
 
 permissions:

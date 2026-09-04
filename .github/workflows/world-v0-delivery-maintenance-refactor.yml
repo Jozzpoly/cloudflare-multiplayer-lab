@@ -1,0 +1,80 @@
+name: World V0 Delivery Maintenance Refactor
+
+on:
+  push:
+    branches: [world-v0-delivery-maintenance]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-delivery-maintenance-refactor
+  cancel-in-progress: false
+
+jobs:
+  refactor:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify classifier independently
+        run: |
+          node --check scripts/world-v0-exact-failure-classifier.mjs
+          node --check scripts/world-v0-exact-failure-classifier-smoke.mjs
+          node scripts/world-v0-exact-failure-classifier-smoke.mjs
+      - name: Replace inline policy with versioned classifier
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/world-v0-playable-staging-remote.yml')
+          text = path.read_text()
+
+          syntax_anchor = '          node --check scripts/world-v0-chromium-cloud-smoke.mjs\n'
+          syntax_extra = (
+              '          node --check scripts/world-v0-exact-failure-classifier.mjs\n'
+              '          node --check scripts/world-v0-exact-failure-classifier-smoke.mjs\n'
+              '          node scripts/world-v0-exact-failure-classifier-smoke.mjs\n'
+          )
+          if syntax_extra not in text:
+              if syntax_anchor not in text:
+                  raise SystemExit('syntax-check anchor missing')
+              text = text.replace(syntax_anchor, syntax_anchor + syntax_extra, 1)
+
+          start = text.index('      - name: Classify attempt 1 before any retry\n')
+          end = text.index('      - name: Run one same-SHA clean-starvation retry\n', start)
+          replacement = (
+              "      - name: Classify attempt 1 before any retry\n"
+              "        if: steps.exact1.outcome == 'failure'\n"
+              "        run: node scripts/world-v0-exact-failure-classifier.mjs world-v0-playable-staging-exact-attempt1.json\n\n"
+          )
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text)
+          PY
+      - name: Verify bounded workflow diff
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-exact-failure-classifier-smoke.mjs
+          git diff --check
+          changed="$(git diff --name-only)"
+          test "$changed" = ".github/workflows/world-v0-playable-staging-remote.yml"
+          grep -Fq 'run: node scripts/world-v0-exact-failure-classifier.mjs world-v0-playable-staging-exact-attempt1.json' .github/workflows/world-v0-playable-staging-remote.yml
+          if grep -Fq 'WORLD_V0_EXACT_CLEAN_STARVATION_RETRY_AUTHORIZED' .github/workflows/world-v0-playable-staging-remote.yml; then
+            echo "inline retry classifier remains in delivery workflow"
+            exit 1
+          fi
+      - name: Materialize workflow refactor
+        run: |
+          if git diff --quiet; then
+            echo "workflow classifier refactor already materialized"
+            exit 0
+          fi
+          git config user.name "Jozzpoly"
+          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
+          git add .github/workflows/world-v0-playable-staging-remote.yml
+          git commit -m "ci(world-v0): use tested exact-failure classifier"
+          git push origin HEAD:world-v0-delivery-maintenance

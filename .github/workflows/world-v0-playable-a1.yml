@@ -38,8 +38,12 @@ jobs:
           node --check public/world-v0/app.js
           node --check public/world-v0/build-contract.js
           node --check public/world-v0/playable-control.js
+          node --check public/world-v0/solo-inspection-core.js
+          node --check public/world-v0/solo-inspection.js
           node --check scripts/world-v0-playable-control-smoke.mjs
           node --check scripts/world-v0-playable-interaction-smoke.mjs
+          node --check scripts/world-v0-solo-inspection-core-smoke.mjs
+          node --check scripts/world-v0-solo-inspection-browser-smoke.mjs
           node --check scripts/world-v0-session-friction-smoke.mjs
           node --check scripts/world-v0-runtime-shell-smoke.mjs
           git diff --check
@@ -119,6 +123,9 @@ jobs:
       - name: Falsify playable control math
         run: node scripts/world-v0-playable-control-smoke.mjs
 
+      - name: Falsify Inspect solo zero-input planner
+        run: node scripts/world-v0-solo-inspection-core-smoke.mjs
+
       - name: Preserve full repository regression suite
         run: npm run check
 
@@ -148,6 +155,12 @@ jobs:
           MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-playable-frontier-interaction.json
         run: node scripts/world-v0-playable-interaction-smoke.mjs
+
+      - name: Prove one-browser real-authority Inspect solo
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-playable-frontier-solo-inspection.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
 
       - name: Prove normal epoch end and fresh restart semantics
         env:
@@ -200,6 +213,7 @@ jobs:
           path: |
             world-v0-playable-frontier-authority.json
             world-v0-playable-frontier-interaction.json
+            world-v0-playable-frontier-solo-inspection.json
             world-v0-playable-frontier-session.json
             world-v0-playable-frontier-shell.json
             world-v0-runtime-shell-*.png

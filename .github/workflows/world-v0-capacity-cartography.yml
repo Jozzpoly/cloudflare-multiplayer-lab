@@ -1,0 +1,75 @@
+name: World V0 Capacity Cartography
+
+on:
+  push:
+    branches: [world-v0-capacity-cartography]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-capacity-cartography
+  cancel-in-progress: true
+
+jobs:
+  cc1-browser-physics-history:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax-check capacity apparatus
+        run: |
+          node --check public/world-v0-capacity/app.js
+          node --check scripts/world-v0-capacity-browser-smoke.mjs
+
+      - name: Start local Worker/assets
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-capacity-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-capacity-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "local Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-capacity-wrangler.log
+          exit 1
+
+      - name: Map CC1 local physics/history envelope
+        env:
+          MW_WORLD_V0_CAPACITY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_CAPACITY_COUNTS: 16,32,64,128,256
+          MW_WORLD_V0_CAPACITY_TICKS: "180"
+          MW_WORLD_V0_CAPACITY_REPEATS: "1"
+          MW_WORLD_V0_CAPACITY_TIMEOUT_MS: "480000"
+        run: node scripts/world-v0-capacity-browser-smoke.mjs
+
+      - name: Stop local Worker
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-capacity-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-capacity-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload capacity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-capacity-cartography-cc1
+          path: |
+            world-v0-capacity-cartography-evidence.json
+            world-v0-capacity-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

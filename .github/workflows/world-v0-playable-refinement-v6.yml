@@ -84,6 +84,38 @@ jobs:
             exit 1
           fi
 
+      - name: Classify exact-state causal blast radius
+        id: exact_scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          required=false
+          reason="non-causal repository/process change"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            required=true
+            reason="manual qualification"
+          elif printf '%s' "$HEAD_MESSAGE" | grep -Fq '[runtime-qualify]'; then
+            required=true
+            reason="explicit runtime qualification marker"
+          elif [ -z "${BEFORE_SHA:-}" ] || printf '%s' "$BEFORE_SHA" | grep -Eq '^0+$'; then
+            required=true
+            reason="unbounded push ancestry"
+          else
+            git cat-file -e "$BEFORE_SHA^{commit}"
+            changed="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
+            printf 'changed since %s:\n%s\n' "$BEFORE_SHA" "$changed"
+            if printf '%s\n' "$changed" | grep -Eq '^(public/world-v0/|src/world-v0-|src/box3d-runtime\.ts$|src/world-slice-entry\.ts$|wrangler\.jsonc$|package(-lock)?\.json$|scripts/world-v0-chromium-cloud-smoke\.mjs$)'; then
+              required=true
+              reason="causal runtime path changed"
+            fi
+          fi
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "exact-state required=$required · $reason"
+
       - name: Falsify permissive camera math
         run: node scripts/world-v0-playable-control-smoke.mjs
 
@@ -130,6 +162,7 @@ jobs:
         run: node scripts/world-v0-runtime-shell-smoke.mjs
 
       - name: Prepare local exact-state Chromium falsifier
+        if: steps.exact_scope.outputs.required == 'true'
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync, writeFileSync } from "node:fs";
@@ -142,10 +175,15 @@ jobs:
           NODE
 
       - name: Preserve exact-state causal envelope
+        if: steps.exact_scope.outputs.required == 'true'
         env:
           MW_WORLD_V0_CHROME_MODE: swangle-webgl
           MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-refinement-v6-exact.json
         run: node scripts/.world-v0-refinement-v6-exact.mjs
+
+      - name: Record scoped exact-state skip
+        if: steps.exact_scope.outputs.required != 'true'
+        run: echo "Exact-state causal envelope intentionally reused from the last qualified runtime bytes; this push changed no causal runtime path."
 
       - name: Stop local Workerd
         if: always()

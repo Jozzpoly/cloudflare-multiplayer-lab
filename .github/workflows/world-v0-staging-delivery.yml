@@ -1,0 +1,130 @@
+name: World V0 Staging Delivery
+
+on:
+  push:
+    branches: [world-v0-staging-delivery-real]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-staging-delivery
+  cancel-in-progress: false
+
+env:
+  PROMOTED_SHA: 460e47c4053ad53d13632dc75734e57e570c0657
+  EXPECTED_STAGING_WORKER: cloudflare-multiplayer-lab-staging
+  STAGING_BASE_URL: https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev
+
+jobs:
+  deploy-qualified-specimen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact qualified specimen
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PROMOTED_SHA }}
+          fetch-depth: 1
+
+      - name: Verify pinned source identity
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$PROMOTED_SHA"
+          echo "Pinned qualified specimen: $actual"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prove staging target cannot alias production
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const config = JSON.parse(readFileSync("wrangler.jsonc", "utf8"));
+          const staging = config.env?.staging;
+          if (!staging) throw new Error("wrangler env.staging missing");
+          if (staging.name !== process.env.EXPECTED_STAGING_WORKER) {
+            throw new Error(`staging target drift ${staging.name}`);
+          }
+          if (config.name === staging.name) {
+            throw new Error(`staging aliases root worker ${config.name}`);
+          }
+          if (staging.workers_dev !== true) throw new Error("staging workers_dev must stay enabled");
+          const bindings = staging.durable_objects?.bindings || [];
+          if (!bindings.some((binding) => binding.name === "SHARED_YARD_V0" && binding.class_name === "SharedYardV0")) {
+            throw new Error("staging SharedYardV0 Durable Object binding missing");
+          }
+          const workerFirst = staging.assets?.run_worker_first || [];
+          if (!workerFirst.includes("/world-v0/ws")) throw new Error("staging /world-v0/ws worker-first route missing");
+          console.log(`STAGING_TARGET_GUARD_PASS root=${config.name} staging=${staging.name}`);
+          NODE
+          npm run test:staging-deploy-guard
+          npm run validate:staging-contract
+
+      - name: Dry-run exact staging deployment
+        run: npx wrangler deploy --dry-run --env staging --outdir .wrangler/staging-delivery-dry-run
+
+      - name: Require Cloudflare deployment credential
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "CLOUDFLARE_API_TOKEN GitHub Actions secret is absent; refusing to attempt deployment."
+            exit 2
+          fi
+          echo "Cloudflare API token is available to this workflow."
+
+      - name: Authenticate Wrangler
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler whoami
+
+      - name: Deploy only the staging environment
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run deploy:staging
+
+      - name: Verify public staging revision v5
+        run: |
+          for i in {1..90}; do
+            body="$(curl -fsS "$STAGING_BASE_URL/world-v0/build-contract.js" || true)"
+            if printf '%s' "$body" | grep -q 'shared-yard-v0-browser-ui-v5-session-friction' && \
+               printf '%s' "$body" | grep -q 'shared-yard-v0-sim-579c7aa172198390'; then
+              echo "STAGING_V5_VISIBLE"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Staging did not expose the pinned v5 build in time."
+          exit 1
+
+      - name: Requalify remote authority and production isolation
+        env:
+          MW_WORLD_V0_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-staging-delivery-authority.json
+        run: node scripts/world-v0-authority-runtime-smoke.mjs
+
+      - name: Requalify remote friend-session restart
+        env:
+          MW_WORLD_V0_SESSION_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_SESSION_OUTPUT: world-v0-staging-delivery-session.json
+        run: node scripts/world-v0-session-friction-smoke.mjs
+
+      - name: Upload delivery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-staging-delivery-evidence
+          path: |
+            world-v0-staging-delivery-authority.json
+            world-v0-staging-delivery-session.json
+            .wrangler/staging-delivery-dry-run
+          if-no-files-found: warn
+          retention-days: 14

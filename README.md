@@ -1,57 +1,54 @@
-# Cloudflare Multiplayer Lab
+# Multi_World · Cloudflare Multiplayer Lab
 
-Evidence-driven laboratory for a Cloudflare-first browser multiplayer workflow.
+Evidence-driven browser multiplayer R&D laboratory.
 
-The goal is not to build a generic game framework up front. Each gate should answer one useful infrastructure/gameplay question with real runtime evidence.
+The repository has moved well beyond the original Gate 4A README. The current World V0 foundation is qualified, the active browser product has a remote-qualified **real-authority `Inspect solo`** path, explicit isolated staging delivery is operational, and Stress × Play / capacity research runs on a separate experimental lane.
 
-## Experiment gates
+For current work, start with:
 
-1. **Deployment sanity — PASS.** Static frontend + Worker + `/api/ping` work publicly.
-2. **Realtime transport — PASS.** Public WebSocket round-trip plus bounded reconnect/recovery validated in a real Android browser.
-3. **Single shared world game — PASS.** One Durable Object coordinated Neon Salvage concurrently across two independent real phones.
-4. **Authoritative shared simulation — IN PROGRESS.** Gate 4A fixed-authoritative substrate is PASS/frozen; later shared physical interaction remains separate work.
+**[`docs/WORLD_V0_OPERATING_MAP.md`](docs/WORLD_V0_OPERATING_MAP.md)**
 
-## Gate 4A: fixed simulation substrate — PASS / frozen
+It records the active lanes, source-of-truth hierarchy, current qualification workflow, `Inspect solo` semantics, staging delivery contract and historical-evidence policy.
 
-Gate 4A deliberately kept Neon Salvage recognizable while changing the authority model underneath it.
+## Current active spine
 
-Validated baseline:
+| Role | Branch | Verified 2026-09-04 snapshot |
+| --- | --- | --- |
+| Frozen foundation control | `world-v0-shared-yard` | `b27de8b04c27777250c47e7e936674e0f147fdfa` |
+| Product / playable frontier | `world-v0-playable-frontier` | `34f4e9dac3cc749fc8ab15c2e234bbff33921a7c` |
+| Explicit isolated staging delivery | `world-v0-staging-delivery` | `d110dee36aa5cff9f55da7ecff62257c96153d35` |
+| Stress / capacity research | `world-v0-capacity-cartography` | `bd90f238684961fcd1485d493b0c3bbe9aeb72ec` |
 
-- 20 Hz fixed authoritative simulation,
-- 10 Hz authoritative snapshots,
-- ~15 Hz baseline input transport,
-- input messages update control state only,
-- fixed-step accumulator with bounded catch-up,
-- 600 ms server input lease for mobile background safety,
-- deterministic seeded run/reset,
-- server + client telemetry for timing, traffic and reconciliation.
+Verify live branch heads before acting; these SHAs are a grounded snapshot, not permanent aliases.
 
-Real mobile evidence showed coherent ~20 Hz simulation / ~10 Hz snapshots, 0 dropped ticks and 0 catch-up during normal play, small measured prediction corrections, working mobile background stale-input protection, and continued shared-world play with two participants visible.
+## Current World V0 product state
 
-Closure hardening made tick labeling, per-run duration, restored run serial and stale input sequence handling explicit without changing gameplay or cadence. The full contract, runtime evidence, limitations and non-claims are recorded in [`docs/gates/gate-4-shared-simulation-lab.md`](docs/gates/gate-4-shared-simulation-lab.md).
+- browser UI: `shared-yard-v0-browser-ui-v7-solo-inspection`;
+- frozen SimBuild: `shared-yard-v0-sim-579c7aa172198390`;
+- public isolated staging: `https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/`;
+- staging delivery run `33901496389`: full PASS, including explicit deploy, authority/production isolation, presentation/lifecycle, remote `Inspect solo`, and two-Chromium exact-state on attempt 1.
 
-Gate 4B has **not** started. Its next candidate question is whether multiple clients can coherently influence one genuinely shared server-authoritative dynamic body.
+`Inspect solo` uses the real two-peer authority/session machinery with a lightweight neutral AUTO peer. Its evidence is marked `qualificationEligible=false`; it is an Owner inspection convenience, **not** a substitute for real two-human/two-device qualification when that is the question.
 
-## Gate 3 control specimen
+## Important boundaries
 
-Gate 3 / Neon Salvage remains the validated previous boundary: two phones from different manufacturers joined one public shared world with touch play, shared movement/state, pickups and scoreboard behavior. The Gate 3 record is in [`docs/gates/gate-3-shared-world-game.md`](docs/gates/gate-3-shared-world-game.md).
+- `world-v0-shared-yard` is the frozen qualified control specimen. Do not casually move it.
+- PR #32 remains **DRAFT / DO NOT MERGE**.
+- Product work belongs on `world-v0-playable-frontier` and is promoted explicitly through `world-v0-staging-delivery`.
+- Stress/capacity work belongs on the isolated research lane and does not silently redefine the foundation.
+- `main` is currently the repository landing/navigation branch, not the live product runtime branch.
 
-## Validation
+## Historical docs and branches
+
+The older `gate-*`, `ws0-*`, `rc*`, `world-slice-*`, previous staging experiments and takeover generations are valuable evidence/provenance, but they are **not automatically the current execution plan**.
+
+Do not delete historical evidence simply because it is old. Do not treat every preserved branch as active either. See the operating map for the `ACTIVE / HISTORICAL EVIDENCE / CLEANUP CANDIDATE` policy.
+
+## Basic repository validation
 
 ```bash
 npm install
 npm run check
 ```
 
-Local development:
-
-```bash
-npm install
-npm run dev
-```
-
-## Public lab Worker
-
-`https://cloudflare-multiplayer-lab.jozzpoly.workers.dev`
-
-This repository remains a laboratory. Deployment isolation and deterministic dependency locking are hardening topics, not evidence claims established by the current gates.
+The exact validation required for World V0 depends on the causal blast radius; the active product and staging workflows encode the stronger browser/authority/exact-state gates.

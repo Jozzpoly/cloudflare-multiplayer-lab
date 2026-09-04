@@ -2,13 +2,14 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { WORLD_V0_BROWSER_UI_REVISION } from "../public/world-v0/build-contract.js";
 
 const BASE = (process.env.MW_WORLD_V0_SHELL_BASE_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
 const PAGE_URL = `${BASE}/world-v0/`;
 const DEBUG_PORT = 9444;
 const TIMEOUT_MS = 30_000;
 const OUTPUT = process.env.MW_WORLD_V0_SHELL_OUTPUT || "world-v0-runtime-shell-evidence.json";
-const EXPECTED_UI_REVISION = "shared-yard-v0-browser-ui-v6-camera-evidence-refinement";
+const EXPECTED_UI_REVISION = WORLD_V0_BROWSER_UI_REVISION;
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }

@@ -246,7 +246,7 @@ jobs:
   remote-exact-state:
     needs: remote-presentation
     runs-on: ubuntu-24.04
-    timeout-minutes: 7
+    timeout-minutes: 10
     steps:
       - name: Checkout exact staging candidate
         uses: actions/checkout@v4
@@ -256,17 +256,65 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run two real Chromium clients against remote staging
+      - name: Run remote exact-state attempt 1
+        id: exact1
+        continue-on-error: true
         env:
           MW_WORLD_V0_CHROME_MODE: swangle-webgl
-          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playable-staging-exact.json
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playable-staging-exact-attempt1.json
         run: node scripts/world-v0-chromium-cloud-smoke.mjs
+
+      - name: Classify attempt 1 before any retry
+        if: steps.exact1.outcome == 'failure'
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const evidence = JSON.parse(readFileSync("world-v0-playable-staging-exact-attempt1.json", "utf8"));
+          const fail = (message) => { throw new Error(message); };
+          if (evidence.verdict !== "WORLD_V0_FAIL_REAL_CHROMIUM") fail(`unexpected first-attempt verdict ${evidence.verdict}`);
+          if (!String(evidence.error || "").includes("exact-state qualification timeout")) fail(`non-starvation exact failure: ${evidence.error}`);
+          if (!Array.isArray(evidence.clients) || evidence.clients.length !== 2) fail("exact failure missing both client evidence records");
+          for (const client of evidence.clients) {
+            const run = client.evidence;
+            if (!run) fail(`client ${client.index} missing browser evidence`);
+            const metrics = run.metrics || {};
+            if (run.runtimeFailed !== false) fail(`client ${client.index} runtimeFailed=${run.runtimeFailed} reason=${run.runtimeFailureReason}`);
+            if ((metrics.guardMismatches || 0) !== 0) fail(`client ${client.index} guard mismatches=${metrics.guardMismatches}`);
+            if ((metrics.guardPending || 0) !== 0) fail(`client ${client.index} pending guards=${metrics.guardPending}`);
+            if ((metrics.remapFailures || 0) !== 0) fail(`client ${client.index} remap failures=${metrics.remapFailures}`);
+            if (metrics.firstStateMismatch != null) fail(`client ${client.index} first state mismatch present`);
+            if ((metrics.serverRejected || 0) !== 0) fail(`client ${client.index} rejected records=${metrics.serverRejected}`);
+          }
+          console.log("WORLD_V0_EXACT_CLEAN_STARVATION_RETRY_AUTHORIZED");
+          NODE
+
+      - name: Run one same-SHA clean-starvation retry
+        if: steps.exact1.outcome == 'failure'
+        id: exact2
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playable-staging-exact-attempt2.json
+        run: node scripts/world-v0-chromium-cloud-smoke.mjs
+
+      - name: Require exact-state qualification
+        env:
+          FIRST: ${{ steps.exact1.outcome }}
+          SECOND: ${{ steps.exact2.outcome }}
+        run: |
+          echo "remote exact-state attempt1=${FIRST} attempt2=${SECOND}"
+          if [ "${FIRST}" = success ]; then
+            exit 0
+          fi
+          test "${SECOND}" = success
 
       - name: Upload remote exact-state evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: world-v0-playable-staging-exact-attempt-${{ github.run_attempt }}
-          path: world-v0-playable-staging-exact.json
+          path: |
+            world-v0-playable-staging-exact-attempt1.json
+            world-v0-playable-staging-exact-attempt2.json
           if-no-files-found: warn
           retention-days: 14

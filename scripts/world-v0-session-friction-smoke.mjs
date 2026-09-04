@@ -9,7 +9,7 @@ const PAGE_URL = `${BASE}/world-v0/`;
 const DEBUG_PORT = 9560;
 const TIMEOUT_MS = 30_000;
 const OUTPUT = process.env.MW_WORLD_V0_SESSION_OUTPUT || "world-v0-session-friction-evidence.json";
-const EXPECTED_UI = "shared-yard-v0-browser-ui-v6-camera-evidence-refinement";
+const EXPECTED_UI = WORLD_V0_BROWSER_UI_REVISION;
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
@@ -167,7 +167,6 @@ let cdp = null;
 let rawPeer = null;
 const result = { verdict: "WORLD_V0_SESSION_FRICTION_FAIL", generatedAt: new Date().toISOString(), page: PAGE_URL };
 try {
-  assert(WORLD_V0_BROWSER_UI_REVISION === EXPECTED_UI, `build-contract UI revision ${WORLD_V0_BROWSER_UI_REVISION}`);
   const debuggerInfo = await waitForDebugger();
   cdp = new Cdp(debuggerInfo.webSocketDebuggerUrl);
   await cdp.opened;

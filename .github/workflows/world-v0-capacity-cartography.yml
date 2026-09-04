@@ -1,8 +1,8 @@
 name: World V0 Capacity Cartography
 
+# Legacy CC1 provenance workflow. Manual only: its evidence remains useful, but
+# later capacity commits must not silently rerun the old calibration matrix.
 on:
-  push:
-    branches: [world-v0-capacity-cartography]
   workflow_dispatch:
 
 permissions:

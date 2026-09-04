@@ -5,7 +5,7 @@ export const WORLD_V0_CAMERA_LIMITS = {
   maxPitch: 1.08,
   minDistance: 5.5,
   maxDistance: 26,
-} as const;
+};
 
 export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));

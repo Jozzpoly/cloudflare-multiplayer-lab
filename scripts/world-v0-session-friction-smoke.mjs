@@ -9,7 +9,7 @@ const PAGE_URL = `${BASE}/world-v0/`;
 const DEBUG_PORT = 9560;
 const TIMEOUT_MS = 30_000;
 const OUTPUT = process.env.MW_WORLD_V0_SESSION_OUTPUT || "world-v0-session-friction-evidence.json";
-const EXPECTED_UI = "shared-yard-v0-browser-ui-v5-session-friction";
+const EXPECTED_UI = "shared-yard-v0-browser-ui-v6-camera-evidence-refinement";
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
@@ -228,6 +228,9 @@ try {
   })()`, "restart available after peer leaves");
   const ended = await cdp.evaluate(sessionId, `({ session: window.__sharedYardV0Session(), evidence: window.__sharedYardV0Evidence(), restartText: document.querySelector("#restart-round").textContent })`);
   assert(ended.evidence.runtimeFailed === false, `ended runtime failed ${ended.evidence.runtimeFailureReason}`);
+  assert(ended.evidence.session?.end?.kind === "epoch-ended", `expected normal epoch-end classification ${JSON.stringify(ended.evidence.session?.end)}`);
+  assert(ended.evidence.lifecycleEvents?.some((event) => event.type === "epoch-ended"), "epoch-ended lifecycle evidence missing");
+  assert(ended.evidence.lifecycleEvents?.some((event) => event.type === "socket-close" && event.expectedAfterEpochEnd === true), "expected socket-close lifecycle classification missing");
   assert(ended.session.restartAvailable === true, "restart helper not available");
   assert(ended.restartText.includes("Restart"), `restart action label ${ended.restartText}`);
 

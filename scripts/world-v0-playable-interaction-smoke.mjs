@@ -9,7 +9,7 @@ const PAGE_URL = `${BASE}/world-v0/`;
 const DEBUG_PORT = 9556;
 const TIMEOUT_MS = 30_000;
 const OUTPUT = process.env.MW_WORLD_V0_PLAYABLE_OUTPUT || "world-v0-playable-a1-evidence.json";
-const EXPECTED_UI = "shared-yard-v0-browser-ui-v5-session-friction";
+const EXPECTED_UI = "shared-yard-v0-browser-ui-v6-camera-evidence-refinement";
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
@@ -104,11 +104,19 @@ async function setViewport(cdp, sessionId, viewport) {
     screenHeight: viewport.height,
     screenOrientation: { type: viewport.mobile ? "portraitPrimary" : "landscapePrimary", angle: viewport.mobile ? 0 : 90 },
   }, sessionId);
+  await cdp.call("Emulation.setTouchEmulationEnabled", { enabled: viewport.mobile, maxTouchPoints: 5 }, sessionId);
   await sleep(120);
 }
 
 async function mouse(cdp, sessionId, type, x, y, button = "none", buttons = 0, clickCount = 0) {
   await cdp.call("Input.dispatchMouseEvent", { type, x, y, button, buttons, clickCount }, sessionId);
+}
+
+async function touch(cdp, sessionId, type, points) {
+  await cdp.call("Input.dispatchTouchEvent", {
+    type,
+    touchPoints: points.map((point) => ({ x: point.x, y: point.y, id: point.id, radiusX: 2, radiusY: 2, force: 1 })),
+  }, sessionId);
 }
 
 const chrome = findChrome();
@@ -172,6 +180,40 @@ try {
   const afterDrag = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
   assert(afterDrag.cameraOrbit.userAdjusted === true, "camera drag did not mark user adjustment");
   assert(Math.abs(afterDrag.cameraOrbit.yaw - before.control.cameraOrbit.yaw) > 0.2, `camera yaw barely changed ${before.control.cameraOrbit.yaw} -> ${afterDrag.cameraOrbit.yaw}`);
+  assert(afterDrag.cameraOrbit.pitch > before.control.cameraOrbit.pitch, `Owner-default vertical drag direction wrong ${before.control.cameraOrbit.pitch} -> ${afterDrag.cameraOrbit.pitch}`);
+
+  const canvas = await cdp.evaluate(sessionId, `(() => { const r = document.querySelector("#viewport canvas").getBoundingClientRect(); return { left:r.left, top:r.top, width:r.width, height:r.height }; })()`);
+  const pinchBefore = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
+  const pinchY = Math.min(canvas.top + canvas.height * 0.6, 560);
+  const pinchCenterX = canvas.left + canvas.width * 0.52;
+  await touch(cdp, sessionId, "touchStart", [{ id: 11, x: pinchCenterX - 32, y: pinchY }, { id: 12, x: pinchCenterX + 32, y: pinchY }]);
+  await touch(cdp, sessionId, "touchMove", [{ id: 11, x: pinchCenterX - 72, y: pinchY }, { id: 12, x: pinchCenterX + 72, y: pinchY }]);
+  await sleep(80);
+  const pinchAfter = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
+  await touch(cdp, sessionId, "touchEnd", []);
+  assert(pinchAfter.cameraOrbit.distance < pinchBefore.cameraOrbit.distance * 0.7, `pinch-out did not zoom closer ${pinchBefore.cameraOrbit.distance} -> ${pinchAfter.cameraOrbit.distance}`);
+
+  const gimbal = await cdp.evaluate(sessionId, `(() => { const e = document.querySelector("#camera-gimbal"); const r=e.getBoundingClientRect(); return { visible:getComputedStyle(e).display!=="none", x:r.left+r.width/2, y:r.top+r.height/2, width:r.width, height:r.height }; })()`);
+  assert(gimbal.visible && gimbal.width > 40, `mobile camera gimbal not visible ${JSON.stringify(gimbal)}`);
+  const gimbalBefore = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
+  await touch(cdp, sessionId, "touchStart", [{ id: 21, x: gimbal.x, y: gimbal.y }]);
+  await touch(cdp, sessionId, "touchMove", [{ id: 21, x: gimbal.x + gimbal.width * 0.2, y: gimbal.y - gimbal.height * 0.28 }]);
+  await sleep(220);
+  const gimbalDuring = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
+  await touch(cdp, sessionId, "touchEnd", []);
+  await sleep(60);
+  const gimbalAfter = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
+  assert(gimbalDuring.cameraOrbit.pitch > gimbalBefore.cameraOrbit.pitch, `gimbal-up did not raise orbit ${gimbalBefore.cameraOrbit.pitch} -> ${gimbalDuring.cameraOrbit.pitch}`);
+  assert(Math.abs(gimbalDuring.cameraOrbit.yaw - gimbalBefore.cameraOrbit.yaw) > 0.03, `gimbal yaw barely changed ${gimbalBefore.cameraOrbit.yaw} -> ${gimbalDuring.cameraOrbit.yaw}`);
+  assert(Math.hypot(gimbalAfter.gimbalInput?.x || 0, gimbalAfter.gimbalInput?.y || 0) < 1e-6, `gimbal did not release ${JSON.stringify(gimbalAfter.gimbalInput)}`);
+
+  const lifecycleBefore = await cdp.evaluate(sessionId, `window.__sharedYardV0Evidence()`);
+  await cdp.evaluate(sessionId, `document.dispatchEvent(new Event("visibilitychange")); true`);
+  await sleep(80);
+  const lifecycleAfter = await cdp.evaluate(sessionId, `window.__sharedYardV0Evidence()`);
+  assert(lifecycleAfter.lifecycleEvents?.some((event) => event.type === "visibility"), "visibility lifecycle event not retained");
+  assert(lifecycleAfter.frame?.longFrameEvents && Array.isArray(lifecycleAfter.frame.longFrameEvents), "long-frame contextual evidence missing");
+  assert(lifecycleAfter.presentation.cameraControls?.pinchZoom === true && lifecycleAfter.presentation.cameraControls?.gimbal === true, "camera control capability evidence missing");
 
   const joy = await cdp.evaluate(sessionId, `(() => { const r = document.querySelector("#joystick").getBoundingClientRect(); return { x:r.left+r.width/2, y:r.top+r.height/2, width:r.width, height:r.height }; })()`);
   await mouse(cdp, sessionId, "mousePressed", joy.x, joy.y, "left", 1, 1);
@@ -187,9 +229,14 @@ try {
 
   await setViewport(cdp, sessionId, { width: 1440, height: 900, scale: 1, mobile: false });
   await waitFor(cdp, sessionId, `innerWidth === 1440 && window.__sharedYardV0Evidence?.().presentation?.cameraPreset === "desktop-orbit"`, "desktop orbit preset after resize");
+  const desktopBeforeWheel = await cdp.evaluate(sessionId, `window.__sharedYardV0Evidence()`);
+  await cdp.call("Input.dispatchMouseEvent", { type: "mouseWheel", x: 720, y: 450, deltaX: 0, deltaY: 1000 }, sessionId);
+  await sleep(80);
   const desktop = await cdp.evaluate(sessionId, `window.__sharedYardV0Evidence()`);
   assert(desktop.runtimeFailed === false, `runtime failed after viewport change ${desktop.runtimeFailureReason}`);
   assert(desktop.networkState === "waiting for peer", `unexpected network state ${desktop.networkState}`);
+  assert(desktop.presentation.cameraOrbit.distance > desktopBeforeWheel.presentation.cameraOrbit.distance * 2, `desktop multiplicative wheel zoom weak ${desktopBeforeWheel.presentation.cameraOrbit.distance} -> ${desktop.presentation.cameraOrbit.distance}`);
+  assert(desktop.presentation.cameraFar > desktop.presentation.cameraOrbit.distance, `camera far plane cannot see orbit target ${desktop.presentation.cameraFar}`);
 
   const persisted = await cdp.evaluate(sessionId, `(() => { window.dispatchEvent(new Event("pagehide")); return window.__sharedYardV0LastEvidence?.(); })()`);
   assert(persisted?.persistedReason === "pagehide", `last-session persistence missing ${JSON.stringify(persisted)}`);
@@ -200,6 +247,9 @@ try {
     run,
     before,
     afterDrag,
+    pinch: { before: pinchBefore.cameraOrbit.distance, after: pinchAfter.cameraOrbit.distance },
+    gimbal: { before: gimbalBefore.cameraOrbit, during: gimbalDuring.cameraOrbit, after: gimbalAfter.cameraOrbit },
+    lifecycle: { before: lifecycleBefore.lifecycleEvents?.length || 0, after: lifecycleAfter.lifecycleEvents?.length || 0 },
     joystickUp,
     desktop: {
       cameraPreset: desktop.presentation.cameraPreset,

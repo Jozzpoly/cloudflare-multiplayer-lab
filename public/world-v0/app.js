@@ -14,11 +14,17 @@ import {
   packWorldV0State,
 } from "./state-guard.js";
 import {
+  WORLD_V0_CAMERA_CONTROL,
   WORLD_V0_PLAYABLE_CONTROL_REVISION,
+  cameraClipPlanes,
+  cameraFogRange,
   cameraRelativeInput,
   clampOrbit,
+  dragOrbit,
   orbitFromOffset,
   orbitOffset,
+  pinchZoomDistance,
+  wheelZoomDistance,
 } from "./playable-control.js";
 
 const FIXED_DT = 1 / 60;
@@ -30,6 +36,8 @@ const FRAME_RETAIN = 240;
 const PING_INTERVAL_MS = 1000;
 const HUD_INTERVAL_MS = 200;
 const LONG_FRAME_MS = 34;
+const LONG_FRAME_RETAIN = 32;
+const LIFECYCLE_RETAIN = 32;
 const EPS = 1e-9;
 
 const viewport = document.querySelector("#viewport");
@@ -45,10 +53,12 @@ const restartRoundButton = document.querySelector("#restart-round");
 const notice = document.querySelector("#notice");
 const joystick = document.querySelector("#joystick");
 const joystickKnob = document.querySelector("#joystick-knob");
+const cameraGimbal = document.querySelector("#camera-gimbal");
+const cameraGimbalKnob = document.querySelector("#camera-gimbal-knob");
 const copyEvidenceButton = document.querySelector("#copy-evidence");
 const metricNames = ["net", "ticks", "guard", "corrections", "rewind", "replay", "rtt", "lease", "memory", "frame"];
 const metric = Object.fromEntries(metricNames.map((name) => [name, document.querySelector(`#m-${name}`)]));
-const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, sessionActions, copyInviteButton, restartRoundButton, notice, joystick, joystickKnob, copyEvidenceButton, ...Object.values(metric)];
+const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, sessionActions, copyInviteButton, restartRoundButton, notice, joystick, joystickKnob, cameraGimbal, cameraGimbalKnob, copyEvidenceButton, ...Object.values(metric)];
 if (required.some((value) => !value)) throw new Error("Shared Yard V0 UI incomplete");
 
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
@@ -119,6 +129,11 @@ const cameraOrbit = {
   lastX: 0,
   lastY: 0,
 };
+const cameraTouchPointers = new Map();
+let cameraPinch = null;
+let cameraGimbalPointer = null;
+let cameraGimbalInput = { x: 0, y: 0 };
+let lastCameraControlAt = null;
 
 function portraitViewport() {
   return innerWidth <= 720 && innerHeight > innerWidth;
@@ -375,10 +390,22 @@ function formatBytes(value) {
   return `${(value / 1024).toFixed(1)} KiB`;
 }
 
+function recordLifecycle(type, details = {}) {
+  pushBounded(lifecycleEvents, {
+    at: new Date().toISOString(),
+    type,
+    boundaryTick: localState?.boundaryTick ?? null,
+    networkState,
+    ...details,
+  }, LIFECYCLE_RETAIN);
+}
+
 let playing = false;
 let runtimeFailed = false;
 let runtimeFailureReason = null;
 let runtimeFailureAt = null;
+let sessionEnd = null;
+let visibilityTransitionAt = performance.now();
 let socket = null;
 let networkState = "idle";
 let callsign = "";
@@ -404,6 +431,8 @@ const pendingPings = new Map();
 const rttSamples = [];
 const frameSamples = [];
 const correctionEvents = [];
+const longFrameEvents = [];
+const lifecycleEvents = [];
 const intendedSelf = new Map();
 const peerRemote = new Map();
 const consumedByTick = new Map();
@@ -1160,8 +1189,11 @@ function handleStart(message) {
   updatePhaseFromStart(message, performance.now());
   if (!selfMesh) selfMesh = createPlayerMesh(true);
   if (!remoteMesh) remoteMesh = createPlayerMesh(false);
+  sessionEnd = null;
   networkState = "live · Shared Yard V0";
   joystick.classList.add("active");
+  cameraGimbal.classList.add("active");
+  recordLifecycle("world-start", { protocolStartTick });
   clearNotice();
   syncMeshes();
 }
@@ -1207,7 +1239,17 @@ function handleMessage(message) {
   }
   if (message.type === "world_v0_epoch_ended") {
     assertMessageIdentity(message, "epoch-ended");
+    playing = false;
+    sessionEnd = {
+      kind: "epoch-ended",
+      reason: message.reason,
+      boundaryTick: message.boundaryTick ?? localState?.boundaryTick ?? null,
+      at: new Date().toISOString(),
+    };
     networkState = `epoch ended · ${message.reason}`;
+    joystick.classList.remove("active");
+    cameraGimbal.classList.remove("active");
+    recordLifecycle("epoch-ended", { reason: message.reason, boundaryTick: message.boundaryTick ?? null });
     showNotice(`Shared Yard round ended: ${message.reason}. Restart when ready.`);
     persistLastSessionEvidence("epoch-ended");
     updateProductStatus();
@@ -1226,6 +1268,8 @@ function candidateError(error) {
   const text = error instanceof Error ? error.message : String(error);
   runtimeFailureReason = text;
   runtimeFailureAt = new Date().toISOString();
+  sessionEnd = { kind: "runtime-failure", reason: text, at: runtimeFailureAt, boundaryTick: localState?.boundaryTick ?? null };
+  recordLifecycle("runtime-failure", { reason: text });
   networkState = "FOUNDATION / runtime failure";
   showNotice(text);
   console.error(error);
@@ -1238,6 +1282,7 @@ function connect() {
   socket = new WebSocket(socketUrl());
   socket.addEventListener("open", () => {
     networkState = "syncing";
+    recordLifecycle("socket-open");
     sendPing();
     pingTimer = setInterval(sendPing, PING_INTERVAL_MS);
     hudTimer = setInterval(updateHud, HUD_INTERVAL_MS);
@@ -1256,13 +1301,30 @@ function connect() {
     pingTimer = null;
     hudTimer = null;
     pendingPings.clear();
+    const expectedAfterEpochEnd = sessionEnd?.kind === "epoch-ended";
+    if (!sessionEnd) {
+      sessionEnd = {
+        kind: "transport-close",
+        reason: event.reason || `close-${event.code}`,
+        code: event.code,
+        at: new Date().toISOString(),
+        boundaryTick: localState?.boundaryTick ?? null,
+      };
+    }
     networkState = `closed ${event.code}`;
     joystick.classList.remove("active");
+    cameraGimbal.classList.remove("active");
+    cameraGimbalInput = { x: 0, y: 0 };
+    cameraGimbalKnob.style.transform = "translate(0, 0)";
+    recordLifecycle("socket-close", { code: event.code, reason: event.reason || null, wasClean: event.wasClean, expectedAfterEpochEnd });
     persistLastSessionEvidence("socket-close");
     updateProductStatus();
     if (!runtimeFailed) showNotice("Shared Yard round ended. Restart when ready; the next round uses a fresh world epoch.");
   });
-  socket.addEventListener("error", () => { networkState = "network error"; });
+  socket.addEventListener("error", () => {
+    networkState = "network error";
+    recordLifecycle("socket-error");
+  });
 }
 
 function advancePrediction() {
@@ -1313,8 +1375,22 @@ function cameraPresetName() {
   return portraitViewport() ? "portrait-orbit" : "desktop-orbit";
 }
 
+function updateCameraProjection() {
+  const clip = cameraClipPlanes(cameraOrbit.distance);
+  const fogRange = cameraFogRange(cameraOrbit.distance);
+  let projectionChanged = false;
+  if (Math.abs(camera.near - clip.near) > 1e-9) { camera.near = clip.near; projectionChanged = true; }
+  if (Math.abs(camera.far - clip.far) > 1e-6) { camera.far = clip.far; projectionChanged = true; }
+  if (projectionChanged) camera.updateProjectionMatrix();
+  if (scene.fog) {
+    scene.fog.near = fogRange.near;
+    scene.fog.far = fogRange.far;
+  }
+}
+
 function updateCamera() {
   if (!selfMesh) return;
+  updateCameraProjection();
   const offset = orbitOffset(cameraOrbit);
   const targetY = selfMesh.position.y + 0.42;
   camera.position.set(selfMesh.position.x + offset[0], targetY + offset[1], selfMesh.position.z + offset[2]);
@@ -1322,6 +1398,10 @@ function updateCamera() {
 }
 
 function recordFrame(now) {
+  if (document.visibilityState !== "visible") {
+    lastFrameAt = null;
+    return;
+  }
   if (lastFrameAt === null) {
     lastFrameAt = now;
     return;
@@ -1330,10 +1410,23 @@ function recordFrame(now) {
   lastFrameAt = now;
   pushBounded(frameSamples, delta, FRAME_RETAIN);
   metrics.maxFrameMs = Math.max(metrics.maxFrameMs, delta);
-  if (delta >= LONG_FRAME_MS) metrics.longFrames += 1;
+  if (delta >= LONG_FRAME_MS) {
+    metrics.longFrames += 1;
+    pushBounded(longFrameEvents, {
+      at: new Date().toISOString(),
+      deltaMs: delta,
+      boundaryTick: localState?.boundaryTick ?? null,
+      correctionWindowActive: performance.now() < correctionFrameWindowUntil,
+      corrections: metrics.corrections,
+      maxCorrectionDurationMs: metrics.maxCorrectionDurationMs,
+      serverLate: metrics.serverLate,
+      rttMedianMs: percentile(rttSamples, 0.5),
+      rttP95Ms: percentile(rttSamples, 0.95),
+    }, LONG_FRAME_RETAIN);
+  }
 }
-
 function buildEvidence() {
+  const clip = cameraClipPlanes(cameraOrbit.distance);
   return {
     generatedAt: new Date().toISOString(),
     uiRevision: WORLD_V0_BROWSER_UI_REVISION,
@@ -1353,6 +1446,9 @@ function buildEvidence() {
       spatialCueCount,
       cameraPreset: cameraPresetName(),
       cameraFov: camera.fov,
+      cameraNear: camera.near,
+      cameraFar: camera.far,
+      cameraClipTarget: clip,
       cameraControlRevision: WORLD_V0_PLAYABLE_CONTROL_REVISION,
       cameraOrbit: {
         yaw: cameraOrbit.yaw,
@@ -1360,6 +1456,8 @@ function buildEvidence() {
         distance: cameraOrbit.distance,
         userAdjusted: cameraOrbit.userAdjusted,
       },
+      cameraControls: { drag: true, pinchZoom: true, gimbal: true, wheelZoom: true, invertYDefault: WORLD_V0_CAMERA_CONTROL.invertYDefault, zoomMode: "multiplicative-v1" },
+      cameraGimbalInput: { ...cameraGimbalInput },
       movementMapping: "camera-relative-v1",
       rawInput: rawCurrentInput(),
       worldInputPreview: currentInput(),
@@ -1367,6 +1465,7 @@ function buildEvidence() {
     session: {
       inviteUrl: buildInviteUrl(),
       restartAvailable: canRestartRound(),
+      end: sessionEnd ? { ...sessionEnd } : null,
     },
     metrics: JSON.parse(JSON.stringify(metrics)),
     rtt: {
@@ -1380,7 +1479,9 @@ function buildEvidence() {
       maxMs: metrics.maxFrameMs,
       longFrames: metrics.longFrames,
       correctionWindowActive: performance.now() < correctionFrameWindowUntil,
+      longFrameEvents: longFrameEvents.map((event) => ({ ...event })),
     },
+    lifecycleEvents: lifecycleEvents.map((event) => ({ ...event })),
     corrections: correctionEvents.map((event) => ({ ...event })),
     pendingStateGuardBoundaries: [...pendingStateGuards.keys()],
     historySegments: localState?.history?.segments?.map((segment) => ({
@@ -1391,7 +1492,6 @@ function buildEvidence() {
     })) ?? [],
   };
 }
-
 function persistLastSessionEvidence(reason) {
   try {
     const payload = { ...buildEvidence(), persistedReason: reason };
@@ -1418,6 +1518,12 @@ window.__sharedYardV0LastEvidence = () => {
   }
 };
 addEventListener("pagehide", () => persistLastSessionEvidence("pagehide"));
+document.addEventListener("visibilitychange", () => {
+  const now = performance.now();
+  recordLifecycle("visibility", { state: document.visibilityState, elapsedSincePreviousMs: Math.max(0, now - visibilityTransitionAt) });
+  visibilityTransitionAt = now;
+  lastFrameAt = null;
+});
 window.__sharedYardV0Session = () => ({
   inviteUrl: buildInviteUrl(),
   restartAvailable: canRestartRound(),
@@ -1467,6 +1573,8 @@ function resetProtocolState() {
   diagnosticSamples.clear();
   pendingStateGuards.clear();
   correctionEvents.splice(0);
+  longFrameEvents.splice(0);
+  lifecycleEvents.splice(0);
   frameSamples.splice(0);
   rttSamples.splice(0);
   pendingBatch = [];
@@ -1486,9 +1594,17 @@ function resetProtocolState() {
   joystickPointer = null;
   joystickKnob.style.transform = "translate(0, 0)";
   cameraOrbit.pointerId = null;
+  cameraTouchPointers.clear();
+  cameraPinch = null;
+  cameraGimbalPointer = null;
+  cameraGimbalInput = { x: 0, y: 0 };
+  cameraGimbalKnob.style.transform = "translate(0, 0)";
+  lastCameraControlAt = null;
   runtimeFailed = false;
   runtimeFailureReason = null;
   runtimeFailureAt = null;
+  sessionEnd = null;
+  visibilityTransitionAt = performance.now();
   Object.assign(metrics, {
     corrections: 0,
     latestRewind: 0,
@@ -1612,8 +1728,30 @@ function releaseJoystick(event) {
 joystick.addEventListener("pointerup", releaseJoystick);
 joystick.addEventListener("pointercancel", releaseJoystick);
 
+function cameraTouchSpan() {
+  const points = [...cameraTouchPointers.values()];
+  if (points.length < 2) return 0;
+  return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+}
+
 function beginCameraPointer(event) {
-  if (!playing || cameraOrbit.pointerId !== null) return;
+  if (!playing) return;
+  if (event.pointerType === "touch") {
+    cameraTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    try { renderer.domElement.setPointerCapture(event.pointerId); } catch { /* browser may not expose capture */ }
+    if (cameraTouchPointers.size === 1) {
+      cameraOrbit.pointerId = event.pointerId;
+      cameraOrbit.lastX = event.clientX;
+      cameraOrbit.lastY = event.clientY;
+      cameraPinch = null;
+    } else if (cameraTouchPointers.size === 2) {
+      cameraOrbit.pointerId = null;
+      cameraPinch = { startSpan: cameraTouchSpan(), startDistance: cameraOrbit.distance };
+    }
+    event.preventDefault();
+    return;
+  }
+  if (cameraOrbit.pointerId !== null) return;
   if (event.pointerType === "mouse" && event.button !== 0 && event.button !== 2) return;
   cameraOrbit.pointerId = event.pointerId;
   cameraOrbit.lastX = event.clientX;
@@ -1623,16 +1761,22 @@ function beginCameraPointer(event) {
 }
 
 function moveCameraPointer(event) {
+  if (event.pointerType === "touch" && cameraTouchPointers.has(event.pointerId)) {
+    cameraTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (cameraTouchPointers.size >= 2) {
+      if (!cameraPinch) cameraPinch = { startSpan: cameraTouchSpan(), startDistance: cameraOrbit.distance };
+      cameraOrbit.distance = pinchZoomDistance(cameraPinch.startDistance, cameraPinch.startSpan, cameraTouchSpan());
+      cameraOrbit.userAdjusted = true;
+      event.preventDefault();
+      return;
+    }
+  }
   if (event.pointerId !== cameraOrbit.pointerId) return;
   const dx = event.clientX - cameraOrbit.lastX;
   const dy = event.clientY - cameraOrbit.lastY;
   cameraOrbit.lastX = event.clientX;
   cameraOrbit.lastY = event.clientY;
-  const next = clampOrbit({
-    yaw: cameraOrbit.yaw - dx * 0.006,
-    pitch: cameraOrbit.pitch + dy * 0.004,
-    distance: cameraOrbit.distance,
-  });
+  const next = dragOrbit(cameraOrbit, dx, dy);
   cameraOrbit.yaw = next.yaw;
   cameraOrbit.pitch = next.pitch;
   cameraOrbit.distance = next.distance;
@@ -1641,6 +1785,21 @@ function moveCameraPointer(event) {
 }
 
 function endCameraPointer(event) {
+  if (event.pointerType === "touch" && cameraTouchPointers.has(event.pointerId)) {
+    cameraTouchPointers.delete(event.pointerId);
+    try { renderer.domElement.releasePointerCapture(event.pointerId); } catch { /* capture may already be gone */ }
+    cameraPinch = null;
+    const remaining = [...cameraTouchPointers.entries()][0];
+    if (remaining) {
+      cameraOrbit.pointerId = remaining[0];
+      cameraOrbit.lastX = remaining[1].x;
+      cameraOrbit.lastY = remaining[1].y;
+    } else {
+      cameraOrbit.pointerId = null;
+    }
+    event.preventDefault();
+    return;
+  }
   if (event.pointerId !== cameraOrbit.pointerId) return;
   cameraOrbit.pointerId = null;
   try { renderer.domElement.releasePointerCapture(event.pointerId); } catch { /* capture may already be gone */ }
@@ -1654,12 +1813,7 @@ renderer.domElement.addEventListener("pointercancel", endCameraPointer);
 renderer.domElement.addEventListener("contextmenu", (event) => event.preventDefault());
 renderer.domElement.addEventListener("wheel", (event) => {
   if (!playing) return;
-  const next = clampOrbit({
-    yaw: cameraOrbit.yaw,
-    pitch: cameraOrbit.pitch,
-    distance: cameraOrbit.distance + event.deltaY * 0.012,
-  });
-  cameraOrbit.distance = next.distance;
+  cameraOrbit.distance = wheelZoomDistance(cameraOrbit.distance, event.deltaY);
   cameraOrbit.userAdjusted = true;
   event.preventDefault();
 }, { passive: false });
@@ -1669,6 +1823,58 @@ renderer.domElement.addEventListener("dblclick", (event) => {
   event.preventDefault();
 });
 
+function updateCameraGimbal(event) {
+  const rect = cameraGimbal.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  let dx = (event.clientX - cx) / (rect.width * 0.38);
+  let dy = (event.clientY - cy) / (rect.height * 0.38);
+  const length = Math.hypot(dx, dy);
+  if (length > 1) { dx /= length; dy /= length; }
+  cameraGimbalInput = { x: dx, y: dy };
+  cameraGimbalKnob.style.transform = `translate(${dx * 25}px, ${dy * 25}px)`;
+}
+
+cameraGimbal.addEventListener("pointerdown", (event) => {
+  if (!playing || cameraGimbalPointer !== null) return;
+  cameraGimbalPointer = event.pointerId;
+  try { cameraGimbal.setPointerCapture(event.pointerId); } catch { /* browser may not expose capture */ }
+  updateCameraGimbal(event);
+  event.preventDefault();
+});
+cameraGimbal.addEventListener("pointermove", (event) => {
+  if (event.pointerId !== cameraGimbalPointer) return;
+  updateCameraGimbal(event);
+  event.preventDefault();
+});
+function releaseCameraGimbal(event) {
+  if (event.pointerId !== cameraGimbalPointer) return;
+  cameraGimbalPointer = null;
+  cameraGimbalInput = { x: 0, y: 0 };
+  cameraGimbalKnob.style.transform = "translate(0, 0)";
+  event.preventDefault();
+}
+cameraGimbal.addEventListener("pointerup", releaseCameraGimbal);
+cameraGimbal.addEventListener("pointercancel", releaseCameraGimbal);
+
+function advanceCameraGimbal(now) {
+  if (lastCameraControlAt === null) {
+    lastCameraControlAt = now;
+    return;
+  }
+  const dt = Math.min(0.05, Math.max(0, (now - lastCameraControlAt) / 1000));
+  lastCameraControlAt = now;
+  if (!playing || Math.hypot(cameraGimbalInput.x, cameraGimbalInput.y) < 1e-6) return;
+  const next = clampOrbit({
+    yaw: cameraOrbit.yaw - cameraGimbalInput.x * WORLD_V0_CAMERA_CONTROL.gimbalYawRadiansPerSecond * dt,
+    pitch: cameraOrbit.pitch - cameraGimbalInput.y * WORLD_V0_CAMERA_CONTROL.gimbalPitchRadiansPerSecond * dt,
+    distance: cameraOrbit.distance,
+  });
+  cameraOrbit.yaw = next.yaw;
+  cameraOrbit.pitch = next.pitch;
+  cameraOrbit.distance = next.distance;
+  cameraOrbit.userAdjusted = true;
+}
 function resize() {
   const portrait = portraitViewport();
   if (!cameraOrbit.userAdjusted) resetCameraOrbit();
@@ -1684,6 +1890,7 @@ resize();
 function frame(now) {
   requestAnimationFrame(frame);
   recordFrame(now);
+  advanceCameraGimbal(now);
   if (playing && !runtimeFailed) {
     try {
       advancePrediction();

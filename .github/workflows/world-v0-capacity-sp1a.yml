@@ -1,0 +1,86 @@
+name: World V0 Capacity SP1A Calibration
+
+on:
+  push:
+    branches: [world-v0-capacity-sp1a-calibration]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-capacity-sp1a-calibration
+  cancel-in-progress: true
+
+jobs:
+  semantic-and-lifecycle-calibration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax-check SP1A smoke
+        run: node --check scripts/world-v0-capacity-sp1a-smoke.mjs
+
+      - name: Start local Worker/assets
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-capacity-sp1a-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-capacity-sp1a-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "local Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-capacity-sp1a-wrangler.log
+          exit 1
+
+      - name: Falsify recording-preallocation semantics and harness cleanup
+        env:
+          MW_WORLD_V0_CAPACITY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_CAPACITY_COUNTS: "640"
+          MW_WORLD_V0_CAPACITY_SCENARIOS: hetero-pile,ram-chain,wake-churn
+          MW_WORLD_V0_CAPACITY_TICKS: "144"
+          MW_WORLD_V0_CAPACITY_REPEATS: "2"
+          MW_WORLD_V0_CAPACITY_TIMEOUT_MS: "180000"
+          MW_WORLD_V0_CAPACITY_SP1A_OUTPUT: world-v0-capacity-sp1a-evidence.json
+        run: |
+          start=$(date +%s)
+          node scripts/world-v0-capacity-sp1a-smoke.mjs
+          elapsed=$(( $(date +%s) - start ))
+          echo "SP1A process wall time: ${elapsed}s"
+          # The browser experiment previously finished in ~21s but the uncleared
+          # timeout kept Node alive for 20 minutes. Give hosted noise ample room
+          # while still falsifying that lifecycle bug.
+          if [ "$elapsed" -ge 120 ]; then
+            echo "SP1A lifecycle cleanup regression: process took ${elapsed}s"
+            exit 1
+          fi
+
+      - name: Stop local Worker
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-capacity-sp1a-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-capacity-sp1a-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload SP1A evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-capacity-sp1a-evidence-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-capacity-sp1a-evidence.json
+            world-v0-capacity-sp1a-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

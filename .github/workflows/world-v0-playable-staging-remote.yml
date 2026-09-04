@@ -157,14 +157,19 @@ jobs:
       - name: Verify remote-gate apparatus syntax
         run: |
           node --check public/world-v0/build-contract.js
+          node --check public/world-v0/solo-inspection-core.js
+          node --check public/world-v0/solo-inspection.js
           node --check scripts/world-v0-authority-stimulus.mjs
           node --check scripts/world-v0-authority-runtime-smoke.mjs
           node --check scripts/world-v0-playable-interaction-smoke.mjs
+          node --check scripts/world-v0-solo-inspection-core-smoke.mjs
+          node --check scripts/world-v0-solo-inspection-browser-smoke.mjs
           node --check scripts/world-v0-session-friction-smoke.mjs
           node --check scripts/world-v0-runtime-shell-smoke.mjs
           node --check scripts/world-v0-chromium-cloud-smoke.mjs
           node --check scripts/world-v0-exact-failure-classifier.mjs
           node --check scripts/world-v0-exact-failure-classifier-smoke.mjs
+          node scripts/world-v0-solo-inspection-core-smoke.mjs
           node scripts/world-v0-exact-failure-classifier-smoke.mjs
 
       - name: Prove remote authority and production isolation
@@ -222,16 +227,26 @@ jobs:
           MW_WORLD_V0_SHELL_OUTPUT: world-v0-playable-staging-shell.json
         run: node scripts/world-v0-runtime-shell-smoke.mjs
 
+      - name: Prove remote one-browser real-authority Inspect solo
+        id: solo
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-playable-staging-solo-inspection.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
+
       - name: Preserve all presentation falsifiers as required gates
         env:
           INTERACTION: ${{ steps.interaction.outcome }}
           SESSION: ${{ steps.session.outcome }}
           SHELL: ${{ steps.shell.outcome }}
+          SOLO: ${{ steps.solo.outcome }}
         run: |
-          echo "interaction=${INTERACTION} session=${SESSION} shell=${SHELL}"
+          echo "interaction=${INTERACTION} session=${SESSION} shell=${SHELL} solo=${SOLO}"
           test "${INTERACTION}" = success
           test "${SESSION}" = success
           test "${SHELL}" = success
+          test "${SOLO}" = success
 
       - name: Upload remote presentation evidence
         if: always()
@@ -242,6 +257,7 @@ jobs:
             world-v0-playable-staging-interaction.json
             world-v0-playable-staging-session.json
             world-v0-playable-staging-shell.json
+            world-v0-playable-staging-solo-inspection.json
             world-v0-runtime-shell-*.png
           if-no-files-found: warn
           retention-days: 14

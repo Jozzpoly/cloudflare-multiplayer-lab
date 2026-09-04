@@ -43,7 +43,12 @@ jobs:
 
       - name: Apply guarded playable patches in working tree
         run: |
-          node scripts/apply-world-v0-playable-a1.mjs
+          if grep -q 'movementMapping: "camera-relative-v1"' public/world-v0/app.js && \
+             grep -q 'shared-yard-v0-browser-ui-v4-playable-control' public/world-v0/build-contract.js; then
+            echo "A1 runtime migration already materialized; preserving exact runtime bytes"
+          else
+            node scripts/apply-world-v0-playable-a1.mjs
+          fi
           node scripts/apply-world-v0-playable-regression.mjs
 
       - name: Verify generated syntax and bounded diff

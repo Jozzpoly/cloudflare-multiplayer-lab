@@ -35,6 +35,7 @@ jobs:
           node --check public/world-v0/playable-control.js
           node --check scripts/world-v0-playable-control-smoke.mjs
           node --check scripts/world-v0-playable-a1-smoke.mjs
+          node --check scripts/world-v0-playable-interaction-smoke.mjs
           node --check scripts/apply-world-v0-playable-a1.mjs
           node --check scripts/apply-world-v0-playable-regression.mjs
 
@@ -86,11 +87,11 @@ jobs:
           MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-playable-a1-authority.json
         run: node scripts/world-v0-authority-runtime-smoke.mjs
 
-      - name: Exercise rendered orbit camera and mobile joystick
+      - name: Exercise isolated rendered controls
         env:
           MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-playable-a1-evidence.json
-        run: node scripts/world-v0-playable-a1-smoke.mjs
+        run: node scripts/world-v0-playable-interaction-smoke.mjs
 
       - name: Exercise legacy runtime-shell regression against playable contract
         env:

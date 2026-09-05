@@ -199,7 +199,7 @@ try {
   const epochB = recovered.identity.worldEpoch;
   assert(epochB !== epochA, "room recovery reused old epoch");
   assert(recovered.session.roomRecovery.lastRecoveredEpoch === epochB, `last recovered epoch ${JSON.stringify(recovered.session.roomRecovery)}`);
-  assert(recovered.lifecycleEvents?.some((event) => event.type === "room-recovered" && event.details?.sourceEpoch === epochA && event.details?.recoveredEpoch === epochB), `room-recovered lifecycle missing ${JSON.stringify(recovered.lifecycleEvents)}`);
+  assert(recovered.lifecycleEvents?.some((event) => event.type === "room-recovered" && event.sourceEpoch === epochA && event.recoveredEpoch === epochB), `room-recovered lifecycle missing ${JSON.stringify(recovered.lifecycleEvents)}`);
   assert(recovered.runtimeFailed === false, `runtime failed during recovery ${recovered.runtimeFailureReason}`);
   assert(recovered.metrics.guardMismatches === 0, `guard mismatch during recovery ${JSON.stringify(recovered.metrics.firstStateMismatch)}`);
 

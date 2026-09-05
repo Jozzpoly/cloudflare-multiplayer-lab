@@ -287,7 +287,7 @@ try {
         document.dispatchEvent(new Event("visibilitychange"));
         return document.visibilityState;
       } catch (error) {
-        return `bridge-error:${error?.message || error}`;
+        return "bridge-error:" + (error?.message || error);
       }
     })()`);
     assert(bridgedVisibility === "visible", `headless visibility bridge failed: ${bridgedVisibility}`);

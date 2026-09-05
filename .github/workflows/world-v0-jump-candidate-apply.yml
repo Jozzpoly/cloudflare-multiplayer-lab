@@ -1,0 +1,74 @@
+name: World V0 Jump Candidate Apply
+
+on:
+  push:
+    branches: [world-v0-jump-support-probe]
+    paths: [.github/workflows/world-v0-jump-candidate-apply.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Apply bounded jump candidate
+        run: |
+          set -euo pipefail
+          python scripts/world-v0-apply-jump-candidate.py
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const contract = await import("./src/world-v0-contract.ts");
+          const path = "public/world-v0/build-contract.js";
+          let source = readFileSync(path, "utf8");
+          if (!source.includes("__JUMP_SIM_BUILD_ID__")) throw new Error("jump SimBuild placeholder missing");
+          source = source.replace("__JUMP_SIM_BUILD_ID__", contract.WORLD_V0_SIM_BUILD_ID);
+          writeFileSync(path, source);
+          console.log("WORLD_V0_JUMP_SIM_BUILD", contract.WORLD_V0_SIM_BUILD_ID);
+          NODE
+
+      - name: Validate focused jump invariants
+        run: |
+          set -euo pipefail
+          node --check public/world-v0/app.js
+          node --experimental-strip-types scripts/world-v0-protocol-smoke.ts
+          node --experimental-strip-types scripts/world-v0-jump-support-probe.mjs
+          grep -q 'id="jump-button"' public/world-v0/index.html
+          grep -q 'supportMinNormalY' src/world-v0-contract.ts
+          grep -q 'scheduled-input-v2-jump' public/world-v0/build-contract.js
+          git diff --check
+
+      - name: Run full repository validation
+        run: npm run check
+
+      - name: Commit only candidate product and durable tests
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/world-v0-contract.ts \
+            src/world-v0-protocol.ts \
+            src/world-v0-shared-yard.ts \
+            public/world-v0/app.js \
+            public/world-v0/build-contract.js \
+            public/world-v0/index.html \
+            public/world-v0/styles.css \
+            scripts/world-v0-protocol-smoke.ts
+          git diff --cached --check
+          git commit -m "feat(world-v0): add deterministic supported jump"
+          git push origin HEAD:world-v0-jump-support-probe

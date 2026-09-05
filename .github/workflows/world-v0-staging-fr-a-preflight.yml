@@ -1,0 +1,163 @@
+name: World V0 Staging FR-A Preflight
+
+on:
+  push:
+    branches: [world-v0-staging-fr-a-preflight]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-staging-fr-a-preflight
+  cancel-in-progress: true
+
+env:
+  FRIEND_READY_SOURCE: f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6
+  FRIEND_READY_BRANCH: world-v0-friend-ready-v1
+
+jobs:
+  qualify-delivery-specimen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Checkout exact preflight head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact qualified product bytes
+        run: |
+          set -euo pipefail
+          git cat-file -e "$FRIEND_READY_SOURCE^{commit}"
+          source_sha="$(node -e 'const m=require("./.github/world-v0-product-source.json"); process.stdout.write(m.productSourceSha)')"
+          source_branch="$(node -e 'const m=require("./.github/world-v0-product-source.json"); process.stdout.write(m.productBranch)')"
+          test "$source_sha" = "$FRIEND_READY_SOURCE"
+          test "$source_branch" = "$FRIEND_READY_BRANCH"
+
+          protected_paths=(
+            public/world-v0
+            src/world-v0-contract.ts
+            src/world-v0-protocol.ts
+            src/world-v0-shared-yard.ts
+            src/box3d-runtime.ts
+            src/world-slice-entry.ts
+            wrangler.jsonc
+            package.json
+            package-lock.json
+          )
+
+          if ! git diff --quiet "$FRIEND_READY_SOURCE" "$GITHUB_SHA" -- "${protected_paths[@]}"; then
+            echo "FR-A delivery specimen is not byte-identical to qualified product source."
+            git diff --stat "$FRIEND_READY_SOURCE" "$GITHUB_SHA" -- "${protected_paths[@]}"
+            git diff --name-status "$FRIEND_READY_SOURCE" "$GITHUB_SHA" -- "${protected_paths[@]}"
+            exit 1
+          fi
+
+          node --input-type=module <<'NODE'
+          import stage from "./.github/world-v0-friend-ready-stage.json" with { type: "json" };
+          import {
+            WORLD_V0_BROWSER_UI_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+            WORLD_V0_EXPECTED_SERVER_REVISION,
+            WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+          } from "./public/world-v0/build-contract.js";
+          if (stage.stage !== "FR-A") throw new Error(`stage drift ${stage.stage}`);
+          if (stage.uiRevision !== WORLD_V0_BROWSER_UI_REVISION) throw new Error(`stage/UI drift ${stage.uiRevision} != ${WORLD_V0_BROWSER_UI_REVISION}`);
+          if (stage.simBuildId !== WORLD_V0_EXPECTED_SIM_BUILD_ID) throw new Error("stage SimBuild drift");
+          if (stage.authorityRevision !== WORLD_V0_EXPECTED_SERVER_REVISION) throw new Error("stage authority drift");
+          if (stage.protocolRevision !== WORLD_V0_EXPECTED_PROTOCOL_REVISION) throw new Error("stage protocol drift");
+          console.log("FR_A_EXACT_PRODUCT_BYTES_PASS", JSON.stringify({
+            source: process.env.FRIEND_READY_SOURCE,
+            ui: WORLD_V0_BROWSER_UI_REVISION,
+            sim: WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          }));
+          NODE
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Verify Friend-Ready delivery apparatus
+        run: |
+          node --check public/world-v0/friend-entry.js
+          node --check public/world-v0/friend-ready.js
+          node --check scripts/world-v0-friend-entry-core-smoke.mjs
+          node --check scripts/world-v0-friend-entry-browser-smoke.mjs
+          node --check scripts/world-v0-runtime-shell-smoke.mjs
+          node scripts/world-v0-friend-entry-core-smoke.mjs
+          node scripts/world-v0-playable-control-smoke.mjs
+          node scripts/world-v0-solo-inspection-core-smoke.mjs
+          git diff --check
+          npm run check
+
+      - name: Start local staging Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-staging-fr-a-preflight-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-staging-fr-a-preflight-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "preflight Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-staging-fr-a-preflight-wrangler.log
+          exit 1
+
+      - name: Prove FR-A host-to-friend journey
+        env:
+          MW_WORLD_V0_FRIEND_ENTRY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_FRIEND_ENTRY_OUTPUT: world-v0-staging-fr-a-friend-entry.json
+        run: node scripts/world-v0-friend-entry-browser-smoke.mjs
+
+      - name: Preserve camera and controls
+        env:
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-staging-fr-a-interaction.json
+        run: node scripts/world-v0-playable-interaction-smoke.mjs
+
+      - name: Preserve manual fresh-epoch lifecycle
+        env:
+          MW_WORLD_V0_SESSION_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SESSION_OUTPUT: world-v0-staging-fr-a-session.json
+        run: node scripts/world-v0-session-friction-smoke.mjs
+
+      - name: Preserve desktop and portrait shell
+        env:
+          MW_WORLD_V0_SHELL_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SHELL_OUTPUT: world-v0-staging-fr-a-shell.json
+        run: node scripts/world-v0-runtime-shell-smoke.mjs
+
+      - name: Preserve Inspect solo exclusion/runtime
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-staging-fr-a-solo.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
+
+      - name: Stop local staging Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-staging-fr-a-preflight-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-staging-fr-a-preflight-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-staging-fr-a-preflight-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-staging-fr-a-friend-entry.json
+            world-v0-staging-fr-a-interaction.json
+            world-v0-staging-fr-a-session.json
+            world-v0-staging-fr-a-shell.json
+            world-v0-staging-fr-a-solo.json
+            world-v0-runtime-shell-*.png
+            world-v0-staging-fr-a-preflight-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

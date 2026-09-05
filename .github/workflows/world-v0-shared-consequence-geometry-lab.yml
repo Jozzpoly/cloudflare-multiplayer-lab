@@ -166,6 +166,102 @@ jobs:
           set -o pipefail
           node --experimental-strip-types scripts/.world-v0-shared-consequence-short-column-lab.mjs | tee world-v0-shared-consequence-short-column-lab.log
 
+      - name: Prepare support-topology matrices
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          let source = readFileSync('scripts/.world-v0-shared-consequence-product-impact-lab.mjs', 'utf8');
+          const oldVariants = `const VARIANTS = [
+            { id: "train3-wide4x2", trainLength: 3, wall: "wide4x2" },
+            { id: "train4-wide4x2", trainLength: 4, wall: "wide4x2" },
+            { id: "train6-wide4x2", trainLength: 6, wall: "wide4x2" },
+            { id: "train3-tall2x4", trainLength: 3, wall: "tall2x4" },
+            { id: "train4-tall2x4", trainLength: 4, wall: "tall2x4" },
+            { id: "train6-tall2x4", trainLength: 6, wall: "tall2x4" },
+          ];`.replace(/^          /gm, '');
+          const topologyVariants = `const VARIANTS = [
+            { id: "train1-wide4x2", trainLength: 1, wall: "wide4x2" },
+            { id: "train1-stagger4x3x1", trainLength: 1, wall: "stagger4x3x1" },
+            { id: "train1-compact3x3x2", trainLength: 1, wall: "compact3x3x2" },
+          ];`.replace(/^          /gm, '');
+          if (source.split(oldVariants).length - 1 !== 1) throw new Error('topology variant anchor drift');
+          source = source.replace(oldVariants, topologyVariants);
+
+          const oldWallPositions = `function wallPositions(shape) {
+            if (shape === "wide4x2") {
+              const columns = [1.89, 2.83, 3.77, 4.71];
+              const rows = [0.46, 1.38];
+              return rows.flatMap((y) => columns.map((z) => [WALL_X, y, z]));
+            }
+            if (shape === "tall2x4") {
+              const columns = [2.83, 3.77];
+              const rows = [0.46, 1.38, 2.30, 3.22];
+              return rows.flatMap((y) => columns.map((z) => [WALL_X, y, z]));
+            }
+            throw new Error(\`unknown wall shape \${shape}\`);
+          }`.replace(/^          /gm, '');
+          const topologyWallPositions = `function wallPositions(shape) {
+            if (shape === "wide4x2") {
+              const columns = [1.89, 2.83, 3.77, 4.71];
+              const rows = [0.46, 1.38];
+              return rows.flatMap((y) => columns.map((z) => [WALL_X, y, z]));
+            }
+            if (shape === "tall2x4") {
+              const columns = [2.83, 3.77];
+              const rows = [0.46, 1.38, 2.30, 3.22];
+              return rows.flatMap((y) => columns.map((z) => [WALL_X, y, z]));
+            }
+            if (shape === "stagger4x3x1") {
+              return [
+                ...[1.89, 2.83, 3.77, 4.71].map((z) => [WALL_X, 0.46, z]),
+                ...[2.36, 3.30, 4.24].map((z) => [WALL_X, 1.38, z]),
+                [WALL_X, 2.30, 3.30],
+              ];
+            }
+            if (shape === "compact3x3x2") {
+              return [
+                ...[2.36, 3.30, 4.24].map((z) => [WALL_X, 0.46, z]),
+                ...[2.36, 3.30, 4.24].map((z) => [WALL_X, 1.38, z]),
+                ...[2.83, 3.77].map((z) => [WALL_X, 2.30, z]),
+              ];
+            }
+            throw new Error(\`unknown wall shape \${shape}\`);
+          }`.replace(/^          /gm, '');
+          if (source.split(oldWallPositions).length - 1 !== 1) throw new Error('topology wallPositions anchor drift');
+          source = source.replace(oldWallPositions, topologyWallPositions);
+
+          const impactPath = 'scripts/.world-v0-shared-consequence-topology-impact-lab.mjs';
+          writeFileSync(impactPath, source);
+          const neutralAnchor = 'const NEUTRAL_TICKS = 120;';
+          if (source.split(neutralAnchor).length - 1 !== 1) throw new Error('neutral ticks anchor drift');
+          const stabilitySource = source.replace(neutralAnchor, 'const NEUTRAL_TICKS = 0;');
+          const stabilityPath = 'scripts/.world-v0-shared-consequence-topology-stability-lab.mjs';
+          writeFileSync(stabilityPath, stabilitySource);
+          console.log('SUPPORT_TOPOLOGY_PREP_PASS', JSON.stringify({
+            shapes: ['wide4x2', 'stagger4x3x1', 'compact3x3x2'],
+            trainLength: 1,
+            impactAxisZ: 3.3,
+            impactPath,
+            stabilityPath,
+          }));
+          NODE
+          node --check scripts/.world-v0-shared-consequence-topology-impact-lab.mjs
+          node --check scripts/.world-v0-shared-consequence-topology-stability-lab.mjs
+
+      - name: Run support-topology neutral stability
+        env:
+          MW_WORLD_V0_GEOMETRY_LAB_OUTPUT: world-v0-shared-consequence-topology-stability-lab.json
+        run: |
+          set -o pipefail
+          node --experimental-strip-types scripts/.world-v0-shared-consequence-topology-stability-lab.mjs | tee world-v0-shared-consequence-topology-stability-lab.log
+
+      - name: Run support-topology impact matrix
+        env:
+          MW_WORLD_V0_GEOMETRY_LAB_OUTPUT: world-v0-shared-consequence-topology-impact-lab.json
+        run: |
+          set -o pipefail
+          node --experimental-strip-types scripts/.world-v0-shared-consequence-topology-impact-lab.mjs | tee world-v0-shared-consequence-topology-impact-lab.log
+
       - name: Upload geometry evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -180,5 +276,9 @@ jobs:
             world-v0-shared-consequence-short-split-lab.log
             world-v0-shared-consequence-short-column-lab.json
             world-v0-shared-consequence-short-column-lab.log
+            world-v0-shared-consequence-topology-stability-lab.json
+            world-v0-shared-consequence-topology-stability-lab.log
+            world-v0-shared-consequence-topology-impact-lab.json
+            world-v0-shared-consequence-topology-impact-lab.log
           if-no-files-found: warn
           retention-days: 14

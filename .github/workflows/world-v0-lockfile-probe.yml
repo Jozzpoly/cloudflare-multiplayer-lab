@@ -1,0 +1,64 @@
+name: World V0 Dependency Lock Probe
+
+on:
+  push:
+    branches: [world-v0-execution-enablement-e1]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-lockfile-probe
+  cancel-in-progress: true
+
+jobs:
+  qualify-lockfile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact playable-derived candidate
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate candidate dependency lock only
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Require a non-empty lockfile
+        run: |
+          test -s package-lock.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+          if (lock.lockfileVersion !== 3) throw new Error(`unexpected lockfileVersion ${lock.lockfileVersion}`);
+          if (lock.packages?.[""]?.name !== "cloudflare-multiplayer-lab") throw new Error("root package identity drift");
+          console.log("LOCKFILE_ROOT", JSON.stringify({
+            lockfileVersion: lock.lockfileVersion,
+            packageCount: Object.keys(lock.packages || {}).length,
+          }));
+          NODE
+
+      - name: Install exactly from generated lock
+        run: npm ci
+
+      - name: Preserve complete repository validation
+        run: npm run check
+
+      - name: Record resolved top-level dependency tree
+        if: always()
+        run: npm ls --depth=0 --json > world-v0-lockfile-top-level.json || true
+
+      - name: Upload lock qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-lockfile-probe-attempt-${{ github.run_attempt }}
+          path: |
+            package-lock.json
+            world-v0-lockfile-top-level.json
+          if-no-files-found: error
+          retention-days: 14

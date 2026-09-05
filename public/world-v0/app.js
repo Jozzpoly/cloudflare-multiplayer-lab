@@ -53,12 +53,13 @@ const restartRoundButton = document.querySelector("#restart-round");
 const notice = document.querySelector("#notice");
 const joystick = document.querySelector("#joystick");
 const joystickKnob = document.querySelector("#joystick-knob");
+const jumpButton = document.querySelector("#jump-button");
 const cameraGimbal = document.querySelector("#camera-gimbal");
 const cameraGimbalKnob = document.querySelector("#camera-gimbal-knob");
 const copyEvidenceButton = document.querySelector("#copy-evidence");
 const metricNames = ["net", "ticks", "guard", "corrections", "rewind", "replay", "rtt", "lease", "memory", "frame"];
 const metric = Object.fromEntries(metricNames.map((name) => [name, document.querySelector(`#m-${name}`)]));
-const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, sessionActions, copyInviteButton, restartRoundButton, notice, joystick, joystickKnob, cameraGimbal, cameraGimbalKnob, copyEvidenceButton, ...Object.values(metric)];
+const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, sessionActions, copyInviteButton, restartRoundButton, notice, joystick, joystickKnob, jumpButton, cameraGimbal, cameraGimbalKnob, copyEvidenceButton, ...Object.values(metric)];
 if (required.some((value) => !value)) throw new Error("Shared Yard V0 UI incomplete");
 
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
@@ -81,6 +82,7 @@ try {
     "b3RecPlayer_CreateFromRecording", "b3RecPlayer_Destroy", "b3RecPlayer_GetWorldId", "b3RecPlayer_GetBodyCount",
     "b3RecPlayer_GetBodyId", "b3RecPlayer_SeekFrame", "b3RecPlayer_GetFrame", "b3RecPlayer_HasDiverged",
     "b3RecPlayer_GetDivergeFrame", "b3Body_SetName", "b3Body_GetName", "b3Body_IsValid",
+    "createContactsBuffer", "getBodyContactData", "getNumContacts", "createContact", "getContactAt", "createManifold", "getManifoldAt", "b3Shape_GetBody",
   ];
   const missing = recordingFns.filter((name) => typeof b3[name] !== "function");
   if (missing.length) throw new Error(`Box3D recording capability missing: ${missing.join(", ")}`);
@@ -320,6 +322,7 @@ const keys = new Set();
 const movementCodes = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"]);
 let touchInput = { x: 0, z: 0 };
 let joystickPointer = null;
+let jumpQueued = false;
 
 function keyboardInput() {
   let x = 0;
@@ -339,15 +342,23 @@ function rawCurrentInput() {
 }
 
 function currentInput() {
-  return cameraRelativeInput(rawCurrentInput(), cameraOrbit.yaw);
+  return { ...cameraRelativeInput(rawCurrentInput(), cameraOrbit.yaw), jump: jumpQueued };
+}
+
+function consumeCurrentInput() {
+  const input = currentInput();
+  jumpQueued = false;
+  return input;
 }
 
 function sameInput(a, c) {
-  return Math.abs(a.x - c.x) <= EPS && Math.abs(a.z - c.z) <= EPS;
+  return Math.abs(a.x - c.x) <= EPS &&
+    Math.abs(a.z - c.z) <= EPS &&
+    Boolean(a.jump) === Boolean(c.jump);
 }
 
 function zeroInput() {
-  return { x: 0, z: 0 };
+  return { x: 0, z: 0, jump: false };
 }
 
 function distance3(a, c) {
@@ -457,6 +468,9 @@ const metrics = {
   leaseExpiredSeen: 0,
   serverLate: 0,
   serverRejected: 0,
+  jumpPulsesGenerated: 0,
+  authorityJumpApplied: 0,
+  authorityJumpRejected: 0,
   latestCorrection: { self: 0, remote: 0, prop: 0 },
   maxCorrection: { self: 0, remote: 0, prop: 0 },
   maxFrameMs: 0,
@@ -501,6 +515,10 @@ function assertSimulationContract(contract, phase) {
   if (contract.stateGuardRevision !== WORLD_V0_EXPECTED_STATE_GUARD_REVISION) throw new Error(`${phase} state guard revision mismatch ${contract.stateGuardRevision}`);
   if (contract.box3dRuntime?.package !== WORLD_V0_BOX3D_PACKAGE) throw new Error(`${phase} Box3D package mismatch ${contract.box3dRuntime?.package}`);
   if (contract.timing?.simulationHz !== 60 || contract.timing?.substeps !== 4) throw new Error(`${phase} fixed-step contract mismatch`);
+  if (!Number.isFinite(contract.movement?.jumpSpeed) || !Number.isFinite(contract.movement?.jumpSupportNormalMinY) ||
+      !Number.isFinite(contract.movement?.jumpSupportImpulseEpsilon) || !Number.isFinite(contract.movement?.jumpMaxUpwardSpeed)) {
+    throw new Error(`${phase} jump-support movement contract missing`);
+  }
   if (!Array.isArray(contract.netEntityOrder) || contract.netEntityOrder.length !== 14) throw new Error(`${phase} invalid NetEntityId order`);
   if (!Array.isArray(contract.stateComponents) || contract.stateComponents.length !== 13) throw new Error(`${phase} invalid state component contract`);
   return contract;
@@ -747,6 +765,35 @@ function correctionDelta(before, after) {
   };
 }
 
+const supportContacts = b3.createContactsBuffer();
+const supportContact = b3.createContact();
+const supportManifold = b3.createManifold();
+
+function sameBodyId(a, c) {
+  return a.index1 === c.index1 && a.world0 === c.world0 && a.generation === c.generation;
+}
+
+function hasJumpSupport(body) {
+  b3.getBodyContactData(supportContacts, body);
+  for (let index = 0, count = b3.getNumContacts(supportContacts); index < count; index += 1) {
+    b3.getContactAt(supportContact, supportContacts, index);
+    const bodyA = b3.b3Shape_GetBody(supportContact.shapeIdA);
+    const bodyB = b3.b3Shape_GetBody(supportContact.shapeIdB);
+    const playerIsA = sameBodyId(bodyA, body);
+    const playerIsB = sameBodyId(bodyB, body);
+    if (!playerIsA && !playerIsB) continue;
+    for (let manifoldIndex = 0; manifoldIndex < supportContact.manifoldCount; manifoldIndex += 1) {
+      b3.getManifoldAt(supportManifold, supportContact, manifoldIndex);
+      const supportY = playerIsA ? -supportManifold.normal[1] : supportManifold.normal[1];
+      if (supportY < simulation.movement.jumpSupportNormalMinY) continue;
+      for (let pointIndex = 0; pointIndex < supportManifold.pointCount; pointIndex += 1) {
+        if (supportManifold.points[pointIndex].totalNormalImpulse > simulation.movement.jumpSupportImpulseEpsilon) return true;
+      }
+    }
+  }
+  return false;
+}
+
 function applyIntent(body, input) {
   const velocity = bodyLinearVelocity(body);
   const hasInput = Math.hypot(input.x, input.z) > 0.01;
@@ -758,7 +805,11 @@ function applyIntent(body, input) {
     input.z * simulation.movement.playerSpeed,
     accel * FIXED_DT,
   );
-  b3.b3Body_SetLinearVelocity(body, [nextX, velocity[1], nextZ]);
+  const jumpApplied = Boolean(input.jump) &&
+    velocity[1] <= simulation.movement.jumpMaxUpwardSpeed &&
+    hasJumpSupport(body);
+  b3.b3Body_SetLinearVelocity(body, [nextX, jumpApplied ? simulation.movement.jumpSpeed : velocity[1], nextZ]);
+  return jumpApplied;
 }
 
 function previousUsedInput(tick) {
@@ -776,7 +827,10 @@ function resolveInputsForTick(tick, previous) {
   const remoteAuth = authoritativeInput(tick, remoteSessionId);
   const self = selfAuth || intendedSelf.get(tick) || previous.self;
   const remote = remoteAuth || peerRemote.get(tick) || previous.remote;
-  return { self: { x: self.x, z: self.z }, remote: { x: remote.x, z: remote.z } };
+  return {
+    self: { x: self.x, z: self.z, jump: Boolean(self.jump) },
+    remote: { x: remote.x, z: remote.z, jump: Boolean(remote.jump) },
+  };
 }
 
 function usedInputsChangedAt(tick) {
@@ -792,8 +846,9 @@ function truncateUsedFrom(targetTick) {
 
 function applyResolvedTick(sim, tick, allowGenerateSelf) {
   if (allowGenerateSelf && protocolStartTick !== null && tick >= protocolStartTick && !intendedSelf.has(tick)) {
-    const intended = currentInput();
+    const intended = consumeCurrentInput();
     intendedSelf.set(tick, { ...intended });
+    if (intended.jump) metrics.jumpPulsesGenerated += 1;
     queueInputRecord(tick, intended);
   }
   const previous = previousUsedInput(tick);
@@ -1073,7 +1128,7 @@ function socketUrl() {
 }
 
 function queueInputRecord(targetTick, input) {
-  pendingBatch.push({ targetTick, x: input.x, z: input.z });
+  pendingBatch.push({ targetTick, x: input.x, z: input.z, jump: Boolean(input.jump) });
   if (pendingBatch.length < simulation.timing.inputBatchSize) return;
   if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error("input transport closed while generating canonical records");
   batchSeq += 1;
@@ -1132,7 +1187,7 @@ function handlePeerRecords(message) {
     const existing = peerRemote.get(record.targetTick);
     if (existing && !sameInput(existing, record)) throw new Error(`conflicting relayed remote record at ${record.targetTick}`);
     if (!existing) {
-      peerRemote.set(record.targetTick, { x: record.x, z: record.z });
+      peerRemote.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });
       candidates.push(record.targetTick);
     }
   }
@@ -1148,10 +1203,15 @@ function handleConsumed(message) {
     map.set(player.sessionId, {
       x: player.x,
       z: player.z,
+      jump: Boolean(player.jump),
       fresh: Boolean(player.fresh),
       source: player.source,
       missingStreak: player.missingStreak,
     });
+    if (player.sessionId === selfSessionId && player.jump) {
+      if (player.jumpApplied) metrics.authorityJumpApplied += 1;
+      else metrics.authorityJumpRejected += 1;
+    }
     if (player.source === "lease_expired") metrics.leaseExpiredSeen += 1;
   }
   consumedByTick.set(message.targetTick, map);
@@ -1193,6 +1253,7 @@ function handleStart(message) {
   networkState = "live · Shared Yard V0";
   joystick.classList.add("active");
   cameraGimbal.classList.add("active");
+  updateJumpControlState();
   recordLifecycle("world-start", { protocolStartTick });
   clearNotice();
   syncMeshes();
@@ -1249,6 +1310,8 @@ function handleMessage(message) {
     networkState = `epoch ended · ${message.reason}`;
     joystick.classList.remove("active");
     cameraGimbal.classList.remove("active");
+    jumpQueued = false;
+    updateJumpControlState();
     recordLifecycle("epoch-ended", { reason: message.reason, boundaryTick: message.boundaryTick ?? null });
     showNotice(`Shared Yard round ended: ${message.reason}. Restart when ready.`);
     persistLastSessionEvidence("epoch-ended");
@@ -1314,6 +1377,8 @@ function connect() {
     networkState = `closed ${event.code}`;
     joystick.classList.remove("active");
     cameraGimbal.classList.remove("active");
+    jumpQueued = false;
+    updateJumpControlState();
     cameraGimbalInput = { x: 0, y: 0 };
     cameraGimbalKnob.style.transform = "translate(0, 0)";
     recordLifecycle("socket-close", { code: event.code, reason: event.reason || null, wasClean: event.wasClean, expectedAfterEpochEnd });
@@ -1462,6 +1527,20 @@ function buildEvidence() {
       rawInput: rawCurrentInput(),
       worldInputPreview: currentInput(),
     },
+    jump: (() => {
+      const selfBody = localState?.sim?.actorBodies?.get(selfSessionId);
+      const position = selfBody ? bodyPosition(selfBody) : null;
+      const velocity = selfBody ? bodyLinearVelocity(selfBody) : null;
+      return {
+        queued: jumpQueued,
+        buttonEnabled: !jumpButton.disabled,
+        selfY: position?.[1] ?? null,
+        selfVy: velocity?.[1] ?? null,
+        pulsesGenerated: metrics.jumpPulsesGenerated,
+        authorityApplied: metrics.authorityJumpApplied,
+        authorityRejected: metrics.authorityJumpRejected,
+      };
+    })(),
     session: {
       inviteUrl: buildInviteUrl(),
       restartAvailable: canRestartRound(),
@@ -1508,6 +1587,7 @@ window.__sharedYardV0PlayableControl = () => ({
   cameraOrbit: { ...cameraOrbit },
   rawInput: rawCurrentInput(),
   worldInput: currentInput(),
+  jumpQueued,
 });
 window.__sharedYardV0LastEvidence = () => {
   try {
@@ -1535,7 +1615,7 @@ function productStatusText() {
   if (runtimeFailed) return "Runtime problem · open Diagnostics";
   if (networkState === "waiting for peer") return "Waiting for peer · use the same Run key";
   if (networkState === "peer joined" || networkState === "both connected · ready" || networkState === "ready · awaiting start") return "Peer found · synchronizing Shared Yard";
-  if (networkState.startsWith("live")) return "Shared Yard live · move · drag to look · interact";
+  if (networkState.startsWith("live")) return "Shared Yard live · move · Space/JUMP · drag to look · interact";
   if (networkState === "connecting" || networkState === "syncing") return "Connecting to Shared Yard…";
   if (networkState.startsWith("closed")) return "Round ended · restart when ready";
   if (networkState.startsWith("epoch ended")) return "Round ending · preparing fresh epoch";
@@ -1590,8 +1670,10 @@ function resetProtocolState() {
   phaseAnchor = null;
   lastFrameAt = null;
   keys.clear();
-  touchInput = zeroInput();
+  touchInput = { x: 0, z: 0 };
   joystickPointer = null;
+  jumpQueued = false;
+  jumpButton.disabled = true;
   joystickKnob.style.transform = "translate(0, 0)";
   cameraOrbit.pointerId = null;
   cameraTouchPointers.clear();
@@ -1622,6 +1704,9 @@ function resetProtocolState() {
     leaseExpiredSeen: 0,
     serverLate: 0,
     serverRejected: 0,
+    jumpPulsesGenerated: 0,
+    authorityJumpApplied: 0,
+    authorityJumpRejected: 0,
     latestCorrection: { self: 0, remote: 0, prop: 0 },
     maxCorrection: { self: 0, remote: 0, prop: 0 },
     maxFrameMs: 0,
@@ -1686,17 +1771,48 @@ copyEvidenceButton.addEventListener("click", async () => {
   }
 });
 
+function jumpControlReady() {
+  return Boolean(playing && !runtimeFailed && localState && protocolStartTick !== null && localState.boundaryTick >= protocolStartTick);
+}
+
+function updateJumpControlState() {
+  jumpButton.disabled = !jumpControlReady();
+  jumpButton.classList.toggle("active", !jumpButton.disabled);
+}
+
+function queueJumpPulse() {
+  if (!jumpControlReady()) return false;
+  jumpQueued = true;
+  return true;
+}
+
 addEventListener("keydown", (event) => {
+  if (event.code === "Space") {
+    if (!event.repeat) queueJumpPulse();
+    event.preventDefault();
+    return;
+  }
   if (!movementCodes.has(event.code)) return;
   keys.add(event.code);
   event.preventDefault();
 });
 addEventListener("keyup", (event) => {
+  if (event.code === "Space") {
+    event.preventDefault();
+    return;
+  }
   if (!movementCodes.has(event.code)) return;
   keys.delete(event.code);
   event.preventDefault();
 });
-addEventListener("blur", () => keys.clear());
+addEventListener("blur", () => {
+  keys.clear();
+  jumpQueued = false;
+});
+jumpButton.addEventListener("pointerdown", (event) => {
+  queueJumpPulse();
+  event.preventDefault();
+});
 
 function updateJoystick(event) {
   const rect = joystick.getBoundingClientRect();
@@ -1896,6 +2012,7 @@ function frame(now) {
   if (playing && !runtimeFailed) {
     try {
       advancePrediction();
+      updateJumpControlState();
       syncMeshes();
     } catch (error) {
       candidateError(error);

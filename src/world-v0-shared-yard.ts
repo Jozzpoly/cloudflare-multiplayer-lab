@@ -24,6 +24,7 @@ import {
   parseWorldV0ClientMessage,
   sameWorldV0Identity,
   type WorldV0ConsumedInput,
+  type WorldV0InputValue,
 } from "./world-v0-protocol";
 
 if (
@@ -171,6 +172,9 @@ export class SharedYardV0 extends DurableObject<Env> {
   private catchupSteps = 0;
   private failure: string | null = null;
   private resetting = false;
+  private readonly supportContacts = b3.createContactsBuffer();
+  private readonly supportContact = b3.createContact();
+  private readonly supportManifold = b3.createManifold();
 
   // World V0 has no hibernation reconstruction contract. If an object instance
   // is ever recreated while Hibernation API sockets survived, close those
@@ -287,7 +291,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         senderPlayerId: player.playerId,
         senderNetEntityId: player.netEntityId,
         batchSeq: message.batchSeq,
-        records: accepted.map(({ targetTick, x, z }) => ({ targetTick, x, z })),
+        records: accepted.map(({ targetTick, x, z, jump }) => ({ targetTick, x, z, jump })),
         relayBoundaryTick: this.tick,
         serverTime: Date.now(),
         ...this.identityPayload(),
@@ -546,20 +550,21 @@ export class SharedYardV0 extends DurableObject<Env> {
       playerId: string;
       netEntityId: string;
       slot: number;
-    } & WorldV0ConsumedInput> = [];
+    } & WorldV0ConsumedInput & { jumpApplied: boolean }> = [];
     let leaseExpiredBy: SharedYardPlayer | null = null;
 
     for (const player of this.sortedPlayers()) {
       const input = active
         ? player.input.consume(targetTick)
-        : { targetTick, x: 0, z: 0, fresh: false, source: "held" as const, missingStreak: 0 };
-      this.applyIntent(player.body, input.x, input.z);
+        : { targetTick, x: 0, z: 0, jump: false, fresh: false, source: "held" as const, missingStreak: 0 };
+      const jumpApplied = this.applyIntent(player.body, input);
       consumed.push({
         sessionId: player.sessionId,
         playerId: player.playerId,
         netEntityId: player.netEntityId,
         slot: player.slot,
         ...input,
+        jumpApplied,
       });
       if (active && input.source === "lease_expired" && !leaseExpiredBy) leaseExpiredBy = player;
     }
@@ -586,18 +591,47 @@ export class SharedYardV0 extends DurableObject<Env> {
     if (this.tick % SNAPSHOT_EVERY_TICKS === 0) this.broadcastSnapshot();
   }
 
-  private applyIntent(body: BodyId, inputX: number, inputZ: number): void {
+  private sameBodyId(a: BodyId, b: BodyId): boolean {
+    return a.index1 === b.index1 && a.world0 === b.world0 && a.generation === b.generation;
+  }
+
+  private hasJumpSupport(body: BodyId): boolean {
+    b3.getBodyContactData(this.supportContacts, body);
+    for (let index = 0, count = b3.getNumContacts(this.supportContacts); index < count; index += 1) {
+      b3.getContactAt(this.supportContact, this.supportContacts, index);
+      const bodyA = b3.b3Shape_GetBody(this.supportContact.shapeIdA);
+      const bodyB = b3.b3Shape_GetBody(this.supportContact.shapeIdB);
+      const playerIsA = this.sameBodyId(bodyA, body);
+      const playerIsB = this.sameBodyId(bodyB, body);
+      if (!playerIsA && !playerIsB) continue;
+      for (let manifoldIndex = 0; manifoldIndex < this.supportContact.manifoldCount; manifoldIndex += 1) {
+        b3.getManifoldAt(this.supportManifold, this.supportContact, manifoldIndex);
+        const supportY = playerIsA ? -this.supportManifold.normal[1] : this.supportManifold.normal[1];
+        if (supportY < WORLD_V0_MOVEMENT.jumpSupportNormalMinY) continue;
+        for (let pointIndex = 0; pointIndex < this.supportManifold.pointCount; pointIndex += 1) {
+          if (this.supportManifold.points[pointIndex].totalNormalImpulse > WORLD_V0_MOVEMENT.jumpSupportImpulseEpsilon) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private applyIntent(body: BodyId, input: WorldV0InputValue): boolean {
     const velocity = bodyLinearVelocity(body);
-    const hasInput = Math.hypot(inputX, inputZ) > 0.01;
+    const hasInput = Math.hypot(input.x, input.z) > 0.01;
     const [nextX, nextZ] = moveToward2(
       velocity[0],
       velocity[2],
-      inputX * WORLD_V0_MOVEMENT.playerSpeed,
-      inputZ * WORLD_V0_MOVEMENT.playerSpeed,
+      input.x * WORLD_V0_MOVEMENT.playerSpeed,
+      input.z * WORLD_V0_MOVEMENT.playerSpeed,
       (hasInput ? WORLD_V0_MOVEMENT.playerAcceleration : WORLD_V0_MOVEMENT.playerDeceleration) /
         WORLD_V0_TIMING.simulationHz,
     );
-    b3.b3Body_SetLinearVelocity(body, [nextX, velocity[1], nextZ]);
+    const jumpApplied = Boolean(input.jump) &&
+      velocity[1] <= WORLD_V0_MOVEMENT.jumpMaxUpwardSpeed &&
+      this.hasJumpSupport(body);
+    b3.b3Body_SetLinearVelocity(body, [nextX, jumpApplied ? WORLD_V0_MOVEMENT.jumpSpeed : velocity[1], nextZ]);
+    return jumpApplied;
   }
 
   private sampleScene(): SharedYardSceneSample {

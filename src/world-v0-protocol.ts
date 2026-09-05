@@ -18,7 +18,7 @@ export type WorldV0Identity = {
   clientSimRevision: string;
 };
 
-export type WorldV0InputValue = { x: number; z: number };
+export type WorldV0InputValue = { x: number; z: number; jump: boolean };
 export type WorldV0InputRecord = WorldV0InputValue & { targetTick: number };
 export type WorldV0InputBatch = WorldV0Identity & {
   type: "world_v0_input_batch";
@@ -41,6 +41,7 @@ export type WorldV0RecordAcceptance = {
   targetTick: number;
   x: number;
   z: number;
+  jump: boolean;
   status: WorldV0RecordStatus;
 };
 
@@ -113,15 +114,17 @@ export function sameWorldV0Identity(a: WorldV0Identity, b: WorldV0Identity): boo
     a.clientSimRevision === b.clientSimRevision;
 }
 
-export function normalizeWorldV0Input(x: number, z: number): WorldV0InputValue {
-  if (!Number.isFinite(x) || !Number.isFinite(z)) return { x: 0, z: 0 };
+export function normalizeWorldV0Input(x: number, z: number, jump = false): WorldV0InputValue {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return { x: 0, z: 0, jump: false };
   const length = Math.hypot(x, z);
-  if (length <= 1) return { x, z };
-  return { x: x / length, z: z / length };
+  if (length <= 1) return { x, z, jump: Boolean(jump) };
+  return { x: x / length, z: z / length, jump: Boolean(jump) };
 }
 
 export function sameWorldV0Input(a: WorldV0InputValue, b: WorldV0InputValue): boolean {
-  return Math.abs(a.x - b.x) <= INPUT_EPS && Math.abs(a.z - b.z) <= INPUT_EPS;
+  return Math.abs(a.x - b.x) <= INPUT_EPS &&
+    Math.abs(a.z - b.z) <= INPUT_EPS &&
+    Boolean(a.jump) === Boolean(b.jump);
 }
 
 export function parseWorldV0ClientMessage(raw: string): WorldV0ClientMessage | null {
@@ -157,8 +160,9 @@ export function parseWorldV0ClientMessage(raw: string): WorldV0ClientMessage | n
     const inputRecord = rawRecord as Record<string, unknown>;
     if (!isFiniteInteger(inputRecord.targetTick) || inputRecord.targetTick < 0) return null;
     if (typeof inputRecord.x !== "number" || typeof inputRecord.z !== "number") return null;
-    const input = normalizeWorldV0Input(inputRecord.x, inputRecord.z);
-    records.push({ targetTick: inputRecord.targetTick, x: input.x, z: input.z });
+    if ("jump" in inputRecord && typeof inputRecord.jump !== "boolean") return null;
+    const input = normalizeWorldV0Input(inputRecord.x, inputRecord.z, inputRecord.jump === true);
+    records.push({ targetTick: inputRecord.targetTick, x: input.x, z: input.z, jump: input.jump });
   }
 
   for (let index = 1; index < records.length; index += 1) {
@@ -170,7 +174,7 @@ export function parseWorldV0ClientMessage(raw: string): WorldV0ClientMessage | n
 
 export class WorldV0ScheduledInputBuffer {
   private readonly pending = new Map<number, WorldV0InputValue>();
-  private consumed: WorldV0InputValue = { x: 0, z: 0 };
+  private consumed: WorldV0InputValue = { x: 0, z: 0, jump: false };
   private lastBatchSeq = 0;
   private acceptedRecords = 0;
   private duplicateSameRecords = 0;
@@ -219,7 +223,7 @@ export class WorldV0ScheduledInputBuffer {
             this.conflictRecords += 1;
           }
         } else {
-          this.pending.set(record.targetTick, { x: record.x, z: record.z });
+          this.pending.set(record.targetTick, { x: record.x, z: record.z, jump: record.jump });
           status = "accepted";
           this.acceptedRecords += 1;
         }
@@ -240,18 +244,19 @@ export class WorldV0ScheduledInputBuffer {
       this.consumed = pending;
       this.missingStreak = 0;
       this.consumedFresh += 1;
-      return { targetTick, x: pending.x, z: pending.z, fresh: true, source: "fresh", missingStreak: 0 };
+      return { targetTick, x: pending.x, z: pending.z, jump: pending.jump, fresh: true, source: "fresh", missingStreak: 0 };
     }
 
     this.consumedMissing += 1;
     this.missingStreak += 1;
     if (this.missingStreak >= inputLeaseMissingTicks) {
       if (this.missingStreak === inputLeaseMissingTicks) this.leaseExpirations += 1;
-      this.consumed = { x: 0, z: 0 };
+      this.consumed = { x: 0, z: 0, jump: false };
       return {
         targetTick,
         x: 0,
         z: 0,
+        jump: false,
         fresh: false,
         source: "lease_expired",
         missingStreak: this.missingStreak,
@@ -262,6 +267,7 @@ export class WorldV0ScheduledInputBuffer {
       targetTick,
       x: this.consumed.x,
       z: this.consumed.z,
+      jump: false,
       fresh: false,
       source: "held",
       missingStreak: this.missingStreak,

@@ -10,6 +10,24 @@ function replaceOnce(anchor, replacement, label) {
   source = source.replace(anchor, replacement);
 }
 
+// Replace the existing reset block before defining the helper, otherwise the
+// helper body itself would intentionally duplicate this exact anchor.
+replaceOnce(
+  `  keys.clear();
+  touchInput = zeroInput();
+  joystickPointer = null;
+  joystickKnob.style.transform = "translate(0, 0)";
+  cameraOrbit.pointerId = null;
+  cameraTouchPointers.clear();
+  cameraPinch = null;
+  cameraGimbalPointer = null;
+  cameraGimbalInput = { x: 0, y: 0 };
+  cameraGimbalKnob.style.transform = "translate(0, 0)";
+  lastCameraControlAt = null;`,
+  `  neutralizeTransientInputs();`,
+  "protocol-reset-input-neutralization"
+);
+
 replaceOnce(
   'addEventListener("blur", () => keys.clear());',
   `function neutralizeTransientInputs() {
@@ -53,22 +71,6 @@ renderer.domElement.addEventListener("pointercancel", endCameraPointer);`,
 renderer.domElement.addEventListener("pointercancel", endCameraPointer);
 renderer.domElement.addEventListener("lostpointercapture", endCameraPointer);`,
   "canvas-lostpointercapture"
-);
-
-replaceOnce(
-  `  keys.clear();
-  touchInput = zeroInput();
-  joystickPointer = null;
-  joystickKnob.style.transform = "translate(0, 0)";
-  cameraOrbit.pointerId = null;
-  cameraTouchPointers.clear();
-  cameraPinch = null;
-  cameraGimbalPointer = null;
-  cameraGimbalInput = { x: 0, y: 0 };
-  cameraGimbalKnob.style.transform = "translate(0, 0)";
-  lastCameraControlAt = null;`,
-  `  neutralizeTransientInputs();`,
-  "protocol-reset-input-neutralization"
 );
 
 fs.writeFileSync(path, source);

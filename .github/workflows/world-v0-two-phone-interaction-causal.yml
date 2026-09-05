@@ -1,0 +1,127 @@
+name: World V0 Two-Phone Interaction Causal Split
+
+on:
+  push:
+    branches: [world-v0-two-phone-interaction-causal]
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SOURCE: 65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3
+
+jobs:
+  causal:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [candidate, no-canvas-lostcapture, no-window-blur]
+        trial: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact causal apparatus
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select exact candidate and bounded subtraction
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          git checkout "$CANDIDATE_SOURCE" -- public/world-v0/app.js
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const variant = process.env.VARIANT;
+          const path = "public/world-v0/app.js";
+          let s = fs.readFileSync(path, "utf8");
+          const replaceOnce = (from, to, label) => {
+            const i = s.indexOf(from);
+            if (i < 0) throw new Error(`missing ${label}`);
+            if (s.indexOf(from, i + from.length) >= 0) throw new Error(`non-unique ${label}`);
+            s = s.replace(from, to);
+          };
+          if (variant === "no-canvas-lostcapture") {
+            replaceOnce('renderer.domElement.addEventListener("lostpointercapture", endCameraPointer);\n', '', "canvas lostpointercapture hook");
+          } else if (variant === "no-window-blur") {
+            replaceOnce('addEventListener("blur", neutralizeTransientInputs);', 'addEventListener("blur", () => keys.clear());', "window blur hook");
+          } else if (variant !== "candidate") {
+            throw new Error(`unknown variant ${variant}`);
+          }
+          fs.writeFileSync(path, s);
+          NODE
+          git diff --check
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start local Workerd
+        env:
+          VARIANT: ${{ matrix.variant }}
+          TRIAL: ${{ matrix.trial }}
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "world-v0-interaction-causal-${VARIANT}-${TRIAL}-wrangler.log" 2>&1 &
+          echo $! > /tmp/world-v0-interaction-causal.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "world-v0-interaction-causal-${VARIANT}-${TRIAL}-wrangler.log"
+          exit 1
+
+      - name: Measure interaction smoke
+        env:
+          VARIANT: ${{ matrix.variant }}
+          TRIAL: ${{ matrix.trial }}
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+        run: |
+          set +e
+          MW_WORLD_V0_PLAYABLE_OUTPUT="world-v0-interaction-causal-${VARIANT}-${TRIAL}.json" node scripts/world-v0-playable-interaction-smoke.mjs
+          status=$?
+          set -e
+          echo "INTERACTION_EXIT=$status" >> "$GITHUB_ENV"
+          test -f "world-v0-interaction-causal-${VARIANT}-${TRIAL}.json"
+
+      - name: Summarize causal measurement
+        env:
+          VARIANT: ${{ matrix.variant }}
+          TRIAL: ${{ matrix.trial }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const path = `world-v0-interaction-causal-${process.env.VARIANT}-${process.env.TRIAL}.json`;
+          const e = JSON.parse(fs.readFileSync(path, "utf8"));
+          const summary = {
+            measurementOnly: true,
+            variant: process.env.VARIANT,
+            trial: Number(process.env.TRIAL),
+            exit: Number(process.env.INTERACTION_EXIT ?? -1),
+            verdict: e.verdict ?? null,
+            error: e.error ?? null,
+          };
+          fs.writeFileSync(`world-v0-interaction-causal-${process.env.VARIANT}-${process.env.TRIAL}-summary.json`, JSON.stringify(summary, null, 2));
+          console.log("WORLD_V0_INTERACTION_CAUSAL_MEASUREMENT", JSON.stringify(summary));
+          NODE
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-interaction-causal.pid ]; then kill "$(cat /tmp/world-v0-interaction-causal.pid)" 2>/dev/null || true; fi
+
+      - name: Upload causal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-interaction-causal-${{ matrix.variant }}-${{ matrix.trial }}
+          path: |
+            world-v0-interaction-causal-${{ matrix.variant }}-${{ matrix.trial }}.json
+            world-v0-interaction-causal-${{ matrix.variant }}-${{ matrix.trial }}-summary.json
+            world-v0-interaction-causal-${{ matrix.variant }}-${{ matrix.trial }}-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

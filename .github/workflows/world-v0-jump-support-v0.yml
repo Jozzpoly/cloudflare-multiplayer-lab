@@ -43,6 +43,7 @@ jobs:
           node --check public/world-v0/build-contract.js
           node --check scripts/world-v0-jump-authority-smoke.mjs
           node --check scripts/world-v0-jump-browser-smoke.mjs
+          node --check scripts/world-v0-solo-inspection-browser-smoke.mjs
           node --experimental-strip-types scripts/world-v0-protocol-smoke.ts
           git diff --check
 
@@ -107,7 +108,7 @@ jobs:
   qualify-browser-jump:
     needs: qualify-authority-jump
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 14
     steps:
       - name: Checkout exact jump branch head
         uses: actions/checkout@v4
@@ -135,6 +136,12 @@ jobs:
           cat world-v0-jump-browser-wrangler.log
           exit 1
 
+      - name: Preserve real-authority Inspect solo baseline on jump runtime
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-jump-solo-baseline.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
+
       - name: Falsify browser prediction and exact-state jump path
         env:
           MW_WORLD_V0_JUMP_BROWSER_BASE_URL: http://127.0.0.1:8787
@@ -154,6 +161,7 @@ jobs:
         with:
           name: world-v0-jump-browser-attempt-${{ github.run_attempt }}
           path: |
+            world-v0-jump-solo-baseline.json
             world-v0-jump-browser-evidence.json
             world-v0-jump-browser-wrangler.log
           if-no-files-found: warn

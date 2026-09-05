@@ -285,6 +285,33 @@ try {
   assert(e2FriendLive.identity.worldEpoch === secondEpoch, "same invite did not join E2");
   assert(e2HostLive.identity.worldId === e2FriendLive.identity.worldId, "returning friend joined different logical room");
   assert(e2HostLive.metrics.guardMismatches === 0 && e2FriendLive.metrics.guardMismatches === 0, "state mismatch after continuity rejoin");
+  const firstTransition = { ...e2HostLive.roomContinuity };
+
+  // A continuity mechanism that only works once is not continuity. Close the
+  // returning peer too and require a second, independent host rearm into E3.
+  await stopBrowser(friend2);
+  friend2 = null;
+
+  await waitFor(host, `(() => {
+    const e = window.__sharedYardV0Evidence?.();
+    const c = e?.roomContinuity;
+    const s = window.__sharedYardV0Session?.();
+    return c?.state === "waiting-new-epoch" && c?.attempts === 2 &&
+      c?.fromEpoch === ${JSON.stringify(secondEpoch)} && c?.toEpoch && c.toEpoch !== c.fromEpoch &&
+      s?.networkState === "waiting for peer";
+  })()`, "host automatic E3 rearm");
+
+  const e3Waiting = await evaluate(host, `({ session: window.__sharedYardV0Session(), evidence: window.__sharedYardV0Evidence() })`);
+  const thirdEpoch = e3Waiting.evidence.identity?.worldEpoch;
+  assert(thirdEpoch && thirdEpoch !== secondEpoch && thirdEpoch !== firstEpoch, `E3 epoch not fresh ${thirdEpoch}`);
+  assert(e3Waiting.session.runKey === runKey, `E3 room identity changed ${e3Waiting.session.runKey} != ${runKey}`);
+  assert(e3Waiting.session.inviteUrl === originalInvite, `E3 invite changed ${e3Waiting.session.inviteUrl} != ${originalInvite}`);
+  assert(e3Waiting.evidence.protocolStartTick === null, `E3 waiting unexpectedly active ${e3Waiting.evidence.protocolStartTick}`);
+  assert(e3Waiting.evidence.roomContinuity?.attempts === 2, `expected exactly two rearm attempts, got ${e3Waiting.evidence.roomContinuity?.attempts}`);
+  assert(e3Waiting.evidence.roomContinuity?.attemptedEpochs?.includes(firstEpoch), "E1 attempt provenance lost");
+  assert(e3Waiting.evidence.roomContinuity?.attemptedEpochs?.includes(secondEpoch), "E2 attempt provenance lost");
+  assert(e3Waiting.evidence.roomContinuity?.triggerPlan?.action === "auto-rearm" && e3Waiting.evidence.roomContinuity?.triggerPlan?.worldEpoch === secondEpoch, `E3 trigger provenance wrong ${JSON.stringify(e3Waiting.evidence.roomContinuity?.triggerPlan)}`);
+  assert(e3Waiting.evidence.roomContinuity?.lastPlan?.action === "hold" && e3Waiting.evidence.roomContinuity?.lastPlan?.reason === "not-clean-epoch-end", `E3 policy should settle to hold ${JSON.stringify(e3Waiting.evidence.roomContinuity?.lastPlan)}`);
 
   Object.assign(result, {
     verdict: "WORLD_V0_ROOM_CONTINUITY_PASS",
@@ -293,7 +320,9 @@ try {
     originalInvite,
     firstEpoch,
     secondEpoch,
-    continuity: e2HostLive.roomContinuity,
+    thirdEpoch,
+    firstTransition,
+    secondTransition: e3Waiting.evidence.roomContinuity,
     e1: {
       hostBoundary: e1HostLive.localBoundaryTick,
       friendBoundary: e1FriendLive.localBoundaryTick,
@@ -306,9 +335,14 @@ try {
       hostGuards: e2HostLive.metrics.guardMatches,
       friendGuards: e2FriendLive.metrics.guardMatches,
     },
+    e3: {
+      networkState: e3Waiting.session.networkState,
+      protocolStartTick: e3Waiting.evidence.protocolStartTick,
+      runtimeFailed: e3Waiting.evidence.runtimeFailed,
+    },
   });
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
-  console.log("WORLD_V0_ROOM_CONTINUITY_PASS", JSON.stringify({ runKey, firstEpoch, secondEpoch }));
+  console.log("WORLD_V0_ROOM_CONTINUITY_PASS", JSON.stringify({ runKey, firstEpoch, secondEpoch, thirdEpoch }));
 } catch (error) {
   result.error = error instanceof Error ? error.stack || error.message : String(error);
   result.host = await diagnostic(host);

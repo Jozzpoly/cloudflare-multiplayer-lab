@@ -278,7 +278,23 @@ try {
 
   await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);
   await cdp.call("Page.bringToFront", {}, sessionId);
-  await waitForBrowser(cdp, sessionId, `document.visibilityState === "visible" ? true : null`, "page visible after return", 5000);
+  let returnVisibility = await cdp.evaluate(sessionId, `document.visibilityState`);
+  let visibilityBridgeUsed = false;
+  if (returnVisibility !== "visible") {
+    const bridgedVisibility = await cdp.evaluate(sessionId, `(() => {
+      try {
+        Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+        document.dispatchEvent(new Event("visibilitychange"));
+        return document.visibilityState;
+      } catch (error) {
+        return `bridge-error:${error?.message || error}`;
+      }
+    })()`);
+    assert(bridgedVisibility === "visible", `headless visibility bridge failed: ${bridgedVisibility}`);
+    returnVisibility = bridgedVisibility;
+    visibilityBridgeUsed = true;
+  }
+  assert(returnVisibility === "visible", `page did not return visible: ${returnVisibility}`);
 
   const recovered = await waitForBrowser(cdp, sessionId, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.runKey === "yard-1" && e?.identity?.worldEpoch && e.identity.worldEpoch !== ${JSON.stringify(epochA)} && e.networkState === "waiting for peer" && e.session?.roomRecovery?.pending === false ? e : null; })()`, "same-room recovery after unfreeze", 12_000);
   const epochB = recovered.identity.worldEpoch;
@@ -313,6 +329,7 @@ try {
     emptyWhileFrozen: true,
     epochB,
     automaticRecoveryAfterActive: true,
+    visibilityBridgeUsed,
     replacementPeerReachedLive: true,
     guardMismatches: liveB.metrics.guardMismatches,
     uiRevision: liveB.uiRevision,

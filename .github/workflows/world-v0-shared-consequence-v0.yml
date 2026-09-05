@@ -298,3 +298,321 @@ jobs:
             world-v0-shared-consequence-exact-wrangler.log
           if-no-files-found: warn
           retention-days: 14
+
+  phenomenon-measurement:
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Start phenomenon Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-phenomenon-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-shared-consequence-phenomenon.pid
+          for i in {1..60}; do if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi; sleep 1; done
+          cat world-v0-shared-consequence-phenomenon-wrangler.log; exit 1
+      - name: Measure matched neutral and train-to-breakwall runs
+        env:
+          MW_WORLD_V0_PHENOMENON_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PHENOMENON_OUTPUT: world-v0-shared-consequence-phenomenon.json
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          import {
+            WORLD_V0_CLIENT_SIM_REVISION,
+            WORLD_V0_EXPECTED_SERVER_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+            WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+          } from './public/world-v0/build-contract.js';
+
+          const BASE = process.env.MW_WORLD_V0_PHENOMENON_BASE_URL.replace(/\/$/, '');
+          const wsBase = new URL(BASE);
+          wsBase.protocol = wsBase.protocol === 'https:' ? 'wss:' : 'ws:';
+          const WS_URL = `${wsBase.origin}/world-v0/ws`;
+          const OUTPUT = process.env.MW_WORLD_V0_PHENOMENON_OUTPUT;
+          const EXPECTED_PROPS = 23;
+          const EXPECTED_GUARD_LENGTH = 25 * 13 * 8;
+          const SAFE_FORWARD_TICKS = 24;
+          const PHASE = { neutral: 30, approach: 58, brake: 24, push: 150, settle: 60 };
+          const PUSH_OFFSET = PHASE.neutral + PHASE.approach + PHASE.brake;
+          const PUSH_END_OFFSET = PUSH_OFFSET + PHASE.push;
+          const TOTAL_TICKS = PUSH_END_OFFSET + PHASE.settle;
+          const STAGING_TARGET = [-5.2, 3.3];
+          const TRAIN_IDS = ['prop-9','prop-10','prop-11','prop-12','prop-13','prop-14'];
+          const WALL_IDS = ['prop-15','prop-16','prop-17','prop-18','prop-19','prop-20','prop-21','prop-22'];
+          const TIMEOUT_MS = 20_000;
+
+          function assert(condition, message) { if (!condition) throw new Error(message); }
+          function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+          function identityFrom(message) {
+            return { worldId:message.worldId, worldEpoch:message.worldEpoch, simBuildId:message.simBuildId, clientSimRevision:message.clientSimRevision };
+          }
+          function assertIdentity(message, identity, label) {
+            for (const key of ['worldId','worldEpoch','simBuildId','clientSimRevision']) assert(message[key] === identity[key], `${label}: ${key} drift`);
+          }
+          function finiteVector(value, length) { return Array.isArray(value) && value.length === length && value.every(Number.isFinite); }
+          function assertSnapshot(message, label) {
+            assert(message?.finite === true, `${label}: non-finite snapshot`);
+            assert(Array.isArray(message.players) && message.players.length === 2, `${label}: player count`);
+            assert(Array.isArray(message.props) && message.props.length === EXPECTED_PROPS, `${label}: prop count ${message.props?.length}`);
+            for (const entity of [...message.players, ...message.props]) {
+              assert(finiteVector(entity.position,3) && finiteVector(entity.rotation,4) && finiteVector(entity.linearVelocity,3) && finiteVector(entity.angularVelocity,3), `${label}: invalid dynamic state ${entity.netEntityId}`);
+            }
+            assert(message.stateGuard?.revision === WORLD_V0_EXPECTED_STATE_GUARD_REVISION, `${label}: guard revision`);
+            assert(typeof message.stateGuard?.packed === 'string' && message.stateGuard.packed.length === EXPECTED_GUARD_LENGTH, `${label}: guard width ${message.stateGuard?.packed?.length}`);
+          }
+          function stateMaps(message) {
+            return {
+              props: new Map((message.props || []).map((p) => [p.id, [...p.position]])),
+              players: new Map((message.players || []).map((p) => [p.sessionId, [...p.position]])),
+            };
+          }
+          function distance(a,b) { return Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]); }
+          function distanceXZ(a,b) { return Math.hypot(a[0]-b[0],a[2]-b[2]); }
+          function groupStats(current, baseline, ids, epsilon = 0.02) {
+            const perEntity = ids.map((id) => {
+              const a = baseline.get(id), b = current.get(id);
+              assert(a && b, `missing group entity ${id}`);
+              return { id, displacement: distance(a,b) };
+            });
+            const values = perEntity.map((x) => x.displacement);
+            return {
+              max: Math.max(...values),
+              mean: values.reduce((a,b)=>a+b,0)/values.length,
+              movedOver20mm: values.filter((v)=>v>epsilon).length,
+              perEntity,
+            };
+          }
+          function createPeer(playerId, runKey) {
+            return {
+              playerId,
+              ws:new WebSocket(`${WS_URL}?player=${encodeURIComponent(playerId)}&run=${encodeURIComponent(runKey)}`),
+              welcome:null, identity:null, start:null, latestBoundary:0, batchSeq:0,
+              accepted:0, late:0, rejected:0, freshSelf:0, freshRemote:0,
+              initial:null, prePush:null, final:null,
+            };
+          }
+          function sendBatch(peer, firstTick, records) {
+            peer.batchSeq += 1;
+            peer.ws.send(JSON.stringify({ type:'world_v0_input_batch', ...peer.identity, batchSeq:peer.batchSeq, records }));
+          }
+
+          async function runScenario(mode) {
+            const suffix = `${mode}-${Date.now().toString(36)}`;
+            const runKey = `sc-${suffix}`.slice(0,20);
+            const peers = [createPeer(`scA-${Date.now()}`,runKey), createPeer(`scB-${Date.now()}`,runKey)];
+            const guards = new Map();
+            let sharedGuards = 0;
+            let nextTick = null;
+            let scheduledTicks = 0;
+            let activePeer = null;
+            let approachInput = null;
+            let pushStartTick = null;
+            let measureEndTick = null;
+            let timer = null;
+            let settled = false;
+
+            const cleanup = () => {
+              if (timer) clearTimeout(timer);
+              for (const p of peers) try { p.ws.close(1000,'phenomenon_measurement_complete'); } catch {}
+            };
+            const inputAt = (peer, tick) => {
+              if (mode === 'control' || peer !== activePeer) return {x:0,z:0};
+              const offset = tick - activePeer.start.protocolStartTick;
+              if (offset < PHASE.neutral) return {x:0,z:0};
+              if (offset < PHASE.neutral + PHASE.approach) return approachInput;
+              if (offset < PUSH_OFFSET) return {x:0,z:0};
+              if (offset < PUSH_END_OFFSET) return {x:1,z:0};
+              return {x:0,z:0};
+            };
+            const feed = () => {
+              if (peers.some((p)=>!p.start || !p.identity) || !activePeer || !approachInput) return;
+              if (nextTick === null) nextTick = activePeer.start.protocolStartTick;
+              const horizon = Math.min(...peers.map((p)=>p.latestBoundary)) + SAFE_FORWARD_TICKS;
+              const endTick = activePeer.start.protocolStartTick + TOTAL_TICKS;
+              while (nextTick < endTick && nextTick + 1 <= horizon) {
+                for (const peer of peers) sendBatch(peer,nextTick,[
+                  {targetTick:nextTick,...inputAt(peer,nextTick)},
+                  {targetTick:nextTick+1,...inputAt(peer,nextTick+1)},
+                ]);
+                nextTick += 2;
+                scheduledTicks += 2;
+              }
+            };
+
+            return await new Promise((resolve,reject) => {
+              const fail = (error) => {
+                if (settled) return;
+                settled = true; cleanup(); reject(error instanceof Error ? error : new Error(String(error)));
+              };
+              const maybeFinish = () => {
+                if (settled || !activePeer?.final) return;
+                try {
+                  assert(scheduledTicks === TOTAL_TICKS, `${mode}: scheduled ${scheduledTicks}/${TOTAL_TICKS}`);
+                  for (const p of peers) {
+                    assert(p.accepted === TOTAL_TICKS, `${mode}:${p.playerId} accepted ${p.accepted}/${TOTAL_TICKS}`);
+                    assert(p.late === 0, `${mode}:${p.playerId} late ${p.late}`);
+                    assert(p.rejected === 0, `${mode}:${p.playerId} rejected ${p.rejected}`);
+                    assert(p.freshSelf >= TOTAL_TICKS - 2, `${mode}:${p.playerId} fresh self ${p.freshSelf}`);
+                    assert(p.freshRemote >= TOTAL_TICKS - 2, `${mode}:${p.playerId} fresh remote ${p.freshRemote}`);
+                  }
+                  assert(sharedGuards >= 40, `${mode}: only ${sharedGuards} shared guard samples`);
+                  assert(activePeer.prePush, `${mode}: missing pre-push sample`);
+                  const initial = activePeer.initial;
+                  const pre = activePeer.prePush.state;
+                  const final = activePeer.final.state;
+                  const lead = pre.props.get('prop-9');
+                  const actorPre = pre.players.get(activePeer.welcome.selfSessionId);
+                  const metrics = {
+                    runKey,
+                    worldEpoch:activePeer.identity.worldEpoch,
+                    simBuildId:activePeer.identity.simBuildId,
+                    activeSlot:activePeer.welcome.slot,
+                    protocolStartTick:activePeer.start.protocolStartTick,
+                    pushStartTick,
+                    prePushBoundary:activePeer.prePush.boundary,
+                    finalBoundary:activePeer.final.boundary,
+                    scheduledTicks,
+                    sharedGuards,
+                    approachInput,
+                    prePushActorPosition:actorPre,
+                    prePushActorToLeadCenterXZ:distanceXZ(actorPre,lead),
+                    prePushFromB0:{ train:groupStats(pre.props,initial.props,TRAIN_IDS), breakwall:groupStats(pre.props,initial.props,WALL_IDS) },
+                    finalFromB0:{ train:groupStats(final.props,initial.props,TRAIN_IDS), breakwall:groupStats(final.props,initial.props,WALL_IDS) },
+                    finalFromPrePush:{ train:groupStats(final.props,pre.props,TRAIN_IDS), breakwall:groupStats(final.props,pre.props,WALL_IDS) },
+                    peers:peers.map((p)=>({slot:p.welcome.slot,accepted:p.accepted,late:p.late,rejected:p.rejected,freshSelf:p.freshSelf,freshRemote:p.freshRemote,latestBoundary:p.latestBoundary})),
+                  };
+                  settled = true; cleanup(); resolve(metrics);
+                } catch (error) { fail(error); }
+              };
+
+              timer = setTimeout(()=>fail(new Error(`${mode}: phenomenon timeout`)),TIMEOUT_MS);
+              peers.forEach((peer,index)=>{
+                peer.ws.addEventListener('error',()=>fail(new Error(`${mode}:${peer.playerId} websocket error`)));
+                peer.ws.addEventListener('close',(event)=>{ if(!settled) fail(new Error(`${mode}:${peer.playerId} closed early ${event.code}:${event.reason}`)); });
+                peer.ws.addEventListener('message',async(event)=>{
+                  try {
+                    const raw = typeof event.data === 'string' ? event.data : await event.data.text();
+                    const message = JSON.parse(raw);
+                    if (message.type === 'world_v0_error') throw new Error(`${mode}: server ${message.error}`);
+                    if (message.type === 'world_v0_epoch_ended') throw new Error(`${mode}: epoch ended early ${message.reason}`);
+                    if (message.type === 'world_v0_welcome') {
+                      assert(message.revision === WORLD_V0_EXPECTED_SERVER_REVISION, `${mode}: server revision`);
+                      assert(message.simBuildId === WORLD_V0_EXPECTED_SIM_BUILD_ID, `${mode}: SimBuild ${message.simBuildId}`);
+                      assert(message.clientSimRevision === WORLD_V0_CLIENT_SIM_REVISION, `${mode}: client sim`);
+                      peer.welcome=message; peer.identity=identityFrom(message); peer.latestBoundary=message.state?.boundaryTick ?? 0;
+                      peer.ws.send(JSON.stringify({type:'world_v0_ready',...peer.identity}));
+                      return;
+                    }
+                    if (!peer.identity) throw new Error(`${mode}: message before welcome`);
+                    if (message.worldEpoch) assertIdentity(message,peer.identity,`${mode}:${message.type}`);
+                    if (message.type === 'world_v0_start') {
+                      assert(message.boundaryTick===0 && message.state?.boundaryTick===0, `${mode}: nonzero start`);
+                      assertSnapshot(message.state,`${mode}:B0`);
+                      peer.start=message; peer.latestBoundary=0; peer.initial=stateMaps(message.state);
+                      if (peers.every((p)=>p.start)) {
+                        activePeer=peers.find((p)=>p.welcome.slot===0);
+                        assert(activePeer,`${mode}: slot0 missing`);
+                        const actor0=activePeer.initial.players.get(activePeer.welcome.selfSessionId);
+                        const dx=STAGING_TARGET[0]-actor0[0], dz=STAGING_TARGET[1]-actor0[2];
+                        const length=Math.hypot(dx,dz);
+                        approachInput={x:dx/length,z:dz/length};
+                        pushStartTick=activePeer.start.protocolStartTick+PUSH_OFFSET;
+                        measureEndTick=activePeer.start.protocolStartTick+TOTAL_TICKS;
+                        feed();
+                      }
+                      return;
+                    }
+                    if (message.type === 'world_v0_snapshot') {
+                      assertSnapshot(message,`${mode}:B${message.boundaryTick}`);
+                      peer.latestBoundary=Math.max(peer.latestBoundary,message.boundaryTick ?? 0);
+                      const guard=guards.get(message.boundaryTick) || new Map();
+                      guard.set(index,message.stateGuard.packed); guards.set(message.boundaryTick,guard);
+                      if (guard.size===2) {
+                        assert(guard.get(0)===guard.get(1),`${mode}: guard disagreement B${message.boundaryTick}`);
+                        sharedGuards += 1; guards.delete(message.boundaryTick);
+                      }
+                      if (peer===activePeer) {
+                        const state=stateMaps(message);
+                        if (message.boundaryTick<=pushStartTick && (!peer.prePush || message.boundaryTick>peer.prePush.boundary)) peer.prePush={boundary:message.boundaryTick,state};
+                        if (message.boundaryTick>=measureEndTick && !peer.final) peer.final={boundary:message.boundaryTick,state};
+                      }
+                      feed(); maybeFinish(); return;
+                    }
+                    if (message.type === 'world_v0_batch_ack') {
+                      peer.latestBoundary=Math.max(peer.latestBoundary,message.boundaryTick ?? 0);
+                      for (const record of message.records || []) {
+                        if (record.status==='accepted') peer.accepted += 1;
+                        else if (record.status==='late') peer.late += 1;
+                        else if (record.status!=='duplicate_same') peer.rejected += 1;
+                      }
+                      feed(); maybeFinish(); return;
+                    }
+                    if (message.type === 'world_v0_peer_records') { peer.latestBoundary=Math.max(peer.latestBoundary,message.relayBoundaryTick ?? 0); feed(); return; }
+                    if (message.type === 'world_v0_consumed') {
+                      peer.latestBoundary=Math.max(peer.latestBoundary,message.boundaryTick ?? 0);
+                      const self=(message.players || []).find((p)=>p.sessionId===peer.welcome.selfSessionId);
+                      const remote=(message.players || []).find((p)=>p.sessionId!==peer.welcome.selfSessionId);
+                      if(self?.fresh) peer.freshSelf += 1;
+                      if(remote?.fresh) peer.freshRemote += 1;
+                      feed(); maybeFinish(); return;
+                    }
+                  } catch(error) { fail(error); }
+                });
+              });
+            });
+          }
+
+          const evidence={
+            verdict:'WORLD_V0_SHARED_CONSEQUENCE_MEASUREMENT_INCOMPLETE',
+            generatedAt:new Date().toISOString(),
+            provenance:{githubSha:process.env.GITHUB_SHA || null,githubRunId:process.env.GITHUB_RUN_ID || null,githubRunAttempt:process.env.GITHUB_RUN_ATTEMPT || null},
+            phaseTicks:{...PHASE,total:TOTAL_TICKS,pushOffset:PUSH_OFFSET},
+            stagingTarget:STAGING_TARGET,
+            control:null,
+            active:null,
+            comparison:null,
+            error:null,
+          };
+          try {
+            evidence.control=await runScenario('control');
+            await sleep(250);
+            evidence.active=await runScenario('active');
+            const controlWall=evidence.control.finalFromB0.breakwall.max;
+            const activePostWall=evidence.active.finalFromPrePush.breakwall.max;
+            const controlTrain=evidence.control.finalFromB0.train.max;
+            const activePostTrain=evidence.active.finalFromPrePush.train.max;
+            evidence.comparison={
+              breakwallMaxDelta:activePostWall-controlWall,
+              breakwallMaxRatio:activePostWall/Math.max(controlWall,1e-9),
+              trainMaxDelta:activePostTrain-controlTrain,
+              trainMaxRatio:activePostTrain/Math.max(controlTrain,1e-9),
+              activePrePushBreakwallDrift:evidence.active.prePushFromB0.breakwall.max,
+              activePrePushTrainDrift:evidence.active.prePushFromB0.train.max,
+            };
+            evidence.verdict='WORLD_V0_SHARED_CONSEQUENCE_MEASUREMENT_COMPLETE';
+            writeFileSync(OUTPUT,JSON.stringify(evidence,null,2));
+            console.log('SHARED_CONSEQUENCE_MEASUREMENT_COMPLETE',JSON.stringify({control:evidence.control.finalFromB0,activePost:evidence.active.finalFromPrePush,comparison:evidence.comparison,stagingDistance:evidence.active.prePushActorToLeadCenterXZ}));
+          } catch(error) {
+            evidence.error=error instanceof Error ? error.stack || error.message : String(error);
+            writeFileSync(OUTPUT,JSON.stringify(evidence,null,2));
+            throw error;
+          }
+          NODE
+      - name: Stop phenomenon Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-shared-consequence-phenomenon.pid ]; then kill "$(cat /tmp/world-v0-shared-consequence-phenomenon.pid)" 2>/dev/null || true; fi
+      - name: Upload phenomenon measurement
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-shared-consequence-phenomenon-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-shared-consequence-phenomenon.json
+            world-v0-shared-consequence-phenomenon-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

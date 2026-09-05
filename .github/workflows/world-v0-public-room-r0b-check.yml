@@ -1,7 +1,7 @@
 name: World V0 Public Room R0b Check
 
 # R0b models a stable social room across multiple strict simulation epochs.
-# Freeze is real; only the missing headless foreground visibility signal is bridged after queued epoch-close delivery.
+# Real freeze proves the lease-expiry boundary; an explicit visibility bridge separately proves foreground recovery semantics.
 on:
   push:
     branches:
@@ -11,6 +11,7 @@ on:
       - public/world-v0/build-contract.js
       - scripts/world-v0-public-room-r0b-browser-smoke.mjs
       - scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
+      - scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs
       - .github/workflows/world-v0-public-room-r0b-check.yml
 
 permissions:
@@ -35,6 +36,7 @@ jobs:
         run: |
           node --check scripts/world-v0-public-room-r0b-browser-smoke.mjs
           node --check scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
+          node --check scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs
 
       - name: Full repository check
         run: npm run check
@@ -53,8 +55,11 @@ jobs:
       - name: Prove room survives peer departure and returns to live
         run: node scripts/world-v0-public-room-r0b-browser-smoke.mjs
 
-      - name: Prove frozen-browser lease expiry recovers same room
+      - name: Prove real freeze causes lease expiry without reconnect loop
         run: node scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
+
+      - name: Prove hidden lease expiry recovers same room after visible
+        run: node scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs
 
       - name: Stop local worker
         if: always()
@@ -63,4 +68,4 @@ jobs:
 
       - name: Show worker log on failure
         if: failure()
-        run: tail -n 300 world-v0-public-room-r0b-wrangler.log || true
+        run: tail -n 350 world-v0-public-room-r0b-wrangler.log || true

@@ -3,54 +3,28 @@ name: World V0 Jump Support V0
 on:
   push:
     branches: [world-v0-jump-support-v0]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: world-v0-jump-support-v0
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
-  JUMP_BASE: 5dd28a899c4f60c9227f1eb93026f571ced733e3
+  FRIEND_READY_BASE: 5dd28a899c4f60c9227f1eb93026f571ced733e3
+  JUMP_RUNTIME: 4a5f375dc148632914418c1b19f92e977d5dfb57
 
 jobs:
-  materialize:
-    if: ${{ !contains(github.event.head_commit.message, '[jump-materialized]') }}
+  qualify-repository:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 14
     steps:
       - name: Checkout exact jump branch head
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Prove bounded pre-materialization delta
-        run: |
-          set -euo pipefail
-          git cat-file -e "$JUMP_BASE^{commit}"
-          unexpected="$(git diff --name-only "$JUMP_BASE"...HEAD | grep -Ev '^(scripts/materialize-world-v0-jump-support-v0\.mjs|scripts/world-v0-protocol-smoke\.ts|\.github/workflows/world-v0-jump-support-v0\.yml)$' || true)"
-          if [ -n "$unexpected" ]; then
-            echo "Unexpected pre-materialization files:"
-            echo "$unexpected"
-            exit 1
-          fi
-
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          path = Path("scripts/materialize-world-v0-jump-support-v0.mjs")
-          text = path.read_text()
-          text, count = re.subn(
-              r'`\$\{phase\}([^`]+)`',
-              lambda match: r'\`\${phase}' + match.group(1) + r'\`',
-              text,
-          )
-          if count != 5:
-              raise SystemExit(f"expected 5 nested phase templates, repaired {count}")
-          path.write_text(text)
-          PY
-          node --check scripts/materialize-world-v0-jump-support-v0.mjs
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -60,64 +34,71 @@ jobs:
       - name: Install exact dependency graph
         run: npm ci
 
-      - name: Materialize exact jump-support delta
-        run: |
-          node scripts/materialize-world-v0-jump-support-v0.mjs
-          git checkout -- scripts/materialize-world-v0-jump-support-v0.mjs
-
-      - name: Prove generated file boundary
+      - name: Prove candidate lineage and static boundary
         run: |
           set -euo pipefail
-          git diff --check
-          changed="$(git diff --name-only | sort)"
-          expected="$(printf '%s\n' \
-            public/world-v0/app.js \
-            public/world-v0/build-contract.js \
-            public/world-v0/index.html \
-            public/world-v0/styles.css \
-            src/world-v0-contract.ts \
-            src/world-v0-protocol.ts \
-            src/world-v0-shared-yard.ts | sort)"
-          test "$changed" = "$expected" || {
-            echo "Generated boundary mismatch"
-            echo "Changed:"; echo "$changed"
-            echo "Expected:"; echo "$expected"
-            exit 1
-          }
-
-      - name: Falsify generated runtime before commit
-        run: |
+          git merge-base --is-ancestor "$FRIEND_READY_BASE" HEAD
+          git merge-base --is-ancestor "$JUMP_RUNTIME" HEAD
           node --check public/world-v0/app.js
           node --check public/world-v0/build-contract.js
-          npm run check
+          node --check scripts/world-v0-jump-authority-smoke.mjs
+          node --experimental-strip-types scripts/world-v0-protocol-smoke.ts
+          git diff --check
 
-      - name: Commit only validated generated runtime
-        run: |
-          set -euo pipefail
-          git config user.name "Jozzpoly"
-          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
-          git add \
-            public/world-v0/app.js \
-            public/world-v0/build-contract.js \
-            public/world-v0/index.html \
-            public/world-v0/styles.css \
-            src/world-v0-contract.ts \
-            src/world-v0-protocol.ts \
-            src/world-v0-shared-yard.ts
-          git commit -m "feat(world-v0): materialize bounded jump support [jump-materialized]"
-          git push origin HEAD:world-v0-jump-support-v0
+      - name: Preserve full repository regression envelope
+        run: npm run check
 
-  materialized-checkpoint:
-    if: ${{ contains(github.event.head_commit.message, '[jump-materialized]') }}
+  qualify-authority-jump:
+    needs: qualify-repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout exact jump branch head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
-      - name: Preserve post-materialization repository checks
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start jump candidate Worker in local Workerd
         run: |
-          git diff --check
-          npm run check
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-jump-authority-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-jump-authority-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "jump authority Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-jump-authority-wrangler.log
+          exit 1
+
+      - name: Falsify grounded-airborne-landed jump semantics
+        env:
+          MW_WORLD_V0_JUMP_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_JUMP_AUTHORITY_OUTPUT: world-v0-jump-authority-evidence.json
+        run: node scripts/world-v0-jump-authority-smoke.mjs
+
+      - name: Stop authority Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-jump-authority-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-jump-authority-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload authority jump evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-jump-authority-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-jump-authority-evidence.json
+            world-v0-jump-authority-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

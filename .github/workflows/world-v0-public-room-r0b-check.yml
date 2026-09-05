@@ -2,6 +2,7 @@ name: World V0 Public Room R0b Check
 
 # R0b models a stable social room across multiple strict simulation epochs.
 # Real freeze proves the lease-expiry boundary; an explicit visibility bridge separately proves foreground recovery semantics.
+# Final closure run after apparatus-only peer teardown correction.
 on:
   push:
     branches:

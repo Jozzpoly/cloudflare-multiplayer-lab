@@ -5,26 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>Multi_World · Shared Yard V0</title>
   <link rel="stylesheet" href="/world-v0/styles.css">
+  <link rel="stylesheet" href="/world-v0/friend-ready.css">
 </head>
 <body>
   <div id="viewport"></div>
 
   <section id="boot" class="panel">
     <div class="eyebrow">MULTI_WORLD · SHARED YARD</div>
-    <h1>Enter the yard</h1>
+    <h1>Enter Multi_World</h1>
     <p id="boot-status" aria-live="polite">Loading…</p>
     <div class="inputs">
-      <label>Callsign <input id="callsign" maxlength="24" autocomplete="off" placeholder="Jozz"></label>
-      <label>Run <input id="run" maxlength="20" autocomplete="off"></label>
+      <label class="primary-name">Your name <input id="callsign" maxlength="24" autocomplete="nickname" placeholder="Jozz"></label>
       <div class="entry-actions">
-        <button id="enter">Enter yard</button>
-        <button id="inspect-solo" type="button" disabled>Inspect solo</button>
+        <button id="enter">Enter world</button>
       </div>
+      <details id="entry-advanced" class="entry-advanced">
+        <summary>Advanced / inspection</summary>
+        <div class="entry-advanced-body">
+          <label>Room ID <input id="run" maxlength="20" autocomplete="off"></label>
+          <button id="inspect-solo" type="button" disabled>Inspect solo</button>
+        </div>
+      </details>
     </div>
   </section>
 
   <div id="session-actions" class="session-actions hidden" aria-label="session actions">
-    <button id="copy-invite" type="button">Copy invite</button>
+    <button id="copy-invite" type="button">Invite friend</button>
     <button id="restart-round" type="button" class="hidden">Restart round</button>
   </div>
 
@@ -55,6 +61,6 @@
     <div id="camera-gimbal-knob"></div>
   </div>
 
-  <script type="module" src="/world-v0/solo-inspection.js"></script>
+  <script type="module" src="/world-v0/friend-ready.js"></script>
 </body>
 </html>

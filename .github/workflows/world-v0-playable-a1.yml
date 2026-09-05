@@ -16,6 +16,9 @@ jobs:
   qualify-playable-frontier:
     runs-on: ubuntu-24.04
     timeout-minutes: 18
+    outputs:
+      exact_required: ${{ steps.exact_scope.outputs.required }}
+      exact_reason: ${{ steps.exact_scope.outputs.reason }}
     steps:
       - name: Checkout playable frontier
         uses: actions/checkout@v4
@@ -27,8 +30,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install qualified dependency graph
+        run: npm ci
 
       - name: Verify committed frontier and frozen authority contract
         run: |
@@ -46,6 +49,8 @@ jobs:
           node --check scripts/world-v0-solo-inspection-browser-smoke.mjs
           node --check scripts/world-v0-session-friction-smoke.mjs
           node --check scripts/world-v0-runtime-shell-smoke.mjs
+          node --check scripts/world-v0-exact-failure-classifier.mjs
+          node --check scripts/world-v0-exact-failure-classifier-smoke.mjs
           git diff --check
           test -z "$(git status --porcelain --untracked-files=no)"
           node --input-type=module <<'NODE'
@@ -126,6 +131,9 @@ jobs:
       - name: Falsify Inspect solo zero-input planner
         run: node scripts/world-v0-solo-inspection-core-smoke.mjs
 
+      - name: Falsify exact failure classifier
+        run: node scripts/world-v0-exact-failure-classifier-smoke.mjs
+
       - name: Preserve full repository regression suite
         run: npm run check
 
@@ -174,26 +182,6 @@ jobs:
           MW_WORLD_V0_SHELL_OUTPUT: world-v0-playable-frontier-shell.json
         run: node scripts/world-v0-runtime-shell-smoke.mjs
 
-      - name: Prepare local exact-state Chromium falsifier
-        if: steps.exact_scope.outputs.required == 'true'
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from "node:fs";
-          let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
-          const remote = 'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";';
-          const local = 'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";';
-          if (!chromium.includes(remote)) throw new Error("frontier exact-state local-target anchor drift");
-          chromium = chromium.replace(remote, local);
-          writeFileSync("scripts/.world-v0-playable-frontier-exact.mjs", chromium);
-          NODE
-
-      - name: Preserve exact-state causal envelope
-        if: steps.exact_scope.outputs.required == 'true'
-        env:
-          MW_WORLD_V0_CHROME_MODE: swangle-webgl
-          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playable-frontier-exact.json
-        run: node scripts/.world-v0-playable-frontier-exact.mjs
-
       - name: Record scoped exact-state skip
         if: steps.exact_scope.outputs.required != 'true'
         run: echo "Exact-state causal envelope intentionally reused from the last qualified runtime bytes; this push changed no causal runtime path."
@@ -217,7 +205,94 @@ jobs:
             world-v0-playable-frontier-session.json
             world-v0-playable-frontier-shell.json
             world-v0-runtime-shell-*.png
-            world-v0-playable-frontier-exact.json
             world-v0-playable-frontier-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualify-exact-state:
+    needs: qualify-playable-frontier
+    if: needs.qualify-playable-frontier.outputs.exact_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact playable head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install qualified dependency graph
+        run: npm ci
+
+      - name: Verify exact-state apparatus
+        run: |
+          node --check scripts/world-v0-chromium-cloud-smoke.mjs
+          node --check scripts/world-v0-exact-failure-classifier.mjs
+          node scripts/world-v0-exact-failure-classifier-smoke.mjs
+
+      - name: Start fresh-runner Worker/assets in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playable-frontier-exact-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-playable-frontier-exact-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "fresh exact-state Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-playable-frontier-exact-wrangler.log
+          exit 1
+
+      - name: Prepare local exact-state Chromium falsifier
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
+          const remote = 'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";';
+          const local = 'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";';
+          if (!chromium.includes(remote)) throw new Error("frontier exact-state local-target anchor drift");
+          chromium = chromium.replace(remote, local);
+          writeFileSync("scripts/.world-v0-playable-frontier-exact.mjs", chromium);
+          NODE
+
+      - name: Preserve exact-state causal envelope on fresh runner
+        id: exact
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playable-frontier-exact.json
+        run: node scripts/.world-v0-playable-frontier-exact.mjs
+
+      - name: Classify exact failure before retry decision
+        if: steps.exact.outcome == 'failure'
+        run: node scripts/world-v0-exact-failure-classifier.mjs world-v0-playable-frontier-exact.json
+
+      - name: Require exact-state qualification
+        env:
+          EXACT_OUTCOME: ${{ steps.exact.outcome }}
+        run: |
+          echo "fresh-runner exact-state outcome=${EXACT_OUTCOME} · reason=${{ needs.qualify-playable-frontier.outputs.exact_reason }}"
+          test "${EXACT_OUTCOME}" = success
+
+      - name: Stop exact Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-playable-frontier-exact-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-playable-frontier-exact-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload exact-state evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playable-frontier-exact-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-playable-frontier-exact.json
+            world-v0-playable-frontier-exact-wrangler.log
           if-no-files-found: warn
           retention-days: 14

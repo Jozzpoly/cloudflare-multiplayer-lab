@@ -1,0 +1,27 @@
+diff --git a/public/world-v0/app.js b/public/world-v0/app.js
+--- a/public/world-v0/app.js
++++ b/public/world-v0/app.js
+@@ -1,5 +1,6 @@
+ }
+ joystick.addEventListener("pointerup", releaseJoystick);
+ joystick.addEventListener("pointercancel", releaseJoystick);
++joystick.addEventListener("lostpointercapture", releaseJoystick);
+ 
+ function cameraTouchSpan() {
+@@ -1,5 +1,6 @@
+ }
+ cameraGimbal.addEventListener("pointerup", releaseCameraGimbal);
+ cameraGimbal.addEventListener("pointercancel", releaseCameraGimbal);
++cameraGimbal.addEventListener("lostpointercapture", releaseCameraGimbal);
+ 
+ function advanceCameraGimbal(now) {
+diff --git a/scripts/world-v0-playable-interaction-smoke.mjs b/scripts/world-v0-playable-interaction-smoke.mjs
+--- a/scripts/world-v0-playable-interaction-smoke.mjs
++++ b/scripts/world-v0-playable-interaction-smoke.mjs
+@@ -1,5 +1,5 @@
+   const gimbalDuring = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
+   await touch(cdp, sessionId, "touchEnd", []);
+   await sleep(60);
+-  const gimbalAfter = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
++  const gimbalAfter = await cdp.evaluate(sessionId, `({ ...window.__sharedYardV0PlayableControl(), gimbalInput: window.__sharedYardV0Evidence().presentation.cameraGimbalInput })`);
+   assert(gimbalDuring.cameraOrbit.pitch > gimbalBefore.cameraOrbit.pitch, `gimbal-up did not raise orbit ${gimbalBefore.cameraOrbit.pitch} -> ${gimbalDuring.cameraOrbit.pitch}`);

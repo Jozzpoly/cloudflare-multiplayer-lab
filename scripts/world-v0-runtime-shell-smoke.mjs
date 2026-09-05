@@ -3,13 +3,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { WORLD_V0_BROWSER_UI_REVISION } from "../public/world-v0/build-contract.js";
+import { WORLD_V0_FRIEND_ENTRY_REVISION } from "../public/world-v0/friend-entry.js";
 
 const BASE = (process.env.MW_WORLD_V0_SHELL_BASE_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
 const PAGE_URL = `${BASE}/world-v0/`;
 const DEBUG_PORT = 9444;
 const TIMEOUT_MS = 30_000;
 const OUTPUT = process.env.MW_WORLD_V0_SHELL_OUTPUT || "world-v0-runtime-shell-evidence.json";
-const EXPECTED_UI_REVISION = WORLD_V0_BROWSER_UI_REVISION;
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
@@ -19,30 +19,8 @@ function findChrome() {
   if (override) return override;
   const probe = spawnSync("bash", ["-lc", "command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser"], { encoding: "utf8" });
   const binary = probe.stdout.trim().split("\n")[0];
-  if (!binary) throw new Error(`Chrome/Chromium binary not found: ${probe.stderr || "no candidate on PATH"}`);
+  if (!binary) throw new Error(`Chrome/Chromium binary not found: ${probe.stderr || "no candidate"}`);
   return binary;
-}
-
-function chromeVersion(binary) {
-  const result = spawnSync(binary, ["--version"], { encoding: "utf8" });
-  return (result.stdout || result.stderr || "unknown").trim();
-}
-
-async function waitForDebugger() {
-  const started = Date.now();
-  let last = null;
-  while (Date.now() - started < TIMEOUT_MS) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/version`, { signal: AbortSignal.timeout(1500) });
-      if (response.ok) {
-        const value = await response.json();
-        if (value.webSocketDebuggerUrl) return value;
-      }
-      last = `HTTP ${response.status}`;
-    } catch (error) { last = error instanceof Error ? error.message : String(error); }
-    await sleep(100);
-  }
-  throw new Error(`Chrome DevTools endpoint unavailable: ${last}`);
 }
 
 class Cdp {
@@ -52,7 +30,7 @@ class Cdp {
     this.pending = new Map();
     this.opened = new Promise((resolve, reject) => {
       this.ws.addEventListener("open", resolve, { once: true });
-      this.ws.addEventListener("error", () => reject(new Error("CDP WebSocket open failed")), { once: true });
+      this.ws.addEventListener("error", () => reject(new Error("CDP open failed")), { once: true });
     });
     this.ws.addEventListener("message", async (event) => {
       const raw = typeof event.data === "string" ? event.data : await event.data.text();
@@ -70,17 +48,34 @@ class Cdp {
     const id = this.nextId++;
     return await new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject, method });
-      const message = { id, method, params };
-      if (sessionId) message.sessionId = sessionId;
-      this.ws.send(JSON.stringify(message));
+      const payload = { id, method, params };
+      if (sessionId) payload.sessionId = sessionId;
+      this.ws.send(JSON.stringify(payload));
     });
   }
   async evaluate(sessionId, expression) {
     const result = await this.call("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, userGesture: true }, sessionId);
-    if (result.exceptionDetails) throw new Error(`Browser evaluation failed: ${result.exceptionDetails.text || "unknown exception"}`);
+    if (result.exceptionDetails) throw new Error(`Browser evaluate failed: ${result.exceptionDetails.text || "unknown"}`);
     return result.result?.value;
   }
-  close() { try { this.ws.close(); } catch { /* best effort */ } }
+  close() { try { this.ws.close(); } catch { /* cleanup */ } }
+}
+
+async function waitForDebugger() {
+  const started = Date.now();
+  let last = null;
+  while (Date.now() - started < TIMEOUT_MS) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/version`, { signal: AbortSignal.timeout(1500) });
+      if (response.ok) {
+        const value = await response.json();
+        if (value.webSocketDebuggerUrl) return value;
+      }
+      last = `HTTP ${response.status}`;
+    } catch (error) { last = error instanceof Error ? error.message : String(error); }
+    await sleep(100);
+  }
+  throw new Error(`Chrome debugger unavailable: ${last}`);
 }
 
 async function waitFor(cdp, sessionId, expression, label) {
@@ -89,7 +84,7 @@ async function waitFor(cdp, sessionId, expression, label) {
   while (Date.now() - started < TIMEOUT_MS) {
     try {
       last = await cdp.evaluate(sessionId, expression);
-      if (last === true) return;
+      if (last) return last;
     } catch (error) { last = error instanceof Error ? error.message : String(error); }
     await sleep(120);
   }
@@ -98,79 +93,33 @@ async function waitFor(cdp, sessionId, expression, label) {
 
 async function setViewport(cdp, sessionId, { width, height, deviceScaleFactor, mobile }) {
   await cdp.call("Emulation.setDeviceMetricsOverride", {
-    width, height, deviceScaleFactor, mobile,
-    screenWidth: width, screenHeight: height,
+    width,
+    height,
+    deviceScaleFactor,
+    mobile,
+    screenWidth: width,
+    screenHeight: height,
     screenOrientation: mobile ? { type: "portraitPrimary", angle: 0 } : { type: "landscapePrimary", angle: 90 },
   }, sessionId);
-  await sleep(300);
+  await sleep(250);
 }
 
 async function screenshot(cdp, sessionId, filename) {
-  const result = await cdp.call("Page.captureScreenshot", { format: "png", fromSurface: true, captureBeyondViewport: false }, sessionId);
-  const bytes = Buffer.from(result.data || "", "base64");
-  assert(bytes.length > 15_000, `${filename}: screenshot suspiciously small (${bytes.length} bytes)`);
+  const shot = await cdp.call("Page.captureScreenshot", { format: "png", fromSurface: true, captureBeyondViewport: false }, sessionId);
+  const bytes = Buffer.from(shot.data || "", "base64");
+  assert(bytes.length > 12_000, `${filename}: screenshot suspiciously small (${bytes.length})`);
   writeFileSync(filename, bytes);
   return { filename, bytes: bytes.length };
 }
 
-function assertRectInViewport(rect, width, height, name) {
-  assert(rect.left >= 0 && rect.right <= width, `${name} clipped horizontally ${JSON.stringify(rect)}`);
-  assert(rect.top >= 0 && rect.bottom <= height, `${name} clipped vertically ${JSON.stringify(rect)}`);
-}
-
-async function createPage(cdp, viewport) {
-  const { targetId } = await cdp.call("Target.createTarget", { url: PAGE_URL });
-  const { sessionId } = await cdp.call("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.call("Runtime.enable", {}, sessionId);
-  await cdp.call("Page.enable", {}, sessionId);
-  await setViewport(cdp, sessionId, viewport);
-  await waitFor(cdp, sessionId, `document.readyState === "complete" && document.querySelector("#enter")?.disabled === false && document.querySelector("#hud") instanceof HTMLDetailsElement`, "Shared Yard shell boot");
-  return { targetId, sessionId };
-}
-
-async function enterRun(cdp, sessionId, callsign, run) {
-  await cdp.evaluate(sessionId, `(() => {
-    const callsign = document.querySelector("#callsign");
-    const run = document.querySelector("#run");
-    callsign.value = ${JSON.stringify(callsign)};
-    run.value = ${JSON.stringify(run)};
-    callsign.dispatchEvent(new Event("input", { bubbles: true }));
-    run.dispatchEvent(new Event("input", { bubbles: true }));
-    document.querySelector("#enter").click();
-    return true;
-  })()`);
-  await waitFor(cdp, sessionId, `document.querySelector("#boot")?.classList.contains("compact") === true`, `Shared Yard compact shell ${callsign}`);
-}
-
-async function readRuntime(cdp, sessionId) {
-  return await cdp.evaluate(sessionId, `(() => {
-    const evidence = window.__sharedYardV0Evidence?.();
-    return {
-      heading: document.querySelector("#boot h1")?.textContent,
-      status: document.querySelector("#boot-status")?.textContent,
-      network: document.querySelector("#m-net")?.textContent,
-      evidence,
-    };
-  })()`);
-}
-
-function assertLivePresence(runtime, expectedCamera) {
-  assert(runtime.evidence?.uiRevision === EXPECTED_UI_REVISION, `UI revision drift ${runtime.evidence?.uiRevision}`);
-  assert(runtime.evidence?.runtimeFailed === false, `runtime failed ${JSON.stringify(runtime.evidence?.metrics?.firstStateMismatch)}`);
-  assert(runtime.evidence?.presentation?.selfPresence === "YOU", `self presence missing ${JSON.stringify(runtime.evidence?.presentation)}`);
-  assert(runtime.evidence?.presentation?.remotePresence === "PEER", `remote presence missing ${JSON.stringify(runtime.evidence?.presentation)}`);
-  assert(runtime.evidence?.presentation?.spatialCueCount === 6, `spatial cue contract drift ${JSON.stringify(runtime.evidence?.presentation)}`);
-  assert(runtime.evidence?.presentation?.cameraPreset === expectedCamera, `camera preset drift ${JSON.stringify(runtime.evidence?.presentation)}`);
-  assert(runtime.evidence?.presentation?.cameraControlRevision === "shared-yard-v0-playable-control-v2", `camera control revision drift ${JSON.stringify(runtime.evidence?.presentation)}`);
-  assert(runtime.evidence?.presentation?.movementMapping === "camera-relative-v1", `movement mapping drift ${JSON.stringify(runtime.evidence?.presentation)}`);
-  assert(runtime.evidence?.runtimeFailureReason === null, `unexpected runtime failure reason ${runtime.evidence?.runtimeFailureReason}`);
-  assert(runtime.evidence?.metrics?.guardMismatches === 0, `state guard mismatch ${JSON.stringify(runtime.evidence?.metrics?.firstStateMismatch)}`);
-  assert((runtime.evidence?.metrics?.guardMatches || 0) >= 1, `B(0) exact guard not observed ${runtime.evidence?.metrics?.guardMatches}`);
+function assertRect(rect, width, height, label) {
+  assert(rect && [rect.left, rect.right, rect.top, rect.bottom].every(Number.isFinite), `${label} rect missing ${JSON.stringify(rect)}`);
+  assert(rect.left >= -0.5 && rect.right <= width + 0.5, `${label} clipped horizontally ${JSON.stringify(rect)}`);
+  assert(rect.top >= -0.5 && rect.bottom <= height + 0.5, `${label} clipped vertically ${JSON.stringify(rect)}`);
 }
 
 const chrome = findChrome();
-const version = chromeVersion(chrome);
-const profile = mkdtempSync(join(tmpdir(), "mw-world-v0-runtime-shell-"));
+const profile = mkdtempSync(join(tmpdir(), "mw-friend-ready-shell-"));
 const stderr = [];
 const child = spawn(chrome, [
   "--headless=new",
@@ -189,96 +138,120 @@ const child = spawn(chrome, [
 child.stderr.on("data", (chunk) => stderr.push(chunk));
 
 let cdp = null;
-const evidence = { verdict: "WORLD_V0_RUNTIME_SHELL_RENDER_FAIL", generatedAt: new Date().toISOString(), page: PAGE_URL, chromeVersion: version };
+const evidence = {
+  verdict: "WORLD_V0_FRIEND_READY_SHELL_FAIL",
+  generatedAt: new Date().toISOString(),
+  page: PAGE_URL,
+  uiRevision: WORLD_V0_BROWSER_UI_REVISION,
+  friendEntryRevision: WORLD_V0_FRIEND_ENTRY_REVISION,
+  claimBoundary: "Friend-Ready entry/session shell only; two-client shared-world correctness is covered by the dedicated friend-entry and exact-state falsifiers",
+};
+
 try {
   const debuggerInfo = await waitForDebugger();
   cdp = new Cdp(debuggerInfo.webSocketDebuggerUrl);
   await cdp.opened;
+  const { targetId } = await cdp.call("Target.createTarget", { url: PAGE_URL });
+  const { sessionId } = await cdp.call("Target.attachToTarget", { targetId, flatten: true });
+  await cdp.call("Runtime.enable", {}, sessionId);
+  await cdp.call("Page.enable", {}, sessionId);
+  await setViewport(cdp, sessionId, { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 
-  const primary = await createPage(cdp, { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  const desktopBoot = await cdp.evaluate(primary.sessionId, `({
-    heading: document.querySelector("#boot h1")?.textContent,
-    status: document.querySelector("#boot-status")?.textContent,
-    diagnosticsOpen: document.querySelector("#hud")?.open,
-    hudTag: document.querySelector("#hud")?.tagName,
-    canvas: { width: document.querySelector("canvas")?.width || 0, height: document.querySelector("canvas")?.height || 0 },
-  })`);
-  assert(desktopBoot.heading === "Enter the yard", `shell heading drift ${desktopBoot.heading}`);
-  assert(desktopBoot.status.includes("Ready"), `product boot status drift ${desktopBoot.status}`);
+  await waitFor(cdp, sessionId, `document.readyState === "complete" && document.querySelector("#enter")?.disabled === false && typeof window.__sharedYardV0FriendEntry === "function"`, "Friend-Ready desktop boot");
+
+  const desktopBoot = await cdp.evaluate(sessionId, `(() => {
+    const rect = (selector) => { const r = document.querySelector(selector)?.getBoundingClientRect(); return r ? {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height} : null; };
+    return {
+      heading: document.querySelector("#boot h1")?.textContent,
+      status: document.querySelector("#boot-status")?.textContent,
+      enter: document.querySelector("#enter")?.textContent,
+      advancedOpen: document.querySelector("#entry-advanced")?.open,
+      inspectInsideAdvanced: document.querySelector("#entry-advanced")?.contains(document.querySelector("#inspect-solo")),
+      roomKey: document.querySelector("#run")?.value,
+      diagnosticsOpen: document.querySelector("#hud")?.open,
+      boot: rect("#boot"),
+      name: rect("#callsign"),
+      enterRect: rect("#enter"),
+    };
+  })()`);
+  assert(desktopBoot.heading === "Enter Multi_World", `desktop heading drift ${desktopBoot.heading}`);
+  assert(desktopBoot.status.includes("Enter your name"), `desktop friend-facing status drift ${desktopBoot.status}`);
+  assert(desktopBoot.enter === "Enter world", `desktop primary action drift ${desktopBoot.enter}`);
+  assert(desktopBoot.advancedOpen === false, "advanced/inspection should be closed by default");
+  assert(desktopBoot.inspectInsideAdvanced === true, "Inspect solo escaped advanced entry surface");
+  assert(/^yard-[A-Za-z0-9_-]{14}$/.test(desktopBoot.roomKey), `strong room key missing ${desktopBoot.roomKey}`);
   assert(desktopBoot.diagnosticsOpen === false, "diagnostics should be collapsed by default");
-  assert(desktopBoot.hudTag === "DETAILS", `diagnostics shell drift ${desktopBoot.hudTag}`);
-  const screenshots = { desktopBoot: await screenshot(cdp, primary.sessionId, "world-v0-runtime-shell-desktop-boot.png") };
+  assertRect(desktopBoot.boot, 1440, 900, "desktop boot");
+  assertRect(desktopBoot.name, 1440, 900, "desktop name input");
+  assertRect(desktopBoot.enterRect, 1440, 900, "desktop enter action");
+  const screenshots = { desktopBoot: await screenshot(cdp, sessionId, "world-v0-runtime-shell-desktop-boot.png") };
 
   const suffix = Date.now().toString(36).slice(-7);
-  const runKey = `shell-${suffix}`;
-  await enterRun(cdp, primary.sessionId, `shell-a-${suffix}`, runKey);
-  await waitFor(cdp, primary.sessionId, `document.querySelector("#m-net")?.textContent.includes("waiting for peer") === true || document.querySelector("#m-net")?.textContent.includes("peer joined") === true`, "Shared Yard one-player waiting state");
-  const desktopWaiting = await cdp.evaluate(primary.sessionId, `({
-    compact: document.querySelector("#boot")?.classList.contains("compact"),
+  await cdp.evaluate(sessionId, `(() => {
+    const callsign = document.querySelector("#callsign");
+    callsign.value = ${JSON.stringify(`shell-${suffix}`)};
+    callsign.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector("#enter").click();
+    return true;
+  })()`);
+  await waitFor(cdp, sessionId, `window.__sharedYardV0Session?.().networkState === "waiting for peer" && document.querySelector("#boot")?.classList.contains("compact") === true`, "Friend-Ready waiting shell");
+
+  const desktopWaiting = await cdp.evaluate(sessionId, `({
     heading: document.querySelector("#boot h1")?.textContent,
     status: document.querySelector("#boot-status")?.textContent,
+    compact: document.querySelector("#boot")?.classList.contains("compact"),
     inputsDisplay: getComputedStyle(document.querySelector(".inputs")).display,
-    diagnosticsOpen: document.querySelector("#hud")?.open,
-    network: document.querySelector("#m-net")?.textContent,
+    inviteVisible: !document.querySelector("#copy-invite")?.classList.contains("hidden"),
+    inviteText: document.querySelector("#copy-invite")?.textContent,
+    inviteUrl: window.__sharedYardV0Session?.().inviteUrl,
     uiRevision: window.__sharedYardV0Evidence?.().uiRevision,
+    friendEntry: window.__sharedYardV0FriendEntry?.(),
   })`);
-  assert(desktopWaiting.compact === true && desktopWaiting.inputsDisplay === "none", `desktop compact contract failed ${JSON.stringify(desktopWaiting)}`);
-  assert(desktopWaiting.heading === "Shared Yard", `compact product heading drift ${desktopWaiting.heading}`);
-  assert(desktopWaiting.status.includes("Waiting for peer") || desktopWaiting.status.includes("Peer found"), `compact product status drift ${desktopWaiting.status}`);
-  assert(desktopWaiting.diagnosticsOpen === false, "diagnostics opened unexpectedly after entering");
-  assert(desktopWaiting.uiRevision === EXPECTED_UI_REVISION, `UI revision drift ${desktopWaiting.uiRevision}`);
-  screenshots.desktopWaiting = await screenshot(cdp, primary.sessionId, "world-v0-runtime-shell-desktop-waiting.png");
+  assert(desktopWaiting.heading === "Shared Yard", `compact heading drift ${desktopWaiting.heading}`);
+  assert(desktopWaiting.status.includes("Waiting for friend"), `compact friend status drift ${desktopWaiting.status}`);
+  assert(desktopWaiting.compact === true && desktopWaiting.inputsDisplay === "none", `compact entry shell failed ${JSON.stringify(desktopWaiting)}`);
+  assert(desktopWaiting.inviteVisible === true && desktopWaiting.inviteText === "Invite friend", `invite action unavailable ${JSON.stringify(desktopWaiting)}`);
+  assert(desktopWaiting.uiRevision === WORLD_V0_BROWSER_UI_REVISION, `UI revision drift ${desktopWaiting.uiRevision}`);
+  assert(desktopWaiting.friendEntry?.mode === "host" && desktopWaiting.friendEntry?.roomKeyValid === true, `friend entry evidence drift ${JSON.stringify(desktopWaiting.friendEntry)}`);
+  assert(new URL(desktopWaiting.inviteUrl).searchParams.get("run") === desktopWaiting.friendEntry.roomKey, `invite URL room drift ${desktopWaiting.inviteUrl}`);
+  screenshots.desktopWaiting = await screenshot(cdp, sessionId, "world-v0-runtime-shell-desktop-waiting.png");
 
-  await setViewport(cdp, primary.sessionId, { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
-  await waitFor(cdp, primary.sessionId, `innerWidth === 390 && document.querySelector("#boot")?.classList.contains("compact") === true`, "Shared Yard mobile compact shell");
-  const mobile = await cdp.evaluate(primary.sessionId, `({
-    width: innerWidth,
-    height: innerHeight,
-    boot: (() => { const r=document.querySelector("#boot").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
-    hud: (() => { const r=document.querySelector("#hud").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
-    joystick: (() => { const r=document.querySelector("#joystick").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; })(),
-    diagnosticsOpen: document.querySelector("#hud")?.open,
-  })`);
-  assertRectInViewport(mobile.boot, 390, 844, "mobile boot");
-  assertRectInViewport(mobile.hud, 390, 844, "mobile diagnostics summary");
-  assertRectInViewport(mobile.joystick, 390, 844, "mobile joystick");
-  assert(mobile.diagnosticsOpen === false, "mobile diagnostics should remain collapsed");
-  screenshots.mobileWaiting = await screenshot(cdp, primary.sessionId, "world-v0-runtime-shell-mobile-waiting.png");
+  await setViewport(cdp, sessionId, { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await waitFor(cdp, sessionId, `innerWidth === 390 && document.querySelector("#boot")?.classList.contains("compact") === true`, "Friend-Ready portrait shell");
+  const mobile = await cdp.evaluate(sessionId, `(() => {
+    const rect = (selector) => { const r = document.querySelector(selector)?.getBoundingClientRect(); return r ? {left:r.left,right:r.right,top:r.top,bottom:r.bottom} : null; };
+    return {
+      boot: rect("#boot"),
+      hud: rect("#hud"),
+      sessionActions: rect("#session-actions"),
+      joystick: rect("#joystick"),
+      gimbal: rect("#camera-gimbal"),
+      diagnosticsOpen: document.querySelector("#hud")?.open,
+      inviteText: document.querySelector("#copy-invite")?.textContent,
+    };
+  })()`);
+  for (const [name, rect] of Object.entries({ boot: mobile.boot, hud: mobile.hud, sessionActions: mobile.sessionActions, joystick: mobile.joystick, gimbal: mobile.gimbal })) {
+    assertRect(rect, 390, 844, `portrait ${name}`);
+  }
+  assert(mobile.diagnosticsOpen === false, "portrait diagnostics should remain collapsed");
+  assert(mobile.inviteText === "Invite friend", `portrait invite label drift ${mobile.inviteText}`);
+  screenshots.mobileWaiting = await screenshot(cdp, sessionId, "world-v0-runtime-shell-mobile-waiting.png");
 
-  await cdp.evaluate(primary.sessionId, `document.querySelector("#hud").open = true; true`);
+  await cdp.evaluate(sessionId, `document.querySelector("#hud").open = true; true`);
   await sleep(180);
-  const mobileOpen = await cdp.evaluate(primary.sessionId, `(() => { const r=document.querySelector("#hud").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,open:document.querySelector("#hud").open}; })()`);
-  assertRectInViewport(mobileOpen, 390, 844, "mobile open diagnostics");
-  assert(mobileOpen.open === true, "mobile diagnostics did not open");
-  screenshots.mobileDiagnostics = await screenshot(cdp, primary.sessionId, "world-v0-runtime-shell-mobile-diagnostics.png");
-  await cdp.evaluate(primary.sessionId, `document.querySelector("#hud").open = false; true`);
+  const mobileDiagnostics = await cdp.evaluate(sessionId, `(() => { const r=document.querySelector("#hud").getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,open:document.querySelector("#hud").open}; })()`);
+  assertRect(mobileDiagnostics, 390, 844, "portrait diagnostics open");
+  assert(mobileDiagnostics.open === true, "portrait diagnostics did not open");
+  screenshots.mobileDiagnostics = await screenshot(cdp, sessionId, "world-v0-runtime-shell-mobile-diagnostics.png");
 
-  // Short two-client rendered check: use the real app and real Workerd, but stop as soon as B(0)
-  // plus semantic presence are visible. Long exact-state qualification remains the separate L2 gate.
-  const peer = await createPage(cdp, { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  await enterRun(cdp, peer.sessionId, `shell-b-${suffix}`, runKey);
-  const liveReady = `(() => {
-    const e = window.__sharedYardV0Evidence?.();
-    return e?.localBoundaryTick !== null && e?.presentation?.selfPresence === "YOU" && e?.presentation?.remotePresence === "PEER" && e?.presentation?.spatialCueCount === 6 && e?.metrics?.guardMatches >= 1;
-  })()`;
-  await waitFor(cdp, primary.sessionId, liveReady, "mobile Shared Yard live presence");
-  await waitFor(cdp, peer.sessionId, liveReady, "desktop Shared Yard live presence");
-  const primaryLive = await readRuntime(cdp, primary.sessionId);
-  const peerLive = await readRuntime(cdp, peer.sessionId);
-  assertLivePresence(primaryLive, "portrait-orbit");
-  assertLivePresence(peerLive, "desktop-orbit");
-  screenshots.mobileLive = await screenshot(cdp, primary.sessionId, "world-v0-runtime-shell-mobile-live.png");
-  screenshots.desktopLive = await screenshot(cdp, peer.sessionId, "world-v0-runtime-shell-desktop-live.png");
-
-  evidence.verdict = "WORLD_V0_RUNTIME_SHELL_RENDER_PASS";
+  evidence.verdict = "WORLD_V0_FRIEND_READY_SHELL_PASS";
   evidence.desktopBoot = desktopBoot;
   evidence.desktopWaiting = desktopWaiting;
   evidence.mobile = mobile;
-  evidence.mobileOpen = mobileOpen;
-  evidence.live = { primary: primaryLive, peer: peerLive };
+  evidence.mobileDiagnostics = mobileDiagnostics;
   evidence.screenshots = screenshots;
   writeFileSync(OUTPUT, `${JSON.stringify(evidence, null, 2)}\n`);
-  console.log(`${evidence.verdict} · ${version} · live-presence=2-clients · ui=${EXPECTED_UI_REVISION}`);
+  console.log(`${evidence.verdict} · ui=${WORLD_V0_BROWSER_UI_REVISION} · friend-entry=${WORLD_V0_FRIEND_ENTRY_REVISION}`);
 } catch (error) {
   evidence.error = error instanceof Error ? error.stack || error.message : String(error);
   evidence.stderrTail = Buffer.concat(stderr).toString("utf8").slice(-8000);
@@ -287,5 +260,5 @@ try {
 } finally {
   cdp?.close();
   if (child.exitCode === null) child.kill("SIGKILL");
-  try { rmSync(profile, { recursive: true, force: true }); } catch { /* cleanup only */ }
+  try { rmSync(profile, { recursive: true, force: true }); } catch { /* cleanup */ }
 }

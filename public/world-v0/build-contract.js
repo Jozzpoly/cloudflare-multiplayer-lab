@@ -1,4 +1,4 @@
-export const WORLD_V0_BROWSER_UI_REVISION = "shared-yard-v0-browser-ui-v7-solo-inspection";
+export const WORLD_V0_BROWSER_UI_REVISION = "shared-yard-v0-browser-ui-v8-friend-entry";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v1";
 export const WORLD_V0_EXPECTED_SERVER_REVISION = "shared-yard-v0-authority-v1";
 export const WORLD_V0_EXPECTED_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v1";

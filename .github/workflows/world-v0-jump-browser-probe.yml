@@ -42,11 +42,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install exact dependency graph and Chrome
+      - name: Install exact dependency graph
         run: |
           npm ci
-          sudo apt-get update -qq
-          sudo apt-get install -y chromium >/dev/null
+          command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser
 
       - name: Add measurement-only browser instrumentation
         run: |
@@ -71,7 +70,6 @@ jobs:
 
       - name: Run two-client jump integration probe
         env:
-          CHROME_BIN: /usr/bin/chromium
           MW_WORLD_V0_JUMP_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-jump-browser-evidence.json
           MW_WORLD_V0_CHROME_MODE: swangle-webgl

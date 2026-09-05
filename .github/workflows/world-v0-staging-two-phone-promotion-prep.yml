@@ -63,7 +63,7 @@ jobs:
           test "$(git hash-object scripts/world-v0-playable-interaction-smoke.mjs)" = "$(git rev-parse "$QUALIFICATION_HEAD:scripts/world-v0-playable-interaction-smoke.mjs")"
           node --check scripts/world-v0-playable-interaction-smoke.mjs
 
-      - name: Bind delivery provenance and Friend Entry remote gate to exact candidate
+      - name: Bind delivery provenance marker to exact candidate
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
@@ -73,18 +73,6 @@ jobs:
             productSourceSha: process.env.PRODUCT_SOURCE_SHA,
           }, null, 2)}\n`);
           NODE
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('.github/workflows/world-v0-staging-fr-a-remote-entry.yml')
-          s = p.read_text()
-          old_branch = 'EXPECTED_PRODUCT_SOURCE_BRANCH: world-v0-friend-ready-v1'
-          old_sha = 'EXPECTED_PRODUCT_SOURCE_SHA: 5dd28a899c4f60c9227f1eb93026f571ced733e3'
-          assert s.count(old_branch) == 1, 'source branch marker drift'
-          assert s.count(old_sha) == 1, 'source sha marker drift'
-          s = s.replace(old_branch, 'EXPECTED_PRODUCT_SOURCE_BRANCH: world-v0-two-phone-readiness-candidate')
-          s = s.replace(old_sha, 'EXPECTED_PRODUCT_SOURCE_SHA: 65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3')
-          p.write_text(s)
-          PY
 
       - name: Preflight delivery contract before creating promotion specimen
         run: |
@@ -115,7 +103,6 @@ jobs:
             src/world-slice-entry.ts \
             wrangler.jsonc package.json package-lock.json \
             scripts/world-v0-playable-interaction-smoke.mjs \
-            .github/world-v0-product-source.json \
-            .github/workflows/world-v0-staging-fr-a-remote-entry.yml
+            .github/world-v0-product-source.json
           git commit -m "chore(world-v0): prepare qualified two-phone staging delivery"
           git push origin HEAD:world-v0-staging-two-phone-promotion-prep

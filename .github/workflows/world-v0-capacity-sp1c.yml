@@ -1,0 +1,50 @@
+name: World V0 Capacity SP1C Ram Correction Shock
+
+on:
+  push:
+    branches: [world-v0-capacity-sp1c-ram-shock]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-capacity-sp1c-ram-shock
+  cancel-in-progress: true
+
+jobs:
+  ram-correction-shock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact SP1C specimen
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax-check SP1C apparatus
+        run: |
+          node --check public/world-v0-stress/phenomenon-manifest.js
+          node --check scripts/world-v0-sp1c-correction-shock.mjs
+          git diff --check
+
+      - name: Preserve repository regression suite
+        run: npm run check
+
+      - name: Run production-shaped ram correction shock
+        run: node scripts/world-v0-sp1c-correction-shock.mjs | tee world-v0-sp1c-ram-correction-shock.json
+
+      - name: Upload SP1C evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-capacity-sp1c-ram-shock-attempt-${{ github.run_attempt }}
+          path: world-v0-sp1c-ram-correction-shock.json
+          if-no-files-found: error
+          retention-days: 14

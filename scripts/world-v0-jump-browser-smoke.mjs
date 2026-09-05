@@ -155,7 +155,9 @@ const runwayStateExpression = `(() => {
     jumpButtonDisabled: document.querySelector("#jump-button")?.disabled ?? null,
   };
   state.ready = Boolean(
-    state.networkState?.startsWith("live") &&
+    Number.isInteger(state.localBoundaryTick) &&
+    Number.isInteger(state.protocolStartTick) &&
+    state.localBoundaryTick >= state.protocolStartTick &&
     state.runtimeFailed === false &&
     state.jump?.buttonEnabled === true &&
     state.guards?.matches >= 8 &&

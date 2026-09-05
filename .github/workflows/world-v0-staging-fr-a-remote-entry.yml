@@ -1,0 +1,116 @@
+name: World V0 Staging FR-A Remote Friend Entry
+
+on:
+  push:
+    branches: [world-v0-staging-delivery]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-staging-fr-a-remote-entry
+  cancel-in-progress: false
+
+env:
+  STAGING_BASE_URL: https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev
+  EXPECTED_PRODUCT_SOURCE_BRANCH: world-v0-friend-ready-v1
+  EXPECTED_PRODUCT_SOURCE_SHA: f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6
+  EXPECTED_UI_REVISION: shared-yard-v0-browser-ui-v8-friend-entry
+  EXPECTED_SIM_BUILD_ID: shared-yard-v0-sim-579c7aa172198390
+
+jobs:
+  remote-friend-entry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact delivery head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify delivery source marker
+        run: |
+          set -euo pipefail
+          actual_sha="$(node -e 'const m=require("./.github/world-v0-product-source.json"); process.stdout.write(m.productSourceSha)')"
+          actual_branch="$(node -e 'const m=require("./.github/world-v0-product-source.json"); process.stdout.write(m.productBranch)')"
+          test "$actual_sha" = "$EXPECTED_PRODUCT_SOURCE_SHA"
+          test "$actual_branch" = "$EXPECTED_PRODUCT_SOURCE_BRANCH"
+          git cat-file -e "$EXPECTED_PRODUCT_SOURCE_SHA^{commit}"
+          echo "FR_A_DELIVERY_SOURCE_MARKER_PASS branch=$actual_branch sha=$actual_sha"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Verify remote Friend-Ready apparatus
+        run: |
+          node --check public/world-v0/friend-entry.js
+          node --check public/world-v0/friend-ready.js
+          node --check scripts/world-v0-friend-entry-core-smoke.mjs
+          node --check scripts/world-v0-friend-entry-browser-smoke.mjs
+          node scripts/world-v0-friend-entry-core-smoke.mjs
+
+      - name: Wait for exact delivery provenance to become public
+        run: |
+          node --input-type=module <<'NODE'
+          const base = process.env.STAGING_BASE_URL.replace(/\/$/, "");
+          const deadline = Date.now() + 240_000;
+          let last = null;
+
+          while (Date.now() < deadline) {
+            try {
+              const response = await fetch(`${base}/world-v0/deploy-provenance.json?fr-a=${process.env.GITHUB_SHA}-${Date.now()}`, {
+                cache: "no-store",
+                signal: AbortSignal.timeout(8000),
+              });
+              const provenance = response.ok ? await response.json() : null;
+              last = {
+                status: response.status,
+                productSourceBranch: provenance?.productSourceBranch,
+                productSourceSha: provenance?.productSourceSha,
+                deliveryBranch: provenance?.deliveryBranch,
+                deliverySha: provenance?.deliverySha,
+                uiRevision: provenance?.uiRevision,
+                simBuildId: provenance?.simBuildId,
+              };
+
+              if (
+                response.ok &&
+                provenance?.productSourceBranch === process.env.EXPECTED_PRODUCT_SOURCE_BRANCH &&
+                provenance?.productSourceSha === process.env.EXPECTED_PRODUCT_SOURCE_SHA &&
+                provenance?.deliveryBranch === "world-v0-staging-delivery" &&
+                provenance?.deliverySha === process.env.GITHUB_SHA &&
+                provenance?.uiRevision === process.env.EXPECTED_UI_REVISION &&
+                provenance?.simBuildId === process.env.EXPECTED_SIM_BUILD_ID
+              ) {
+                console.log("FR_A_EXACT_PUBLIC_PROVENANCE_PASS", JSON.stringify(last));
+                process.exit(0);
+              }
+            } catch (error) {
+              last = { error: error instanceof Error ? error.message : String(error) };
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
+
+          throw new Error(`Exact FR-A delivery did not become public before deadline: ${JSON.stringify(last)}`);
+          NODE
+
+      - name: Prove public host-to-invite-to-friend journey
+        env:
+          MW_WORLD_V0_FRIEND_ENTRY_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_FRIEND_ENTRY_OUTPUT: world-v0-staging-fr-a-friend-entry.json
+        run: node scripts/world-v0-friend-entry-browser-smoke.mjs
+
+      - name: Upload remote Friend-Ready evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-staging-fr-a-remote-entry-attempt-${{ github.run_attempt }}
+          path: world-v0-staging-fr-a-friend-entry.json
+          if-no-files-found: warn
+          retention-days: 14

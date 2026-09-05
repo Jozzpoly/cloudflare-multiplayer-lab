@@ -1,20 +1,20 @@
 # World V0 Operating Map
 
-Verified snapshot: **2026-09-05**
+Verified snapshot: **2026-09-05 after public FR-A qualification**
 
-This is the short operational entry point for current Multi_World / World V0 work. It is intentionally smaller than the historical evidence base.
+This is the short operational entry point for current Multi_World / World V0 work. It intentionally describes **current truth and sequencing**, not the full historical evidence base.
 
 ## Source-of-truth rule
 
 For current work:
 
-1. **Owner hands-on judgement** — feel, usability, fun, product direction;
+1. **Owner hands-on judgement** — feel, usability, fun and product direction;
 2. **live branch head + its passing evidence** — implementation truth;
 3. **qualified frozen specimens** — regression/control truth;
-4. **this map + current phase plan** — execution sequencing;
-5. older Gate / WS0 / RC / takeover documents — historical evidence/provenance.
+4. **this map + the current evidence override** — execution sequencing;
+5. older phase plans, Gate / WS0 / RC / takeover documents — historical design context and provenance.
 
-Verify live branch heads before acting. Stored SHAs are grounded snapshots, not permanent aliases.
+Verify live heads before acting. Stored SHAs below are grounded snapshots, not permanent aliases.
 
 `main` is a navigation/documentation branch, not the live product runtime branch.
 
@@ -22,233 +22,216 @@ Verify live branch heads before acting. Stored SHAs are grounded snapshots, not 
 
 | Role | Branch | Verified head | Meaning |
 | --- | --- | --- | --- |
-| Frozen foundation control | `world-v0-shared-yard` | `b27de8b04c27777250c47e7e936674e0f147fdfa` | Qualified Shared Yard foundation control. Do not casually move. |
-| Qualified product control | `world-v0-playable-frontier` | `1699fb71b3abef425aea6e21cdb81cb7d11250d5` | Current machine-qualified v7 Yard, retained as control while Friend-Ready work proceeds. |
-| Remote delivery control | `world-v0-staging-delivery` | `d6e9d47d72aeac34bc6341a76ebdf7e53ff6522f` | Exact remotely-qualified delivery of `1699fb71...`. |
-| **Active product candidate** | `world-v0-friend-ready-v1` | starts at `1699fb71b3abef425aea6e21cdb81cb7d11250d5` | Friend entry + bounded room-continuity work only; frozen SimBuild/authority/protocol. |
-| Stress / capacity research | `world-v0-capacity-cartography` | `d086f51792795d1ab73ba43f9e3b4dbf97441bb7` | Isolated Stress × Play research lane. Not current product frontier. |
+| Frozen foundation control | `world-v0-shared-yard` | `b27de8b04c27777250c47e7e936674e0f147fdfa` | Qualified Shared Yard foundation control. Preserve. |
+| Pre-FR-A playable predecessor | `world-v0-playable-frontier` | `1699fb71b3abef425aea6e21cdb81cb7d11250d5` | Qualified v7 execution substrate retained as predecessor/control evidence. It is no longer the current friend-facing public candidate. |
+| **Qualified Friend-Ready source** | `world-v0-friend-ready-v1` | `f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6` | FR-A Friend Entry V1. Frozen authority/protocol/SimBuild. Current product source for public friend-play. |
+| **Public staging delivery** | `world-v0-staging-delivery` | `a19eb34ed61a0cd69a7681c95b33bc67fd4e8d8d` | Exact remotely-qualified delivery of `f9686b6...`. |
+| Bounded room-continuity probe | `world-v0-room-continuity-probe` | `4890b06a519649ed4b6d96ceba5a55edd590fc2b` | Machine-qualified opt-in RCP0 experiment. **Not deployed as the default/public control and not yet product-validated.** |
+| Stress / capacity research | `world-v0-capacity-cartography` | `d086f51792795d1ab73ba43f9e3b4dbf97441bb7` | Isolated Stress × Play research/radar lane. Not current product frontier. |
 
-Parked hypothesis:
+Parked Impact Lab remains historical/unqualified evidence and must not be promoted by momentum.
 
-`world-v0-playable-impact-lab-v0@33ddd527051bd71e4bde236948cb1c96b9a34a6b`
+## Current sequencing override
 
-Do not continue or promote Impact Lab by momentum.
+Read:
 
-## Current phase: Friend-Ready World V1
+`docs/WORLD_V0_FRIEND_READY_EVIDENCE_OVERRIDE_2026-09-05.md`
 
-Canonical plan:
+The older:
 
 `docs/WORLD_V0_FRIEND_READY_V1_PLAN.md`
 
-The post-Owner audit that led here remains important context:
+remains useful for design detail, candidate experiments and pre-mortems, but its old execution order is **not mandatory**.
 
-`docs/WORLD_V0_POST_OWNER_REVIEW_2026-09-05.md`
+New evidence superseded the automatic sequence:
 
-### Owner R1 closure
+`FR-A → FR-B → jump → friend-play`
 
-Fresh Owner hands-on on the exact qualified v7 Yard established:
+Current order is:
 
-- startup has a short ~1 s hitch, then behaves normally; not currently a blocker;
-- camera zoom range and vertical orbit direction are accepted for this stage;
-- the existing tower / barricade / impulse-lane interactions work but have been exercised enough and are now boring;
-- do **not** ask the Owner to keep repeating the same 12-prop Yard tests;
-- explicit missing capability: **jump**;
-- explicit missing product quality: **better multiplayer**;
-- explicit friction: **simpler friend entry**;
-- after this bridge, prepare toward a more serious small cooperative mini-MMO / living-world direction.
+**public FR-A control → natural real friend-play → extract the strongest actual friction / emergent demand → choose one bounded next hypothesis**
 
-Therefore Shared Yard V0 is complete as the first world/product falsifier. It stays useful as qualified control, but it is no longer the thing to polish indefinitely.
+Do not continue RCP0, jump or Stress × Play merely because they exist as named stages.
 
-## Friend-Ready sequencing
+## Current public control — Friend Entry V1
 
-### FR-A — Friend Entry V1
+Qualified source:
 
-On `world-v0-friend-ready-v1`:
+`world-v0-friend-ready-v1@f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6`
 
-- hide raw `Run` from normal onboarding;
-- host enters normally and gets one clear `Invite friend` action;
-- invite URL carries room identity automatically;
-- invitee sees a simple join flow, not a lab run form;
-- retain advanced/debug room information only if useful;
-- replace short `Math.random()` default run generation with compact Web Crypto randomness that still fits the existing server run-key contract;
-- keep `Inspect solo` as an Owner/dev path, not normal friend onboarding.
+Branch qualification:
 
-This stage must not change authority/protocol/SimBuild.
+**`33965919935` — PASS**.
 
-### FR-B — bounded Room Continuity Probe RCP0
+Current public staging:
 
-Use current semantics before inventing a new room backend:
+`https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/`
 
-`same run / logical WorldId → fresh epoch → clean end → same run → fresh new epoch`
+Delivery specimen:
 
-Target clean lifecycle:
+`world-v0-staging-delivery@a19eb34ed61a0cd69a7681c95b33bc67fd4e8d8d`
 
-`peer leaves normally → survivor automatically returns to waiting on same run → old invite remains useful → friend returns → new WorldEpoch starts`
+Canonical staging run:
 
-Boundary:
+**`33967878227` — PASS on attempt 1**.
 
-- no physical persistence;
-- no join-in-progress;
-- no server storage/reconstruction claim;
-- no auto-rejoin after correctness/identity/authority failures;
-- bounded retries/backoff;
-- bounded standby rather than an indefinitely pinned one-player Box3D epoch.
+Independent provenance-bound Friend Entry run:
 
-Why bounded: current authority pins a live epoch with `setInterval` and has no hibernation reconstruction contract. Long-idle always-open room semantics are a later architecture question, not an excuse to build them now.
+**`33967878206` — PASS**.
 
-### J0 — jump, separate causal candidate
+The public qualification now proves:
 
-Do **not** weaken the Friend-Ready frozen guard to add jump.
+- exact promoted-product bytes from `f9686b6...`;
+- explicit isolated Cloudflare staging deploy and exact public provenance;
+- host entry without requiring raw `Run` knowledge on the normal path;
+- one-link invite/join path for a second independent browser;
+- authority + production isolation;
+- camera/controller behavior;
+- manual epoch-end → fresh restart lifecycle;
+- desktop + portrait shell;
+- real-authority `Inspect solo` preservation;
+- remote two-Chromium exact-state.
 
-Jump changes simulation and input/replay semantics. It gets a separate branch/new SimBuild candidate after FR-A/FR-B stabilize.
+Remote exact-state passed on its **first attempt**: approximately B303/B305, 50 exact guard matches and 0 mismatches on each client, `firstStateMismatch=null`, `runtimeFailed=false`.
 
-First preflight actual support detection in the `box3d.js@0.1.1` binding. Prefer real contact/support or bounded downward cast semantics over a `position.y` ground hack.
+Hosted Chromium/SwiftShader still exhibits prediction-backlog/startup-starvation diagnostics. With exact guards intact this is retained as hosted-environment diagnostic evidence, **not** upgraded into a normal-device performance claim and not treated as a demonstrated correctness failure.
 
-Minimum requirement:
+## Friend Entry V1 claim boundary
 
-- grounded-only jump;
-- deterministic edge/intent representation;
-- authority and browser apply identical semantics;
-- replay/correction cannot duplicate the jump;
-- landing/prop-contact exact-state remains coherent;
-- desktop and mobile input surfaces both exist.
+FR-A changes friend-facing presentation/onboarding only.
 
-### FR-D — real friend-play
+Current public UI revision:
 
-Only after friend entry, bounded continuity and jump are coherently qualified.
+`shared-yard-v0-browser-ui-v8-friend-entry`
 
-This is natural play, not a QA checklist. The result chooses the first mini-MMO preparation problem.
-
-## Mini-MMO bridge after Friend-Ready
-
-`mini-MMO` is a product direction, not permission to build generic MMO infrastructure.
-
-After real friend-play, select exactly one earned larger capability. Likely candidate classes:
-
-- third-player support;
-- logical-world persistence if players create something worth preserving;
-- richer interaction verbs/items if players repeatedly try to pick up/use/carry things;
-- larger authored place if exploration pressure appears;
-- hibernatable room/lobby architecture if long-idle continuity proves valuable;
-- join-in-progress if entering an already active world becomes an actual need;
-- social identity/accounts only when repeated human use needs continuity beyond a shared link.
-
-Do not choose one from genre convention before friend-play evidence.
-
-## Frozen simulation identity
-
-Qualified UI revision:
-
-`shared-yard-v0-browser-ui-v7-solo-inspection`
-
-Qualified/frozen SimBuild:
+Frozen simulation identity remains:
 
 `shared-yard-v0-sim-579c7aa172198390`
 
-Friend-Ready FR-A/FR-B must keep:
+Also unchanged:
 
 - server revision `shared-yard-v0-authority-v1`;
 - protocol revision `shared-yard-v0-scheduled-input-v1`;
 - state guard `shared-yard-v0-f32-state-v1`;
-- client simulation `shared-yard-v0-browser-sim-v1`;
-- frozen SimBuild above.
+- client simulation `shared-yard-v0-browser-sim-v1`.
 
-A future jump candidate deliberately changes simulation identity and needs its own qualification contract.
+FR-A does **not** qualify Android/mobile performance generally, Firefox/WebKit, true human social presence, persistence, join-in-progress, reconnect/background-resume architecture, runtime topology changes or >2 players.
 
-## Current qualification controls
+## RCP0 — what is demonstrated and what is not
 
-Qualified playable:
+Probe:
 
-`world-v0-playable-frontier@1699fb71b3abef425aea6e21cdb81cb7d11250d5`
+`world-v0-room-continuity-probe@4890b06a519649ed4b6d96ceba5a55edd590fc2b`
 
-Run **`33957370821` — PASS** across fresh-runner evidence classes:
+Qualification:
 
-- core/authority;
-- presentation + lifecycle + shell;
-- real-authority `Inspect solo`;
-- two-Chromium exact-state.
+**`33967238231` — PASS**.
 
-Remote delivery:
+The opt-in client-side probe demonstrated repeated fresh-epoch continuity:
 
-`world-v0-staging-delivery@d6e9d47d72aeac34bc6341a76ebdf7e53ff6522f`
+`E1 live → connection closes → host re-arms E2 → same invite returns → E2 live → connection closes → host re-arms E3`
 
-Run **`33957492089` — PASS on attempt 1** including:
+It preserved:
 
-- exact promoted-product bytes;
-- explicit staging deploy and public provenance;
-- authority + production isolation;
-- presentation/lifecycle/shell;
-- remote `Inspect solo`;
-- remote two-Chromium exact-state.
+- same run / logical `WorldId`;
+- fresh `WorldEpoch` every round;
+- same invite URL across epochs;
+- one auto-rearm per ended epoch;
+- default manual Friend-Ready lifecycle;
+- frozen authority/protocol/SimBuild;
+- `Inspect solo` and exact-state qualification.
 
-Public staging control:
+### Critical semantic correction
 
-`https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/`
+`peer_left_restart_required` is **not proof of a voluntary social leave**. Current authority uses it for generic `webSocketClose`. The probe therefore treats the close as ambiguous and must not claim to know why the peer disappeared.
 
-Staging source pointer remains:
+### Explicitly not part of the tested probe
 
-`.github/world-v0-product-source.json`
+- bounded standby expiry;
+- hibernatable lobby architecture;
+- persistence;
+- join-in-progress;
+- server reconstruction;
+- automatic recovery after correctness/identity/authority failures.
 
-Do not repoint staging to a Friend-Ready candidate before that candidate passes its branch qualification.
+RCP0 is technically viable inside its tested envelope. **That does not prove it improves real friend sessions.** Do not promote it before human evidence activates that need.
 
 ## `Inspect solo`
 
-`Inspect solo` is a cheap Owner/dev inspection path using the real authority and a neutral AUTO peer.
+`Inspect solo` remains a low-friction Owner/dev path using the real authority and a neutral AUTO peer.
 
 It remains explicitly:
 
 - `mode = inspection`;
 - `qualificationEligible = false`.
 
-It is useful for camera/control/UI/session iteration but never substitutes for real two-human evidence when social presence or peer timing is the question.
+Use it for camera/control/UI/scene/product inspection when a second human is irrelevant. Never present it as two-human evidence when social presence, human timing or peer behavior is the question.
 
-## Workflow policy
+## Evidence classes must stay separate
 
-### Qualified playable workflow
+- **foundation qualification** — frozen two-player Shared Yard control envelope;
+- **Friend-Ready qualification** — current friend-facing product source while preserving frozen simulation/authority;
+- **remote staging qualification** — proves the exact candidate is really public and behaves correctly on isolated staging;
+- **Owner inspection / feel judgement** — subjective product evidence; may use `Inspect solo` where appropriate;
+- **real two-human / two-device friend-play** — required for social presence, real human timing, real device friction and product direction;
+- **RCP0 experiment** — lifecycle feasibility evidence only until humans demonstrate value;
+- **Stress × Play research** — boundary/phenomenon research and donor evidence, not automatic product sequencing.
 
-`.github/workflows/world-v0-playable-a1.yml`
+A PASS in one class must not be silently upgraded into another.
 
-Keep the current fresh-runner split. Do not recombine heavy Chromium/SwiftShader jobs.
+## Workflow spine
 
-### Friend-Ready workflow
+### Friend-Ready source
 
-`world-v0-friend-ready-v1` gets its own branch-specific qualification workflow.
+`.github/workflows/world-v0-friend-ready-v1.yml`
 
-Its purpose is to:
+Purpose:
 
-- prove the branch still has the exact qualified dependency graph;
-- fail if authority/simulation/protocol/Worker config drifts from `1699fb71...`;
-- run repository regression and authority smoke;
-- run friend-entry/session/presentation/shell falsifiers;
-- run `Inspect solo` on a fresh runner;
-- run two-Chromium exact-state on a fresh runner.
+- prohibit drift in frozen authority/simulation/protocol/dependency/config paths;
+- prove Friend Entry host/invite behavior;
+- preserve normal controls/session/shell behavior;
+- preserve `Inspect solo`;
+- require fresh-runner exact-state.
 
-Do not turn this into a generic new validation framework. Add only Friend-Ready-specific falsifiers required by FR-A/FR-B semantics.
-
-### Jump workflow
-
-Not yet created. It must be separate because the Friend-Ready workflow intentionally prohibits simulation drift.
-
-### Staging delivery workflow
+### Public staging delivery
 
 `.github/workflows/world-v0-playable-staging-remote.yml`
 
-Retain exact source SHA, protected-byte guard, explicit staging deploy and public provenance. A Friend-Ready candidate becomes remote-qualified only after exact promotion through this mechanism.
+Purpose:
 
-## Stress × Play status
+- exact source SHA + protected-byte guard;
+- staging-only deploy;
+- exact public provenance;
+- authority + production isolation;
+- presentation/lifecycle/shell;
+- remote `Inspect solo`;
+- remote exact-state with strict failure classification.
 
-Issue #33 remains the research coordination ledger.
+Additional Friend-Ready remote gate:
 
-Important review correction:
+`.github/workflows/world-v0-staging-fr-a-remote-entry.yml`
 
-- SP1 rollback/history boundary search remains incomplete;
-- SP1B allocation/preallocation evidence remains useful but does not justify a product policy change;
-- `world-v0-capacity-sp1c-ram-shock@306e4cbe...` is exploratory causal-amplifier / SP5-preflight evidence, not completion of SP1;
-- Stress × Play resumes when product evidence asks a concrete question, not by stage momentum.
+It has no deployment authority. It waits until public provenance matches the exact delivery SHA and `f9686b6...`, then runs the real public host→invite→friend falsifier. This prevents the Friend Entry check from racing the deploy or accidentally testing stale public bytes.
+
+### RCP0
+
+`.github/workflows/world-v0-room-continuity-probe.yml`
+
+This is an isolated experiment workflow. Its success does not make RCP0 the default product.
+
+### Stress × Play
+
+Issue #33 remains research coordination/evidence. Resume this lane when a concrete product question needs it, not by numbered-stage momentum.
 
 ## PR #32
 
-PR #32 remains **DRAFT / DO NOT MERGE** and represents the frozen foundation-control line, not the current product frontier.
+PR #32 remains **OPEN / DRAFT / DO NOT MERGE**.
+
+Its head is still:
+
+`world-v0-shared-yard@b27de8b04c27777250c47e7e936674e0f147fdfa`
+
+It preserves the frozen foundation-control line. Current product, delivery and research lanes intentionally live outside it.
 
 ## Branch hygiene
 
@@ -256,33 +239,38 @@ Use:
 
 - **ACTIVE** — current execution lane or deliberately active bounded experiment;
 - **HISTORICAL EVIDENCE** — preserved closed evidence;
-- **CLEANUP CANDIDATE** — helper/probe branch whose unique evidence has already been preserved and checked.
+- **CLEANUP CANDIDATE** — helper/probe branch whose unique evidence has been checked first.
 
-Do not perform broad branch deletion during Friend-Ready product work.
+Do not perform broad branch deletion during product work. Cleanup is not the current frontier.
 
 ## Fast takeover
 
 A fresh Browser GPT / Codex session should normally:
 
 1. read this file;
-2. read `docs/WORLD_V0_FRIEND_READY_V1_PLAN.md`;
-3. read `docs/WORLD_V0_POST_OWNER_REVIEW_2026-09-05.md` only when the reasoning behind the phase boundary is needed;
-4. verify live heads for foundation, playable control, staging, Friend-Ready and Stress lane;
-5. inspect latest relevant workflow/evidence;
-6. continue the smallest current Friend-Ready stage without reopening completed Yard testing.
+2. read `docs/WORLD_V0_FRIEND_READY_EVIDENCE_OVERRIDE_2026-09-05.md`;
+3. use `docs/WORLD_V0_FRIEND_READY_V1_PLAN.md` only as detailed design/history where useful;
+4. verify live heads for foundation, playable predecessor, Friend-Ready source, staging, RCP0 and Stress lane;
+5. inspect the latest evidence relevant to the actual question;
+6. preserve the public FR-A control unless new evidence contradicts it;
+7. do not reopen repetitive 12-prop Yard testing or prewritten stage sequencing by default.
 
-Do not repeat full historical grounding unless live evidence conflicts with this map.
+Full historical grounding is only needed if live evidence conflicts with this map or the task depends on older provenance.
 
 ## Immediate next work
 
-1. establish and baseline-pass the branch-specific Friend-Ready qualification workflow on untouched `1699fb71...`;
-2. implement **FR-A Friend Entry V1**;
-3. qualify it;
-4. implement **FR-B bounded RCP0**;
-5. qualify locally and remotely;
-6. prepare **J0 jump** on a separate simulation branch;
-7. integrate only qualified candidates;
-8. run real two-human/two-device friend-play;
-9. use that evidence to select the first serious mini-MMO preparation problem.
+The nearest decision-producing evidence is now **natural real friend-play on the public FR-A control**.
 
-The plan may change when new evidence gives a better causal ordering. Do not continue a stage merely because it is listed here.
+Do not turn friends into QA operators. Use the normal flow, play naturally, then extract what actually mattered.
+
+After that session choose the next bounded problem from evidence. Candidate classes include:
+
+- promote/refine RCP0 if drop/rejoin/round continuity is real friction;
+- jump/support work if lack of vertical embodiment dominates;
+- richer objects/interactions/physical phenomena if the world simply runs out of meaningful play;
+- larger authored space if exploration pressure appears;
+- third-player support if a real 3-person use case becomes immediate;
+- persistence/join-in-progress/hibernatable lobby only if actual use activates those needs;
+- Stress × Play donor work when a concrete product question needs its phenomena or measurements.
+
+The correct answer may be something not on this list. **Human evidence now outranks the old feature sequence.**

@@ -25,13 +25,46 @@ jobs:
       - name: Checkout exact delivery head
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Verify source identity
         run: |
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$GITHUB_SHA"
           echo "Exact delivery specimen: $actual"
+
+      - name: Prove exact promoted product bytes
+        id: product_source
+        run: |
+          set -euo pipefail
+          source_sha="$(node -e 'const m=require("./.github/world-v0-product-source.json"); process.stdout.write(m.productSourceSha)')"
+          source_branch="$(node -e 'const m=require("./.github/world-v0-product-source.json"); process.stdout.write(m.productBranch)')"
+          printf '%s' "$source_sha" | grep -Eq '^[0-9a-f]{40}$'
+          test -n "$source_branch"
+          git cat-file -e "$source_sha^{commit}"
+
+          protected_paths=(
+            public/world-v0
+            src/world-v0-contract.ts
+            src/world-v0-protocol.ts
+            src/world-v0-shared-yard.ts
+            src/box3d-runtime.ts
+            src/world-slice-entry.ts
+            wrangler.jsonc
+            package.json
+            package-lock.json
+          )
+
+          if ! git diff --quiet "$source_sha" "$GITHUB_SHA" -- "${protected_paths[@]}"; then
+            echo "Staging delivery drifted from promoted product source $source_sha on protected product/runtime paths."
+            git diff --stat "$source_sha" "$GITHUB_SHA" -- "${protected_paths[@]}"
+            git diff --name-status "$source_sha" "$GITHUB_SHA" -- "${protected_paths[@]}"
+            exit 1
+          fi
+
+          echo "product_source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "product_source_branch=$source_branch" >> "$GITHUB_OUTPUT"
+          echo "PROMOTED_PRODUCT_BYTES_PASS source=$source_branch@$source_sha delivery=$GITHUB_SHA"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -66,6 +99,41 @@ jobs:
           npm run test:staging-deploy-guard
           npm run validate:staging-contract
 
+      - name: Generate exact deployment provenance asset
+        env:
+          PRODUCT_SOURCE_SHA: ${{ steps.product_source.outputs.product_source_sha }}
+          PRODUCT_SOURCE_BRANCH: ${{ steps.product_source.outputs.product_source_branch }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          import {
+            WORLD_V0_BROWSER_UI_REVISION,
+            WORLD_V0_CLIENT_SIM_REVISION,
+            WORLD_V0_EXPECTED_SERVER_REVISION,
+            WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          } from "./public/world-v0/build-contract.js";
+
+          const provenance = {
+            productSourceBranch: process.env.PRODUCT_SOURCE_BRANCH,
+            productSourceSha: process.env.PRODUCT_SOURCE_SHA,
+            deliveryBranch: process.env.GITHUB_REF_NAME,
+            deliverySha: process.env.GITHUB_SHA,
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            workflowRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT || 0),
+            uiRevision: WORLD_V0_BROWSER_UI_REVISION,
+            clientSimRevision: WORLD_V0_CLIENT_SIM_REVISION,
+            serverRevision: WORLD_V0_EXPECTED_SERVER_REVISION,
+            protocolRevision: WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            stateGuardRevision: WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            simBuildId: WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          };
+
+          writeFileSync("public/world-v0/deploy-provenance.json", `${JSON.stringify(provenance, null, 2)}\n`);
+          console.log("DEPLOY_PROVENANCE_PREPARED", JSON.stringify(provenance));
+          NODE
+
       - name: Dry-run exact staging deployment
         run: npx wrangler deploy --dry-run --env staging --outdir .wrangler/staging-delivery-dry-run
 
@@ -89,9 +157,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run deploy:staging
 
-      - name: Require exact UI and SimBuild to become public
+      - name: Require exact product provenance, UI and SimBuild to become public
         env:
           MW_WORLD_V0_STAGING_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          PRODUCT_SOURCE_SHA: ${{ steps.product_source.outputs.product_source_sha }}
+          PRODUCT_SOURCE_BRANCH: ${{ steps.product_source.outputs.product_source_branch }}
         run: |
           node --input-type=module <<'NODE'
           import {
@@ -104,18 +174,41 @@ jobs:
           let last = null;
           while (Date.now() < deadline) {
             try {
-              const response = await fetch(`${base}/world-v0/build-contract.js`, {
-                cache: "no-store",
-                signal: AbortSignal.timeout(8000),
-              });
-              const body = await response.text();
+              const cacheBust = `${process.env.GITHUB_SHA}-${Date.now()}`;
+              const [contractResponse, provenanceResponse] = await Promise.all([
+                fetch(`${base}/world-v0/build-contract.js?delivery=${cacheBust}`, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(8000),
+                }),
+                fetch(`${base}/world-v0/deploy-provenance.json?delivery=${cacheBust}`, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(8000),
+                }),
+              ]);
+              const contractBody = await contractResponse.text();
+              const provenance = provenanceResponse.ok ? await provenanceResponse.json() : null;
               last = {
-                status: response.status,
-                ui: body.includes(WORLD_V0_BROWSER_UI_REVISION),
-                sim: body.includes(WORLD_V0_EXPECTED_SIM_BUILD_ID),
+                contractStatus: contractResponse.status,
+                provenanceStatus: provenanceResponse.status,
+                ui: contractBody.includes(WORLD_V0_BROWSER_UI_REVISION),
+                sim: contractBody.includes(WORLD_V0_EXPECTED_SIM_BUILD_ID),
+                productSourceSha: provenance?.productSourceSha,
+                productSourceBranch: provenance?.productSourceBranch,
+                deliverySha: provenance?.deliverySha,
+                deliveryBranch: provenance?.deliveryBranch,
               };
-              if (response.ok && last.ui && last.sim) {
-                console.log("STAGING_EXACT_BUILD_VISIBLE", JSON.stringify({
+              if (
+                contractResponse.ok &&
+                provenanceResponse.ok &&
+                last.ui &&
+                last.sim &&
+                provenance?.productSourceSha === process.env.PRODUCT_SOURCE_SHA &&
+                provenance?.productSourceBranch === process.env.PRODUCT_SOURCE_BRANCH &&
+                provenance?.deliverySha === process.env.GITHUB_SHA &&
+                provenance?.deliveryBranch === process.env.GITHUB_REF_NAME
+              ) {
+                console.log("STAGING_EXACT_PRODUCT_VISIBLE", JSON.stringify({
+                  ...last,
                   uiRevision: WORLD_V0_BROWSER_UI_REVISION,
                   simBuildId: WORLD_V0_EXPECTED_SIM_BUILD_ID,
                 }));
@@ -126,7 +219,7 @@ jobs:
             }
             await new Promise((resolve) => setTimeout(resolve, 1000));
           }
-          throw new Error(`staging did not expose exact delivery build: ${JSON.stringify(last)}`);
+          throw new Error(`staging did not expose exact promoted product: ${JSON.stringify(last)}`);
           NODE
 
       - name: Upload deployment dry-run evidence
@@ -134,7 +227,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: world-v0-playable-staging-deploy-attempt-${{ github.run_attempt }}
-          path: .wrangler/staging-delivery-dry-run
+          path: |
+            .wrangler/staging-delivery-dry-run
+            public/world-v0/deploy-provenance.json
           if-no-files-found: warn
           retention-days: 14
 

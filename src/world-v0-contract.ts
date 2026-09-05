@@ -1,7 +1,7 @@
 export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v1";
 export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v1";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v1";
-export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-c-shared-consequence-v0";
+export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-c-shared-consequence-v1";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
 export const WORLD_V0_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v1";
 
@@ -85,18 +85,15 @@ export const WORLD_V0_PROP_LAYOUT = [
   { id: "prop-7", cluster: "tower", position: [3.4, 1.38, -3.2] as const },
   { id: "prop-8", cluster: "tower", position: [3.4, 2.3, -3.2] as const },
 
-  // Shared Consequence V0: a six-cube near-touching impulse train. Existing
-  // locomotion remains the only actuator; no action or protocol verb is added.
-  { id: "prop-9", cluster: "impact-train", position: [-4.0, 0.46, 3.3] as const },
-  { id: "prop-10", cluster: "impact-train", position: [-3.06, 0.46, 3.3] as const },
-  { id: "prop-11", cluster: "impact-train", position: [-2.12, 0.46, 3.3] as const },
-  { id: "prop-12", cluster: "impact-train", position: [-1.18, 0.46, 3.3] as const },
-  { id: "prop-13", cluster: "impact-train", position: [-0.24, 0.46, 3.3] as const },
-  { id: "prop-14", cluster: "impact-train", position: [0.7, 0.46, 3.3] as const },
+  // Shared Consequence V1: retain the physically ordinary mediator but remove
+  // the five upstream cubes that the calibrated causal search showed mainly
+  // dissipated the player's locomotion impulse. No force boost, action or
+  // protocol verb is added.
+  { id: "prop-9", cluster: "impact-train", position: [0.7, 0.46, 3.3] as const },
 
-  // A compact 2x4 breakwall sits 4 cm beyond the train's tail. The train axis
-  // hits between the two middle wall columns, encouraging a visible split/cascade
-  // rather than merely translating one more loose cube.
+  // Preserve the V0 2x4 breakwall and split-hit alignment. The single mediator
+  // remains 4 cm from its face; the train axis still falls between the two
+  // middle columns so one player impact can distribute through several bodies.
   { id: "prop-15", cluster: "breakwall", position: [1.66, 0.46, 1.89] as const },
   { id: "prop-16", cluster: "breakwall", position: [1.66, 0.46, 2.83] as const },
   { id: "prop-17", cluster: "breakwall", position: [1.66, 0.46, 3.77] as const },

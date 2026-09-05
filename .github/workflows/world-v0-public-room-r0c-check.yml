@@ -1,0 +1,126 @@
+name: World V0 Public Room R0c Check
+
+on:
+  push:
+    branches:
+      - world-v0-public-room-r0
+    paths:
+      - public/world-v0/index.html
+      - public/world-v0/friend-ready.css
+      - public/world-v0/friend-ready.js
+      - public/world-v0/friend-entry.js
+      - public/world-v0/public-room-entry.js
+      - scripts/world-v0-public-room-r0c-browser-smoke.mjs
+      - scripts/world-v0-friend-entry-core-smoke.mjs
+      - scripts/world-v0-friend-entry-browser-smoke.mjs
+      - .github/workflows/world-v0-public-room-r0c-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  r0c:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Validate entry apparatus syntax
+        run: |
+          node --check public/world-v0/friend-ready.js
+          node --check public/world-v0/friend-entry.js
+          node --check public/world-v0/public-room-entry.js
+          node --check scripts/world-v0-public-room-r0c-browser-smoke.mjs
+          node --check scripts/world-v0-friend-entry-browser-smoke.mjs
+
+      - name: Preserve Friend Entry core compatibility
+        run: node scripts/world-v0-friend-entry-core-smoke.mjs
+
+      - name: Full repository check
+        run: npm run check
+
+      - name: Start fresh local staging worker
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-public-room-r0c-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-public-room-r0c.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/world-v0/rooms >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-public-room-r0c-wrangler.log
+          exit 1
+
+      - name: Prove one-click shared Yard entry
+        run: node scripts/world-v0-public-room-r0c-browser-smoke.mjs
+
+      - name: Preserve generated-room invite/deep-link compatibility
+        run: node scripts/world-v0-friend-entry-browser-smoke.mjs
+
+      - name: Stop local worker
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-public-room-r0c.pid ]; then kill "$(cat /tmp/world-v0-public-room-r0c.pid)" 2>/dev/null || true; fi
+
+      - name: Show worker log on failure
+        if: failure()
+        run: tail -n 400 world-v0-public-room-r0c-wrangler.log || true
+
+  r0b-regression:
+    needs: r0c
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Validate closed R0b apparatus syntax
+        run: |
+          node --check scripts/world-v0-public-room-r0b-browser-smoke.mjs
+          node --check scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
+          node --check scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs
+
+      - name: Start fresh local staging worker
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-public-room-r0c-r0b-regression.log 2>&1 &
+          echo $! > /tmp/world-v0-public-room-r0c-r0b.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/world-v0/rooms >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-public-room-r0c-r0b-regression.log
+          exit 1
+
+      - name: Preserve peer-departure same-room recovery
+        run: node scripts/world-v0-public-room-r0b-browser-smoke.mjs
+
+      - name: Preserve real-freeze lease boundary
+        run: node scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
+
+      - name: Preserve visibility-gated lease recovery
+        run: node scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs
+
+      - name: Stop local worker
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-public-room-r0c-r0b.pid ]; then kill "$(cat /tmp/world-v0-public-room-r0c-r0b.pid)" 2>/dev/null || true; fi
+
+      - name: Show worker log on failure
+        if: failure()
+        run: tail -n 400 world-v0-public-room-r0c-r0b-regression.log || true

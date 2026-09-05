@@ -42,6 +42,7 @@ jobs:
             exit 1
           fi
           node --check scripts/world-v0-mobile-input-release-probe.mjs
+          node --check scripts/world-v0-lostpointercapture-spec-probe.mjs
           git diff --check
 
       - name: Setup Node
@@ -67,7 +68,7 @@ jobs:
           cat world-v0-mobile-release-wrangler.log
           exit 1
 
-      - name: Generate forced pointer-capture-loss evidence
+      - name: Generate immediate capture-state evidence
         env:
           MW_WORLD_V0_MOBILE_RELEASE_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_MOBILE_RELEASE_OUTPUT: world-v0-mobile-input-release-probe.json
@@ -78,53 +79,41 @@ jobs:
           set -e
           test -f world-v0-mobile-input-release-probe.json
 
-      - name: Classify observed capture-loss state
+      - name: Classify immediate capture-state witness
         run: |
           node --input-type=module <<'NODE'
           import fs from "node:fs";
 
           const path = "world-v0-mobile-input-release-probe.json";
           const evidence = JSON.parse(fs.readFileSync(path, "utf8"));
-          const lostCapture = (sample) =>
-            sample?.pointerRelease?.hadCapture === true &&
-            sample?.pointerRelease?.hasCaptureAfter === false;
+          const lostCapture = (sample) => sample?.pointerRelease?.hadCapture === true && sample?.pointerRelease?.hasCaptureAfter === false;
           const stale = (sample) => sample?.safeAfterLoss === false;
 
-          if (!lostCapture(evidence.joystick)) {
-            throw new Error(`joystick capture-loss transition not demonstrated: ${JSON.stringify(evidence.joystick)}`);
-          }
-          if (!lostCapture(evidence.gimbal)) {
-            throw new Error(`gimbal capture-loss transition not demonstrated: ${JSON.stringify(evidence.gimbal)}`);
-          }
-          if (evidence.cleanupSafe !== true) {
-            throw new Error(`ordinary touchEnd cleanup is not safe: ${JSON.stringify(evidence)}`);
-          }
-          if (!stale(evidence.joystick) && !stale(evidence.gimbal)) {
-            throw new Error(`no stale-input witness after demonstrated capture loss: ${JSON.stringify(evidence)}`);
-          }
+          if (!lostCapture(evidence.joystick)) throw new Error(`joystick capture-loss transition not demonstrated: ${JSON.stringify(evidence.joystick)}`);
+          if (!lostCapture(evidence.gimbal)) throw new Error(`gimbal capture-loss transition not demonstrated: ${JSON.stringify(evidence.gimbal)}`);
+          if (evidence.cleanupSafe !== true) throw new Error(`ordinary touchEnd cleanup is not safe: ${JSON.stringify(evidence)}`);
+          if (!stale(evidence.joystick) && !stale(evidence.gimbal)) throw new Error(`no immediate stale-input witness: ${JSON.stringify(evidence)}`);
 
           const classification = {
-            verdict: "WORLD_V0_MOBILE_INPUT_RELEASE_WITNESS",
+            verdict: "WORLD_V0_MOBILE_INPUT_RELEASE_IMMEDIATE_WITNESS",
             generatedAt: new Date().toISOString(),
             sourceRuntime: process.env.FR_A_SOURCE,
             probeScriptExit: process.env.probe_script_exit ?? null,
             joystick: evidence.joystick,
             gimbal: evidence.gimbal,
             cleanupSafe: evidence.cleanupSafe,
-            lostPointerCaptureEventCounts: {
-              joystick: evidence.joystick?.lostPointerCaptureEvents ?? null,
-              gimbal: evidence.gimbal?.lostPointerCaptureEvents ?? null,
-            },
-            claimBoundary: "Witness is the observable transition from captured active pointer to no capture while input remains non-zero. Synthetic Chromium did not emit lostpointercapture for programmatic releasePointerCapture; event count is diagnostic, not the witness predicate.",
+            claimBoundary: "Immediate state witness only: releasePointerCapture made hasPointerCapture false before a subsequent pointer event processed pending capture. This does not by itself prove a user-visible standards-processed loss defect.",
             originalProbeError: evidence.error ?? null,
           };
           fs.writeFileSync("world-v0-mobile-input-release-classification.json", JSON.stringify(classification, null, 2));
-          console.log(classification.verdict, JSON.stringify({
-            joystickSafe: evidence.joystick.safeAfterLoss,
-            gimbalSafe: evidence.gimbal.safeAfterLoss,
-            cleanupSafe: evidence.cleanupSafe,
-          }));
+          console.log(classification.verdict);
           NODE
+
+      - name: Require standards-processed lostpointercapture witness
+        env:
+          MW_WORLD_V0_CAPTURE_SPEC_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_CAPTURE_SPEC_OUTPUT: world-v0-lostpointercapture-spec-probe.json
+        run: node scripts/world-v0-lostpointercapture-spec-probe.mjs
 
       - name: Stop local Workerd
         if: always()
@@ -141,6 +130,7 @@ jobs:
           path: |
             world-v0-mobile-input-release-probe.json
             world-v0-mobile-input-release-classification.json
+            world-v0-lostpointercapture-spec-probe.json
             world-v0-mobile-release-wrangler.log
           if-no-files-found: warn
           retention-days: 14

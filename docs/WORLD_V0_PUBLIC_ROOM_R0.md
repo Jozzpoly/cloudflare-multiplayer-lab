@@ -109,3 +109,90 @@ R0 branches from the accepted J0 public staging delivery:
 `world-v0-staging-delivery@3bb8239d8ded1834536138cbad7b20313cf480fe`
 
 J0 jump remains accepted provisionally. Further jump tuning and mobile floating-gimbal polish are valid follow-ups, but they do not outrank the access/lifecycle mismatch exposed by Owner play.
+
+## Live R0 evidence — 2026-09-05
+
+### R0a — CLOSED / PASS
+
+The bounded global room directory is proven on the isolated `world-v0-public-room-r0` branch.
+
+The same `yard-1`, `yard-2`, `yard-3` catalog is exposed independently of one browser's generated run key. Occupancy/state transitions are visible without mutating room state by reading the directory.
+
+Final regression confirmation on the R0b closure head:
+
+- workflow: `World V0 Public Room R0 Check`;
+- run: `33994635918`;
+- head: `70ba4a3027aa9547914d139dcb5f51d404c27d5a`;
+- result: **PASS**;
+- full repository check: PASS;
+- stable directory / live occupancy falsifier: PASS.
+
+### R0b — CLOSED / PASS
+
+Product implementation:
+
+`f431f901fb4721cdb7a03c5e2a0e8bf1324c67d0` — `feat(world-v0): recover stable room across epoch restart`
+
+The implementation changes browser room lifecycle only. It does not change Shared Yard authority, physics, protocol or SimBuild.
+
+Recoverable room-lifecycle reasons are deliberately bounded to normal social/session churn:
+
+- `peer_left_restart_required`;
+- `peer_error_restart_required`;
+- `input_lease_expired:*`.
+
+Actual authority/runtime/identity corruption remains fail-closed.
+
+Final durable closure gate:
+
+- workflow: `World V0 Public Room R0b Check`;
+- run: `33994635914`;
+- head: `70ba4a3027aa9547914d139dcb5f51d404c27d5a`;
+- result: **PASS**;
+- full repository check: PASS.
+
+The closure gate proves three separate boundaries:
+
+1. **Peer departure recovery**
+   - `yard-1 / epoch A` reaches LIVE;
+   - peer departure ends the strict epoch;
+   - the remaining browser automatically rejoins the same `yard-1` under a fresh epoch;
+   - a replacement peer joins and the fresh epoch reaches LIVE;
+   - exact-state guard mismatches remain `0`.
+
+2. **Real frozen-browser lease boundary**
+   - Chromium is actually frozen;
+   - authority ends the epoch with `input_lease_expired:actor:0`;
+   - the Yard becomes empty/joinable;
+   - the frozen browser does not reconnect-loop in the background.
+
+3. **Visibility-gated lease recovery semantics**
+   - a live browser is explicitly placed into a test-only hidden visibility state while canonical input batches are suppressed;
+   - authority independently produces the real `input_lease_expired:actor:0` termination;
+   - browser records pending same-room recovery but does not reconnect while hidden;
+   - explicit test-only `visibilitychange -> visible` releases recovery;
+   - the browser rejoins the same Yard under a fresh epoch;
+   - a replacement peer joins and the new epoch reaches LIVE;
+   - exact-state guard mismatches remain `0`.
+
+The visibility signal in the third falsifier is intentionally marked as an **apparatus bridge**. Headless Chromium does not faithfully model the complete mobile background -> foreground delivery semantics after a real frozen renderer. Therefore R0b does **not** claim that the complete real-phone lifecycle has been machine-proven.
+
+That final integrated claim belongs to **R0d Owner/friend hardware evidence**.
+
+### R0b cleanup
+
+One-shot product/apparatus patch workflows used during causal investigation were removed after closure. Durable R0a/R0b falsifiers remain in the branch.
+
+Do not reopen R0b merely to accumulate more synthetic lifecycle matrices unless new evidence contradicts the closed result.
+
+## Current frontier
+
+**R0c — one-click public entry.**
+
+The next product problem is no longer whether a stable Room can exist across strict epochs. It can.
+
+The next falsifier is whether a normal user can open `/world-v0/`, immediately understand the shared `Yard 1 / Yard 2 / Yard 3` state, and enter one visible Yard without handling a generated room key or invite ceremony.
+
+R0c should preserve optional exact-room deep links and advanced research/debug controls without making them the normal path.
+
+Public staging remains frozen until R0c is itself bounded and qualified. R0d then uses real devices and another human to judge whether the access/lifecycle ceremony is actually gone.

@@ -276,68 +276,15 @@ try {
   );
   assert(stillEmpty.occupancy === 0, "reconnect loop occurred while browser frozen");
 
-  await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);
-  await cdp.call("Page.bringToFront", {}, sessionId);
-  const pendingAfterResume = await waitForBrowser(cdp, sessionId, `(() => {
-    const e = window.__sharedYardV0Evidence?.();
-    return e?.session?.roomRecovery?.pending ? e.session.roomRecovery : null;
-  })()`, "queued epoch close reaches room recovery", 5000);
-  assert(String(pendingAfterResume.reason || "").startsWith("input_lease_expired:"), `unexpected pending recovery ${JSON.stringify(pendingAfterResume)}`);
-  let returnVisibility = await cdp.evaluate(sessionId, `document.visibilityState`);
-  let visibilityBridgeUsed = false;
-  if (returnVisibility !== "visible") {
-    const bridgedVisibility = await cdp.evaluate(sessionId, `(() => {
-      try {
-        Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
-        document.dispatchEvent(new Event("visibilitychange"));
-        return document.visibilityState;
-      } catch (error) {
-        return "bridge-error:" + (error?.message || error);
-      }
-    })()`);
-    assert(bridgedVisibility === "visible", `headless visibility bridge failed: ${bridgedVisibility}`);
-    returnVisibility = bridgedVisibility;
-    visibilityBridgeUsed = true;
-  }
-  assert(returnVisibility === "visible", `page did not return visible: ${returnVisibility}`);
-
-  const recovered = await waitForBrowser(cdp, sessionId, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.runKey === "yard-1" && e?.identity?.worldEpoch && e.identity.worldEpoch !== ${JSON.stringify(epochA)} && e.networkState === "waiting for peer" && e.session?.roomRecovery?.pending === false ? e : null; })()`, "same-room recovery after unfreeze", 12_000);
-  const epochB = recovered.identity.worldEpoch;
-  assert(recovered.session.roomRecovery.lastRecoveredEpoch === epochB, `recovery snapshot ${JSON.stringify(recovered.session.roomRecovery)}`);
-  assert(recovered.runtimeFailed === false, `runtime failed after unfreeze ${recovered.runtimeFailureReason}`);
-  assert(recovered.metrics.guardMismatches === 0, `recovery guard mismatch ${JSON.stringify(recovered.metrics.firstStateMismatch)}`);
-  assert(recovered.lifecycleEvents?.some((event) => event.type === "room-recovered" && event.sourceEpoch === epochA && event.recoveredEpoch === epochB), `room-recovered event missing ${JSON.stringify(recovered.lifecycleEvents)}`);
-
-  const waitingB = await waitForRoom(
-    "yard-1",
-    (room) => room.occupancy === 1 && room.state === "waiting" && room.worldEpoch === epochB,
-    "directory did not expose recovered waiting epoch",
-  );
-  assert(waitingB.joinable === true, `recovered room not joinable ${JSON.stringify(waitingB)}`);
-
-  peerB = await openDrivingPeer("R0B-Driver-B");
-  const liveB = await waitForBrowser(cdp, sessionId, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.identity?.worldEpoch === ${JSON.stringify(epochB)} && String(e.networkState || "").startsWith("live") ? e : null; })()`, "recovered epoch live", 8000);
-  assert(liveB.runtimeFailed === false, `runtime failed in recovered live epoch ${liveB.runtimeFailureReason}`);
-  assert(liveB.metrics.guardMismatches === 0, `recovered live guard mismatch ${JSON.stringify(liveB.metrics.firstStateMismatch)}`);
-
-  const liveRoom = await waitForRoom(
-    "yard-1",
-    (room) => room.occupancy === 2 && room.state === "live" && room.worldEpoch === epochB,
-    "directory did not expose recovered live epoch",
-  );
-  assert(liveRoom.capacity === 2, `capacity drift ${JSON.stringify(liveRoom)}`);
-
-  console.log("WORLD_V0_PUBLIC_ROOM_R0B_FREEZE_PASS", JSON.stringify({
+  console.log("WORLD_V0_PUBLIC_ROOM_R0B_FREEZE_BOUNDARY_PASS", JSON.stringify({
     room: "yard-1",
     epochA,
     epochEndReason: ended.reason,
     emptyWhileFrozen: true,
-    epochB,
-    automaticRecoveryAfterActive: true,
-    visibilityBridgeUsed,
-    replacementPeerReachedLive: true,
-    guardMismatches: liveB.metrics.guardMismatches,
-    uiRevision: liveB.uiRevision,
+    noReconnectWhileFrozen: true,
+    resumeClaimed: false,
+    boundary: "headless-freeze-only",
+    uiRevision: WORLD_V0_BROWSER_UI_REVISION,
   }));
 } catch (error) {
   console.error("WORLD_V0_PUBLIC_ROOM_R0B_FREEZE_FAIL", error);

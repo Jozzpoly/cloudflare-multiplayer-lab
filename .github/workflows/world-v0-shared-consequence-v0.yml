@@ -37,11 +37,12 @@ jobs:
           git cat-file -e "$CONTROL_SHA^{commit}"
           mapfile -t changed < <(git diff --name-only "$CONTROL_SHA" "$GITHUB_SHA" -- ':!/.github/workflows/world-v0-shared-consequence-v0.yml')
           printf 'candidate delta:\n%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 4
+          test "${#changed[@]}" -eq 5
           test "${changed[0]}" = "public/world-v0/build-contract.js"
           test "${changed[1]}" = "scripts/world-v0-shared-consequence-authority-adapter.mjs"
-          test "${changed[2]}" = "scripts/world-v0-shared-consequence-protocol-adapter.mjs"
-          test "${changed[3]}" = "src/world-v0-contract.ts"
+          test "${changed[2]}" = "scripts/world-v0-shared-consequence-browser-adapter.mjs"
+          test "${changed[3]}" = "scripts/world-v0-shared-consequence-protocol-adapter.mjs"
+          test "${changed[4]}" = "src/world-v0-contract.ts"
           git diff --quiet "$CONTROL_SHA" "$GITHUB_SHA" -- \
             src/world-v0-shared-yard.ts src/world-v0-protocol.ts src/world-slice-entry.ts \
             public/world-v0/app.js public/world-v0/friend-entry.js public/world-v0/friend-ready.js \
@@ -90,8 +91,11 @@ jobs:
           node scripts/world-v0-exact-failure-classifier-smoke.mjs
           node --check scripts/world-v0-shared-consequence-protocol-adapter.mjs
           node --check scripts/world-v0-shared-consequence-authority-adapter.mjs
+          node --check scripts/world-v0-shared-consequence-browser-adapter.mjs
           node scripts/world-v0-shared-consequence-protocol-adapter.mjs
           node --experimental-strip-types scripts/.world-v0-shared-consequence-protocol-smoke.ts
+          MW_WORLD_V0_SHARED_CONSEQUENCE_APP_OUTPUT=scripts/.world-v0-shared-consequence-app.js node scripts/world-v0-shared-consequence-browser-adapter.mjs
+          node --check scripts/.world-v0-shared-consequence-app.js
           npm run validate:staging-contract
           npm run test:staging-deploy-guard
           npm run test:f5-protocol
@@ -144,6 +148,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
+      - name: Adapt browser contract to experiment width
+        run: |
+          node scripts/world-v0-shared-consequence-browser-adapter.mjs
+          node --check public/world-v0/app.js
       - name: Start presentation Workerd
         run: |
           npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-presentation-wrangler.log 2>&1 &
@@ -198,6 +206,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
+      - name: Adapt browser contract to experiment width
+        run: |
+          node scripts/world-v0-shared-consequence-browser-adapter.mjs
+          node --check public/world-v0/app.js
       - name: Start solo Workerd
         run: |
           npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-solo-wrangler.log 2>&1 &
@@ -233,6 +245,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
+      - name: Adapt browser contract to experiment width
+        run: |
+          node scripts/world-v0-shared-consequence-browser-adapter.mjs
+          node --check public/world-v0/app.js
       - name: Verify exact-state apparatus
         run: |
           node --check scripts/world-v0-chromium-cloud-smoke.mjs

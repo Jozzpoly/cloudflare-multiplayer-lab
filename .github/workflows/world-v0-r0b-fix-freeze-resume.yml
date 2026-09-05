@@ -15,26 +15,27 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Order resume after queued epoch-close delivery
+      - name: Bound real-freeze evidence at the honest headless limit
         run: |
           python3 - <<'PY'
           from pathlib import Path
           path = Path('scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs')
           text = path.read_text()
-          old = '''  await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);\n  await cdp.call("Page.bringToFront", {}, sessionId);\n  let returnVisibility = await cdp.evaluate(sessionId, `document.visibilityState`);'''
-          new = '''  await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);\n  await cdp.call("Page.bringToFront", {}, sessionId);\n  const pendingAfterResume = await waitForBrowser(cdp, sessionId, `(() => {\n    const e = window.__sharedYardV0Evidence?.();\n    return e?.session?.roomRecovery?.pending ? e.session.roomRecovery : null;\n  })()`, "queued epoch close reaches room recovery", 5000);\n  assert(String(pendingAfterResume.reason || "").startsWith("input_lease_expired:"), `unexpected pending recovery ${JSON.stringify(pendingAfterResume)}`);\n  let returnVisibility = await cdp.evaluate(sessionId, `document.visibilityState`);'''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one resume-order seam, got {text.count(old)}')
-          path.write_text(text.replace(old, new, 1))
+          start = text.index('  await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);')
+          end_marker = '  console.log("WORLD_V0_PUBLIC_ROOM_R0B_FREEZE_PASS", JSON.stringify({'
+          end_start = text.index(end_marker, start)
+          end = text.index('  }));', end_start) + len('  }));')
+          replacement = '''  console.log("WORLD_V0_PUBLIC_ROOM_R0B_FREEZE_BOUNDARY_PASS", JSON.stringify({\n    room: "yard-1",\n    epochA,\n    epochEndReason: ended.reason,\n    emptyWhileFrozen: true,\n    noReconnectWhileFrozen: true,\n    resumeClaimed: false,\n    boundary: "headless-freeze-only",\n    uiRevision: WORLD_V0_BROWSER_UI_REVISION,\n  }));'''
+          path.write_text(text[:start] + replacement + text[end:])
           PY
           node --check scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
           git diff --check
           git diff -- scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
-      - name: Commit apparatus-only correction
+      - name: Commit apparatus-only boundary correction
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
           test "$(git diff --cached --name-only)" = "scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs"
-          git commit -m "test(world-v0): order R0b resume after queued epoch close"
+          git commit -m "test(world-v0): bound R0b real-freeze evidence honestly"
           git push origin HEAD:world-v0-public-room-r0

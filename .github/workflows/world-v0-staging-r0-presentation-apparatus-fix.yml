@@ -20,11 +20,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Materialize apparatus correction
-        run: python3 .github/world-v0-r0-presentation-apparatus-patch.py
+        run: |
+          python3 .github/world-v0-r0-presentation-apparatus-patch.py
+          python3 .github/world-v0-r0-presentation-apparatus-patch-v2.py
 
       - name: Validate corrected apparatus syntax
         run: |
           python3 -m py_compile .github/world-v0-r0-presentation-apparatus-patch.py
+          python3 -m py_compile .github/world-v0-r0-presentation-apparatus-patch-v2.py
           node --check scripts/world-v0-session-friction-smoke.mjs
           node --check scripts/world-v0-runtime-shell-smoke.mjs
           git diff --check
@@ -58,5 +61,3 @@ jobs:
           test "$(git diff --cached --name-only | sort | tr '\n' ' ')" = "scripts/world-v0-runtime-shell-smoke.mjs scripts/world-v0-session-friction-smoke.mjs "
           git commit -m "test(world-v0): align staging presentation gates with R0"
           git push origin HEAD:world-v0-staging-r0-presentation-apparatus
-
-# retrigger after narrowing the session-recovery evidence boundary

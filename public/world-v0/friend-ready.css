@@ -2,6 +2,22 @@
 #boot .inputs>.primary-name{min-width:0}
 #boot .entry-actions{align-self:end}
 #boot .entry-actions #enter{min-width:118px}
+#boot .entry-actions.public-room-legacy-hidden{display:none}
+.public-room-entry{grid-column:1/-1;display:grid;gap:8px;margin-top:2px}
+.public-room-entry.hidden{display:none}
+.public-room-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-top:4px}
+.public-room-heading strong{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#c9d9de}
+.public-room-heading span{font-size:8px;color:#8299a1;text-align:right}
+.public-room-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.public-room-card{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name action" "status action";gap:2px 8px;align-items:center;text-align:left;border:1px solid rgba(171,209,220,.17);background:rgba(14,24,31,.86);color:#dbe8ec;border-radius:9px;padding:9px 10px;min-height:55px;cursor:pointer}
+.public-room-card:hover:not(:disabled),.public-room-card:focus-visible:not(:disabled){border-color:rgba(121,216,192,.58);background:rgba(20,37,43,.94);outline:none}
+.public-room-card[data-tone="waiting"]{border-color:rgba(121,216,192,.34)}
+.public-room-card[data-tone="full"]{border-color:rgba(215,166,105,.2)}
+.public-room-card:disabled{cursor:default;opacity:.58}
+.public-room-name{grid-area:name;font-size:11px;font-weight:700;color:#e3eef1}
+.public-room-state{grid-area:status;font-size:8.5px;color:#8da5ad}
+.public-room-action{grid-area:action;font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:#82dec7;white-space:nowrap}
+.public-room-card:disabled .public-room-action{color:#9aa7ab}
 .entry-advanced{grid-column:1/-1;margin-top:1px;border-top:1px solid rgba(165,205,220,.12);padding-top:6px;color:#8fa5ad;font-size:9px}
 .entry-advanced summary{cursor:pointer;user-select:none;list-style:none;color:#8398a0;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;width:max-content}
 .entry-advanced summary::-webkit-details-marker{display:none}
@@ -11,4 +27,4 @@
 .entry-advanced-body label{display:grid;gap:4px;font-size:8px;color:#8398a0;text-transform:uppercase;letter-spacing:.07em}
 .entry-advanced-body input{width:100%;border:1px solid rgba(171,209,220,.16);background:#101820;color:#cbd9de;border-radius:7px;padding:7px 8px;outline:none;font-size:10px}
 .entry-advanced-body #inspect-solo{border-color:rgba(130,166,235,.38);background:#1d2942;color:#dce6ff;padding:8px 10px}
-@media(max-width:720px){#boot .inputs{grid-template-columns:1fr}.entry-actions{grid-column:1/-1}.entry-actions #enter{width:100%}.entry-advanced-body{grid-template-columns:1fr}.entry-advanced-body #inspect-solo{width:100%}}
+@media(max-width:720px){#boot .inputs{grid-template-columns:1fr}.entry-actions{grid-column:1/-1}.entry-actions #enter{width:100%}.public-room-list{grid-template-columns:1fr}.public-room-card{min-height:50px;padding:9px 11px}.entry-advanced-body{grid-template-columns:1fr}.entry-advanced-body #inspect-solo{width:100%}}

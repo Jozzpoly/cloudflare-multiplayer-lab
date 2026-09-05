@@ -1,0 +1,129 @@
+name: World V0 Two-Phone CDP Move Button
+
+on:
+  push:
+    branches: [world-v0-two-phone-cdp-move-button]
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SOURCE: 65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3
+
+jobs:
+  move-button:
+    strategy:
+      fail-fast: false
+      matrix:
+        move_button: [none, left]
+        trial: [1, 2, 3]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact apparatus
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore exact candidate product
+        run: |
+          set -euo pipefail
+          git checkout "$CANDIDATE_SOURCE" -- public/world-v0/app.js
+          test "$(git hash-object public/world-v0/app.js)" = "$(git rev-parse "$CANDIDATE_SOURCE:public/world-v0/app.js")"
+
+      - name: Build traced smoke and select CDP move semantics
+        env:
+          MOVE_BUTTON: ${{ matrix.move_button }}
+        run: |
+          python scripts/world-v0-pointer-capture-instrument.py
+          if [ "$MOVE_BUTTON" = "left" ]; then
+            python -c 'from pathlib import Path; p=Path("scripts/.world-v0-pointer-capture-diagnostic.mjs"); s=p.read_text(); a="await mouse(cdp, sessionId, \"mouseMoved\", dragStart.x + 90, dragStart.y - 35, \"none\", 1, 0);"; b="await mouse(cdp, sessionId, \"mouseMoved\", dragStart.x + 90, dragStart.y - 35, \"left\", 1, 0);"; assert s.count(a)==1; p.write_text(s.replace(a,b))'
+          elif [ "$MOVE_BUTTON" != "none" ]; then
+            echo "unknown MOVE_BUTTON=$MOVE_BUTTON" >&2
+            exit 1
+          fi
+          node --check scripts/.world-v0-pointer-capture-diagnostic.mjs
+          git diff --check
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start local Workerd
+        env:
+          MOVE_BUTTON: ${{ matrix.move_button }}
+          TRIAL: ${{ matrix.trial }}
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "world-v0-cdp-${MOVE_BUTTON}-${TRIAL}-wrangler.log" 2>&1 &
+          echo $! > /tmp/world-v0-cdp.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "world-v0-cdp-${MOVE_BUTTON}-${TRIAL}-wrangler.log"
+          exit 1
+
+      - name: Measure exact interaction
+        env:
+          MOVE_BUTTON: ${{ matrix.move_button }}
+          TRIAL: ${{ matrix.trial }}
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+        run: |
+          set +e
+          MW_WORLD_V0_PLAYABLE_OUTPUT="world-v0-cdp-${MOVE_BUTTON}-${TRIAL}.json" node scripts/.world-v0-pointer-capture-diagnostic.mjs
+          status=$?
+          set -e
+          echo "DIAGNOSTIC_EXIT=$status" >> "$GITHUB_ENV"
+          test -f "world-v0-cdp-${MOVE_BUTTON}-${TRIAL}.json"
+
+      - name: Summarize move semantics evidence
+        env:
+          MOVE_BUTTON: ${{ matrix.move_button }}
+          TRIAL: ${{ matrix.trial }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const path = `world-v0-cdp-${process.env.MOVE_BUTTON}-${process.env.TRIAL}.json`;
+          const e = JSON.parse(fs.readFileSync(path, "utf8"));
+          const trace = e.dragDiagnostic?.after?.trace || [];
+          const summary = {
+            measurementOnly: true,
+            moveButton: process.env.MOVE_BUTTON,
+            trial: Number(process.env.TRIAL),
+            exit: Number(process.env.DIAGNOSTIC_EXIT ?? -1),
+            verdict: e.verdict ?? null,
+            error: e.error ?? null,
+            hitIsCanvas: e.dragDiagnostic?.before?.hitIsCanvas ?? null,
+            gotCapture: trace.some(x => x.type === "gotpointercapture"),
+            lostCaptureBeforeMove: (() => {
+              const lost = trace.findIndex(x => x.phase === "capture" && x.type === "lostpointercapture");
+              const move = trace.findIndex(x => x.phase === "capture" && x.type === "pointermove");
+              return lost >= 0 && move >= 0 && lost < move;
+            })(),
+            eventTypes: trace.map(x => `${x.phase}:${x.type}`),
+            pointerTrace: trace,
+          };
+          fs.writeFileSync(`world-v0-cdp-${process.env.MOVE_BUTTON}-${process.env.TRIAL}-summary.json`, JSON.stringify(summary, null, 2));
+          console.log("WORLD_V0_CDP_MOVE_BUTTON", JSON.stringify({moveButton:summary.moveButton,trial:summary.trial,exit:summary.exit,lostCaptureBeforeMove:summary.lostCaptureBeforeMove,eventTypes:summary.eventTypes}));
+          NODE
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-cdp.pid ]; then kill "$(cat /tmp/world-v0-cdp.pid)" 2>/dev/null || true; fi
+
+      - name: Upload CDP evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-cdp-${{ matrix.move_button }}-${{ matrix.trial }}
+          path: |
+            world-v0-cdp-${{ matrix.move_button }}-${{ matrix.trial }}.json
+            world-v0-cdp-${{ matrix.move_button }}-${{ matrix.trial }}-summary.json
+            world-v0-cdp-${{ matrix.move_button }}-${{ matrix.trial }}-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

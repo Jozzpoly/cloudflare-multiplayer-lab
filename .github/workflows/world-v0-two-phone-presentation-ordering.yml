@@ -1,0 +1,155 @@
+name: World V0 Two-Phone Presentation Ordering
+
+on:
+  push:
+    branches: [world-v0-two-phone-presentation-ordering]
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SOURCE: 65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3
+
+jobs:
+  interaction-friend-interaction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact ordering apparatus
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact candidate product bytes
+        run: |
+          set -euo pipefail
+          git cat-file -e "$CANDIDATE_SOURCE^{commit}"
+          product=(public/world-v0 src wrangler.jsonc package.json package-lock.json)
+          if ! git diff --quiet "$CANDIDATE_SOURCE" -- "${product[@]}"; then
+            echo "Ordering apparatus drifted from exact candidate product."
+            git diff --stat "$CANDIDATE_SOURCE" -- "${product[@]}"
+            exit 1
+          fi
+          node --check scripts/world-v0-playable-interaction-smoke.mjs
+          node --check scripts/world-v0-friend-entry-browser-smoke.mjs
+          git diff --check
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start one presentation Worker
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-presentation-ordering-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-presentation-ordering.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-presentation-ordering-wrangler.log
+          exit 1
+
+      - name: Interaction A baseline on same runner
+        env:
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-presentation-ordering-interaction-a.json
+        run: |
+          set +e
+          node scripts/world-v0-playable-interaction-smoke.mjs
+          status=$?
+          set -e
+          echo "INTERACTION_A_EXIT=$status" >> "$GITHUB_ENV"
+          test -f world-v0-presentation-ordering-interaction-a.json
+
+      - name: Friend Entry between interaction probes
+        env:
+          MW_WORLD_V0_FRIEND_ENTRY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_FRIEND_ENTRY_OUTPUT: world-v0-presentation-ordering-friend-entry.json
+        run: |
+          set +e
+          node scripts/world-v0-friend-entry-browser-smoke.mjs
+          status=$?
+          set -e
+          echo "FRIEND_ENTRY_EXIT=$status" >> "$GITHUB_ENV"
+          test -f world-v0-presentation-ordering-friend-entry.json
+
+      - name: Interaction B after Friend Entry on same runner
+        env:
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-presentation-ordering-interaction-b.json
+        run: |
+          set +e
+          node scripts/world-v0-playable-interaction-smoke.mjs
+          status=$?
+          set -e
+          echo "INTERACTION_B_EXIT=$status" >> "$GITHUB_ENV"
+          test -f world-v0-presentation-ordering-interaction-b.json
+
+      - name: Classify ordering evidence without changing product verdict
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const read = (path) => JSON.parse(fs.readFileSync(path, "utf8"));
+          const a = read("world-v0-presentation-ordering-interaction-a.json");
+          const f = read("world-v0-presentation-ordering-friend-entry.json");
+          const b = read("world-v0-presentation-ordering-interaction-b.json");
+          const exits = {
+            interactionA: Number(process.env.INTERACTION_A_EXIT ?? -1),
+            friendEntry: Number(process.env.FRIEND_ENTRY_EXIT ?? -1),
+            interactionB: Number(process.env.INTERACTION_B_EXIT ?? -1),
+          };
+          const pass = {
+            interactionA: exits.interactionA === 0 && a.verdict === "WORLD_V0_PLAYABLE_INTERACTION_PASS",
+            friendEntry: exits.friendEntry === 0 && f.verdict === "WORLD_V0_FRIEND_ENTRY_PASS",
+            interactionB: exits.interactionB === 0 && b.verdict === "WORLD_V0_PLAYABLE_INTERACTION_PASS",
+          };
+          let classification;
+          if (pass.interactionA && pass.friendEntry && !pass.interactionB) {
+            classification = "WORLD_V0_PRESENTATION_ORDERING_CONTAMINATION_REPRODUCED";
+          } else if (pass.interactionA && pass.friendEntry && pass.interactionB) {
+            classification = "WORLD_V0_PRESENTATION_ORDERING_CONTAMINATION_NOT_REPRODUCED";
+          } else if (!pass.interactionA && !pass.interactionB) {
+            classification = "WORLD_V0_PRESENTATION_INTERACTION_BASELINE_UNSTABLE";
+          } else if (pass.interactionA && !pass.friendEntry) {
+            classification = "WORLD_V0_PRESENTATION_FRIEND_ENTRY_FAILED";
+          } else {
+            classification = "WORLD_V0_PRESENTATION_ORDERING_MIXED_RESULT";
+          }
+          const summary = {
+            measurementOnly: true,
+            candidate: process.env.CANDIDATE_SOURCE,
+            sequence: ["interaction-a", "friend-entry", "interaction-b"],
+            sameRunner: true,
+            sameWorkerd: true,
+            exits,
+            pass,
+            verdicts: { interactionA: a.verdict ?? null, friendEntry: f.verdict ?? null, interactionB: b.verdict ?? null },
+            errors: { interactionA: a.error ?? null, friendEntry: f.error ?? null, interactionB: b.error ?? null },
+            classification,
+          };
+          fs.writeFileSync("world-v0-presentation-ordering-summary.json", JSON.stringify(summary, null, 2));
+          console.log(classification, JSON.stringify(summary));
+          NODE
+
+      - name: Stop presentation Worker
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-presentation-ordering.pid ]; then kill "$(cat /tmp/world-v0-presentation-ordering.pid)" 2>/dev/null || true; fi
+
+      - name: Upload ordering evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-presentation-ordering-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-presentation-ordering-interaction-a.json
+            world-v0-presentation-ordering-friend-entry.json
+            world-v0-presentation-ordering-interaction-b.json
+            world-v0-presentation-ordering-summary.json
+            world-v0-presentation-ordering-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

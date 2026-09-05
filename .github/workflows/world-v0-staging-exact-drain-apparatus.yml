@@ -1,0 +1,51 @@
+name: World V0 Staging Exact Guard Drain Apparatus
+
+on:
+  push:
+    branches:
+      - world-v0-staging-exact-drain-apparatus
+    paths:
+      - .github/workflows/world-v0-staging-exact-drain-apparatus.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Materialize exact guard-drain correction
+        run: python3 .github/world-v0-exact-drain-apparatus-patch.py
+
+      - name: Validate apparatus-only diff
+        run: |
+          python3 -m py_compile .github/world-v0-exact-drain-apparatus-patch.py
+          node --check scripts/world-v0-chromium-cloud-smoke.mjs
+          git diff --check
+          test "$(git diff --name-only)" = "scripts/world-v0-chromium-cloud-smoke.mjs"
+          git diff -- scripts/world-v0-chromium-cloud-smoke.mjs
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Prove exact shared-state envelope with atomic drained snapshot
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-exact-drain-apparatus.json
+        run: node scripts/world-v0-chromium-cloud-smoke.mjs
+
+      - name: Commit durable apparatus correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/world-v0-chromium-cloud-smoke.mjs
+          test "$(git diff --cached --name-only)" = "scripts/world-v0-chromium-cloud-smoke.mjs"
+          git commit -m "test(world-v0): sample exact guard drain atomically"
+          git push origin HEAD:world-v0-staging-exact-drain-apparatus

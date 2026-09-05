@@ -14,10 +14,10 @@ concurrency:
 
 env:
   STAGING_BASE_URL: https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev
-  EXPECTED_PRODUCT_SOURCE_BRANCH: world-v0-two-phone-readiness-candidate
-  EXPECTED_PRODUCT_SOURCE_SHA: 65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3
-  EXPECTED_UI_REVISION: shared-yard-v0-browser-ui-v8-friend-entry
-  EXPECTED_SIM_BUILD_ID: shared-yard-v0-sim-579c7aa172198390
+  EXPECTED_PRODUCT_SOURCE_BRANCH: world-v0-jump-candidate
+  EXPECTED_PRODUCT_SOURCE_SHA: 206edf730f7b5f506e413118acdca71ee2da0e66
+  EXPECTED_UI_REVISION: shared-yard-v0-browser-ui-v9-jump
+  EXPECTED_SIM_BUILD_ID: shared-yard-v0-sim-517b4300b0a5f40f
 
 jobs:
   remote-friend-entry:

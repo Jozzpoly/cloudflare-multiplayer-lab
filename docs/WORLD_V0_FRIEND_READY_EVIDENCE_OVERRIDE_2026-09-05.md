@@ -1,15 +1,18 @@
 # World V0 — Friend-Ready evidence override
 
 Date: **2026-09-05**
-Status: **current sequencing override after public FR-A qualification**
+Status: **historical sequencing/evidence checkpoint — superseded for current sequencing and live public provenance**
 
-This document overrides the execution order in `WORLD_V0_FRIEND_READY_V1_PLAN.md` where new live evidence has made that order too speculative. The older plan remains useful as design context, pre-mortem material and a catalogue of candidate next problems. It is no longer a mandatory stage sequence.
+> Current execution control is `docs/WORLD_V0_OPERATING_MAP.md` plus `docs/WORLD_V0_POST_R1_REVIEW_2026-09-05.md`.
+> This file preserves the state immediately after the initial public FR-A qualification. Its `f9686b6...` source and `a19eb34...` delivery references are historically correct for that checkpoint, but they are no longer the live public heads. Do not use this file to choose the next feature or current deployment SHA.
+
+This document overrode the execution order in `WORLD_V0_FRIEND_READY_V1_PLAN.md` where new live evidence had made that order too speculative. The older plan remains useful as design context, pre-mortem material and a catalogue of candidate next problems. It is no longer a mandatory stage sequence.
 
 ## 1. What is now demonstrated
 
 ### FR-A Friend Entry V1 is complete as the current public control
 
-Qualified source:
+Qualified source at this historical checkpoint:
 
 `world-v0-friend-ready-v1@f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6`
 
@@ -17,7 +20,7 @@ Branch qualification:
 
 `33965919935` — PASS.
 
-Current public delivery:
+Public delivery at this historical checkpoint:
 
 `world-v0-staging-delivery@a19eb34ed61a0cd69a7681c95b33bc67fd4e8d8d`
 
@@ -29,7 +32,7 @@ Independent provenance-bound Friend Entry run:
 
 `33967878206` — PASS.
 
-The public staging therefore demonstrates:
+The public staging therefore demonstrated:
 
 - host entry without raw `Run` knowledge on the normal path;
 - one-link friend invite/join flow;
@@ -79,15 +82,15 @@ The tested RCP0 does **not** include bounded standby expiry, hibernatable lobby 
 
 This is deliberate: adding standby/hibernation before proving that room continuity has human value would mix lifecycle, infrastructure and product hypotheses.
 
-## 3. Sequencing decision
+## 3. Sequencing decision at this checkpoint
 
 The old automatic sequence:
 
 `FR-A → FR-B → J0 jump → real friend-play`
 
-is superseded.
+was superseded.
 
-Current order is:
+The sequence established here was:
 
 `public FR-A control → natural real friend-play → extract strongest actual friction / emergent demand → choose one bounded next hypothesis`
 
@@ -147,14 +150,12 @@ Choose one, not all:
 
 A result may also be: none of the above; investigate the surprising behavior that actually mattered.
 
-## 6. Protected truths
-
-Keep these separate:
+## 6. Protected truths at this historical checkpoint
 
 - frozen foundation control: `world-v0-shared-yard@b27de8b04c27777250c47e7e936674e0f147fdfa`;
 - pre-FR-A playable predecessor: `world-v0-playable-frontier@1699fb71b3abef425aea6e21cdb81cb7d11250d5`;
-- qualified Friend-Ready source: `world-v0-friend-ready-v1@f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6`;
-- public delivery specimen: `world-v0-staging-delivery@a19eb34ed61a0cd69a7681c95b33bc67fd4e8d8d`;
+- Friend-Ready source at this checkpoint: `world-v0-friend-ready-v1@f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6`;
+- public delivery at this checkpoint: `world-v0-staging-delivery@a19eb34ed61a0cd69a7681c95b33bc67fd4e8d8d`;
 - isolated RCP0 probe: `world-v0-room-continuity-probe@4890b06a519649ed4b6d96ceba5a55edd590fc2b`;
 - Stress × Play research: `world-v0-capacity-cartography@d086f51792795d1ab73ba43f9e3b4dbf97441bb7`.
 
@@ -164,8 +165,8 @@ Frozen simulation identity remains:
 
 FR-A and RCP0 did not change authority, protocol or simulation.
 
-## 7. Current stopping rule
+## 7. Historical stopping rule
 
-The machine can continue preparing evidence and bounded probes, but the product should **not accumulate another default feature before the first natural friend-play on the now-public FR-A control**, unless a concrete blocking defect is discovered first.
+The machine could continue preparing evidence and bounded probes, but the product should **not accumulate another default feature before the first natural friend-play on the public FR-A control**, unless a concrete blocking defect is discovered first.
 
-That human session is now the nearest decision-producing evidence, not an optional ceremony at the end of a prewritten feature list.
+That principle remains valid; use the current Operating Map and post-R1 review for live SHAs and current sequencing.

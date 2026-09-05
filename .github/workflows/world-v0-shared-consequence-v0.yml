@@ -14,11 +14,12 @@ concurrency:
 
 env:
   CONTROL_SHA: 5dd28a899c4f60c9227f1eb93026f571ced733e3
+  EXPECTED_SIM_BUILD: shared-yard-v0-sim-d87e85d773898e80
 
 jobs:
-  contract:
+  core:
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 14
     steps:
       - name: Checkout exact experiment head
         uses: actions/checkout@v4
@@ -30,19 +31,29 @@ jobs:
         with:
           node-version: 22
 
-      - name: Prove bounded source delta
+      - name: Install qualified dependency graph
+        run: npm ci
+
+      - name: Prove bounded product delta
         run: |
           set -euo pipefail
           git cat-file -e "$CONTROL_SHA^{commit}"
           mapfile -t changed < <(git diff --name-only "$CONTROL_SHA" "$GITHUB_SHA" -- ':!/.github/workflows/world-v0-shared-consequence-v0.yml')
-          printf 'candidate source delta:\n%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 1
-          test "${changed[0]}" = "src/world-v0-contract.ts"
+          printf 'candidate product delta:\n%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = "public/world-v0/build-contract.js"
+          test "${changed[1]}" = "src/world-v0-contract.ts"
+          git diff --quiet "$CONTROL_SHA" "$GITHUB_SHA" -- \
+            src/world-v0-shared-yard.ts src/world-v0-protocol.ts src/world-slice-entry.ts \
+            public/world-v0/app.js public/world-v0/friend-entry.js public/world-v0/friend-ready.js \
+            public/world-v0/playable-control.js public/world-v0/solo-inspection-core.js public/world-v0/solo-inspection.js \
+            scripts/world-v0-playable-interaction-smoke.mjs wrangler.jsonc package.json package-lock.json
 
       - name: Derive and validate Shared Consequence contract
         run: |
           node --experimental-strip-types --input-type=module <<'NODE'
           const m = await import('./src/world-v0-contract.ts');
+          const b = await import('./public/world-v0/build-contract.js');
           const layout = m.WORLD_V0_PROP_LAYOUT;
           const counts = layout.reduce((map, prop) => {
             map[prop.cluster] = (map[prop.cluster] || 0) + 1;
@@ -50,7 +61,10 @@ jobs:
           }, {});
           const ids = new Set(layout.map((prop) => prop.id));
           if (m.WORLD_V0_SCENE_REVISION !== 'shared-yard-v0-seed-c-shared-consequence-v0') throw new Error('scene revision drift');
+          if (m.WORLD_V0_SIM_BUILD_ID !== process.env.EXPECTED_SIM_BUILD) throw new Error(`derived SimBuild drift ${m.WORLD_V0_SIM_BUILD_ID}`);
+          if (b.WORLD_V0_EXPECTED_SIM_BUILD_ID !== m.WORLD_V0_SIM_BUILD_ID) throw new Error('browser/contract SimBuild drift');
           if (layout.length !== 23) throw new Error(`expected 23 props, got ${layout.length}`);
+          if (m.WORLD_V0_NET_ENTITY_ORDER.length !== 25) throw new Error(`expected 25 dynamic entities, got ${m.WORLD_V0_NET_ENTITY_ORDER.length}`);
           if (ids.size !== layout.length) throw new Error('duplicate prop id');
           if (counts.barricade !== 6 || counts.tower !== 3 || counts['impact-train'] !== 6 || counts.breakwall !== 8) {
             throw new Error(`cluster counts drift ${JSON.stringify(counts)}`);
@@ -69,10 +83,10 @@ jobs:
           for (let i = 0; i < layout.length; i++) {
             for (let j = i + 1; j < layout.length; j++) {
               const a = layout[i].position;
-              const b = layout[j].position;
-              const overlapX = Math.abs(a[0] - b[0]) < minSeparation - 1e-9;
-              const overlapY = Math.abs(a[1] - b[1]) < minSeparation - 1e-9;
-              const overlapZ = Math.abs(a[2] - b[2]) < minSeparation - 1e-9;
+              const b2 = layout[j].position;
+              const overlapX = Math.abs(a[0] - b2[0]) < minSeparation - 1e-9;
+              const overlapY = Math.abs(a[1] - b2[1]) < minSeparation - 1e-9;
+              const overlapZ = Math.abs(a[2] - b2[2]) < minSeparation - 1e-9;
               if (overlapX && overlapY && overlapZ) throw new Error(`authored overlap ${layout[i].id}/${layout[j].id}`);
             }
           }
@@ -87,3 +101,209 @@ jobs:
             trainAxis: axis,
           }));
           NODE
+
+      - name: Preserve pure and repository falsifiers
+        run: |
+          node scripts/world-v0-friend-entry-core-smoke.mjs
+          node scripts/world-v0-playable-control-smoke.mjs
+          node scripts/world-v0-solo-inspection-core-smoke.mjs
+          node scripts/world-v0-exact-failure-classifier-smoke.mjs
+          npm run check
+
+      - name: Start core Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-core-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-shared-consequence-core.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-shared-consequence-core-wrangler.log
+          exit 1
+
+      - name: Preserve authority and changed SimBuild identity
+        env:
+          MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
+          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-shared-consequence-authority.json
+        run: node scripts/world-v0-authority-runtime-smoke.mjs
+
+      - name: Stop core Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-shared-consequence-core.pid ]; then kill "$(cat /tmp/world-v0-shared-consequence-core.pid)" 2>/dev/null || true; fi
+
+      - name: Upload core evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-shared-consequence-core-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-shared-consequence-authority.json
+            world-v0-shared-consequence-core-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  presentation:
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Start presentation Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-presentation-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-shared-consequence-presentation.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-shared-consequence-presentation-wrangler.log
+          exit 1
+      - name: Preserve host-to-friend entry
+        env:
+          MW_WORLD_V0_FRIEND_ENTRY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_FRIEND_ENTRY_OUTPUT: world-v0-shared-consequence-entry.json
+        run: node scripts/world-v0-friend-entry-browser-smoke.mjs
+      - name: Preserve mobile-hardened controls
+        env:
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-shared-consequence-interaction.json
+        run: node scripts/world-v0-playable-interaction-smoke.mjs
+      - name: Preserve manual fresh-epoch lifecycle
+        env:
+          MW_WORLD_V0_SESSION_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SESSION_OUTPUT: world-v0-shared-consequence-session.json
+        run: node scripts/world-v0-session-friction-smoke.mjs
+      - name: Preserve desktop and portrait shell
+        env:
+          MW_WORLD_V0_SHELL_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SHELL_OUTPUT: world-v0-shared-consequence-shell.json
+        run: node scripts/world-v0-runtime-shell-smoke.mjs
+      - name: Stop presentation Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-shared-consequence-presentation.pid ]; then kill "$(cat /tmp/world-v0-shared-consequence-presentation.pid)" 2>/dev/null || true; fi
+      - name: Upload presentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-shared-consequence-presentation-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-shared-consequence-entry.json
+            world-v0-shared-consequence-interaction.json
+            world-v0-shared-consequence-session.json
+            world-v0-shared-consequence-shell.json
+            world-v0-runtime-shell-*.png
+            world-v0-shared-consequence-presentation-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  solo:
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Start solo Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-solo-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-shared-consequence-solo.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-shared-consequence-solo-wrangler.log
+          exit 1
+      - name: Preserve real-authority Inspect solo
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-shared-consequence-solo.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
+      - name: Stop solo Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-shared-consequence-solo.pid ]; then kill "$(cat /tmp/world-v0-shared-consequence-solo.pid)" 2>/dev/null || true; fi
+      - name: Upload solo evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-shared-consequence-solo-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-shared-consequence-solo.json
+            world-v0-shared-consequence-solo-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  exact-state:
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Verify exact-state apparatus
+        run: |
+          node --check scripts/world-v0-chromium-cloud-smoke.mjs
+          node --check scripts/world-v0-exact-failure-classifier.mjs
+          node scripts/world-v0-exact-failure-classifier-smoke.mjs
+      - name: Start exact Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-exact-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-shared-consequence-exact.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-shared-consequence-exact-wrangler.log
+          exit 1
+      - name: Prepare local exact-state target
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
+          const remote = 'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";';
+          const local = 'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";';
+          if (!chromium.includes(remote)) throw new Error("Shared Consequence exact-state local-target anchor drift");
+          chromium = chromium.replace(remote, local);
+          writeFileSync("scripts/.world-v0-shared-consequence-exact.mjs", chromium);
+          NODE
+      - name: Preserve exact-state causal envelope
+        id: exact
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-shared-consequence-exact.json
+        run: node scripts/.world-v0-shared-consequence-exact.mjs
+      - name: Classify exact failure
+        if: steps.exact.outcome == 'failure'
+        run: node scripts/world-v0-exact-failure-classifier.mjs world-v0-shared-consequence-exact.json
+      - name: Require exact-state qualification
+        env:
+          EXACT_OUTCOME: ${{ steps.exact.outcome }}
+        run: test "$EXACT_OUTCOME" = success
+      - name: Stop exact Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-shared-consequence-exact.pid ]; then kill "$(cat /tmp/world-v0-shared-consequence-exact.pid)" 2>/dev/null || true; fi
+      - name: Upload exact evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-shared-consequence-exact-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-shared-consequence-exact.json
+            world-v0-shared-consequence-exact-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

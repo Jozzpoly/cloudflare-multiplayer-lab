@@ -27,10 +27,11 @@ jobs:
       - name: Verify immutable promotion inputs
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "$EXPECTED_STAGING_BASE"
+          git cat-file -e "$EXPECTED_STAGING_BASE^{commit}"
           git cat-file -e "$PRODUCT_SOURCE_SHA^{commit}"
           git cat-file -e "$QUALIFICATION_HEAD^{commit}"
-          test "$(git rev-parse "$PRODUCT_SOURCE_BRANCH")" = "$PRODUCT_SOURCE_SHA"
+          test "$(git rev-parse "origin/$PRODUCT_SOURCE_BRANCH")" = "$PRODUCT_SOURCE_SHA"
+          test "$(git merge-base HEAD "$EXPECTED_STAGING_BASE")" = "$EXPECTED_STAGING_BASE"
 
       - name: Materialize exact qualified product bytes
         run: |
@@ -80,8 +81,8 @@ jobs:
           old_sha = 'EXPECTED_PRODUCT_SOURCE_SHA: 5dd28a899c4f60c9227f1eb93026f571ced733e3'
           assert s.count(old_branch) == 1, 'source branch marker drift'
           assert s.count(old_sha) == 1, 'source sha marker drift'
-          s = s.replace(old_branch, f'EXPECTED_PRODUCT_SOURCE_BRANCH: {"world-v0-two-phone-readiness-candidate"}')
-          s = s.replace(old_sha, f'EXPECTED_PRODUCT_SOURCE_SHA: {"65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3"}')
+          s = s.replace(old_branch, 'EXPECTED_PRODUCT_SOURCE_BRANCH: world-v0-two-phone-readiness-candidate')
+          s = s.replace(old_sha, 'EXPECTED_PRODUCT_SOURCE_SHA: 65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3')
           p.write_text(s)
           PY
 

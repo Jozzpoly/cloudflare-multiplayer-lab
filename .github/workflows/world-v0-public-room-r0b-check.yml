@@ -1,6 +1,7 @@
 name: World V0 Public Room R0b Check
 
 # R0b models a stable social room across multiple strict simulation epochs.
+# The freeze leg uses a documented apparatus bridge only for headless visibility return.
 on:
   push:
     branches:

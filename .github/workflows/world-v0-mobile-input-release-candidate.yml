@@ -14,7 +14,7 @@ concurrency:
 
 env:
   FR_A_SOURCE: f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6
-  PATCH: evidence/probes/WORLD_V0_MOBILE_INPUT_RELEASE_CANDIDATE.patch
+  TRANSFORM: scripts/world-v0-mobile-input-release-transform.mjs
 
 jobs:
   candidate-core:
@@ -26,18 +26,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Require exact FR-A product before patch
+      - name: Require exact FR-A product and apply bounded transform
         run: |
           set -euo pipefail
           git cat-file -e "$FR_A_SOURCE^{commit}"
           protected=(public/world-v0 src wrangler.jsonc package.json package-lock.json scripts/world-v0-playable-interaction-smoke.mjs)
           if ! git diff --quiet "$FR_A_SOURCE" -- "${protected[@]}"; then
-            echo "Candidate branch already changed qualified product/apparatus before applying the bounded patch."
+            echo "Candidate branch already changed qualified product/apparatus before applying the bounded transform."
             git diff --stat "$FR_A_SOURCE" -- "${protected[@]}"
             exit 1
           fi
-          git apply --check "$PATCH"
-          git apply "$PATCH"
+          node --check "$TRANSFORM"
+          node "$TRANSFORM"
           git diff --check
           mapfile -t changed < <(git diff --name-only "$FR_A_SOURCE" -- public/world-v0 src wrangler.jsonc package.json package-lock.json scripts/world-v0-playable-interaction-smoke.mjs)
           printf '%s\n' "${changed[@]}"
@@ -103,13 +103,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Checkout and apply exact bounded candidate
+      - name: Checkout exact probe head
         uses: actions/checkout@v4
-      - name: Apply candidate patch
+      - name: Apply exact-anchor candidate transform
         run: |
           set -euo pipefail
-          git apply --check "$PATCH"
-          git apply "$PATCH"
+          node "$TRANSFORM"
           git diff --check
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -204,8 +203,8 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Apply candidate patch
-        run: git apply "$PATCH"
+      - name: Apply exact-anchor candidate transform
+        run: node "$TRANSFORM"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -246,8 +245,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Apply candidate patch
-        run: git apply "$PATCH"
+      - name: Apply exact-anchor candidate transform
+        run: node "$TRANSFORM"
       - uses: actions/setup-node@v4
         with:
           node-version: 22

@@ -49,13 +49,15 @@ jobs:
 
       - name: Add measurement-only browser instrumentation
         run: |
+          set -euo pipefail
           python scripts/world-v0-jump-browser-instrument.py
           node --check public/world-v0/app.js
           node --check scripts/.world-v0-jump-browser-probe.mjs
           git diff --check
-          changed="$(git diff --name-only)"
-          printf '%s\n' "$changed"
-          test "$changed" = $'public/world-v0/app.js\nscripts/.world-v0-jump-browser-probe.mjs'
+          test "$(git diff --name-only)" = "public/world-v0/app.js"
+          test -f scripts/.world-v0-jump-browser-probe.mjs
+          test "$(git status --porcelain --untracked-files=all | wc -l)" -eq 2
+          git status --short --untracked-files=all
 
       - name: Start local exact Workerd candidate
         run: |
@@ -79,17 +81,7 @@ jobs:
         if: always()
         run: |
           if [ -f world-v0-jump-browser-evidence.json ]; then
-            node --input-type=module <<'NODE'
-            import fs from "node:fs";
-            const e = JSON.parse(fs.readFileSync("world-v0-jump-browser-evidence.json", "utf8"));
-            console.log("WORLD_V0_JUMP_BROWSER_RESULT", JSON.stringify({
-              verdict:e.verdict,
-              identity:e.identity,
-              jumpEvidence:e.jumpEvidence,
-              guards:e.pages?.map(p=>({matches:p.metrics?.guardMatches,mismatches:p.metrics?.guardMismatches,boundary:p.localBoundaryTick})),
-              runtimeFailed:e.pages?.map(p=>p.runtimeFailed),
-            }));
-            NODE
+            node -e 'const e=require("./world-v0-jump-browser-evidence.json"); console.log("WORLD_V0_JUMP_BROWSER_RESULT", JSON.stringify({verdict:e.verdict,identity:e.identity,jumpEvidence:e.jumpEvidence,guards:e.pages?.map(p=>({matches:p.metrics?.guardMatches,mismatches:p.metrics?.guardMismatches,boundary:p.localBoundaryTick})),runtimeFailed:e.pages?.map(p=>p.runtimeFailed)}))'
           fi
 
       - name: Stop local Workerd
@@ -101,7 +93,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: world-v0-jump-browser-probe
+          name: world-v0-jump-browser-probe-${{ github.run_id }}
           path: |
             world-v0-jump-browser-evidence.json
             world-v0-jump-browser-wrangler.log

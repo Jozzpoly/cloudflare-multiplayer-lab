@@ -1,0 +1,54 @@
+name: World V0 Mobile Input Release Materialize
+
+on:
+  push:
+    branches: [world-v0-mobile-input-release-probe]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-mobile-input-release-materialize
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: world-v0-friend-ready-v1
+  EXPECTED_TARGET: f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6
+  PROBE_BRANCH: world-v0-mobile-input-release-probe
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require exact qualified target and materialize bounded candidate
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH" "$PROBE_BRANCH"
+          actual="$(git rev-parse "origin/$TARGET_BRANCH")"
+          test "$actual" = "$EXPECTED_TARGET"
+          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          git show "origin/$PROBE_BRANCH:scripts/world-v0-mobile-input-release-transform.mjs" > /tmp/world-v0-mobile-input-release-transform.mjs
+          node /tmp/world-v0-mobile-input-release-transform.mjs
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = "public/world-v0/app.js"
+          test "${changed[1]}" = "scripts/world-v0-playable-interaction-smoke.mjs"
+          node --check public/world-v0/app.js
+          node --check scripts/world-v0-playable-interaction-smoke.mjs
+
+      - name: Commit exact qualified change
+        run: |
+          set -euo pipefail
+          git config user.name "Jozzpoly"
+          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
+          git add public/world-v0/app.js scripts/world-v0-playable-interaction-smoke.mjs
+          git commit -m "fix(world-v0): release mobile controls on lost pointer capture [runtime-qualify]"
+          git push origin "HEAD:$TARGET_BRANCH"

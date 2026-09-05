@@ -266,7 +266,9 @@ try {
   assert(e2Waiting.evidence.protocolStartTick === null, `E2 waiting unexpectedly active ${e2Waiting.evidence.protocolStartTick}`);
   assert(e2Waiting.evidence.roomContinuity?.attempts === 1, "continuity attempted more than once for E1");
   assert(e2Waiting.evidence.roomContinuity?.authorityCloseSemantic === "generic-websocket-close-not-proven-voluntary-leave", "close ambiguity was lost");
-  assert(e2Waiting.evidence.roomContinuity?.lastPlan?.action === "auto-rearm", `unexpected last plan ${JSON.stringify(e2Waiting.evidence.roomContinuity?.lastPlan)}`);
+  assert(e2Waiting.evidence.roomContinuity?.triggerPlan?.action === "auto-rearm", `missing auto-rearm trigger plan ${JSON.stringify(e2Waiting.evidence.roomContinuity?.triggerPlan)}`);
+  assert(e2Waiting.evidence.roomContinuity?.triggerPlan?.reason === "eligible-connection-close", `unexpected trigger reason ${JSON.stringify(e2Waiting.evidence.roomContinuity?.triggerPlan)}`);
+  assert(e2Waiting.evidence.roomContinuity?.lastPlan?.action === "hold" && e2Waiting.evidence.roomContinuity?.lastPlan?.reason === "not-clean-epoch-end", `E2 policy should settle to hold ${JSON.stringify(e2Waiting.evidence.roomContinuity?.lastPlan)}`);
 
   // Re-open the exact invite captured in E1. A new friend browser must join E2;
   // the invite itself is not regenerated or rewritten between epochs.

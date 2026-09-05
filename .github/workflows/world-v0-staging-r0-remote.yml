@@ -1,0 +1,149 @@
+name: World V0 Staging R0 Remote Qualification
+
+on:
+  push:
+    branches: [world-v0-staging-delivery]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-staging-r0-remote
+  cancel-in-progress: false
+
+env:
+  STAGING_BASE_URL: https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev
+  EXPECTED_PRODUCT_SOURCE_BRANCH: world-v0-public-room-r0
+  EXPECTED_PRODUCT_SOURCE_SHA: 0c1aa4da68049b72b1c1f632a5a343d22675b27b
+  EXPECTED_UI_REVISION: shared-yard-v0-browser-ui-v10-room-recovery
+  EXPECTED_PUBLIC_ROOM_REVISION: world-v0-public-room-entry-r0c-v1
+  EXPECTED_SIM_BUILD_ID: shared-yard-v0-sim-517b4300b0a5f40f
+
+jobs:
+  remote-r0:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - name: Checkout exact delivery head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact promoted source marker
+        run: |
+          set -euo pipefail
+          actual_sha="$(node -e 'const m=require("./.github/world-v0-product-source.json"); process.stdout.write(m.productSourceSha)')"
+          actual_branch="$(node -e 'const m=require("./.github/world-v0-product-source.json"); process.stdout.write(m.productBranch)')"
+          test "$actual_sha" = "$EXPECTED_PRODUCT_SOURCE_SHA"
+          test "$actual_branch" = "$EXPECTED_PRODUCT_SOURCE_BRANCH"
+          git cat-file -e "$EXPECTED_PRODUCT_SOURCE_SHA^{commit}"
+          echo "R0_REMOTE_SOURCE_MARKER_PASS branch=$actual_branch sha=$actual_sha"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Validate R0 remote apparatus syntax
+        run: |
+          node --check public/world-v0/friend-ready.js
+          node --check public/world-v0/public-room-entry.js
+          node --check scripts/world-v0-public-room-r0c-browser-smoke.mjs
+          node --check scripts/world-v0-public-room-r0b-browser-smoke.mjs
+          node --check scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
+          node --check scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs
+
+      - name: Wait for exact R0 delivery to become public
+        run: |
+          node --input-type=module <<'NODE'
+          const base = process.env.STAGING_BASE_URL.replace(/\/$/, "");
+          const deadline = Date.now() + 240_000;
+          let last = null;
+
+          while (Date.now() < deadline) {
+            try {
+              const cacheBust = `${process.env.GITHUB_SHA}-${Date.now()}`;
+              const [provenanceResponse, roomEntryResponse, directoryResponse] = await Promise.all([
+                fetch(`${base}/world-v0/deploy-provenance.json?r0=${cacheBust}`, { cache: "no-store", signal: AbortSignal.timeout(8000) }),
+                fetch(`${base}/world-v0/public-room-entry.js?r0=${cacheBust}`, { cache: "no-store", signal: AbortSignal.timeout(8000) }),
+                fetch(`${base}/api/world-v0/rooms?r0=${cacheBust}`, { cache: "no-store", signal: AbortSignal.timeout(8000) }),
+              ]);
+              const provenance = provenanceResponse.ok ? await provenanceResponse.json() : null;
+              const roomEntryBody = await roomEntryResponse.text();
+              const directory = directoryResponse.ok ? await directoryResponse.json() : null;
+              last = {
+                provenanceStatus: provenanceResponse.status,
+                roomEntryStatus: roomEntryResponse.status,
+                directoryStatus: directoryResponse.status,
+                productSourceBranch: provenance?.productSourceBranch,
+                productSourceSha: provenance?.productSourceSha,
+                deliveryBranch: provenance?.deliveryBranch,
+                deliverySha: provenance?.deliverySha,
+                uiRevision: provenance?.uiRevision,
+                simBuildId: provenance?.simBuildId,
+                publicRoomRevisionVisible: roomEntryBody.includes(process.env.EXPECTED_PUBLIC_ROOM_REVISION),
+                directoryRevision: directory?.revision,
+                directoryRooms: directory?.rooms?.map((room) => room.id),
+              };
+
+              if (
+                provenanceResponse.ok &&
+                roomEntryResponse.ok &&
+                directoryResponse.ok &&
+                provenance?.productSourceBranch === process.env.EXPECTED_PRODUCT_SOURCE_BRANCH &&
+                provenance?.productSourceSha === process.env.EXPECTED_PRODUCT_SOURCE_SHA &&
+                provenance?.deliveryBranch === "world-v0-staging-delivery" &&
+                provenance?.deliverySha === process.env.GITHUB_SHA &&
+                provenance?.uiRevision === process.env.EXPECTED_UI_REVISION &&
+                provenance?.simBuildId === process.env.EXPECTED_SIM_BUILD_ID &&
+                last.publicRoomRevisionVisible &&
+                directory?.revision === "world-v0-public-room-directory-r0" &&
+                JSON.stringify(last.directoryRooms) === JSON.stringify(["yard-1", "yard-2", "yard-3"])
+              ) {
+                console.log("R0_EXACT_PUBLIC_PROVENANCE_PASS", JSON.stringify(last));
+                process.exit(0);
+              }
+            } catch (error) {
+              last = { error: error instanceof Error ? error.message : String(error) };
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
+          throw new Error(`Exact R0 delivery did not become public before deadline: ${JSON.stringify(last)}`);
+          NODE
+
+      - name: Prove remote one-click shared Yard entry
+        env:
+          MW_WORLD_V0_R0C_BASE_URL: ${{ env.STAGING_BASE_URL }}
+        run: node scripts/world-v0-public-room-r0c-browser-smoke.mjs | tee world-v0-staging-r0c.log
+
+      - name: Preserve remote peer-departure same-room recovery
+        env:
+          MW_WORLD_V0_R0B_BASE_URL: ${{ env.STAGING_BASE_URL }}
+        run: node scripts/world-v0-public-room-r0b-browser-smoke.mjs | tee world-v0-staging-r0b-peer.log
+
+      - name: Preserve remote real-freeze lease boundary
+        env:
+          MW_WORLD_V0_R0B_BASE_URL: ${{ env.STAGING_BASE_URL }}
+        run: node scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs | tee world-v0-staging-r0b-freeze.log
+
+      - name: Preserve remote visibility-gated lease recovery
+        env:
+          MW_WORLD_V0_R0B_BASE_URL: ${{ env.STAGING_BASE_URL }}
+        run: node scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs | tee world-v0-staging-r0b-visibility.log
+
+      - name: Upload R0 remote evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-staging-r0-remote-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-staging-r0c.log
+            world-v0-staging-r0b-peer.log
+            world-v0-staging-r0b-freeze.log
+            world-v0-staging-r0b-visibility.log
+          if-no-files-found: warn
+          retention-days: 14

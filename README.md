@@ -51,9 +51,13 @@ Do not delete historical evidence simply because it is old. Do not treat every p
 
 ## Basic repository validation
 
+`main` is a navigation/documentation branch and does not currently carry the playable dependency lock. On `main`:
+
 ```bash
-npm ci
+npm install
 npm run check
 ```
+
+On the active playable/staging product specimens, where `package-lock.json` is committed, use the locked graph (`npm ci`).
 
 The exact validation required for World V0 depends on the causal blast radius; the active product and staging workflows encode the stronger browser/authority/exact-state gates.

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  WORLD_V0_MOVEMENT,
   WORLD_V0_NET_ENTITY_ORDER,
   WORLD_V0_PROP_LAYOUT,
   WORLD_V0_PROP_PHYSICS,
@@ -24,6 +25,10 @@ assert.equal(WORLD_V0_STATE_COMPONENTS.length, 13);
 assert.match(WORLD_V0_SIM_BUILD_ID, /^shared-yard-v0-sim-[0-9a-f]{16}$/);
 assert.equal(WORLD_V0_INPUT_LEASE_MISSING_TICKS, 36);
 assert.equal(WORLD_V0_TIMING.simulationHz, 60);
+assert.equal(WORLD_V0_MOVEMENT.jumpSpeed, 7.2);
+assert.equal(WORLD_V0_MOVEMENT.jumpSupportNormalMinY, 0.55);
+assert.equal(WORLD_V0_MOVEMENT.jumpSupportImpulseEpsilon, 0.0001);
+assert.equal(WORLD_V0_MOVEMENT.jumpMaxUpwardSpeed, 0.75);
 
 // No authored prop pair may begin volumetrically overlapping. Touching (the tower)
 // is allowed; the neutral pre-start runtime soak must later prove the actual solver settle.
@@ -51,12 +56,21 @@ const parsed = parseWorldV0ClientMessage(JSON.stringify({
   ...identity,
   batchSeq: 1,
   records: [
+    // Legacy x/z-only records remain valid and become jump:false.
     { targetTick: 20, x: 2, z: 0 },
-    { targetTick: 21, x: 0, z: 1 },
+    { targetTick: 21, x: 0, z: 1, jump: true },
   ],
 }));
 assert(parsed && parsed.type === "world_v0_input_batch");
 assert.equal(parsed.records[0].x, 1, "input must be normalized at protocol boundary");
+assert.equal(parsed.records[0].jump, false, "legacy x/z record must not synthesize a jump");
+assert.equal(parsed.records[1].jump, true, "explicit jump pulse must survive protocol parsing");
+assert.equal(parseWorldV0ClientMessage(JSON.stringify({
+  type: "world_v0_input_batch",
+  ...identity,
+  batchSeq: 99,
+  records: [{ targetTick: 20, x: 0, z: 0, jump: 1 }],
+})), null, "jump must be a boolean when supplied");
 assert.equal(parseWorldV0ClientMessage(JSON.stringify({
   type: "world_v0_ready",
   worldId,
@@ -70,17 +84,20 @@ const startTick = 20;
 const first = input.acceptBatch(parsed, 10, startTick);
 assert.deepEqual(first.records.map((record) => record.status), ["accepted", "accepted"]);
 assert.deepEqual(input.consume(20), {
-  targetTick: 20, x: 1, z: 0, fresh: true, source: "fresh", missingStreak: 0,
+  targetTick: 20, x: 1, z: 0, jump: false, fresh: true, source: "fresh", missingStreak: 0,
 });
 assert.deepEqual(input.consume(21), {
-  targetTick: 21, x: 0, z: 1, fresh: true, source: "fresh", missingStreak: 0,
+  targetTick: 21, x: 0, z: 1, jump: true, fresh: true, source: "fresh", missingStreak: 0,
 });
 
+// A missing canonical record may hold locomotion, but jump is an event pulse and
+// must never be repeated by hold-last semantics.
 let lastHeld = null;
 for (let tick = 22; tick < 22 + WORLD_V0_INPUT_LEASE_MISSING_TICKS - 1; tick += 1) {
   lastHeld = input.consume(tick);
   assert.equal(lastHeld.source, "held");
-  assert.deepEqual([lastHeld.x, lastHeld.z], [0, 1], "lease must hold the last consumed input before expiry");
+  assert.deepEqual([lastHeld.x, lastHeld.z], [0, 1], "lease must hold the last consumed locomotion before expiry");
+  assert.equal(lastHeld.jump, false, `held input repeated jump pulse at tick ${tick}`);
 }
 assert(lastHeld);
 assert.equal(lastHeld.missingStreak, WORLD_V0_INPUT_LEASE_MISSING_TICKS - 1);
@@ -90,6 +107,7 @@ assert.deepEqual(expired, {
   targetTick: expiredTick,
   x: 0,
   z: 0,
+  jump: false,
   fresh: false,
   source: "lease_expired",
   missingStreak: WORLD_V0_INPUT_LEASE_MISSING_TICKS,
@@ -100,19 +118,24 @@ const freshAfterExpiry = input.acceptBatch({
   type: "world_v0_input_batch",
   ...identity,
   batchSeq: 2,
-  records: [{ targetTick: expiredTick + 1, x: -1, z: 0 }],
+  records: [{ targetTick: expiredTick + 1, x: -1, z: 0, jump: true }],
 }, expiredTick + 1, startTick);
 assert.equal(freshAfterExpiry.records[0].status, "accepted");
-assert.equal(input.consume(expiredTick + 1).source, "fresh", "fresh canonical input resets the missing streak");
+const freshPulse = input.consume(expiredTick + 1);
+assert.equal(freshPulse.source, "fresh", "fresh canonical input resets the missing streak");
+assert.equal(freshPulse.jump, true, "fresh post-expiry jump pulse was lost");
 assert.equal(input.stats().currentMissingStreak, 0);
+const postPulseHold = input.consume(expiredTick + 2);
+assert.equal(postPulseHold.jump, false, "post-expiry hold repeated jump pulse");
+assert.deepEqual([postPulseHold.x, postPulseHold.z], [-1, 0], "post-expiry hold must retain locomotion only");
 
-const tooFutureTick = expiredTick + 2 + WORLD_V0_MAX_FUTURE_TICKS + 1;
+const tooFutureTick = expiredTick + 3 + WORLD_V0_MAX_FUTURE_TICKS + 1;
 const tooFuture = input.acceptBatch({
   type: "world_v0_input_batch",
   ...identity,
   batchSeq: 3,
-  records: [{ targetTick: tooFutureTick, x: 0, z: 0 }],
-}, expiredTick + 2, startTick);
+  records: [{ targetTick: tooFutureTick, x: 0, z: 0, jump: false }],
+}, expiredTick + 3, startTick);
 assert.equal(tooFuture.records[0].status, "too_future");
 
-console.log(`WORLD V0 PROTOCOL SMOKE PASS · sim=${WORLD_V0_SIM_BUILD_ID} · identity + 12-prop seed + ${WORLD_V0_INPUT_LEASE_MISSING_TICKS}-tick fail-closed input lease`);
+console.log(`WORLD V0 PROTOCOL SMOKE PASS · sim=${WORLD_V0_SIM_BUILD_ID} · jump pulse + hold-last locomotion + ${WORLD_V0_INPUT_LEASE_MISSING_TICKS}-tick fail-closed input lease`);

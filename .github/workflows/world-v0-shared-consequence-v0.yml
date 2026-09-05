@@ -1,0 +1,89 @@
+name: World V0 Shared Consequence V0
+
+on:
+  push:
+    branches: [world-v0-shared-consequence-v0]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-shared-consequence-v0
+  cancel-in-progress: true
+
+env:
+  CONTROL_SHA: 5dd28a899c4f60c9227f1eb93026f571ced733e3
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout exact experiment head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove bounded source delta
+        run: |
+          set -euo pipefail
+          git cat-file -e "$CONTROL_SHA^{commit}"
+          mapfile -t changed < <(git diff --name-only "$CONTROL_SHA" "$GITHUB_SHA" -- ':!/.github/workflows/world-v0-shared-consequence-v0.yml')
+          printf 'candidate source delta:\n%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "src/world-v0-contract.ts"
+
+      - name: Derive and validate Shared Consequence contract
+        run: |
+          node --experimental-strip-types --input-type=module <<'NODE'
+          const m = await import('./src/world-v0-contract.ts');
+          const layout = m.WORLD_V0_PROP_LAYOUT;
+          const counts = layout.reduce((map, prop) => {
+            map[prop.cluster] = (map[prop.cluster] || 0) + 1;
+            return map;
+          }, {});
+          const ids = new Set(layout.map((prop) => prop.id));
+          if (m.WORLD_V0_SCENE_REVISION !== 'shared-yard-v0-seed-c-shared-consequence-v0') throw new Error('scene revision drift');
+          if (layout.length !== 23) throw new Error(`expected 23 props, got ${layout.length}`);
+          if (ids.size !== layout.length) throw new Error('duplicate prop id');
+          if (counts.barricade !== 6 || counts.tower !== 3 || counts['impact-train'] !== 6 || counts.breakwall !== 8) {
+            throw new Error(`cluster counts drift ${JSON.stringify(counts)}`);
+          }
+          const train = layout.filter((p) => p.cluster === 'impact-train');
+          const wall = layout.filter((p) => p.cluster === 'breakwall');
+          const tail = train.at(-1);
+          const wallX = wall[0].position[0];
+          const half = m.WORLD_V0_PROP_PHYSICS.halfExtents[0];
+          const surfaceGap = wallX - half - (tail.position[0] + half);
+          if (Math.abs(surfaceGap - 0.04) > 1e-9) throw new Error(`train/wall gap ${surfaceGap}`);
+          const wallColumns = [...new Set(wall.map((p) => p.position[2]))].sort((a,b) => a-b);
+          const axis = train[0].position[2];
+          if (!(wallColumns[1] < axis && axis < wallColumns[2])) throw new Error('train axis does not split middle wall columns');
+          const minSeparation = 2 * half;
+          for (let i = 0; i < layout.length; i++) {
+            for (let j = i + 1; j < layout.length; j++) {
+              const a = layout[i].position;
+              const b = layout[j].position;
+              const overlapX = Math.abs(a[0] - b[0]) < minSeparation - 1e-9;
+              const overlapY = Math.abs(a[1] - b[1]) < minSeparation - 1e-9;
+              const overlapZ = Math.abs(a[2] - b[2]) < minSeparation - 1e-9;
+              if (overlapX && overlapY && overlapZ) throw new Error(`authored overlap ${layout[i].id}/${layout[j].id}`);
+            }
+          }
+          console.log('SHARED_CONSEQUENCE_CONTRACT_PASS', JSON.stringify({
+            sceneRevision: m.WORLD_V0_SCENE_REVISION,
+            simBuildId: m.WORLD_V0_SIM_BUILD_ID,
+            propCount: layout.length,
+            dynamicEntityCount: m.WORLD_V0_NET_ENTITY_ORDER.length,
+            counts,
+            surfaceGap,
+            wallColumns,
+            trainAxis: axis,
+          }));
+          NODE

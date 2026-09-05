@@ -16,6 +16,15 @@
     <p id="boot-status" aria-live="polite">Loading…</p>
     <div class="inputs">
       <label class="primary-name">Your name <input id="callsign" maxlength="24" autocomplete="nickname" placeholder="Jozz"></label>
+
+      <section id="public-room-entry" class="public-room-entry" aria-label="Shared Yards">
+        <div class="public-room-heading">
+          <strong>Shared Yards</strong>
+          <span id="public-room-status" aria-live="polite">Loading rooms…</span>
+        </div>
+        <div id="public-room-list" class="public-room-list"></div>
+      </section>
+
       <div class="entry-actions">
         <button id="enter">Enter world</button>
       </div>

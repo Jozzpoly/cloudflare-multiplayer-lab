@@ -1,0 +1,81 @@
+name: World V0 Shared Consequence Geometry Lab
+
+on:
+  push:
+    branches: [world-v0-shared-consequence-geometry-lab]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-shared-consequence-geometry-lab
+  cancel-in-progress: true
+
+env:
+  BASELINE_SHA: 23e9254d082cd7a4707ece88655eb7ad0fede0e0
+
+jobs:
+  geometry-matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout exact lab head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install qualified dependency graph
+        run: npm ci
+
+      - name: Prove lab isolation
+        run: |
+          set -euo pipefail
+          git cat-file -e "$BASELINE_SHA^{commit}"
+          mapfile -t changed < <(git diff --name-only "$BASELINE_SHA" "$GITHUB_SHA")
+          printf 'geometry lab delta:\n%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = ".github/workflows/world-v0-shared-consequence-geometry-lab.yml"
+          test "${changed[1]}" = "scripts/world-v0-shared-consequence-geometry-lab.mjs"
+          git diff --quiet "$BASELINE_SHA" "$GITHUB_SHA" -- \
+            src public wrangler.jsonc package.json package-lock.json \
+            .github/workflows/world-v0-shared-consequence-v0.yml
+
+      - name: Validate lab apparatus
+        run: |
+          node --check scripts/world-v0-shared-consequence-geometry-lab.mjs
+          node --experimental-strip-types --input-type=module <<'NODE'
+          const contract = await import('./src/world-v0-contract.ts');
+          if (contract.WORLD_V0_SCENE_REVISION !== 'shared-yard-v0-seed-c-shared-consequence-v0') throw new Error('unexpected source scene');
+          console.log('GEOMETRY_LAB_SOURCE_CONTRACT_PASS', JSON.stringify({
+            sceneRevision: contract.WORLD_V0_SCENE_REVISION,
+            simBuildId: contract.WORLD_V0_SIM_BUILD_ID,
+            propDensity: contract.WORLD_V0_PROP_PHYSICS.density,
+            propFriction: contract.WORLD_V0_PROP_PHYSICS.friction,
+            playerSpeed: contract.WORLD_V0_MOVEMENT.playerSpeed,
+            playerAcceleration: contract.WORLD_V0_MOVEMENT.playerAcceleration,
+          }));
+          NODE
+
+      - name: Run matched geometry matrix
+        env:
+          MW_WORLD_V0_GEOMETRY_LAB_OUTPUT: world-v0-shared-consequence-geometry-lab.json
+        run: |
+          set -o pipefail
+          node --experimental-strip-types scripts/world-v0-shared-consequence-geometry-lab.mjs | tee world-v0-shared-consequence-geometry-lab.log
+
+      - name: Upload geometry evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-shared-consequence-geometry-lab-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-shared-consequence-geometry-lab.json
+            world-v0-shared-consequence-geometry-lab.log
+          if-no-files-found: warn
+          retention-days: 14

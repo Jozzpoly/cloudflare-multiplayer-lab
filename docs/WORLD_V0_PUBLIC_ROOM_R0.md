@@ -118,11 +118,11 @@ The bounded global room directory is proven on the isolated `world-v0-public-roo
 
 The same `yard-1`, `yard-2`, `yard-3` catalog is exposed independently of one browser's generated run key. Occupancy/state transitions are visible without mutating room state by reading the directory.
 
-Final regression confirmation on the R0b closure head:
+Final regression confirmation on the R0c qualification head:
 
 - workflow: `World V0 Public Room R0 Check`;
-- run: `33994635918`;
-- head: `70ba4a3027aa9547914d139dcb5f51d404c27d5a`;
+- run: `33995089486`;
+- head: `0c1aa4da68049b72b1c1f632a5a343d22675b27b`;
 - result: **PASS**;
 - full repository check: PASS;
 - stable directory / live occupancy falsifier: PASS.
@@ -143,7 +143,7 @@ Recoverable room-lifecycle reasons are deliberately bounded to normal social/ses
 
 Actual authority/runtime/identity corruption remains fail-closed.
 
-Final durable closure gate:
+Original durable closure gate:
 
 - workflow: `World V0 Public Room R0b Check`;
 - run: `33994635914`;
@@ -179,20 +179,75 @@ The visibility signal in the third falsifier is intentionally marked as an **app
 
 That final integrated claim belongs to **R0d Owner/friend hardware evidence**.
 
+R0c qualification reran all three durable R0b falsifiers on the exact R0c head and all remained PASS in run `33995089524`.
+
 ### R0b cleanup
 
 One-shot product/apparatus patch workflows used during causal investigation were removed after closure. Durable R0a/R0b falsifiers remain in the branch.
 
 Do not reopen R0b merely to accumulate more synthetic lifecycle matrices unless new evidence contradicts the closed result.
 
+### R0c — CLOSED / PASS
+
+Qualified head:
+
+`0c1aa4da68049b72b1c1f632a5a343d22675b27b`
+
+Public entry revision:
+
+`world-v0-public-room-entry-r0c-v1`
+
+R0c deliberately reuses the existing playable runtime rather than creating a second networking path. Normal base-URL entry now reads the bounded shared-room directory, renders `Yard 1 / Yard 2 / Yard 3`, writes the selected canonical `yard-*` ID into the existing runtime input and invokes the already-qualified Enter path.
+
+The raw Room ID and Inspect controls remain available under Advanced. Existing exact-room deep links and the previously qualified cryptographic generated-room invite path remain compatible, but they are no longer the normal base-URL ceremony.
+
+Dedicated qualification:
+
+- workflow: `World V0 Public Room R0c Check`;
+- run: `33995089524`;
+- head: `0c1aa4da68049b72b1c1f632a5a343d22675b27b`;
+- overall result: **PASS**;
+- full repository check: PASS.
+
+The real Workerd + Chromium falsifier proved:
+
+- plain `/world-v0/` exposes exactly `yard-1`, `yard-2`, `yard-3` without adding a generated room ID to the URL;
+- `yard-2` occupied by one external peer is reflected as `1/2 · Waiting` and remains joinable;
+- `yard-3` occupied by two peers is reflected as `2/2` and cannot be selected;
+- a browser supplies only its name and clicks Yard 2;
+- the existing runtime enters canonical `yard-2` and reaches LIVE;
+- the browser URL becomes the canonical deep link `?run=yard-2`;
+- exact-state `guardMismatches` remain `0`;
+- Advanced raw Room ID / Inspect fallback remains present.
+
+The same run also preserved the old generated-room Friend Entry journey end-to-end:
+
+- `WORLD_V0_FRIEND_ENTRY_CORE_PASS`;
+- `WORLD_V0_FRIEND_ENTRY_PASS`.
+
+A second job on the same exact head reran the complete closed R0b lifecycle suite:
+
+- peer-departure same-room recovery: PASS;
+- real-freeze lease boundary: PASS;
+- visibility-gated lease recovery: PASS.
+
+The independent R0a/global-directory workflow also passed on the exact same head in run `33995089486`.
+
+Machine evidence is therefore sufficient to close R0c. Do not expand R0c into more synthetic lobby or lifecycle matrices unless staging or real-device evidence contradicts it.
+
 ## Current frontier
 
-**R0c — one-click public entry.**
+**R0 staging qualification -> R0d Owner/friend hardware evidence.**
 
-The next product problem is no longer whether a stable Room can exist across strict epochs. It can.
+The local machine-qualified R0 stack now establishes:
 
-The next falsifier is whether a normal user can open `/world-v0/`, immediately understand the shared `Yard 1 / Yard 2 / Yard 3` state, and enter one visible Yard without handling a generated room key or invite ceremony.
+- stable visible Yard identities and shared occupancy;
+- Room lifetime separated from strict simulation Epoch lifetime;
+- normal one-click Yard entry without generated-room ceremony;
+- exact-room/invite/debug compatibility retained as secondary paths.
 
-R0c should preserve optional exact-room deep links and advanced research/debug controls without making them the normal path.
+The next step is not another local product feature. Prepare an exact, provenance-preserving staging promotion of the qualified R0 product while keeping production/root untouched. Require remote staging qualification before asking the Owner to test it.
 
-Public staging remains frozen until R0c is itself bounded and qualified. R0d then uses real devices and another human to judge whether the access/lifecycle ceremony is actually gone.
+After remote staging is green, R0d is intentionally human/hardware evidence: two independent real devices, preferably Owner + another human, open the same staging URL, see the same Yard directory, choose the same Yard without exchanging a newly generated link, play, background/foreground and leave/rejoin naturally.
+
+R0d decides whether the access/lifecycle ceremony is actually gone in real use. Complete real-phone background -> foreground recovery remains specifically reserved for this gate.

@@ -1,5 +1,6 @@
 name: World V0 Public Room R0b Apply
 
+# Re-triggered after registration so the bounded patch applies only through CI.
 on:
   push:
     branches:

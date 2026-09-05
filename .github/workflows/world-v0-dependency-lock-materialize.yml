@@ -65,3 +65,5 @@ jobs:
           git add package-lock.json
           git commit -m "build(world-v0): pin qualified npm dependency graph"
           git push origin HEAD:world-v0-dependency-lock-e0
+
+# Replay pass marker: validate the committed lock in a fresh checkout.

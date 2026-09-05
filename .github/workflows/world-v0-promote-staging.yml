@@ -1,0 +1,305 @@
+name: World V0 Promote Exact Product To Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type PROMOTE to deploy this exact branch head to isolated staging"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-promote-staging
+  cancel-in-progress: false
+
+env:
+  EXPECTED_STAGING_WORKER: cloudflare-multiplayer-lab-staging
+  STAGING_BASE_URL: https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev
+
+jobs:
+  deploy-exact-product:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Require explicit promotion intent
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: test "$CONFIRM" = "PROMOTE"
+
+      - name: Checkout exact product head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$GITHUB_SHA"
+          echo "Exact product specimen: $actual"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prove isolated staging target contract
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const config = JSON.parse(readFileSync("wrangler.jsonc", "utf8"));
+          const staging = config.env?.staging;
+          if (!staging) throw new Error("wrangler env.staging missing");
+          if (staging.name !== process.env.EXPECTED_STAGING_WORKER) {
+            throw new Error(`staging target drift ${staging.name}`);
+          }
+          if (config.name === staging.name) {
+            throw new Error(`staging aliases root worker ${config.name}`);
+          }
+          if (staging.workers_dev !== true) throw new Error("staging workers_dev must stay enabled");
+          const bindings = staging.durable_objects?.bindings || [];
+          if (!bindings.some((binding) => binding.name === "SHARED_YARD_V0" && binding.class_name === "SharedYardV0")) {
+            throw new Error("staging SharedYardV0 Durable Object binding missing");
+          }
+          const workerFirst = staging.assets?.run_worker_first || [];
+          if (!workerFirst.includes("/world-v0/ws")) throw new Error("staging /world-v0/ws worker-first route missing");
+          console.log(`STAGING_TARGET_GUARD_PASS root=${config.name} staging=${staging.name}`);
+          NODE
+          npm run test:staging-deploy-guard
+          npm run validate:staging-contract
+
+      - name: Generate deployment provenance asset
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          import {
+            WORLD_V0_BROWSER_UI_REVISION,
+            WORLD_V0_CLIENT_SIM_REVISION,
+            WORLD_V0_EXPECTED_SERVER_REVISION,
+            WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          } from "./public/world-v0/build-contract.js";
+
+          const provenance = {
+            productSourceSha: process.env.GITHUB_SHA,
+            productSourceRef: process.env.GITHUB_REF_NAME,
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            workflowRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT || 0),
+            uiRevision: WORLD_V0_BROWSER_UI_REVISION,
+            clientSimRevision: WORLD_V0_CLIENT_SIM_REVISION,
+            serverRevision: WORLD_V0_EXPECTED_SERVER_REVISION,
+            protocolRevision: WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            stateGuardRevision: WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            simBuildId: WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          };
+          writeFileSync("public/world-v0/deploy-provenance.json", `${JSON.stringify(provenance, null, 2)}\n`);
+          console.log("DEPLOY_PROVENANCE_PREPARED", JSON.stringify(provenance));
+          NODE
+
+      - name: Dry-run exact staging deployment
+        run: npx wrangler deploy --dry-run --env staging --outdir .wrangler/staging-promote-dry-run
+
+      - name: Require Cloudflare deployment credential
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "CLOUDFLARE_API_TOKEN GitHub Actions secret is absent; refusing deployment."
+            exit 2
+          fi
+
+      - name: Authenticate Wrangler
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler whoami
+
+      - name: Deploy only isolated staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run deploy:staging
+
+      - name: Require exact public build and provenance
+        run: |
+          node --input-type=module <<'NODE'
+          import {
+            WORLD_V0_BROWSER_UI_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          } from "./public/world-v0/build-contract.js";
+
+          const base = process.env.STAGING_BASE_URL.replace(/\/$/, "");
+          const deadline = Date.now() + 120_000;
+          let last = null;
+          while (Date.now() < deadline) {
+            try {
+              const [contractResponse, provenanceResponse] = await Promise.all([
+                fetch(`${base}/world-v0/build-contract.js?sha=${process.env.GITHUB_SHA}`, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(8000),
+                }),
+                fetch(`${base}/world-v0/deploy-provenance.json?sha=${process.env.GITHUB_SHA}`, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(8000),
+                }),
+              ]);
+              const contractBody = await contractResponse.text();
+              const provenance = provenanceResponse.ok ? await provenanceResponse.json() : null;
+              last = {
+                contractStatus: contractResponse.status,
+                provenanceStatus: provenanceResponse.status,
+                ui: contractBody.includes(WORLD_V0_BROWSER_UI_REVISION),
+                sim: contractBody.includes(WORLD_V0_EXPECTED_SIM_BUILD_ID),
+                sourceSha: provenance?.productSourceSha,
+                sourceRef: provenance?.productSourceRef,
+              };
+              if (
+                contractResponse.ok &&
+                provenanceResponse.ok &&
+                last.ui &&
+                last.sim &&
+                provenance?.productSourceSha === process.env.GITHUB_SHA &&
+                provenance?.productSourceRef === process.env.GITHUB_REF_NAME
+              ) {
+                console.log("STAGING_EXACT_PRODUCT_VISIBLE", JSON.stringify(last));
+                process.exit(0);
+              }
+            } catch (error) {
+              last = { error: error instanceof Error ? error.message : String(error) };
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+          throw new Error(`staging did not expose exact product provenance: ${JSON.stringify(last)}`);
+          NODE
+
+      - name: Upload deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-exact-product-deploy-attempt-${{ github.run_attempt }}
+          path: |
+            .wrangler/staging-promote-dry-run
+            public/world-v0/deploy-provenance.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  remote-authority:
+    needs: deploy-exact-product
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Checkout exact product head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prove remote authority and production isolation
+        env:
+          MW_WORLD_V0_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_POLL_TIMEOUT_MS: "60000"
+          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-exact-product-authority.json
+        run: node scripts/world-v0-authority-runtime-smoke.mjs
+
+      - name: Upload authority evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-exact-product-authority-attempt-${{ github.run_attempt }}
+          path: world-v0-exact-product-authority.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  remote-presentation:
+    needs: remote-authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact product head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prove remote camera and controller interactions
+        env:
+          MW_WORLD_V0_PLAYABLE_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-exact-product-interaction.json
+        run: node scripts/world-v0-playable-interaction-smoke.mjs
+
+      - name: Prove remote epoch-end and fresh-restart lifecycle
+        env:
+          MW_WORLD_V0_SESSION_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_SESSION_OUTPUT: world-v0-exact-product-session.json
+        run: node scripts/world-v0-session-friction-smoke.mjs
+
+      - name: Prove remote desktop and portrait shell
+        env:
+          MW_WORLD_V0_SHELL_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_SHELL_OUTPUT: world-v0-exact-product-shell.json
+        run: node scripts/world-v0-runtime-shell-smoke.mjs
+
+      - name: Prove remote one-browser real-authority Inspect solo
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-exact-product-solo-inspection.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
+
+      - name: Upload presentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-exact-product-presentation-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-exact-product-interaction.json
+            world-v0-exact-product-session.json
+            world-v0-exact-product-shell.json
+            world-v0-exact-product-solo-inspection.json
+            world-v0-runtime-shell-*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+  remote-exact-state:
+    needs: remote-presentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact product head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prove remote two-Chromium exact state
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-exact-product-exact.json
+        run: node scripts/world-v0-chromium-cloud-smoke.mjs
+
+      - name: Upload exact-state evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-exact-product-exact-attempt-${{ github.run_attempt }}
+          path: world-v0-exact-product-exact.json
+          if-no-files-found: warn
+          retention-days: 14

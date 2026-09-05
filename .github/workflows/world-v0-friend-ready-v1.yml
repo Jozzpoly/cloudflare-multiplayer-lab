@@ -1,0 +1,353 @@
+name: World V0 Friend-Ready V1
+
+on:
+  push:
+    branches: [world-v0-friend-ready-v1]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-friend-ready-v1
+  cancel-in-progress: true
+
+env:
+  FRIEND_READY_BASE: 1699fb71b3abef425aea6e21cdb81cb7d11250d5
+
+jobs:
+  qualify-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact Friend-Ready head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install qualified dependency graph
+        run: npm ci
+
+      - name: Prove Friend-Ready causal boundary
+        run: |
+          set -euo pipefail
+          git cat-file -e "$FRIEND_READY_BASE^{commit}"
+          node --check public/world-v0/app.js
+          node --check public/world-v0/build-contract.js
+          node --check public/world-v0/playable-control.js
+          node --check public/world-v0/solo-inspection-core.js
+          node --check public/world-v0/solo-inspection.js
+          node --check scripts/world-v0-playable-control-smoke.mjs
+          node --check scripts/world-v0-playable-interaction-smoke.mjs
+          node --check scripts/world-v0-solo-inspection-core-smoke.mjs
+          node --check scripts/world-v0-solo-inspection-browser-smoke.mjs
+          node --check scripts/world-v0-session-friction-smoke.mjs
+          node --check scripts/world-v0-runtime-shell-smoke.mjs
+          node --check scripts/world-v0-chromium-cloud-smoke.mjs
+          node --check scripts/world-v0-exact-failure-classifier.mjs
+          node --check scripts/world-v0-exact-failure-classifier-smoke.mjs
+          git diff --check
+
+          protected=(
+            src/world-v0-shared-yard.ts
+            src/world-v0-contract.ts
+            src/world-v0-protocol.ts
+            src/box3d-runtime.ts
+            src/world-slice-entry.ts
+            wrangler.jsonc
+            package.json
+            package-lock.json
+          )
+          if ! git diff --quiet "$FRIEND_READY_BASE" -- "${protected[@]}"; then
+            echo "Friend-Ready V1 changed frozen authority/simulation/dependency/config paths."
+            git diff --stat "$FRIEND_READY_BASE" -- "${protected[@]}"
+            exit 1
+          fi
+
+          node --input-type=module <<'NODE'
+          import {
+            WORLD_V0_CLIENT_SIM_REVISION,
+            WORLD_V0_EXPECTED_SERVER_REVISION,
+            WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          } from "./public/world-v0/build-contract.js";
+
+          const expected = {
+            clientSim: "shared-yard-v0-browser-sim-v1",
+            server: "shared-yard-v0-authority-v1",
+            protocol: "shared-yard-v0-scheduled-input-v1",
+            guard: "shared-yard-v0-f32-state-v1",
+            sim: "shared-yard-v0-sim-579c7aa172198390",
+          };
+          const actual = {
+            clientSim: WORLD_V0_CLIENT_SIM_REVISION,
+            server: WORLD_V0_EXPECTED_SERVER_REVISION,
+            protocol: WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            guard: WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            sim: WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (actual[key] !== value) throw new Error(`Friend-Ready frozen ${key} drift: ${actual[key]} != ${value}`);
+          }
+          console.log("WORLD_V0_FRIEND_READY_FROZEN_CONTRACT_PASS", JSON.stringify(actual));
+          NODE
+
+      - name: Preserve control and repository falsifiers
+        run: |
+          node scripts/world-v0-playable-control-smoke.mjs
+          node scripts/world-v0-solo-inspection-core-smoke.mjs
+          node scripts/world-v0-exact-failure-classifier-smoke.mjs
+          npm run check
+
+      - name: Start core Worker/assets in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-friend-ready-core-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-friend-ready-core-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "core Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-friend-ready-core-wrangler.log
+          exit 1
+
+      - name: Prove frozen authority baseline
+        env:
+          MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
+          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-friend-ready-authority.json
+        run: node scripts/world-v0-authority-runtime-smoke.mjs
+
+      - name: Stop core Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-friend-ready-core-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-friend-ready-core-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload core evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-friend-ready-core-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-friend-ready-authority.json
+            world-v0-friend-ready-core-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualify-presentation:
+    needs: qualify-core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact Friend-Ready head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install qualified dependency graph
+        run: npm ci
+
+      - name: Start presentation Worker/assets in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-friend-ready-presentation-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-friend-ready-presentation-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "presentation Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-friend-ready-presentation-wrangler.log
+          exit 1
+
+      - name: Prove rendered controls and camera
+        env:
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-friend-ready-interaction.json
+        run: node scripts/world-v0-playable-interaction-smoke.mjs
+
+      - name: Prove current epoch end/restart baseline
+        env:
+          MW_WORLD_V0_SESSION_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SESSION_OUTPUT: world-v0-friend-ready-session.json
+        run: node scripts/world-v0-session-friction-smoke.mjs
+
+      - name: Preserve desktop and portrait shell
+        env:
+          MW_WORLD_V0_SHELL_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SHELL_OUTPUT: world-v0-friend-ready-shell.json
+        run: node scripts/world-v0-runtime-shell-smoke.mjs
+
+      - name: Stop presentation Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-friend-ready-presentation-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-friend-ready-presentation-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload presentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-friend-ready-presentation-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-friend-ready-interaction.json
+            world-v0-friend-ready-session.json
+            world-v0-friend-ready-shell.json
+            world-v0-runtime-shell-*.png
+            world-v0-friend-ready-presentation-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualify-solo-inspection:
+    needs: qualify-core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact Friend-Ready head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install qualified dependency graph
+        run: npm ci
+
+      - name: Start solo Worker/assets in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-friend-ready-solo-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-friend-ready-solo-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "solo Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-friend-ready-solo-wrangler.log
+          exit 1
+
+      - name: Prove one-browser real-authority Inspect solo
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-friend-ready-solo-inspection.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
+
+      - name: Stop solo Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-friend-ready-solo-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-friend-ready-solo-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload solo evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-friend-ready-solo-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-friend-ready-solo-inspection.json
+            world-v0-friend-ready-solo-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualify-exact-state:
+    needs: qualify-core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact Friend-Ready head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install qualified dependency graph
+        run: npm ci
+
+      - name: Verify exact-state apparatus
+        run: |
+          node --check scripts/world-v0-chromium-cloud-smoke.mjs
+          node --check scripts/world-v0-exact-failure-classifier.mjs
+          node scripts/world-v0-exact-failure-classifier-smoke.mjs
+
+      - name: Start exact Worker/assets in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-friend-ready-exact-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-friend-ready-exact-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "exact Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-friend-ready-exact-wrangler.log
+          exit 1
+
+      - name: Prepare local exact-state Chromium falsifier
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
+          const remote = 'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";';
+          const local = 'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";';
+          if (!chromium.includes(remote)) throw new Error("Friend-Ready exact-state local-target anchor drift");
+          chromium = chromium.replace(remote, local);
+          writeFileSync("scripts/.world-v0-friend-ready-exact.mjs", chromium);
+          NODE
+
+      - name: Preserve exact-state causal envelope on fresh runner
+        id: exact
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-friend-ready-exact.json
+        run: node scripts/.world-v0-friend-ready-exact.mjs
+
+      - name: Classify exact failure before verdict
+        if: steps.exact.outcome == 'failure'
+        run: node scripts/world-v0-exact-failure-classifier.mjs world-v0-friend-ready-exact.json
+
+      - name: Require exact-state qualification
+        env:
+          EXACT_OUTCOME: ${{ steps.exact.outcome }}
+        run: |
+          echo "Friend-Ready fresh-runner exact-state outcome=${EXACT_OUTCOME}"
+          test "${EXACT_OUTCOME}" = success
+
+      - name: Stop exact Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-friend-ready-exact-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-friend-ready-exact-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload exact-state evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-friend-ready-exact-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-friend-ready-exact.json
+            world-v0-friend-ready-exact-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

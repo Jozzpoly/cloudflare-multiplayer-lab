@@ -35,6 +35,21 @@ jobs:
             echo "$unexpected"
             exit 1
           fi
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path("scripts/materialize-world-v0-jump-support-v0.mjs")
+          text = path.read_text()
+          text, count = re.subn(
+              r'`\$\{phase\}([^`]+)`',
+              lambda match: r'\`\${phase}' + match.group(1) + r'\`',
+              text,
+          )
+          if count != 5:
+              raise SystemExit(f"expected 5 nested phase templates, repaired {count}")
+          path.write_text(text)
+          PY
           node --check scripts/materialize-world-v0-jump-support-v0.mjs
 
       - name: Setup Node
@@ -46,7 +61,9 @@ jobs:
         run: npm ci
 
       - name: Materialize exact jump-support delta
-        run: node scripts/materialize-world-v0-jump-support-v0.mjs
+        run: |
+          node scripts/materialize-world-v0-jump-support-v0.mjs
+          git checkout -- scripts/materialize-world-v0-jump-support-v0.mjs
 
       - name: Prove generated file boundary
         run: |

@@ -7,8 +7,8 @@ import { WORLD_V0_FRIEND_ENTRY_REVISION, WORLD_V0_ROOM_KEY_PATTERN } from "../pu
 
 const BASE = (process.env.MW_WORLD_V0_FRIEND_ENTRY_BASE_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
 const PAGE_URL = `${BASE}/world-v0/`;
-const DEBUG_PORT = 9562;
-const TIMEOUT_MS = 35_000;
+const DEBUG_PORTS = [9562, 9563];
+const TIMEOUT_MS = 40_000;
 const OUTPUT = process.env.MW_WORLD_V0_FRIEND_ENTRY_OUTPUT || "world-v0-friend-entry-evidence.json";
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
@@ -23,12 +23,12 @@ function findChrome() {
   return binary;
 }
 
-async function waitForDebugger() {
+async function waitForDebugger(port) {
   const started = Date.now();
   let last = null;
   while (Date.now() - started < TIMEOUT_MS) {
     try {
-      const response = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/version`, { signal: AbortSignal.timeout(1500) });
+      const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1500) });
       if (response.ok) {
         const value = await response.json();
         if (value.webSocketDebuggerUrl) return value;
@@ -37,7 +37,7 @@ async function waitForDebugger() {
     } catch (error) { last = error instanceof Error ? error.message : String(error); }
     await sleep(100);
   }
-  throw new Error(`Chrome debugger unavailable: ${last}`);
+  throw new Error(`Chrome debugger ${port} unavailable: ${last}`);
 }
 
 class Cdp {
@@ -81,12 +81,73 @@ class Cdp {
   close() { try { this.ws.close(); } catch { /* cleanup */ } }
 }
 
-async function waitFor(cdp, sessionId, expression, label, timeoutMs = TIMEOUT_MS) {
+async function startBrowser(binary, index, url) {
+  const port = DEBUG_PORTS[index];
+  const profile = mkdtempSync(join(tmpdir(), `mw-friend-entry-${index}-`));
+  const stderr = [];
+  const child = spawn(binary, [
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-background-networking",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--use-gl=angle",
+    "--use-angle=swiftshader-webgl",
+    "--enable-unsafe-swiftshader",
+    `--remote-debugging-port=${port}`,
+    "--remote-debugging-address=127.0.0.1",
+    `--user-data-dir=${profile}`,
+    "about:blank",
+  ], { stdio: ["ignore", "ignore", "pipe"] });
+  child.stderr.on("data", (chunk) => stderr.push(chunk));
+
+  let cdp = null;
+  try {
+    const debuggerInfo = await waitForDebugger(port);
+    cdp = new Cdp(debuggerInfo.webSocketDebuggerUrl);
+    await cdp.opened;
+    const existing = await cdp.call("Target.getTargets");
+    const { targetId } = await cdp.call("Target.createTarget", { url });
+    const { sessionId } = await cdp.call("Target.attachToTarget", { targetId, flatten: true });
+    await cdp.call("Runtime.enable", {}, sessionId);
+    await cdp.call("Page.enable", {}, sessionId);
+    await cdp.call("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 2,
+      mobile: true,
+      screenWidth: 390,
+      screenHeight: 844,
+      screenOrientation: { type: "portraitPrimary", angle: 0 },
+    }, sessionId);
+    for (const target of existing.targetInfos || []) {
+      if (target.type !== "page" || target.targetId === targetId) continue;
+      try { await cdp.call("Target.closeTarget", { targetId: target.targetId }); } catch { /* cleanup */ }
+    }
+    return { index, port, profile, stderr, child, cdp, sessionId };
+  } catch (error) {
+    cdp?.close();
+    if (child.exitCode === null) child.kill("SIGKILL");
+    try { rmSync(profile, { recursive: true, force: true }); } catch { /* cleanup */ }
+    throw error;
+  }
+}
+
+async function stopBrowser(client) {
+  if (!client) return;
+  client.cdp?.close();
+  if (client.child?.exitCode === null) client.child.kill("SIGKILL");
+  try { rmSync(client.profile, { recursive: true, force: true }); } catch { /* cleanup */ }
+}
+
+async function waitFor(client, expression, label, timeoutMs = TIMEOUT_MS) {
   const started = Date.now();
   let last = null;
   while (Date.now() - started < timeoutMs) {
     try {
-      last = await cdp.evaluate(sessionId, expression);
+      last = await client.cdp.evaluate(client.sessionId, expression);
       if (last) return last;
     } catch (error) { last = error instanceof Error ? error.message : String(error); }
     await sleep(120);
@@ -94,61 +155,39 @@ async function waitFor(cdp, sessionId, expression, label, timeoutMs = TIMEOUT_MS
   throw new Error(`${label} timeout · last=${JSON.stringify(last)}`);
 }
 
-async function createPage(cdp, browserContextId, url) {
-  const { targetId } = await cdp.call("Target.createTarget", { url, browserContextId });
-  const { sessionId } = await cdp.call("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.call("Runtime.enable", {}, sessionId);
-  await cdp.call("Page.enable", {}, sessionId);
-  await cdp.call("Emulation.setDeviceMetricsOverride", {
-    width: 390,
-    height: 844,
-    deviceScaleFactor: 2,
-    mobile: true,
-    screenWidth: 390,
-    screenHeight: 844,
-    screenOrientation: { type: "portraitPrimary", angle: 0 },
-  }, sessionId);
-  return { targetId, sessionId };
+async function evaluate(client, expression) {
+  return await client.cdp.evaluate(client.sessionId, expression);
+}
+
+async function diagnostic(client) {
+  if (!client) return null;
+  try {
+    return await evaluate(client, `({
+      href: location.href,
+      title: document.querySelector("#boot h1")?.textContent || null,
+      status: document.querySelector("#boot-status")?.textContent || null,
+      entry: window.__sharedYardV0FriendEntry?.() || null,
+      session: window.__sharedYardV0Session?.() || null,
+      evidence: window.__sharedYardV0Evidence?.() || null,
+    })`);
+  } catch (error) {
+    return { diagnosticError: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 const chrome = findChrome();
-const profile = mkdtempSync(join(tmpdir(), "mw-friend-entry-"));
-const child = spawn(chrome, [
-  "--headless=new",
-  "--no-sandbox",
-  "--disable-dev-shm-usage",
-  "--disable-background-networking",
-  "--disable-background-timer-throttling",
-  "--disable-backgrounding-occluded-windows",
-  "--disable-renderer-backgrounding",
-  "--use-gl=angle",
-  "--use-angle=swiftshader-webgl",
-  "--enable-unsafe-swiftshader",
-  `--remote-debugging-port=${DEBUG_PORT}`,
-  "--remote-debugging-address=127.0.0.1",
-  `--user-data-dir=${profile}`,
-  "about:blank",
-], { stdio: ["ignore", "ignore", "pipe"] });
-const stderr = [];
-child.stderr.on("data", (chunk) => stderr.push(chunk));
-
-let cdp = null;
-let hostContext = null;
-let friendContext = null;
+let host = null;
+let friend = null;
+let hostBoot = null;
+let hostWaiting = null;
+let friendBoot = null;
 const result = { verdict: "WORLD_V0_FRIEND_ENTRY_FAIL", generatedAt: new Date().toISOString(), page: PAGE_URL };
 
 try {
-  const debuggerInfo = await waitForDebugger();
-  cdp = new Cdp(debuggerInfo.webSocketDebuggerUrl);
-  await cdp.opened;
+  host = await startBrowser(chrome, 0, PAGE_URL);
+  await waitFor(host, `document.readyState === "complete" && document.querySelector("#enter")?.disabled === false && typeof window.__sharedYardV0FriendEntry === "function"`, "host Friend-Ready boot");
 
-  hostContext = (await cdp.call("Target.createBrowserContext")).browserContextId;
-  friendContext = (await cdp.call("Target.createBrowserContext")).browserContextId;
-
-  const host = await createPage(cdp, hostContext, PAGE_URL);
-  await waitFor(cdp, host.sessionId, `document.readyState === "complete" && document.querySelector("#enter")?.disabled === false && typeof window.__sharedYardV0FriendEntry === "function"`, "host Friend-Ready boot");
-
-  const hostBoot = await cdp.evaluate(host.sessionId, `({
+  hostBoot = await evaluate(host, `({
     entry: window.__sharedYardV0FriendEntry(),
     title: document.querySelector("#boot h1")?.textContent,
     status: document.querySelector("#boot-status")?.textContent,
@@ -171,18 +210,18 @@ try {
 
   const suffix = Date.now().toString(36).slice(-6);
   const hostName = `host-${suffix}`;
-  await cdp.evaluate(host.sessionId, `(() => {
+  await evaluate(host, `(() => {
     document.querySelector("#callsign").value = ${JSON.stringify(hostName)};
     document.querySelector("#enter").click();
     return true;
   })()`);
 
-  await waitFor(cdp, host.sessionId, `(() => {
+  await waitFor(host, `(() => {
     const s = window.__sharedYardV0Session?.();
     return s?.networkState === "waiting for peer" && !document.querySelector("#copy-invite")?.classList.contains("hidden");
   })()`, "host waiting with invite action");
 
-  const hostWaiting = await cdp.evaluate(host.sessionId, `({
+  hostWaiting = await evaluate(host, `({
     session: window.__sharedYardV0Session(),
     evidence: window.__sharedYardV0Evidence(),
     location: location.href,
@@ -201,10 +240,10 @@ try {
   assert(!inviteUrl.searchParams.has("player"), `invite leaked host identity ${inviteUrl}`);
   assert(new URL(hostWaiting.location).searchParams.get("run") === roomKey, `host URL missing canonical room identity ${hostWaiting.location}`);
 
-  const friend = await createPage(cdp, friendContext, inviteUrl.toString());
-  await waitFor(cdp, friend.sessionId, `document.readyState === "complete" && document.querySelector("#enter")?.disabled === false && typeof window.__sharedYardV0FriendEntry === "function"`, "friend invite boot");
+  friend = await startBrowser(chrome, 1, inviteUrl.toString());
+  await waitFor(friend, `document.readyState === "complete" && document.querySelector("#enter")?.disabled === false && typeof window.__sharedYardV0FriendEntry === "function"`, "friend invite boot");
 
-  const friendBoot = await cdp.evaluate(friend.sessionId, `({
+  friendBoot = await evaluate(friend, `({
     entry: window.__sharedYardV0FriendEntry(),
     title: document.querySelector("#boot h1")?.textContent,
     status: document.querySelector("#boot-status")?.textContent,
@@ -216,24 +255,36 @@ try {
   assert(friendBoot.entry.mode === "invite" && friendBoot.entry.invited === true, `friend mode ${JSON.stringify(friendBoot.entry)}`);
   assert(friendBoot.title === "Join your friend", `friend title ${friendBoot.title}`);
   assert(friendBoot.enterText === "Join world", `friend join label ${friendBoot.enterText}`);
-  assert(friendBoot.callsign === "", `separate friend browser context inherited host callsign ${friendBoot.callsign}`);
+  assert(friendBoot.callsign === "", `separate friend browser inherited host callsign ${friendBoot.callsign}`);
   assert(friendBoot.run === roomKey, `friend invite room mismatch ${friendBoot.run} != ${roomKey}`);
   assert(friendBoot.advancedOpen === false, "friend should not need raw room controls");
 
   const friendName = `peer-${suffix}`;
-  await cdp.evaluate(friend.sessionId, `(() => {
+  await evaluate(friend, `(() => {
     document.querySelector("#callsign").value = ${JSON.stringify(friendName)};
     document.querySelector("#enter").click();
     return true;
   })()`);
 
-  await waitFor(cdp, host.sessionId, `window.__sharedYardV0Evidence?.().networkState?.startsWith("live")`, "host live after friend join");
-  await waitFor(cdp, friend.sessionId, `window.__sharedYardV0Evidence?.().networkState?.startsWith("live")`, "friend live after invite join");
-  await waitFor(cdp, host.sessionId, `window.__sharedYardV0Evidence?.().metrics?.guardMatches >= 2`, "host exact-state runway");
-  await waitFor(cdp, friend.sessionId, `window.__sharedYardV0Evidence?.().metrics?.guardMatches >= 2`, "friend exact-state runway");
+  await waitFor(host, `(() => {
+    const e = window.__sharedYardV0Evidence?.();
+    return e?.runtimeFailed || e?.networkState?.startsWith("live") || e?.networkState?.startsWith("closed");
+  })()`, "host terminal/live state after friend join");
+  await waitFor(friend, `(() => {
+    const e = window.__sharedYardV0Evidence?.();
+    return e?.runtimeFailed || e?.networkState?.startsWith("live") || e?.networkState?.startsWith("closed");
+  })()`, "friend terminal/live state after invite join");
 
-  const hostLive = await cdp.evaluate(host.sessionId, `window.__sharedYardV0Evidence()`);
-  const friendLive = await cdp.evaluate(friend.sessionId, `window.__sharedYardV0Evidence()`);
+  const hostPostJoin = await evaluate(host, `window.__sharedYardV0Evidence()`);
+  const friendPostJoin = await evaluate(friend, `window.__sharedYardV0Evidence()`);
+  assert(hostPostJoin.runtimeFailed === false && hostPostJoin.networkState.startsWith("live"), `host failed to become live ${JSON.stringify({ state: hostPostJoin.networkState, failure: hostPostJoin.runtimeFailureReason, end: hostPostJoin.session?.end })}`);
+  assert(friendPostJoin.runtimeFailed === false && friendPostJoin.networkState.startsWith("live"), `friend failed to become live ${JSON.stringify({ state: friendPostJoin.networkState, failure: friendPostJoin.runtimeFailureReason, end: friendPostJoin.session?.end })}`);
+
+  await waitFor(host, `window.__sharedYardV0Evidence?.().metrics?.guardMatches >= 2`, "host exact-state runway");
+  await waitFor(friend, `window.__sharedYardV0Evidence?.().metrics?.guardMatches >= 2`, "friend exact-state runway");
+
+  const hostLive = await evaluate(host, `window.__sharedYardV0Evidence()`);
+  const friendLive = await evaluate(friend, `window.__sharedYardV0Evidence()`);
   assert(hostLive.runtimeFailed === false && friendLive.runtimeFailed === false, "runtime failure during friend entry journey");
   assert(hostLive.identity?.worldId === friendLive.identity?.worldId, `worldId mismatch ${hostLive.identity?.worldId} != ${friendLive.identity?.worldId}`);
   assert(hostLive.identity?.worldEpoch === friendLive.identity?.worldEpoch, "host/friend joined different epochs");
@@ -246,6 +297,7 @@ try {
     friendEntryRevision: WORLD_V0_FRIEND_ENTRY_REVISION,
     roomKey,
     inviteUrl: inviteUrl.toString(),
+    browsers: "two-independent-chromium-processes",
     host: {
       entryMode: hostBoot.entry.mode,
       waitingStatus: hostWaiting.status,
@@ -253,6 +305,7 @@ try {
       worldId: hostLive.identity.worldId,
       worldEpoch: hostLive.identity.worldEpoch,
       guardMatches: hostLive.metrics.guardMatches,
+      guardMismatches: hostLive.metrics.guardMismatches,
     },
     friend: {
       entryMode: friendBoot.entry.mode,
@@ -261,19 +314,20 @@ try {
       worldId: friendLive.identity.worldId,
       worldEpoch: friendLive.identity.worldEpoch,
       guardMatches: friendLive.metrics.guardMatches,
+      guardMismatches: friendLive.metrics.guardMismatches,
     },
   });
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
   console.log("WORLD_V0_FRIEND_ENTRY_PASS", JSON.stringify({ roomKey, worldEpoch: hostLive.identity.worldEpoch }));
 } catch (error) {
   result.error = error instanceof Error ? error.stack || error.message : String(error);
-  result.chromeStderr = Buffer.concat(stderr).toString("utf8").slice(-8000);
+  result.hostDiagnostic = await diagnostic(host);
+  result.friendDiagnostic = await diagnostic(friend);
+  result.hostChromeStderr = host ? Buffer.concat(host.stderr).toString("utf8").slice(-5000) : null;
+  result.friendChromeStderr = friend ? Buffer.concat(friend.stderr).toString("utf8").slice(-5000) : null;
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
   throw error;
 } finally {
-  if (cdp && hostContext) { try { await cdp.call("Target.disposeBrowserContext", { browserContextId: hostContext }); } catch { /* cleanup */ } }
-  if (cdp && friendContext) { try { await cdp.call("Target.disposeBrowserContext", { browserContextId: friendContext }); } catch { /* cleanup */ } }
-  cdp?.close();
-  if (child.exitCode === null) child.kill("SIGKILL");
-  try { rmSync(profile, { recursive: true, force: true }); } catch { /* cleanup */ }
+  await stopBrowser(friend);
+  await stopBrowser(host);
 }

@@ -1,0 +1,111 @@
+name: World V0 Jump Browser Probe
+
+on:
+  push:
+    branches: [world-v0-jump-support-probe]
+    paths: [.github/workflows/world-v0-jump-browser-probe.yml]
+
+permissions:
+  contents: read
+
+env:
+  PRODUCT_SHA: 206edf730f7b5f506e413118acdca71ee2da0e66
+
+jobs:
+  jump-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout branch apparatus
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact product source
+        run: |
+          set -euo pipefail
+          git cat-file -e "$PRODUCT_SHA^{commit}"
+          for path in \
+            src/world-v0-contract.ts \
+            src/world-v0-protocol.ts \
+            src/world-v0-shared-yard.ts \
+            public/world-v0/app.js \
+            public/world-v0/build-contract.js \
+            public/world-v0/index.html \
+            public/world-v0/styles.css; do
+            test "$(git hash-object "$path")" = "$(git rev-parse "$PRODUCT_SHA:$path")"
+          done
+          echo "JUMP_PRODUCT_BYTES_EXACT $PRODUCT_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph and Chrome
+        run: |
+          npm ci
+          sudo apt-get update -qq
+          sudo apt-get install -y chromium >/dev/null
+
+      - name: Add measurement-only browser instrumentation
+        run: |
+          python scripts/world-v0-jump-browser-instrument.py
+          node --check public/world-v0/app.js
+          node --check scripts/.world-v0-jump-browser-probe.mjs
+          git diff --check
+          changed="$(git diff --name-only)"
+          printf '%s\n' "$changed"
+          test "$changed" = $'public/world-v0/app.js\nscripts/.world-v0-jump-browser-probe.mjs'
+
+      - name: Start local exact Workerd candidate
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-jump-browser-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-jump-browser.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-jump-browser-wrangler.log
+          exit 1
+
+      - name: Run two-client jump integration probe
+        env:
+          CHROME_BIN: /usr/bin/chromium
+          MW_WORLD_V0_JUMP_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-jump-browser-evidence.json
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+        run: node scripts/.world-v0-jump-browser-probe.mjs
+
+      - name: Summarize jump evidence
+        if: always()
+        run: |
+          if [ -f world-v0-jump-browser-evidence.json ]; then
+            node --input-type=module <<'NODE'
+            import fs from "node:fs";
+            const e = JSON.parse(fs.readFileSync("world-v0-jump-browser-evidence.json", "utf8"));
+            console.log("WORLD_V0_JUMP_BROWSER_RESULT", JSON.stringify({
+              verdict:e.verdict,
+              identity:e.identity,
+              jumpEvidence:e.jumpEvidence,
+              guards:e.pages?.map(p=>({matches:p.metrics?.guardMatches,mismatches:p.metrics?.guardMismatches,boundary:p.localBoundaryTick})),
+              runtimeFailed:e.pages?.map(p=>p.runtimeFailed),
+            }));
+            NODE
+          fi
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-jump-browser.pid ]; then kill "$(cat /tmp/world-v0-jump-browser.pid)" 2>/dev/null || true; fi
+
+      - name: Upload jump evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-jump-browser-probe
+          path: |
+            world-v0-jump-browser-evidence.json
+            world-v0-jump-browser-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

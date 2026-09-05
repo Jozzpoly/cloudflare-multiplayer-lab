@@ -1,0 +1,27 @@
+name: World V0 Jump Support Probe
+
+on:
+  push:
+    branches: [world-v0-jump-support-probe]
+
+permissions:
+  contents: read
+
+jobs:
+  support-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout probe branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Run exact pinned Box3D support probe
+        run: node --experimental-strip-types scripts/world-v0-jump-support-probe.mjs

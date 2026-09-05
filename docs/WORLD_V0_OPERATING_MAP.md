@@ -1,6 +1,6 @@
 # World V0 Operating Map
 
-Verified snapshot: **2026-09-04**
+Verified snapshot: **2026-09-05**
 
 This file is the short operational entry point for current World V0 work. It is not a replacement for historical evidence, qualification records or research notes.
 
@@ -25,9 +25,9 @@ Do not infer the current execution plan from an old branch name or an old handof
 | Role | Branch | Verified head | Meaning |
 | --- | --- | --- | --- |
 | Frozen foundation control | `world-v0-shared-yard` | `b27de8b04c27777250c47e7e936674e0f147fdfa` | Qualified Shared Yard V0 control specimen. Keep untouched unless new evidence explicitly reopens the foundation. |
-| Product / playable frontier | `world-v0-playable-frontier` | `34f4e9dac3cc749fc8ab15c2e234bbff33921a7c` | Current browser product surface. UI v7 includes real-authority `Inspect solo`. |
-| Explicit isolated staging delivery | `world-v0-staging-delivery` | `d110dee36aa5cff9f55da7ecff62257c96153d35` | Deterministic staging deploy + remote qualification of the playable candidate. |
-| Stress / capacity research | `world-v0-capacity-cartography` | `bd90f238684961fcd1485d493b0c3bbe9aeb72ec` | Isolated Stress × Play / capacity research lane. Does not redefine the qualified foundation. |
+| Product / playable frontier | `world-v0-playable-frontier` | `1699fb71b3abef425aea6e21cdb81cb7d11250d5` | Current browser product surface. UI v7 includes real-authority `Inspect solo`; dependency graph is committed and browser qualification is isolated by evidence class. |
+| Explicit isolated staging delivery | `world-v0-staging-delivery` | `d6e9d47d72aeac34bc6341a76ebdf7e53ff6522f` | Explicit promotion/deploy lane for the qualified playable candidate, with exact product provenance. |
+| Stress / capacity research | `world-v0-capacity-cartography` | `d086f51792795d1ab73ba43f9e3b4dbf97441bb7` | Isolated Stress × Play / capacity research lane. Does not redefine the qualified foundation. |
 
 ### Frozen simulation identity
 
@@ -39,7 +39,40 @@ Current qualified/frozen SimBuild:
 
 `shared-yard-v0-sim-579c7aa172198390`
 
-UI/presentation work must not silently mutate the frozen simulation identity. A future deliberate simulation change requires its own causal validation.
+UI/presentation, delivery and CI-apparatus work must not silently mutate the frozen simulation identity. A future deliberate simulation change requires its own causal validation.
+
+## Current qualification checkpoints
+
+### Playable frontier
+
+Qualified playable head:
+
+`world-v0-playable-frontier@1699fb71b3abef425aea6e21cdb81cb7d11250d5`
+
+Qualification run:
+
+**`33957370821` — PASS**
+
+The passing run separates evidence classes onto fresh hosted runners:
+
+- core contract / repository regression / authority;
+- presentation + lifecycle + desktop/portrait shell;
+- real-authority `Inspect solo`;
+- two-Chromium exact-state when causal scope requires it.
+
+This split is evidence-driven. Two earlier exact-state attempts on a monolithic browser-heavy job timed out with no state mismatch, no pending guards, no remap failure and no runtime failure, while frame timing showed severe hosted SwiftShader starvation. A bounded A/B control then showed both the old no-lock specimen and the new locked specimen PASS when exact-state ran on a fresh minimal runner. A later monolithic run also starved at `Inspect solo`, confirming cumulative browser-runner pressure rather than a dependency-semantic regression.
+
+Do not recombine the heavy Chromium/SwiftShader qualification classes into one long hosted job merely for cosmetic simplicity. New evidence may justify changing this later.
+
+### Dependency graph
+
+The playable product now carries a committed `package-lock.json` generated from the exact package manifest and independently replayed from a fresh checkout.
+
+The active playable workflow installs the qualified dependency graph with:
+
+`npm ci`
+
+The lockfile itself is part of the causal runtime path, so changes to it require the appropriate qualification envelope.
 
 ## Public staging
 
@@ -47,20 +80,42 @@ Current isolated staging surface:
 
 `https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/`
 
-The staging delivery lane does not rely on a vague Connected Build assumption. Its workflow explicitly:
+Current delivery head:
 
-1. checks the exact source SHA;
-2. proves the staging Worker cannot alias production;
-3. dry-runs the staging deployment;
-4. requires and authenticates the Cloudflare deployment credential;
-5. executes `wrangler deploy --env staging`;
-6. waits for the exact UI revision + SimBuild to become public;
-7. proves remote authority and production isolation;
-8. proves browser presentation / lifecycle / shell behavior;
-9. proves one-browser real-authority `Inspect solo`;
-10. runs the remote two-Chromium exact-state gate.
+`world-v0-staging-delivery@d6e9d47d72aeac34bc6341a76ebdf7e53ff6522f`
 
-Verified delivery run for the snapshot above: **`33901496389` — PASS**.
+The delivery lane pins its product source explicitly:
+
+`world-v0-playable-frontier@1699fb71b3abef425aea6e21cdb81cb7d11250d5`
+
+The source pointer is stored in:
+
+`.github/world-v0-product-source.json`
+
+Before deployment, the workflow mechanically proves that protected product/runtime paths match the pinned playable SHA. It then generates and deploys:
+
+`/world-v0/deploy-provenance.json`
+
+The public provenance records product source branch/SHA, delivery branch/SHA, workflow run identity and the frozen UI/client/server/protocol/state-guard/SimBuild identities. The workflow requires that exact provenance to become publicly visible before remote qualification continues.
+
+Current staging delivery run:
+
+**`33957492089` — PASS on attempt 1**
+
+It proved:
+
+1. exact delivery source identity;
+2. exact promoted-product protected bytes;
+3. staging target cannot alias production;
+4. staging deployment credential/authentication;
+5. explicit `wrangler deploy --env staging`;
+6. exact public product provenance + UI + SimBuild;
+7. remote authority and production isolation;
+8. remote camera/controller interaction, lifecycle and desktop/portrait shell;
+9. remote real-authority `Inspect solo`;
+10. remote two-Chromium exact-state on attempt 1, with no starvation retry required.
+
+The staging delivery lane does not rely on a vague Connected Build assumption.
 
 ## Inspect solo
 
@@ -93,13 +148,16 @@ Workflow:
 
 Purpose:
 
+- committed dependency graph via `npm ci`;
 - frozen authority/simulation contract guard;
 - control-math falsifiers;
-- `Inspect solo` planner + browser falsifier;
+- `Inspect solo` planner falsifier;
+- exact-failure classifier falsifier;
 - full repository regression suite;
 - local Workerd authority check;
-- normal multiplayer interaction / lifecycle / desktop+portrait shell;
-- causal-scope-aware exact-state gate.
+- fresh-runner presentation/lifecycle/shell qualification;
+- fresh-runner `Inspect solo` browser qualification;
+- fresh-runner causal-scope-aware exact-state qualification.
 
 Exact-state is required when a causal runtime path changes, including the World V0 public runtime, authority/protocol path, core Box3D runtime/dependencies or the exact-state apparatus itself. Documentation/process-only changes may intentionally reuse the last qualified exact-state envelope.
 
@@ -113,14 +171,16 @@ Workflow:
 
 Purpose:
 
+- exact product-source pointer;
+- mechanical protected-byte promotion guard;
 - explicit staging-only deploy;
-- exact public build identity;
+- public machine-readable deployment provenance;
 - authority + production isolation;
 - presentation, lifecycle and shell;
 - remote `Inspect solo`;
 - remote two-Chromium exact-state.
 
-Hosted SwiftShader starvation is not silently treated as a correctness failure or success. A versioned classifier permits **at most one** same-SHA retry only when the failed attempt is an exact-state qualification timeout with clean evidence on both clients: no runtime failure, state mismatch, pending guard, remap failure or rejected input. Any correctness signal fails closed immediately. Thresholds are not weakened for CI convenience.
+Hosted SwiftShader starvation is not silently treated as a correctness failure or success. A versioned classifier permits at most one same-SHA retry only when the failed exact-state attempt is a qualification timeout with clean evidence on both clients: no runtime failure, state mismatch, pending guard, remap failure or rejected input. Any correctness signal fails closed immediately. Thresholds are not weakened for CI convenience.
 
 ### Stress / capacity lane
 
@@ -144,7 +204,7 @@ Keep these evidence classes separate:
 
 - **foundation qualification** — proves the frozen Shared Yard control envelope;
 - **playable-frontier qualification** — proves current product/browser changes preserve the relevant contract;
-- **remote staging qualification** — proves the exact candidate is actually deployed and behaves correctly on the isolated public Worker;
+- **remote staging qualification** — proves the exact promoted candidate is actually deployed and behaves correctly on the isolated public Worker;
 - **Owner inspection / feel judgement** — answers subjective product questions and may use `Inspect solo`;
 - **real two-human / two-device testing** — required when social presence, physical-device behavior, human timing or true peer interaction is the question;
 - **Stress × Play research** — probes boundaries and generates new phenomena/evidence without redefining the control specimen by itself.
@@ -180,7 +240,7 @@ Use three categories during cleanup:
 - **HISTORICAL EVIDENCE** — useful provenance/closed experiment; preserve unless deliberately archived elsewhere;
 - **CLEANUP CANDIDATE** — accidental/test/helper branch or a fully superseded duplicate whose unique commits/evidence have been checked for reachability first.
 
-Examples currently worth reviewing as cleanup candidates include technical helpers such as `__nope__`, `__nope2__` and short-lived maintenance/prep branches. Do **not** delete them blindly; first prove they contain no unique evidence that still matters.
+Technical A/B/probe branches created while diagnosing CI or dependency behavior are cleanup candidates only after their result has been preserved elsewhere and their unique evidence has been checked. Do **not** delete them merely because the active lane is healthy.
 
 ## Default working loop
 
@@ -191,8 +251,8 @@ For product/runtime work:
 3. make the smallest justified change on an isolated branch when appropriate;
 4. validate with the frontier gate;
 5. preserve Owner judgement where the question is subjective;
-6. promote the exact candidate into `world-v0-staging-delivery`;
-7. require explicit staging deploy + remote gates before calling it remotely qualified.
+6. promote the exact qualified candidate into `world-v0-staging-delivery` through its explicit product-source pointer;
+7. require explicit staging deploy + public provenance + remote gates before calling it remotely qualified.
 
 For foundation questions, start from the frozen control instead of the playable frontier.
 
@@ -212,10 +272,14 @@ Do not repeat the full historical grounding unless live evidence conflicts with 
 
 ## Current next work
 
-After the 2026-09-04 snapshot:
+The execution substrate is now good enough that **more CI/tooling work is not the default frontier**.
 
-- `Inspect solo` is available on public isolated staging for low-friction Owner inspection;
-- normal product iteration belongs on `world-v0-playable-frontier`;
-- explicit remote promotion belongs on `world-v0-staging-delivery`;
-- Stress × Play / capacity research continues on `world-v0-capacity-cartography`;
-- branch/workflow/document cleanup should reduce ambiguity without destroying historical evidence.
+Highest-value next work should return to the world/product:
+
+- use the remotely qualified Yard in hands-on play;
+- run real two-human / two-device friend-play when the question depends on genuine peer timing, social presence or physical interaction;
+- use `Inspect solo` for cheap iteration when a second human is not materially part of the question;
+- let hands-on friction/fun determine whether the next product move is Yard refinement, greater physical richness, a Stress × Play translation, or a new bounded experiment;
+- only reopen execution infrastructure when concrete friction or evidence justifies it.
+
+Branch/workflow/document cleanup may continue opportunistically, but it must reduce ambiguity without destroying historical evidence and must not displace higher-value product learning.

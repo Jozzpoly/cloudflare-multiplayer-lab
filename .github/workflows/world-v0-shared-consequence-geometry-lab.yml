@@ -62,12 +62,54 @@ jobs:
           }));
           NODE
 
-      - name: Run matched geometry matrix
+      - name: Run near-contact geometry matrix
         env:
           MW_WORLD_V0_GEOMETRY_LAB_OUTPUT: world-v0-shared-consequence-geometry-lab.json
         run: |
           set -o pipefail
           node --experimental-strip-types scripts/world-v0-shared-consequence-geometry-lab.mjs | tee world-v0-shared-consequence-geometry-lab.log
+
+      - name: Prepare product-calibrated impact matrix
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const sourcePath = 'scripts/world-v0-shared-consequence-geometry-lab.mjs';
+          const outputPath = 'scripts/.world-v0-shared-consequence-product-impact-lab.mjs';
+          let source = readFileSync(sourcePath, 'utf8');
+          const replacements = [
+            ['const PUSH_TICKS = 180;', 'const PUSH_TICKS = 150;'],
+            ['const SETTLE_TICKS = 120;', 'const SETTLE_TICKS = 60;'],
+            [
+              'const playerX = layout.firstX - (HALF[0] + WORLD_V0_PLAYER_PHYSICS.capsuleRadius + PLAYER_SURFACE_GAP);',
+              'const playerX = layout.firstX - 1.375510215759277;'
+            ],
+            [
+              'const player = addPlayer(b3, world, [playerX, 0.82, TRAIN_Z]);',
+              'const player = addPlayer(b3, world, [playerX, 0.799859344959259, TRAIN_Z - 0.634566116333008]);'
+            ],
+          ];
+          for (const [from, to] of replacements) {
+            const matches = source.split(from).length - 1;
+            if (matches !== 1) throw new Error(`product calibration anchor drift: ${from} matches=${matches}`);
+            source = source.replace(from, to);
+          }
+          writeFileSync(outputPath, source);
+          console.log('PRODUCT_IMPACT_CALIBRATION_PREP_PASS', JSON.stringify({
+            sourcePath,
+            outputPath,
+            prePushRelative: { dx: -1.375510215759277, dy: 0.339859344959259, dz: -0.634566116333008 },
+            pushTicks: 150,
+            settleTicks: 60,
+          }));
+          NODE
+          node --check scripts/.world-v0-shared-consequence-product-impact-lab.mjs
+
+      - name: Run product-calibrated impact matrix
+        env:
+          MW_WORLD_V0_GEOMETRY_LAB_OUTPUT: world-v0-shared-consequence-product-impact-lab.json
+        run: |
+          set -o pipefail
+          node --experimental-strip-types scripts/.world-v0-shared-consequence-product-impact-lab.mjs | tee world-v0-shared-consequence-product-impact-lab.log
 
       - name: Upload geometry evidence
         if: always()
@@ -77,5 +119,7 @@ jobs:
           path: |
             world-v0-shared-consequence-geometry-lab.json
             world-v0-shared-consequence-geometry-lab.log
+            world-v0-shared-consequence-product-impact-lab.json
+            world-v0-shared-consequence-product-impact-lab.log
           if-no-files-found: warn
           retention-days: 14

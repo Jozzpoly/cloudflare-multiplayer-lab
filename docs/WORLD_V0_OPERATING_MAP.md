@@ -29,6 +29,25 @@ Do not infer the current execution plan from an old branch name or an old handof
 | Explicit isolated staging delivery | `world-v0-staging-delivery` | `d6e9d47d72aeac34bc6341a76ebdf7e53ff6522f` | Explicit promotion/deploy lane for the qualified playable candidate, with exact product provenance. |
 | Stress / capacity research | `world-v0-capacity-cartography` | `d086f51792795d1ab73ba43f9e3b4dbf97441bb7` | Isolated Stress × Play / capacity research lane. Does not redefine the qualified foundation. |
 
+## Current post-Owner review override
+
+A project-wide review was completed on 2026-09-05 before further product expansion:
+
+`docs/WORLD_V0_POST_OWNER_REVIEW_2026-09-05.md`
+
+This review is the current sequencing authority together with live branch truth. It does **not** invalidate historical evidence; it corrects how later work is classified and what comes next.
+
+Current decisions:
+
+- the latest clearly preserved human baseline entering the reviewed period is the F5 desktop + phone Owner live gate;
+- Foundation → Shared Yard → current playable/staging work is retained;
+- execution infrastructure is considered good enough and must not choose the next question by momentum;
+- current `world-v0-playable-frontier@1699fb71...` is machine-qualified and remotely delivered, but it still needs fresh Owner hands-on judgement after the later camera / presentation / `Inspect solo` work;
+- `world-v0-capacity-sp1c-ram-shock@306e4cbe...` is retained as **exploratory causal-amplifier / SP5-preflight evidence**, not as completion of SP1;
+- SP1 rollback/history boundary search remains incomplete unless consciously retired later;
+- `world-v0-playable-impact-lab-v0@33ddd527...` is **PARKED / UNQUALIFIED / HYPOTHESIS ONLY**. Do not continue implementing, qualifying or promoting it before current-product Owner evidence earns a physical-richness experiment;
+- no Stress × Play result should be silently promoted into a product-capacity or device-performance claim.
+
 ### Frozen simulation identity
 
 Current playable UI revision:
@@ -198,6 +217,8 @@ The program deliberately connects laboratory stress with play:
 
 Stress results do not automatically become product or foundation claims.
 
+Current review correction: SP1 remains incomplete; the later non-boundary ram correction-shock work is preserved as exploratory SP5-preflight evidence rather than being treated as the next completed SP1 rung.
+
 ## Qualification classes
 
 Keep these evidence classes separate:
@@ -216,6 +237,8 @@ A PASS in one class must not be silently upgraded into another class.
 PR #32 remains **DRAFT / DO NOT MERGE**.
 
 Its head remains the qualified foundation control branch. Product, delivery and stress lanes deliberately live outside it. Do not merge it merely because newer product work is healthy.
+
+Historical sequencing text in PR #32 may describe the earlier VQ-H1 frontier. For current work, this Operating Map and the post-Owner review override that historical sequencing.
 
 ## Historical evidence policy
 
@@ -263,10 +286,11 @@ For capacity/chaos questions, work on the isolated Stress × Play lane instead o
 A fresh Browser GPT / Codex session should normally be able to start with:
 
 1. read this file;
-2. verify the four active branch heads live;
-3. check the latest relevant workflow/evidence result;
-4. preserve `world-v0-shared-yard@b27de8b...` as the control unless new evidence contradicts it;
-5. continue on the lane appropriate to the actual question.
+2. read `docs/WORLD_V0_POST_OWNER_REVIEW_2026-09-05.md` while the current continuation gate remains active;
+3. verify the four active branch heads live;
+4. check the latest relevant workflow/evidence result;
+5. preserve `world-v0-shared-yard@b27de8b...` as the control unless new evidence contradicts it;
+6. continue on the lane appropriate to the actual question.
 
 Do not repeat the full historical grounding unless live evidence conflicts with this operating map or the task genuinely depends on older provenance.
 
@@ -274,12 +298,20 @@ Do not repeat the full historical grounding unless live evidence conflicts with 
 
 The execution substrate is now good enough that **more CI/tooling work is not the default frontier**.
 
-Highest-value next work should return to the world/product:
+The immediate product frontier is **R1 — current-product Owner baseline**, not Impact Lab and not another stress benchmark.
 
-- use the remotely qualified Yard in hands-on play;
-- run real two-human / two-device friend-play when the question depends on genuine peer timing, social presence or physical interaction;
-- use `Inspect solo` for cheap iteration when a second human is not materially part of the question;
-- let hands-on friction/fun determine whether the next product move is Yard refinement, greater physical richness, a Stress × Play translation, or a new bounded experiment;
-- only reopen execution infrastructure when concrete friction or evidence justifies it.
+Use the exact remotely-qualified current Yard first. Prefer `Inspect solo` when the question is controller/camera/readability/physical-toy feel and a second human adds no information. The Owner should be free to explore rather than follow a QA form.
+
+The first human pass should answer, naturally:
+
+- does entry/control/camera feel good enough to forget the apparatus;
+- is the current 12-prop Yard readable and inviting;
+- what feels dead, artificial or annoying;
+- what is unexpectedly fun or worth repeating;
+- what the Owner naturally wants to do next.
+
+Run real two-human / two-device friend-play only when genuine peer timing, social presence, cooperation/obstruction or physical-device behavior is part of the question.
+
+After that evidence, classify observations and choose exactly one next product uncertainty. Only then earn Yard refinement, greater physical richness, a Stress × Play translation or another bounded experiment.
 
 Branch/workflow/document cleanup may continue opportunistically, but it must reduce ambiguity without destroying historical evidence and must not displace higher-value product learning.

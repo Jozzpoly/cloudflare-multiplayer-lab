@@ -1,0 +1,92 @@
+name: World V0 Mobile Input Release Probe
+
+on:
+  push:
+    branches: [world-v0-mobile-input-release-probe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-mobile-input-release-probe
+  cancel-in-progress: true
+
+env:
+  FR_A_SOURCE: f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6
+
+jobs:
+  witness-current-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact probe head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove runtime is exact FR-A control
+        run: |
+          set -euo pipefail
+          git cat-file -e "$FR_A_SOURCE^{commit}"
+          protected=(
+            public/world-v0
+            src
+            wrangler.jsonc
+            package.json
+            package-lock.json
+          )
+          if ! git diff --quiet "$FR_A_SOURCE" -- "${protected[@]}"; then
+            echo "Probe must run against exact FR-A runtime/product bytes."
+            git diff --stat "$FR_A_SOURCE" -- "${protected[@]}"
+            exit 1
+          fi
+          node --check scripts/world-v0-mobile-input-release-probe.mjs
+          git diff --check
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install qualified dependency graph
+        run: npm ci
+
+      - name: Start exact FR-A Worker/assets in local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-mobile-release-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-mobile-release-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "mobile release probe Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-mobile-release-wrangler.log
+          exit 1
+
+      - name: Probe forced pointer-capture loss
+        env:
+          MW_WORLD_V0_MOBILE_RELEASE_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_MOBILE_RELEASE_OUTPUT: world-v0-mobile-input-release-probe.json
+        run: node scripts/world-v0-mobile-input-release-probe.mjs
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-mobile-release-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-mobile-release-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-mobile-input-release-probe-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-mobile-input-release-probe.json
+            world-v0-mobile-release-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

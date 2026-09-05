@@ -55,10 +55,11 @@ const joystick = document.querySelector("#joystick");
 const joystickKnob = document.querySelector("#joystick-knob");
 const cameraGimbal = document.querySelector("#camera-gimbal");
 const cameraGimbalKnob = document.querySelector("#camera-gimbal-knob");
+const jumpButton = document.querySelector("#jump-button");
 const copyEvidenceButton = document.querySelector("#copy-evidence");
 const metricNames = ["net", "ticks", "guard", "corrections", "rewind", "replay", "rtt", "lease", "memory", "frame"];
 const metric = Object.fromEntries(metricNames.map((name) => [name, document.querySelector(`#m-${name}`)]));
-const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, sessionActions, copyInviteButton, restartRoundButton, notice, joystick, joystickKnob, cameraGimbal, cameraGimbalKnob, copyEvidenceButton, ...Object.values(metric)];
+const required = [viewport, boot, bootTitle, callsignInput, runInput, enterButton, bootStatus, sessionActions, copyInviteButton, restartRoundButton, notice, joystick, joystickKnob, cameraGimbal, cameraGimbalKnob, jumpButton, copyEvidenceButton, ...Object.values(metric)];
 if (required.some((value) => !value)) throw new Error("Shared Yard V0 UI incomplete");
 
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
@@ -91,6 +92,10 @@ try {
   enterButton.textContent = "Box3D failed";
   throw error;
 }
+
+const supportContacts = b3.createContactsBuffer();
+const supportContact = b3.createContact();
+const supportManifold = b3.createManifold();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0d1218);
@@ -320,6 +325,8 @@ const keys = new Set();
 const movementCodes = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"]);
 let touchInput = { x: 0, z: 0 };
 let joystickPointer = null;
+let jumpQueued = false;
+let jumpKeyHeld = false;
 
 function keyboardInput() {
   let x = 0;
@@ -339,15 +346,29 @@ function rawCurrentInput() {
 }
 
 function currentInput() {
-  return cameraRelativeInput(rawCurrentInput(), cameraOrbit.yaw);
+  const movement = cameraRelativeInput(rawCurrentInput(), cameraOrbit.yaw);
+  return { x: movement.x, z: movement.z, jump: false };
+}
+
+function queueJump() {
+  if (playing && !runtimeFailed) jumpQueued = true;
+}
+
+function consumeIntendedInput() {
+  const movement = currentInput();
+  const jump = jumpQueued;
+  jumpQueued = false;
+  return { x: movement.x, z: movement.z, jump };
 }
 
 function sameInput(a, c) {
-  return Math.abs(a.x - c.x) <= EPS && Math.abs(a.z - c.z) <= EPS;
+  return Math.abs(a.x - c.x) <= EPS &&
+    Math.abs(a.z - c.z) <= EPS &&
+    Boolean(a.jump) === Boolean(c.jump);
 }
 
 function zeroInput() {
-  return { x: 0, z: 0 };
+  return { x: 0, z: 0, jump: false };
 }
 
 function distance3(a, c) {
@@ -558,6 +579,31 @@ function bodyAngularVelocity(body) {
   return [...out];
 }
 
+function sameBodyId(a, c) {
+  return a.index1 === c.index1 && a.world0 === c.world0 && a.generation === c.generation;
+}
+
+function hasJumpSupport(body) {
+  b3.getBodyContactData(supportContacts, body);
+  for (let i = 0, n = b3.getNumContacts(supportContacts); i < n; i += 1) {
+    b3.getContactAt(supportContact, supportContacts, i);
+    const bodyA = b3.b3Shape_GetBody(supportContact.shapeIdA);
+    const bodyB = b3.b3Shape_GetBody(supportContact.shapeIdB);
+    const playerIsA = sameBodyId(bodyA, body);
+    const playerIsB = sameBodyId(bodyB, body);
+    if (!playerIsA && !playerIsB) continue;
+    for (let m = 0; m < supportContact.manifoldCount; m += 1) {
+      b3.getManifoldAt(supportManifold, supportContact, m);
+      const supportNormalY = playerIsA ? -supportManifold.normal[1] : supportManifold.normal[1];
+      if (supportNormalY < simulation.movement.supportMinNormalY) continue;
+      for (let p = 0; p < supportManifold.pointCount; p += 1) {
+        if (supportManifold.points[p].totalNormalImpulse > simulation.movement.supportMinTotalNormalImpulse) return true;
+      }
+    }
+  }
+  return false;
+}
+
 function flattenBodyState(body) {
   return [
     ...bodyPosition(body),
@@ -758,7 +804,10 @@ function applyIntent(body, input) {
     input.z * simulation.movement.playerSpeed,
     accel * FIXED_DT,
   );
-  b3.b3Body_SetLinearVelocity(body, [nextX, velocity[1], nextZ]);
+  const nextY = Boolean(input.jump) && hasJumpSupport(body)
+    ? Math.max(velocity[1], simulation.movement.jumpSpeed)
+    : velocity[1];
+  b3.b3Body_SetLinearVelocity(body, [nextX, nextY, nextZ]);
 }
 
 function previousUsedInput(tick) {
@@ -774,9 +823,14 @@ function resolveInputsForTick(tick, previous) {
   if (protocolStartTick === null || tick < protocolStartTick) return { self: zeroInput(), remote: zeroInput() };
   const selfAuth = authoritativeInput(tick, selfSessionId);
   const remoteAuth = authoritativeInput(tick, remoteSessionId);
-  const self = selfAuth || intendedSelf.get(tick) || previous.self;
-  const remote = remoteAuth || peerRemote.get(tick) || previous.remote;
-  return { self: { x: self.x, z: self.z }, remote: { x: remote.x, z: remote.z } };
+  const selfRecord = selfAuth || intendedSelf.get(tick) || null;
+  const remoteRecord = remoteAuth || peerRemote.get(tick) || null;
+  const self = selfRecord || previous.self;
+  const remote = remoteRecord || previous.remote;
+  return {
+    self: { x: self.x, z: self.z, jump: Boolean(selfRecord?.jump) },
+    remote: { x: remote.x, z: remote.z, jump: Boolean(remoteRecord?.jump) },
+  };
 }
 
 function usedInputsChangedAt(tick) {
@@ -792,7 +846,7 @@ function truncateUsedFrom(targetTick) {
 
 function applyResolvedTick(sim, tick, allowGenerateSelf) {
   if (allowGenerateSelf && protocolStartTick !== null && tick >= protocolStartTick && !intendedSelf.has(tick)) {
-    const intended = currentInput();
+    const intended = consumeIntendedInput();
     intendedSelf.set(tick, { ...intended });
     queueInputRecord(tick, intended);
   }
@@ -1073,7 +1127,7 @@ function socketUrl() {
 }
 
 function queueInputRecord(targetTick, input) {
-  pendingBatch.push({ targetTick, x: input.x, z: input.z });
+  pendingBatch.push({ targetTick, x: input.x, z: input.z, jump: Boolean(input.jump) });
   if (pendingBatch.length < simulation.timing.inputBatchSize) return;
   if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error("input transport closed while generating canonical records");
   batchSeq += 1;
@@ -1132,7 +1186,7 @@ function handlePeerRecords(message) {
     const existing = peerRemote.get(record.targetTick);
     if (existing && !sameInput(existing, record)) throw new Error(`conflicting relayed remote record at ${record.targetTick}`);
     if (!existing) {
-      peerRemote.set(record.targetTick, { x: record.x, z: record.z });
+      peerRemote.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });
       candidates.push(record.targetTick);
     }
   }
@@ -1148,6 +1202,7 @@ function handleConsumed(message) {
     map.set(player.sessionId, {
       x: player.x,
       z: player.z,
+      jump: Boolean(player.jump),
       fresh: Boolean(player.fresh),
       source: player.source,
       missingStreak: player.missingStreak,
@@ -1191,6 +1246,7 @@ function handleStart(message) {
   if (!remoteMesh) remoteMesh = createPlayerMesh(false);
   sessionEnd = null;
   networkState = "live · Shared Yard V0";
+  jumpButton.classList.remove("hidden");
   joystick.classList.add("active");
   cameraGimbal.classList.add("active");
   recordLifecycle("world-start", { protocolStartTick });
@@ -1247,6 +1303,7 @@ function handleMessage(message) {
       at: new Date().toISOString(),
     };
     networkState = `epoch ended · ${message.reason}`;
+    jumpButton.classList.add("hidden");
     joystick.classList.remove("active");
     cameraGimbal.classList.remove("active");
     recordLifecycle("epoch-ended", { reason: message.reason, boundaryTick: message.boundaryTick ?? null });
@@ -1312,6 +1369,7 @@ function connect() {
       };
     }
     networkState = `closed ${event.code}`;
+    jumpButton.classList.add("hidden");
     joystick.classList.remove("active");
     cameraGimbal.classList.remove("active");
     cameraGimbalInput = { x: 0, y: 0 };
@@ -1536,7 +1594,7 @@ function productStatusText() {
   if (runtimeFailed) return "Runtime problem · open Diagnostics";
   if (networkState === "waiting for peer") return "Waiting for peer · use the same Run key";
   if (networkState === "peer joined" || networkState === "both connected · ready" || networkState === "ready · awaiting start") return "Peer found · synchronizing Shared Yard";
-  if (networkState.startsWith("live")) return "Shared Yard live · move · drag to look · interact";
+  if (networkState.startsWith("live")) return "Shared Yard live · move · jump · drag to look · interact";
   if (networkState === "connecting" || networkState === "syncing") return "Connecting to Shared Yard…";
   if (networkState.startsWith("closed")) return "Round ended · restart when ready";
   if (networkState.startsWith("epoch ended")) return "Round ending · preparing fresh epoch";
@@ -1591,6 +1649,7 @@ function resetProtocolState() {
   phaseAnchor = null;
   lastFrameAt = null;
   neutralizeTransientInputs();
+  jumpButton.classList.add("hidden");
   runtimeFailed = false;
   runtimeFailureReason = null;
   runtimeFailureAt = null;
@@ -1678,17 +1737,34 @@ copyEvidenceButton.addEventListener("click", async () => {
 });
 
 addEventListener("keydown", (event) => {
+  if (event.code === "Space") {
+    if (!event.repeat && !jumpKeyHeld) queueJump();
+    jumpKeyHeld = true;
+    event.preventDefault();
+    return;
+  }
   if (!movementCodes.has(event.code)) return;
   keys.add(event.code);
   event.preventDefault();
 });
 addEventListener("keyup", (event) => {
+  if (event.code === "Space") {
+    jumpKeyHeld = false;
+    event.preventDefault();
+    return;
+  }
   if (!movementCodes.has(event.code)) return;
   keys.delete(event.code);
   event.preventDefault();
 });
+jumpButton.addEventListener("pointerdown", (event) => {
+  queueJump();
+  event.preventDefault();
+});
 function neutralizeTransientInputs() {
   keys.clear();
+  jumpQueued = false;
+  jumpKeyHeld = false;
   touchInput = zeroInput();
   joystickPointer = null;
   joystickKnob.style.transform = "translate(0, 0)";

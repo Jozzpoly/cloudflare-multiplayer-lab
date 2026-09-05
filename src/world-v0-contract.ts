@@ -1,9 +1,9 @@
-export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v1";
-export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v1";
-export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v1";
+export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v2-jump";
+export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v2-jump";
+export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v2-jump";
 export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
-export const WORLD_V0_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v1";
+export const WORLD_V0_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v2-jump";
 
 export const WORLD_V0_BOX3D_RUNTIME = {
   package: "box3d.js@0.1.1",
@@ -32,6 +32,9 @@ export const WORLD_V0_MOVEMENT = {
   playerSpeed: 5.2,
   playerAcceleration: 28,
   playerDeceleration: 36,
+  jumpSpeed: 7.0,
+  supportMinNormalY: 0.55,
+  supportMinTotalNormalImpulse: 1e-6,
 } as const;
 
 export const WORLD_V0_ARENA = {

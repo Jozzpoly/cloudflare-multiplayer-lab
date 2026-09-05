@@ -1,0 +1,115 @@
+name: World V0 Two-Phone Interaction A-B
+
+on:
+  push:
+    branches: [world-v0-two-phone-interaction-ab]
+
+permissions:
+  contents: read
+
+env:
+  CONTROL_SOURCE: 5dd28a899c4f60c9227f1eb93026f571ced733e3
+  CANDIDATE_SOURCE: 65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3
+
+jobs:
+  interaction-ab:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [control, candidate]
+        trial: [1, 2, 3, 4]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact A-B apparatus
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select exact control or candidate app byte
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "$CONTROL_SOURCE^{commit}"
+          git cat-file -e "$CANDIDATE_SOURCE^{commit}"
+          if [ "$MODE" = control ]; then
+            git checkout "$CONTROL_SOURCE" -- public/world-v0/app.js
+          else
+            git checkout "$CANDIDATE_SOURCE" -- public/world-v0/app.js
+          fi
+          test "$(git hash-object public/world-v0/app.js)" = "$(git rev-parse "$([ "$MODE" = control ] && echo "$CONTROL_SOURCE" || echo "$CANDIDATE_SOURCE"):public/world-v0/app.js")"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start local Workerd
+        env:
+          MODE: ${{ matrix.mode }}
+          TRIAL: ${{ matrix.trial }}
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "world-v0-interaction-ab-${MODE}-${TRIAL}-wrangler.log" 2>&1 &
+          echo $! > /tmp/world-v0-interaction-ab.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "world-v0-interaction-ab-${MODE}-${TRIAL}-wrangler.log"
+          exit 1
+
+      - name: Measure interaction smoke without converting failure to qualification verdict
+        env:
+          MODE: ${{ matrix.mode }}
+          TRIAL: ${{ matrix.trial }}
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+        run: |
+          set +e
+          MW_WORLD_V0_PLAYABLE_OUTPUT="world-v0-interaction-ab-${MODE}-${TRIAL}.json" node scripts/world-v0-playable-interaction-smoke.mjs
+          status=$?
+          set -e
+          echo "INTERACTION_EXIT=$status" >> "$GITHUB_ENV"
+          test -f "world-v0-interaction-ab-${MODE}-${TRIAL}.json"
+
+      - name: Summarize raw A-B measurement
+        env:
+          MODE: ${{ matrix.mode }}
+          TRIAL: ${{ matrix.trial }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const path = `world-v0-interaction-ab-${process.env.MODE}-${process.env.TRIAL}.json`;
+          const e = JSON.parse(fs.readFileSync(path, "utf8"));
+          const summary = {
+            measurementOnly: true,
+            mode: process.env.MODE,
+            trial: Number(process.env.TRIAL),
+            exit: Number(process.env.INTERACTION_EXIT ?? -1),
+            verdict: e.verdict ?? null,
+            error: e.error ?? null,
+            generatedAt: e.generatedAt ?? null,
+          };
+          fs.writeFileSync(`world-v0-interaction-ab-${process.env.MODE}-${process.env.TRIAL}-summary.json`, JSON.stringify(summary, null, 2));
+          console.log("WORLD_V0_INTERACTION_AB_MEASUREMENT", JSON.stringify(summary));
+          NODE
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-interaction-ab.pid ]; then kill "$(cat /tmp/world-v0-interaction-ab.pid)" 2>/dev/null || true; fi
+
+      - name: Upload A-B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-interaction-ab-${{ matrix.mode }}-${{ matrix.trial }}
+          path: |
+            world-v0-interaction-ab-${{ matrix.mode }}-${{ matrix.trial }}.json
+            world-v0-interaction-ab-${{ matrix.mode }}-${{ matrix.trial }}-summary.json
+            world-v0-interaction-ab-${{ matrix.mode }}-${{ matrix.trial }}-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

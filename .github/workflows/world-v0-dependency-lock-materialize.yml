@@ -1,0 +1,67 @@
+name: World V0 Dependency Lock Materialize
+
+on:
+  push:
+    branches: [world-v0-dependency-lock-e0]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-dependency-lock-e0
+  cancel-in-progress: false
+
+jobs:
+  materialize-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate lock when absent
+        run: |
+          if [ ! -f package-lock.json ]; then
+            npm install --package-lock-only --ignore-scripts
+          fi
+          test -s package-lock.json
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Preserve complete repository validation
+        run: npm run check
+
+      - name: Validate lock root and resolved graph
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+          if (lock.lockfileVersion !== 3) throw new Error(`unexpected lockfileVersion ${lock.lockfileVersion}`);
+          if (lock.packages?.[""]?.name !== "cloudflare-multiplayer-lab") throw new Error("root package identity drift");
+          if (lock.packages?.[""]?.dependencies?.["box3d.js"] !== "0.1.1") throw new Error("Box3D root pin drift");
+          if (lock.packages?.[""]?.devDependencies?.typescript !== "7.0.2") throw new Error("TypeScript root pin drift");
+          if (lock.packages?.[""]?.devDependencies?.wrangler !== "4.127.1") throw new Error("Wrangler root pin drift");
+          console.log("DEPENDENCY_LOCK_PASS", JSON.stringify({
+            lockfileVersion: lock.lockfileVersion,
+            packageCount: Object.keys(lock.packages || {}).length,
+          }));
+          NODE
+
+      - name: Commit qualified lockfile only when newly materialized
+        run: |
+          if git diff --quiet -- package-lock.json && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
+            echo "Committed dependency lock already reproduces cleanly."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "build(world-v0): pin qualified npm dependency graph"
+          git push origin HEAD:world-v0-dependency-lock-e0

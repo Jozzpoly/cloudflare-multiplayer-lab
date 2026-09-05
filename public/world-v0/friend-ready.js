@@ -90,6 +90,7 @@ const continuity = {
   triggeredAt: null,
   settledAt: null,
   lastPlan: null,
+  triggerPlan: null,
 };
 
 function currentInspectionMode() {
@@ -153,6 +154,7 @@ function continuitySnapshotValue(evidence = baseEvidence()) {
     triggeredAt: continuity.triggeredAt,
     settledAt: continuity.settledAt,
     lastPlan: continuity.lastPlan ? { ...continuity.lastPlan } : null,
+    triggerPlan: continuity.triggerPlan ? { ...continuity.triggerPlan } : null,
     authorityCloseSemantic: "generic-websocket-close-not-proven-voluntary-leave",
   };
 }
@@ -189,6 +191,7 @@ function maybeAutoRearm() {
     continuity.toEpoch = null;
     continuity.triggeredAt = new Date().toISOString();
     continuity.settledAt = null;
+    continuity.triggerPlan = { ...finalPlan };
     continuity.state = "rearming";
     restartRoundButton.click();
   }, 250);

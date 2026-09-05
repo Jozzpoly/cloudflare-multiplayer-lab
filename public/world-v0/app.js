@@ -1523,6 +1523,7 @@ document.addEventListener("visibilitychange", () => {
   recordLifecycle("visibility", { state: document.visibilityState, elapsedSincePreviousMs: Math.max(0, now - visibilityTransitionAt) });
   visibilityTransitionAt = now;
   lastFrameAt = null;
+  if (document.visibilityState !== "visible") neutralizeTransientInputs();
 });
 window.__sharedYardV0Session = () => ({
   inviteUrl: buildInviteUrl(),
@@ -1589,17 +1590,7 @@ function resetProtocolState() {
   simulation = null;
   phaseAnchor = null;
   lastFrameAt = null;
-  keys.clear();
-  touchInput = zeroInput();
-  joystickPointer = null;
-  joystickKnob.style.transform = "translate(0, 0)";
-  cameraOrbit.pointerId = null;
-  cameraTouchPointers.clear();
-  cameraPinch = null;
-  cameraGimbalPointer = null;
-  cameraGimbalInput = { x: 0, y: 0 };
-  cameraGimbalKnob.style.transform = "translate(0, 0)";
-  lastCameraControlAt = null;
+  neutralizeTransientInputs();
   runtimeFailed = false;
   runtimeFailureReason = null;
   runtimeFailureAt = null;
@@ -1696,7 +1687,20 @@ addEventListener("keyup", (event) => {
   keys.delete(event.code);
   event.preventDefault();
 });
-addEventListener("blur", () => keys.clear());
+function neutralizeTransientInputs() {
+  keys.clear();
+  touchInput = zeroInput();
+  joystickPointer = null;
+  joystickKnob.style.transform = "translate(0, 0)";
+  cameraOrbit.pointerId = null;
+  cameraTouchPointers.clear();
+  cameraPinch = null;
+  cameraGimbalPointer = null;
+  cameraGimbalInput = { x: 0, y: 0 };
+  cameraGimbalKnob.style.transform = "translate(0, 0)";
+  lastCameraControlAt = null;
+}
+addEventListener("blur", neutralizeTransientInputs);
 
 function updateJoystick(event) {
   const rect = joystick.getBoundingClientRect();
@@ -1811,6 +1815,7 @@ renderer.domElement.addEventListener("pointerdown", beginCameraPointer);
 renderer.domElement.addEventListener("pointermove", moveCameraPointer);
 renderer.domElement.addEventListener("pointerup", endCameraPointer);
 renderer.domElement.addEventListener("pointercancel", endCameraPointer);
+renderer.domElement.addEventListener("lostpointercapture", endCameraPointer);
 renderer.domElement.addEventListener("contextmenu", (event) => event.preventDefault());
 renderer.domElement.addEventListener("wheel", (event) => {
   if (!playing) return;

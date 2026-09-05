@@ -173,7 +173,7 @@ try {
 
   const dragStart = { x: 210, y: 350 };
   await mouse(cdp, sessionId, "mousePressed", dragStart.x, dragStart.y, "left", 1, 1);
-  await mouse(cdp, sessionId, "mouseMoved", dragStart.x + 90, dragStart.y - 35, "none", 1, 0);
+  await mouse(cdp, sessionId, "mouseMoved", dragStart.x + 90, dragStart.y - 35, "left", 1, 0);
   await mouse(cdp, sessionId, "mouseReleased", dragStart.x + 90, dragStart.y - 35, "left", 0, 1);
   await sleep(100);
   const afterDrag = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
@@ -216,7 +216,7 @@ try {
 
   const joy = await cdp.evaluate(sessionId, `(() => { const r = document.querySelector("#joystick").getBoundingClientRect(); return { x:r.left+r.width/2, y:r.top+r.height/2, width:r.width, height:r.height }; })()`);
   await mouse(cdp, sessionId, "mousePressed", joy.x, joy.y, "left", 1, 1);
-  await mouse(cdp, sessionId, "mouseMoved", joy.x, joy.y - joy.height * 0.22, "none", 1, 0);
+  await mouse(cdp, sessionId, "mouseMoved", joy.x, joy.y - joy.height * 0.22, "left", 1, 0);
   await sleep(60);
   const joystickUp = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
   assert(joystickUp.rawInput.z < -0.2, `joystick up must be raw forward (z<0), got ${JSON.stringify(joystickUp.rawInput)}`);

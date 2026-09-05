@@ -6,6 +6,13 @@ import { SharedYardV0 } from "./world-v0-shared-yard";
 export class World extends BaseWorld {}
 export { WorldSlice0, WorldSliceF5, SharedYardV0 };
 
+const WORLD_V0_PUBLIC_ROOMS = [
+  { id: "yard-1", name: "Yard 1" },
+  { id: "yard-2", name: "Yard 2" },
+  { id: "yard-3", name: "Yard 3" },
+] as const;
+const WORLD_V0_PUBLIC_ROOM_CAPACITY = 2;
+
 function worldSliceStub(env: Env, name: string) {
   return env.WORLD_SLICE_0.get(env.WORLD_SLICE_0.idFromName(name));
 }
@@ -77,10 +84,66 @@ async function sharedYardV0WebSocketResponse(request: Request, env: Env): Promis
   return world.fetch(request);
 }
 
+async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Response> {
+  const rooms = await Promise.all(WORLD_V0_PUBLIC_ROOMS.map(async (room) => {
+    try {
+      const stub = sharedYardV0Stub(env, `shared-yard-v0-${room.id}`);
+      const response = await stub.fetch(new Request(`https://world-v0.internal/status/${room.id}`));
+      if (!response.ok) throw new Error(`status_${response.status}`);
+      const status = await response.json() as {
+        players?: number;
+        protocolStartTick?: number | null;
+        worldEpoch?: string | null;
+        simBuildId?: string | null;
+        failure?: string | null;
+      };
+      const occupancy = Number.isFinite(status.players) ? Number(status.players) : 0;
+      const active = status.protocolStartTick !== null && status.protocolStartTick !== undefined;
+      return {
+        id: room.id,
+        name: room.name,
+        occupancy,
+        capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
+        state: active ? "live" : occupancy > 0 ? "waiting" : "empty",
+        joinable: !active && occupancy < WORLD_V0_PUBLIC_ROOM_CAPACITY && !status.failure,
+        joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}`,
+        worldEpoch: status.worldEpoch ?? null,
+        simBuildId: status.simBuildId ?? null,
+        failure: status.failure ?? null,
+      };
+    } catch (error) {
+      return {
+        id: room.id,
+        name: room.name,
+        occupancy: null,
+        capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
+        state: "unavailable",
+        joinable: false,
+        joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}`,
+        worldEpoch: null,
+        simBuildId: null,
+        failure: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }));
+
+  return new Response(JSON.stringify({
+    revision: "world-v0-public-room-directory-r0",
+    generatedAt: new Date().toISOString(),
+    rooms,
+  }), {
+    headers: {
+      "cache-control": "no-store",
+      "content-type": "application/json; charset=utf-8",
+    },
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/world0") return worldSlice0ApiResponse(request, env);
+    if (url.pathname === "/api/world-v0/rooms" && env.SHARED_YARD_V0) return sharedYardV0PublicRoomDirectoryResponse(env);
     if (url.pathname === "/world0/ws") return worldSlice0WebSocketResponse(request, env);
     if (url.pathname === "/world0-f5/ws") return worldSliceF5WebSocketResponse(request, env);
     if (url.pathname === "/world-v0/ws" && env.SHARED_YARD_V0) return sharedYardV0WebSocketResponse(request, env);

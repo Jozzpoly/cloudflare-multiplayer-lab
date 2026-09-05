@@ -38,6 +38,9 @@ const HUD_INTERVAL_MS = 200;
 const LONG_FRAME_MS = 34;
 const LONG_FRAME_RETAIN = 32;
 const LIFECYCLE_RETAIN = 32;
+const ROOM_RECOVERY_MAX_ATTEMPTS = 6;
+const ROOM_RECOVERY_BASE_DELAY_MS = 250;
+const ROOM_RECOVERY_MAX_DELAY_MS = 4000;
 const EPS = 1e-9;
 
 const viewport = document.querySelector("#viewport");
@@ -447,6 +450,14 @@ let pingTimer = null;
 let hudTimer = null;
 let lastFrameAt = null;
 let correctionFrameWindowUntil = 0;
+let roomRecovery = {
+  pending: false,
+  reason: null,
+  attempts: 0,
+  timer: null,
+  sourceEpoch: null,
+  lastRecoveredEpoch: null,
+};
 
 const pendingPings = new Map();
 const rttSamples = [];
@@ -498,16 +509,95 @@ function buildInviteUrl() {
 }
 
 function canRestartRound() {
-  return !runtimeFailed && networkState.startsWith("closed") && (!socket || socket.readyState === WebSocket.CLOSED);
+  return !runtimeFailed && !roomRecovery.pending && networkState.startsWith("closed") && (!socket || socket.readyState === WebSocket.CLOSED);
 }
 
 function updateSessionActions() {
   const compact = boot.classList.contains("compact");
-  const inviteVisible = compact && (networkState === "waiting for peer" || networkState.startsWith("closed") || networkState.startsWith("epoch ended"));
+  const inviteVisible = compact && !roomRecovery.pending && (networkState === "waiting for peer" || networkState.startsWith("closed") || networkState.startsWith("epoch ended"));
   const restartVisible = compact && canRestartRound();
   copyInviteButton.classList.toggle("hidden", !inviteVisible);
   restartRoundButton.classList.toggle("hidden", !restartVisible);
   sessionActions.classList.toggle("hidden", !inviteVisible && !restartVisible);
+}
+
+function recoverableRoomEpochReason(reason) {
+  const value = String(reason || "");
+  return value === "peer_left_restart_required"
+    || value === "peer_error_restart_required"
+    || value.startsWith("input_lease_expired:");
+}
+
+function clearRoomRecoveryTimer() {
+  if (roomRecovery.timer) clearTimeout(roomRecovery.timer);
+  roomRecovery.timer = null;
+}
+
+function roomRecoverySnapshot() {
+  return {
+    pending: roomRecovery.pending,
+    reason: roomRecovery.reason,
+    attempts: roomRecovery.attempts,
+    sourceEpoch: roomRecovery.sourceEpoch,
+    lastRecoveredEpoch: roomRecovery.lastRecoveredEpoch,
+    waitingForVisibility: roomRecovery.pending && document.visibilityState !== "visible",
+  };
+}
+
+function reconnectSameRoom() {
+  if (!roomRecovery.pending || runtimeFailed) return false;
+  if (document.visibilityState !== "visible") return false;
+  if (socket && socket.readyState !== WebSocket.CLOSED) return false;
+  if (roomRecovery.attempts >= ROOM_RECOVERY_MAX_ATTEMPTS) {
+    roomRecovery.pending = false;
+    networkState = "room reconnect exhausted";
+    showNotice("Could not rejoin this Yard automatically. Try joining it again.");
+    updateProductStatus();
+    return false;
+  }
+
+  roomRecovery.attempts += 1;
+  const attempt = roomRecovery.attempts;
+  const reason = roomRecovery.reason;
+  resetProtocolState({ preserveRoomRecovery: true });
+  playing = true;
+  networkState = `rejoining room · attempt ${attempt}`;
+  recordLifecycle("room-reconnect-attempt", { attempt, reason, roomId: runKey, sourceEpoch: roomRecovery.sourceEpoch });
+  updateProductStatus();
+  connect();
+  return true;
+}
+
+function scheduleRoomRecovery(reason = roomRecovery.reason) {
+  if (runtimeFailed || !recoverableRoomEpochReason(reason)) return false;
+  roomRecovery.pending = true;
+  roomRecovery.reason = String(reason);
+  if (!roomRecovery.sourceEpoch) roomRecovery.sourceEpoch = identity?.worldEpoch || null;
+
+  if (document.visibilityState !== "visible") {
+    clearRoomRecoveryTimer();
+    networkState = "room paused · return to rejoin";
+    showNotice("Yard is still here. Return to the game to rejoin it.");
+    updateProductStatus();
+    return true;
+  }
+
+  if (roomRecovery.timer) return true;
+  if (socket && socket.readyState !== WebSocket.CLOSED) return true;
+  if (roomRecovery.attempts >= ROOM_RECOVERY_MAX_ATTEMPTS) return reconnectSameRoom();
+
+  const delay = Math.min(
+    ROOM_RECOVERY_MAX_DELAY_MS,
+    ROOM_RECOVERY_BASE_DELAY_MS * (2 ** roomRecovery.attempts),
+  );
+  networkState = `rejoining room · attempt ${roomRecovery.attempts + 1}`;
+  showNotice("Rejoining the same Yard…");
+  updateProductStatus();
+  roomRecovery.timer = setTimeout(() => {
+    roomRecovery.timer = null;
+    reconnectSameRoom();
+  }, delay);
+  return true;
 }
 
 function expectedWorldId() {
@@ -1256,12 +1346,27 @@ function handleStart(message) {
 
 function handleMessage(message) {
   if (message.type === "world_v0_welcome") {
+    const recoveringRoom = roomRecovery.pending;
+    const sourceEpoch = roomRecovery.sourceEpoch;
     adoptIdentity(message, "welcome");
+    if (recoveringRoom && sourceEpoch && message.worldEpoch === sourceEpoch) {
+      throw new Error(`room recovery reused ended epoch ${sourceEpoch}`);
+    }
     simulation = assertSimulationContract(message.simulation, "welcome");
     selfSessionId = message.selfSessionId;
     selfNetEntityId = message.selfNetEntityId;
     selfSlot = message.slot;
     networkState = message.waitingForPeer ? "waiting for peer" : "peer joined";
+    if (recoveringRoom) {
+      clearRoomRecoveryTimer();
+      roomRecovery.pending = false;
+      roomRecovery.reason = null;
+      roomRecovery.attempts = 0;
+      roomRecovery.lastRecoveredEpoch = message.worldEpoch;
+      roomRecovery.sourceEpoch = null;
+      recordLifecycle("room-recovered", { roomId: runKey, sourceEpoch, recoveredEpoch: message.worldEpoch });
+      showNotice(message.waitingForPeer ? "Back in the same Yard · waiting for friend" : "Back in the same Yard");
+    }
     return;
   }
   if (message.type === "world_v0_roster") {
@@ -1295,6 +1400,14 @@ function handleMessage(message) {
   }
   if (message.type === "world_v0_epoch_ended") {
     assertMessageIdentity(message, "epoch-ended");
+    const recoverable = recoverableRoomEpochReason(message.reason);
+    if (recoverable) {
+      clearRoomRecoveryTimer();
+      roomRecovery.pending = true;
+      roomRecovery.reason = message.reason;
+      roomRecovery.attempts = 0;
+      roomRecovery.sourceEpoch = message.worldEpoch;
+    }
     playing = false;
     sessionEnd = {
       kind: "epoch-ended",
@@ -1302,12 +1415,12 @@ function handleMessage(message) {
       boundaryTick: message.boundaryTick ?? localState?.boundaryTick ?? null,
       at: new Date().toISOString(),
     };
-    networkState = `epoch ended · ${message.reason}`;
+    networkState = recoverable ? "room epoch ended · recovery pending" : `epoch ended · ${message.reason}`;
     jumpButton.classList.add("hidden");
     joystick.classList.remove("active");
     cameraGimbal.classList.remove("active");
-    recordLifecycle("epoch-ended", { reason: message.reason, boundaryTick: message.boundaryTick ?? null });
-    showNotice(`Shared Yard round ended: ${message.reason}. Restart when ready.`);
+    recordLifecycle("epoch-ended", { reason: message.reason, boundaryTick: message.boundaryTick ?? null, recoverable });
+    showNotice(recoverable ? "Yard is restarting this round…" : `Shared Yard round ended: ${message.reason}. Restart when ready.`);
     persistLastSessionEvidence("epoch-ended");
     updateProductStatus();
     return;
@@ -1374,9 +1487,20 @@ function connect() {
     cameraGimbal.classList.remove("active");
     cameraGimbalInput = { x: 0, y: 0 };
     cameraGimbalKnob.style.transform = "translate(0, 0)";
-    recordLifecycle("socket-close", { code: event.code, reason: event.reason || null, wasClean: event.wasClean, expectedAfterEpochEnd });
+    const closeReason = event.reason || sessionEnd?.reason || "";
+    if (!roomRecovery.pending && recoverableRoomEpochReason(closeReason)) {
+      roomRecovery.pending = true;
+      roomRecovery.reason = closeReason;
+      roomRecovery.attempts = 0;
+      roomRecovery.sourceEpoch = identity?.worldEpoch || null;
+    }
+    recordLifecycle("socket-close", { code: event.code, reason: event.reason || null, wasClean: event.wasClean, expectedAfterEpochEnd, roomRecoveryPending: roomRecovery.pending });
     persistLastSessionEvidence("socket-close");
     updateProductStatus();
+    if (!runtimeFailed && roomRecovery.pending) {
+      scheduleRoomRecovery(roomRecovery.reason);
+      return;
+    }
     if (!runtimeFailed) showNotice("Shared Yard round ended. Restart when ready; the next round uses a fresh world epoch.");
   });
   socket.addEventListener("error", () => {
@@ -1524,6 +1648,7 @@ function buildEvidence() {
       inviteUrl: buildInviteUrl(),
       restartAvailable: canRestartRound(),
       end: sessionEnd ? { ...sessionEnd } : null,
+      roomRecovery: roomRecoverySnapshot(),
     },
     metrics: JSON.parse(JSON.stringify(metrics)),
     rtt: {
@@ -1581,17 +1706,25 @@ document.addEventListener("visibilitychange", () => {
   recordLifecycle("visibility", { state: document.visibilityState, elapsedSincePreviousMs: Math.max(0, now - visibilityTransitionAt) });
   visibilityTransitionAt = now;
   lastFrameAt = null;
-  if (document.visibilityState !== "visible") neutralizeTransientInputs();
+  if (document.visibilityState !== "visible") {
+    neutralizeTransientInputs();
+    if (roomRecovery.pending) scheduleRoomRecovery(roomRecovery.reason);
+  } else if (roomRecovery.pending && (!socket || socket.readyState === WebSocket.CLOSED)) {
+    scheduleRoomRecovery(roomRecovery.reason);
+  }
 });
 window.__sharedYardV0Session = () => ({
   inviteUrl: buildInviteUrl(),
   restartAvailable: canRestartRound(),
   runKey: sessionRunKey(),
   networkState,
+  roomRecovery: roomRecoverySnapshot(),
 });
 
 function productStatusText() {
   if (runtimeFailed) return "Runtime problem · open Diagnostics";
+  if (roomRecovery.pending && document.visibilityState !== "visible") return "Yard paused · return to rejoin";
+  if (roomRecovery.pending) return "Rejoining the same Yard…";
   if (networkState === "waiting for peer") return "Waiting for peer · use the same Run key";
   if (networkState === "peer joined" || networkState === "both connected · ready" || networkState === "ready · awaiting start") return "Peer found · synchronizing Shared Yard";
   if (networkState.startsWith("live")) return "Shared Yard live · move · jump · drag to look · interact";
@@ -1623,7 +1756,7 @@ function updateHud() {
   updateProductStatus();
 }
 
-function resetProtocolState() {
+function resetProtocolState({ preserveRoomRecovery = false } = {}) {
   destroyLocalState();
   intendedSelf.clear();
   peerRemote.clear();
@@ -1655,6 +1788,17 @@ function resetProtocolState() {
   runtimeFailureAt = null;
   sessionEnd = null;
   visibilityTransitionAt = performance.now();
+  if (!preserveRoomRecovery) {
+    clearRoomRecoveryTimer();
+    roomRecovery = {
+      pending: false,
+      reason: null,
+      attempts: 0,
+      timer: null,
+      sourceEpoch: null,
+      lastRecoveredEpoch: roomRecovery.lastRecoveredEpoch,
+    };
+  }
   Object.assign(metrics, {
     corrections: 0,
     latestRewind: 0,

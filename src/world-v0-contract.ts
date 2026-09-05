@@ -1,7 +1,7 @@
 export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v1";
 export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v1";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v1";
-export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
+export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-b-impact-lab";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
 export const WORLD_V0_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v1";
 
@@ -72,8 +72,7 @@ export const WORLD_V0_PLAYER_STARTS = [
 ] as const;
 
 export const WORLD_V0_PROP_LAYOUT = [
-  // Compact 3x2 central barricade. Small gaps avoid an artificial overlap explosion
-  // while making two-player pushes and multi-contact chains easy to create.
+  // Preserve the compact central collision yard as the shared neutral landmark.
   { id: "prop-0", cluster: "barricade", position: [-0.96, 0.46, -0.48] as const },
   { id: "prop-1", cluster: "barricade", position: [0, 0.46, -0.48] as const },
   { id: "prop-2", cluster: "barricade", position: [0.96, 0.46, -0.48] as const },
@@ -81,16 +80,41 @@ export const WORLD_V0_PROP_LAYOUT = [
   { id: "prop-4", cluster: "barricade", position: [0, 0.46, 0.48] as const },
   { id: "prop-5", cluster: "barricade", position: [0.96, 0.46, 0.48] as const },
 
-  // A simple three-cube stack. It must survive the neutral pre-start settle but
-  // should readily collapse once a player or another prop disturbs it.
+  // Preserve the small collapse tower as a distinct low-complexity interaction.
   { id: "prop-6", cluster: "tower", position: [3.4, 0.46, -3.2] as const },
   { id: "prop-7", cluster: "tower", position: [3.4, 1.38, -3.2] as const },
   { id: "prop-8", cluster: "tower", position: [3.4, 2.3, -3.2] as const },
 
-  // Three near-touching ground props for impulse propagation / cooperative pushing.
-  { id: "prop-9", cluster: "train", position: [-4.0, 0.46, 3.3] as const },
-  { id: "prop-10", cluster: "train", position: [-3.06, 0.46, 3.3] as const },
-  { id: "prop-11", cluster: "train", position: [-2.12, 0.46, 3.3] as const },
+  // Impact Lab: extend the original three-cube impulse lane into an eight-cube
+  // near-touching train. Existing player locomotion is the only actuator; no new
+  // action/protocol semantics are introduced in this experiment.
+  { id: "prop-9", cluster: "impact-train", position: [-4.0, 0.46, 3.3] as const },
+  { id: "prop-10", cluster: "impact-train", position: [-3.06, 0.46, 3.3] as const },
+  { id: "prop-11", cluster: "impact-train", position: [-2.12, 0.46, 3.3] as const },
+  { id: "prop-12", cluster: "impact-train", position: [-1.18, 0.46, 3.3] as const },
+  { id: "prop-13", cluster: "impact-train", position: [-0.24, 0.46, 3.3] as const },
+  { id: "prop-14", cluster: "impact-train", position: [0.7, 0.46, 3.3] as const },
+  { id: "prop-15", cluster: "impact-train", position: [1.64, 0.46, 3.3] as const },
+  { id: "prop-16", cluster: "impact-train", position: [2.58, 0.46, 3.3] as const },
+
+  // A 5x3 near-touching breakwall sits immediately beyond the train. The train
+  // tail and central bottom wall cube retain a small 4 cm surface gap so neutral
+  // pre-start does not inject an artificial overlap impulse.
+  { id: "prop-17", cluster: "breakwall", position: [3.54, 0.46, 1.42] as const },
+  { id: "prop-18", cluster: "breakwall", position: [3.54, 0.46, 2.36] as const },
+  { id: "prop-19", cluster: "breakwall", position: [3.54, 0.46, 3.3] as const },
+  { id: "prop-20", cluster: "breakwall", position: [3.54, 0.46, 4.24] as const },
+  { id: "prop-21", cluster: "breakwall", position: [3.54, 0.46, 5.18] as const },
+  { id: "prop-22", cluster: "breakwall", position: [3.54, 1.38, 1.42] as const },
+  { id: "prop-23", cluster: "breakwall", position: [3.54, 1.38, 2.36] as const },
+  { id: "prop-24", cluster: "breakwall", position: [3.54, 1.38, 3.3] as const },
+  { id: "prop-25", cluster: "breakwall", position: [3.54, 1.38, 4.24] as const },
+  { id: "prop-26", cluster: "breakwall", position: [3.54, 1.38, 5.18] as const },
+  { id: "prop-27", cluster: "breakwall", position: [3.54, 2.3, 1.42] as const },
+  { id: "prop-28", cluster: "breakwall", position: [3.54, 2.3, 2.36] as const },
+  { id: "prop-29", cluster: "breakwall", position: [3.54, 2.3, 3.3] as const },
+  { id: "prop-30", cluster: "breakwall", position: [3.54, 2.3, 4.24] as const },
+  { id: "prop-31", cluster: "breakwall", position: [3.54, 2.3, 5.18] as const },
 ] as const;
 
 export const WORLD_V0_NET_ENTITY_ORDER = [

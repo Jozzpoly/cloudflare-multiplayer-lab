@@ -15,23 +15,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Bridge headless-only visibility return explicitly
+      - name: Fix visibility bridge syntax and prove script parses
         run: |
           python3 - <<'PY'
           from pathlib import Path
           path = Path('scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs')
           text = path.read_text()
-          old = '''  await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);\n  await cdp.call("Page.bringToFront", {}, sessionId);\n  await waitForBrowser(cdp, sessionId, `document.visibilityState === "visible" ? true : null`, "page visible after return", 5000);\n\n  const recovered = await waitForBrowser'''
-          new = '''  await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);\n  await cdp.call("Page.bringToFront", {}, sessionId);\n  let returnVisibility = await cdp.evaluate(sessionId, `document.visibilityState`);\n  let visibilityBridgeUsed = false;\n  if (returnVisibility !== "visible") {\n    const bridgedVisibility = await cdp.evaluate(sessionId, `(() => {\n      try {\n        Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });\n        document.dispatchEvent(new Event("visibilitychange"));\n        return document.visibilityState;\n      } catch (error) {\n        return `bridge-error:${error?.message || error}`;\n      }\n    })()`);\n    assert(bridgedVisibility === "visible", `headless visibility bridge failed: ${bridgedVisibility}`);\n    returnVisibility = bridgedVisibility;\n    visibilityBridgeUsed = true;\n  }\n  assert(returnVisibility === "visible", `page did not return visible: ${returnVisibility}`);\n\n  const recovered = await waitForBrowser'''
+          old = '        return `bridge-error:${error?.message || error}`;'
+          new = '        return "bridge-error:" + (error?.message || error);'
           if text.count(old) != 1:
-              raise SystemExit(f'expected one current freeze-resume seam, got {text.count(old)}')
-          text = text.replace(old, new, 1)
-          old_pass = '''    automaticRecoveryAfterActive: true,\n    replacementPeerReachedLive: true,'''
-          new_pass = '''    automaticRecoveryAfterActive: true,\n    visibilityBridgeUsed,\n    replacementPeerReachedLive: true,'''
-          if text.count(old_pass) != 1:
-              raise SystemExit(f'expected one PASS payload seam, got {text.count(old_pass)}')
-          path.write_text(text.replace(old_pass, new_pass, 1))
+              raise SystemExit(f'expected one nested-template seam, got {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
           PY
+          node --check scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
+          node --check scripts/world-v0-public-room-r0b-browser-smoke.mjs
           git diff --check
           git diff -- scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
       - name: Commit apparatus-only correction
@@ -40,5 +37,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
           test "$(git diff --cached --name-only)" = "scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs"
-          git commit -m "test(world-v0): bridge headless visibility in R0b freeze gate"
+          git commit -m "test(world-v0): fix R0b visibility bridge syntax"
           git push origin HEAD:world-v0-public-room-r0

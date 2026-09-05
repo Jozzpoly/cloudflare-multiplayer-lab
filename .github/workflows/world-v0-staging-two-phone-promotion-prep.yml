@@ -1,0 +1,120 @@
+name: World V0 Staging Two-Phone Promotion Prep
+
+on:
+  push:
+    branches: [world-v0-staging-two-phone-promotion-prep]
+    paths: [.github/workflows/world-v0-staging-two-phone-promotion-prep.yml]
+
+permissions:
+  contents: write
+
+env:
+  EXPECTED_STAGING_BASE: 35902816a9bebe38b19d675267f8303ec32e6210
+  PRODUCT_SOURCE_BRANCH: world-v0-two-phone-readiness-candidate
+  PRODUCT_SOURCE_SHA: 65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3
+  QUALIFICATION_HEAD: f22bccdda6e5918bb0d7e11c1dc982b59852033b
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout staging-derived prep branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify immutable promotion inputs
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_STAGING_BASE"
+          git cat-file -e "$PRODUCT_SOURCE_SHA^{commit}"
+          git cat-file -e "$QUALIFICATION_HEAD^{commit}"
+          test "$(git rev-parse "$PRODUCT_SOURCE_BRANCH")" = "$PRODUCT_SOURCE_SHA"
+
+      - name: Materialize exact qualified product bytes
+        run: |
+          set -euo pipefail
+          protected=(
+            public/world-v0
+            src/world-v0-contract.ts
+            src/world-v0-protocol.ts
+            src/world-v0-shared-yard.ts
+            src/box3d-runtime.ts
+            src/world-slice-entry.ts
+            wrangler.jsonc
+            package.json
+            package-lock.json
+          )
+          git checkout "$PRODUCT_SOURCE_SHA" -- "${protected[@]}"
+          if ! git diff --quiet "$PRODUCT_SOURCE_SHA" -- "${protected[@]}"; then
+            echo "Materialized staging product does not exactly match qualified candidate."
+            git diff --stat "$PRODUCT_SOURCE_SHA" -- "${protected[@]}"
+            git diff --name-status "$PRODUCT_SOURCE_SHA" -- "${protected[@]}"
+            exit 1
+          fi
+          echo "PROMOTION_PRODUCT_BYTES_EXACT source=$PRODUCT_SOURCE_BRANCH@$PRODUCT_SOURCE_SHA"
+
+      - name: Carry the causally validated interaction harness correction
+        run: |
+          set -euo pipefail
+          git checkout "$QUALIFICATION_HEAD" -- scripts/world-v0-playable-interaction-smoke.mjs
+          test "$(git hash-object scripts/world-v0-playable-interaction-smoke.mjs)" = "$(git rev-parse "$QUALIFICATION_HEAD:scripts/world-v0-playable-interaction-smoke.mjs")"
+          node --check scripts/world-v0-playable-interaction-smoke.mjs
+
+      - name: Bind delivery provenance and Friend Entry remote gate to exact candidate
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          writeFileSync(".github/world-v0-product-source.json", `${JSON.stringify({
+            productBranch: process.env.PRODUCT_SOURCE_BRANCH,
+            productSourceSha: process.env.PRODUCT_SOURCE_SHA,
+          }, null, 2)}\n`);
+          NODE
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/world-v0-staging-fr-a-remote-entry.yml')
+          s = p.read_text()
+          old_branch = 'EXPECTED_PRODUCT_SOURCE_BRANCH: world-v0-friend-ready-v1'
+          old_sha = 'EXPECTED_PRODUCT_SOURCE_SHA: 5dd28a899c4f60c9227f1eb93026f571ced733e3'
+          assert s.count(old_branch) == 1, 'source branch marker drift'
+          assert s.count(old_sha) == 1, 'source sha marker drift'
+          s = s.replace(old_branch, f'EXPECTED_PRODUCT_SOURCE_BRANCH: {"world-v0-two-phone-readiness-candidate"}')
+          s = s.replace(old_sha, f'EXPECTED_PRODUCT_SOURCE_SHA: {"65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3"}')
+          p.write_text(s)
+          PY
+
+      - name: Preflight delivery contract before creating promotion specimen
+        run: |
+          set -euo pipefail
+          node --check public/world-v0/app.js
+          node --check public/world-v0/build-contract.js
+          node --check public/world-v0/friend-entry.js
+          node --check public/world-v0/friend-ready.js
+          node --check scripts/world-v0-playable-interaction-smoke.mjs
+          node --check scripts/world-v0-friend-entry-browser-smoke.mjs
+          npm ci
+          npm run test:staging-deploy-guard
+          npm run validate:staging-contract
+          npx wrangler deploy --dry-run --env staging --outdir .wrangler/staging-two-phone-promotion-prep
+          git diff --check
+
+      - name: Commit exact promotion specimen on prep branch only
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            public/world-v0 \
+            src/world-v0-contract.ts \
+            src/world-v0-protocol.ts \
+            src/world-v0-shared-yard.ts \
+            src/box3d-runtime.ts \
+            src/world-slice-entry.ts \
+            wrangler.jsonc package.json package-lock.json \
+            scripts/world-v0-playable-interaction-smoke.mjs \
+            .github/world-v0-product-source.json \
+            .github/workflows/world-v0-staging-fr-a-remote-entry.yml
+          git commit -m "chore(world-v0): prepare qualified two-phone staging delivery"
+          git push origin HEAD:world-v0-staging-two-phone-promotion-prep

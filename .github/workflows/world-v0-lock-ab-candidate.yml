@@ -1,0 +1,84 @@
+name: World V0 Lock A-B Candidate
+
+on:
+  push:
+    branches: [world-v0-lock-ab-candidate]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-lock-ab-candidate
+  cancel-in-progress: true
+
+jobs:
+  exact-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact lock candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Assert candidate has qualified dependency lock
+        run: test -s package-lock.json
+
+      - name: Resolve dependencies using current playable command
+        run: npm install
+
+      - name: Start candidate Worker/assets in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-lock-ab-candidate-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-lock-ab-candidate-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "local Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-lock-ab-candidate-wrangler.log
+          exit 1
+
+      - name: Prepare local exact-state candidate
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
+          const remote = 'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";';
+          const local = 'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";';
+          if (!chromium.includes(remote)) throw new Error("candidate exact-state local-target anchor drift");
+          chromium = chromium.replace(remote, local);
+          writeFileSync("scripts/.world-v0-lock-ab-candidate-exact.mjs", chromium);
+          NODE
+
+      - name: Run lock exact-state candidate
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-lock-ab-candidate-exact.json
+        run: node scripts/.world-v0-lock-ab-candidate-exact.mjs
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-lock-ab-candidate-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-lock-ab-candidate-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-lock-ab-candidate-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-lock-ab-candidate-exact.json
+            world-v0-lock-ab-candidate-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

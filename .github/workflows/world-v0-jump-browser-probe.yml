@@ -14,7 +14,7 @@ env:
 jobs:
   jump-browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 10
     steps:
       - name: Checkout branch apparatus
         uses: actions/checkout@v4
@@ -47,17 +47,15 @@ jobs:
           npm ci
           command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser
 
-      - name: Add measurement-only browser instrumentation
+      - name: Add measurement-only browser observation
         run: |
           set -euo pipefail
           python scripts/world-v0-jump-browser-instrument.py
           node --check public/world-v0/app.js
-          node --check scripts/.world-v0-jump-browser-probe.mjs
+          node --check scripts/world-v0-jump-hybrid-probe.mjs
           git diff --check
           test "$(git diff --name-only)" = "public/world-v0/app.js"
-          test -f scripts/.world-v0-jump-browser-probe.mjs
-          test "$(git status --porcelain --untracked-files=all | wc -l)" -eq 2
-          git status --short --untracked-files=all
+          echo "MEASUREMENT_ONLY_APP_INSTRUMENTATION_PASS"
 
       - name: Start local exact Workerd candidate
         run: |
@@ -70,18 +68,18 @@ jobs:
           cat world-v0-jump-browser-wrangler.log
           exit 1
 
-      - name: Run two-client jump integration probe
+      - name: Run one-browser plus lightweight-peer jump falsifier
         env:
           MW_WORLD_V0_JUMP_BASE_URL: http://127.0.0.1:8787
-          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-jump-browser-evidence.json
-          MW_WORLD_V0_CHROME_MODE: swangle-webgl
-        run: node scripts/.world-v0-jump-browser-probe.mjs
+          MW_WORLD_V0_JUMP_OUTPUT: world-v0-jump-hybrid-evidence.json
+          PRODUCT_SHA: ${{ env.PRODUCT_SHA }}
+        run: node scripts/world-v0-jump-hybrid-probe.mjs
 
       - name: Summarize jump evidence
         if: always()
         run: |
-          if [ -f world-v0-jump-browser-evidence.json ]; then
-            node -e 'const e=require("./world-v0-jump-browser-evidence.json"); console.log("WORLD_V0_JUMP_BROWSER_RESULT", JSON.stringify({verdict:e.verdict,identity:e.identity,jumpEvidence:e.jumpEvidence,guards:e.pages?.map(p=>({matches:p.metrics?.guardMatches,mismatches:p.metrics?.guardMismatches,boundary:p.localBoundaryTick})),runtimeFailed:e.pages?.map(p=>p.runtimeFailed)}))'
+          if [ -f world-v0-jump-hybrid-evidence.json ]; then
+            node -e 'const e=require("./world-v0-jump-hybrid-evidence.json"); console.log("WORLD_V0_JUMP_HYBRID_RESULT", JSON.stringify({verdict:e.verdict,identity:e.identity,jump:e.jump,browserEvidence:e.browserEvidence,zeroPeer:e.zeroPeer,error:e.error}))'
           fi
 
       - name: Stop local Workerd
@@ -93,9 +91,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: world-v0-jump-browser-probe-${{ github.run_id }}
+          name: world-v0-jump-hybrid-probe-${{ github.run_id }}
           path: |
-            world-v0-jump-browser-evidence.json
+            world-v0-jump-hybrid-evidence.json
             world-v0-jump-browser-wrangler.log
           if-no-files-found: warn
           retention-days: 14

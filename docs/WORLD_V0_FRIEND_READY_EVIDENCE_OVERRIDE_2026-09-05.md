@@ -116,6 +116,23 @@ Capture only what materially emerges:
 
 Owner judgement on fun, friction and product direction outranks machine-green speculation here.
 
+### Existing evidence capture is sufficient for the first natural session
+
+Do **not** add new telemetry, a session recorder, an evidence archive UI or player-facing diagnostics before the first friend-play merely to make the session easier to analyse.
+
+The current qualified runtime already:
+
+- automatically persists a full evidence snapshot to browser `localStorage` on `epoch-ended`, `socket-close`, `runtime-failure` and `pagehide` under `shared-yard-v0-last-evidence`;
+- exposes that snapshot through `window.__sharedYardV0LastEvidence()`;
+- exposes live evidence through `window.__sharedYardV0Evidence()`;
+- provides `Copy evidence` inside the **closed-by-default Diagnostics panel**, outside the normal friend-facing flow.
+
+The snapshot already contains identity/epoch, session end, lifecycle events, exact-state guard metrics, corrections/replay history, RTT, frame/long-frame diagnostics and relevant failure provenance.
+
+Known limitation: this is a **single latest snapshot**, not a multi-round archive. A later ended round can overwrite an earlier one. That limitation is accepted for the first natural session because changing the public control and requalifying it solely to preserve more diagnostic history would cost more and risk influencing the session. If a specific anomaly matters, preserve its evidence before many later rounds when practical; otherwise Owner observations/screen recording remain valid complementary evidence.
+
+Friends should not be asked to operate Diagnostics unless a concrete problem makes it necessary.
+
 ## 5. Candidate next moves after friend-play
 
 Choose one, not all:

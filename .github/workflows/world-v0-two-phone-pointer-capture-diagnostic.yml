@@ -1,0 +1,189 @@
+name: World V0 Two-Phone Pointer Capture Diagnostic
+
+on:
+  push:
+    branches: [world-v0-two-phone-pointer-capture-diagnostic]
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SOURCE: 65a39bf6cb338e86d4966e7746fdb41dbb0b9ff3
+
+jobs:
+  pointer-trace:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [candidate, no-canvas-lostcapture]
+        trial: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact diagnostic apparatus
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select exact candidate and bounded subtraction
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          git checkout "$CANDIDATE_SOURCE" -- public/world-v0/app.js
+          if [ "$VARIANT" = "no-canvas-lostcapture" ]; then
+            python - <<'PY'
+          from pathlib import Path
+          p=Path('public/world-v0/app.js')
+          s=p.read_text()
+          needle='renderer.domElement.addEventListener("lostpointercapture", endCameraPointer);\n'
+          assert s.count(needle)==1
+          p.write_text(s.replace(needle,''))
+          PY
+          elif [ "$VARIANT" != "candidate" ]; then
+            echo "unknown variant $VARIANT" >&2
+            exit 1
+          fi
+          git diff --check
+
+      - name: Instrument exact interaction smoke without changing product
+        run: |
+          cp scripts/world-v0-playable-interaction-smoke.mjs scripts/.world-v0-pointer-capture-diagnostic.mjs
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/.world-v0-pointer-capture-diagnostic.mjs')
+          s=p.read_text()
+          anchor='  const dragStart = { x: 210, y: 350 };\n'
+          assert s.count(anchor)==1
+          instrumentation=r'''  const dragStart = { x: 210, y: 350 };
+          const dragDiagnosticBefore = await cdp.evaluate(sessionId, `(() => {
+            const canvas = document.querySelector("#viewport canvas");
+            const r = canvas.getBoundingClientRect();
+            const hit = document.elementFromPoint(${dragStart.x}, ${dragStart.y});
+            window.__mwPointerTrace = [];
+            const describe = (node) => node ? { tag: node.tagName, id: node.id || null, className: typeof node.className === "string" ? node.className : null } : null;
+            const record = (phase) => (event) => {
+              window.__mwPointerTrace.push({
+                phase,
+                type: event.type,
+                pointerId: event.pointerId ?? null,
+                pointerType: event.pointerType ?? null,
+                button: event.button ?? null,
+                buttons: event.buttons ?? null,
+                clientX: event.clientX ?? null,
+                clientY: event.clientY ?? null,
+                target: describe(event.target),
+                currentTarget: describe(event.currentTarget),
+                hasCapture: typeof canvas.hasPointerCapture === "function" && event.pointerId != null ? canvas.hasPointerCapture(event.pointerId) : null,
+                orbitPointerId: window.__sharedYardV0PlayableControl?.().cameraOrbit?.pointerId ?? null,
+                userAdjusted: window.__sharedYardV0PlayableControl?.().cameraOrbit?.userAdjusted ?? null,
+              });
+            };
+            for (const type of ["pointerdown","gotpointercapture","pointermove","lostpointercapture","pointerup","pointercancel"]) {
+              canvas.addEventListener(type, record("capture"), true);
+              canvas.addEventListener(type, record("bubble"), false);
+            }
+            return {
+              canvasRect: { left:r.left, top:r.top, right:r.right, bottom:r.bottom, width:r.width, height:r.height },
+              hit: describe(hit),
+              hitIsCanvas: hit === canvas,
+              playing: window.__sharedYardV0Evidence?.().networkState,
+              control: window.__sharedYardV0PlayableControl?.(),
+            };
+          })()`);
+'''
+          s=s.replace(anchor,instrumentation)
+          anchor2='  assert(afterDrag.cameraOrbit.userAdjusted === true, "camera drag did not mark user adjustment");\n'
+          assert s.count(anchor2)==1
+          instrumentation2=r'''  const dragDiagnosticAfter = await cdp.evaluate(sessionId, `({
+            trace: window.__mwPointerTrace || [],
+            hit: (() => { const n=document.elementFromPoint(${dragStart.x},${dragStart.y}); return n ? {tag:n.tagName,id:n.id||null,className:typeof n.className==="string"?n.className:null} : null; })(),
+            control: window.__sharedYardV0PlayableControl?.(),
+          })`);
+          result.dragDiagnostic = { before: dragDiagnosticBefore, after: dragDiagnosticAfter, observedControl: afterDrag };
+          writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
+          assert(afterDrag.cameraOrbit.userAdjusted === true, "camera drag did not mark user adjustment");
+'''
+          s=s.replace(anchor2,instrumentation2)
+          p.write_text(s)
+          PY
+          node --check scripts/.world-v0-pointer-capture-diagnostic.mjs
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start local Workerd
+        env:
+          VARIANT: ${{ matrix.variant }}
+          TRIAL: ${{ matrix.trial }}
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "world-v0-pointer-${VARIANT}-${TRIAL}-wrangler.log" 2>&1 &
+          echo $! > /tmp/world-v0-pointer.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "world-v0-pointer-${VARIANT}-${TRIAL}-wrangler.log"
+          exit 1
+
+      - name: Capture pointer sequence
+        env:
+          VARIANT: ${{ matrix.variant }}
+          TRIAL: ${{ matrix.trial }}
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+        run: |
+          set +e
+          MW_WORLD_V0_PLAYABLE_OUTPUT="world-v0-pointer-${VARIANT}-${TRIAL}.json" node scripts/.world-v0-pointer-capture-diagnostic.mjs
+          status=$?
+          set -e
+          echo "DIAGNOSTIC_EXIT=$status" >> "$GITHUB_ENV"
+          test -f "world-v0-pointer-${VARIANT}-${TRIAL}.json"
+
+      - name: Summarize pointer evidence
+        env:
+          VARIANT: ${{ matrix.variant }}
+          TRIAL: ${{ matrix.trial }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const path = `world-v0-pointer-${process.env.VARIANT}-${process.env.TRIAL}.json`;
+          const e = JSON.parse(fs.readFileSync(path, "utf8"));
+          const trace = e.dragDiagnostic?.after?.trace || [];
+          const summary = {
+            measurementOnly: true,
+            variant: process.env.VARIANT,
+            trial: Number(process.env.TRIAL),
+            exit: Number(process.env.DIAGNOSTIC_EXIT ?? -1),
+            verdict: e.verdict ?? null,
+            error: e.error ?? null,
+            hitIsCanvas: e.dragDiagnostic?.before?.hitIsCanvas ?? null,
+            canvasRect: e.dragDiagnostic?.before?.canvasRect ?? null,
+            hit: e.dragDiagnostic?.before?.hit ?? null,
+            eventTypes: trace.map(x => `${x.phase}:${x.type}`),
+            pointerTrace: trace,
+          };
+          fs.writeFileSync(`world-v0-pointer-${process.env.VARIANT}-${process.env.TRIAL}-summary.json`, JSON.stringify(summary, null, 2));
+          console.log("WORLD_V0_POINTER_CAPTURE_DIAGNOSTIC", JSON.stringify({variant:summary.variant,trial:summary.trial,exit:summary.exit,hitIsCanvas:summary.hitIsCanvas,eventTypes:summary.eventTypes}));
+          NODE
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-pointer.pid ]; then kill "$(cat /tmp/world-v0-pointer.pid)" 2>/dev/null || true; fi
+
+      - name: Upload pointer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-pointer-${{ matrix.variant }}-${{ matrix.trial }}
+          path: |
+            world-v0-pointer-${{ matrix.variant }}-${{ matrix.trial }}.json
+            world-v0-pointer-${{ matrix.variant }}-${{ matrix.trial }}-summary.json
+            world-v0-pointer-${{ matrix.variant }}-${{ matrix.trial }}-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

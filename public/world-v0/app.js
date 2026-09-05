@@ -1727,6 +1727,7 @@ function releaseJoystick(event) {
 }
 joystick.addEventListener("pointerup", releaseJoystick);
 joystick.addEventListener("pointercancel", releaseJoystick);
+joystick.addEventListener("lostpointercapture", releaseJoystick);
 
 function cameraTouchSpan() {
   const points = [...cameraTouchPointers.values()];
@@ -1856,6 +1857,7 @@ function releaseCameraGimbal(event) {
 }
 cameraGimbal.addEventListener("pointerup", releaseCameraGimbal);
 cameraGimbal.addEventListener("pointercancel", releaseCameraGimbal);
+cameraGimbal.addEventListener("lostpointercapture", releaseCameraGimbal);
 
 function advanceCameraGimbal(now) {
   if (lastCameraControlAt === null) {

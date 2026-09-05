@@ -15,7 +15,7 @@ concurrency:
 env:
   STAGING_BASE_URL: https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev
   EXPECTED_PRODUCT_SOURCE_BRANCH: world-v0-friend-ready-v1
-  EXPECTED_PRODUCT_SOURCE_SHA: f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6
+  EXPECTED_PRODUCT_SOURCE_SHA: 5dd28a899c4f60c9227f1eb93026f571ced733e3
   EXPECTED_UI_REVISION: shared-yard-v0-browser-ui-v8-friend-entry
   EXPECTED_SIM_BUILD_ID: shared-yard-v0-sim-579c7aa172198390
 

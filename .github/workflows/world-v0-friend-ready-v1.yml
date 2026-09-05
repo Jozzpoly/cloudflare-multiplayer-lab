@@ -39,9 +39,13 @@ jobs:
           git cat-file -e "$FRIEND_READY_BASE^{commit}"
           node --check public/world-v0/app.js
           node --check public/world-v0/build-contract.js
+          node --check public/world-v0/friend-entry.js
+          node --check public/world-v0/friend-ready.js
           node --check public/world-v0/playable-control.js
           node --check public/world-v0/solo-inspection-core.js
           node --check public/world-v0/solo-inspection.js
+          node --check scripts/world-v0-friend-entry-core-smoke.mjs
+          node --check scripts/world-v0-friend-entry-browser-smoke.mjs
           node --check scripts/world-v0-playable-control-smoke.mjs
           node --check scripts/world-v0-playable-interaction-smoke.mjs
           node --check scripts/world-v0-solo-inspection-core-smoke.mjs
@@ -98,8 +102,9 @@ jobs:
           console.log("WORLD_V0_FRIEND_READY_FROZEN_CONTRACT_PASS", JSON.stringify(actual));
           NODE
 
-      - name: Preserve control and repository falsifiers
+      - name: Preserve control and Friend-Ready pure falsifiers
         run: |
+          node scripts/world-v0-friend-entry-core-smoke.mjs
           node scripts/world-v0-playable-control-smoke.mjs
           node scripts/world-v0-solo-inspection-core-smoke.mjs
           node scripts/world-v0-exact-failure-classifier-smoke.mjs
@@ -147,7 +152,7 @@ jobs:
   qualify-presentation:
     needs: qualify-core
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 14
     steps:
       - name: Checkout exact Friend-Ready head
         uses: actions/checkout@v4
@@ -174,13 +179,19 @@ jobs:
           cat world-v0-friend-ready-presentation-wrangler.log
           exit 1
 
-      - name: Prove rendered controls and camera
+      - name: Prove host-to-friend entry journey
+        env:
+          MW_WORLD_V0_FRIEND_ENTRY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_FRIEND_ENTRY_OUTPUT: world-v0-friend-ready-entry.json
+        run: node scripts/world-v0-friend-entry-browser-smoke.mjs
+
+      - name: Preserve rendered controls and camera
         env:
           MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-friend-ready-interaction.json
         run: node scripts/world-v0-playable-interaction-smoke.mjs
 
-      - name: Prove current epoch end/restart baseline
+      - name: Preserve current epoch end/restart baseline
         env:
           MW_WORLD_V0_SESSION_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_SESSION_OUTPUT: world-v0-friend-ready-session.json
@@ -205,6 +216,7 @@ jobs:
         with:
           name: world-v0-friend-ready-presentation-attempt-${{ github.run_attempt }}
           path: |
+            world-v0-friend-ready-entry.json
             world-v0-friend-ready-interaction.json
             world-v0-friend-ready-session.json
             world-v0-friend-ready-shell.json

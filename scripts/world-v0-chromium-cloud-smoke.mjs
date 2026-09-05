@@ -322,10 +322,24 @@ try {
 
   await dispatchMovement(clients[0], "KeyD", false);
   await dispatchMovement(clients[1], "KeyA", false);
-  await sleep(800);
 
-  const finalA = await evidence(clients[0]);
-  const finalB = await evidence(clients[1]);
+  const [finalA, finalB] = await Promise.all(clients.map((client, index) => waitFor(
+    client,
+    `(() => {
+      const e = window.__sharedYardV0Evidence?.();
+      return e &&
+        !e.runtimeFailed &&
+        e.metrics.guardMismatches === 0 &&
+        e.metrics.guardPending === 0 &&
+        e.metrics.guardMatches >= ${MIN_GUARD_MATCHES} &&
+        Number.isInteger(e.protocolStartTick) &&
+        e.localBoundaryTick >= e.protocolStartTick + ${MIN_ACTIVE_TICKS}
+        ? e
+        : null;
+    })()`,
+    `client ${index} final exact-state guard drain`,
+    5_000,
+  )));
   validateFinalEvidence(finalA, "clientA");
   validateFinalEvidence(finalB, "clientB");
   assert(finalA.identity.worldEpoch === finalB.identity.worldEpoch, "final Chromium WorldEpoch disagreement");

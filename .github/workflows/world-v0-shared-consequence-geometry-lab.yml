@@ -111,6 +111,61 @@ jobs:
           set -o pipefail
           node --experimental-strip-types scripts/.world-v0-shared-consequence-product-impact-lab.mjs | tee world-v0-shared-consequence-product-impact-lab.log
 
+      - name: Prepare short-train split and column matrices
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const sourcePath = 'scripts/.world-v0-shared-consequence-product-impact-lab.mjs';
+          let source = readFileSync(sourcePath, 'utf8');
+          const oldVariants = `const VARIANTS = [
+            { id: "train3-wide4x2", trainLength: 3, wall: "wide4x2" },
+            { id: "train4-wide4x2", trainLength: 4, wall: "wide4x2" },
+            { id: "train6-wide4x2", trainLength: 6, wall: "wide4x2" },
+            { id: "train3-tall2x4", trainLength: 3, wall: "tall2x4" },
+            { id: "train4-tall2x4", trainLength: 4, wall: "tall2x4" },
+            { id: "train6-tall2x4", trainLength: 6, wall: "tall2x4" },
+          ];`.replace(/^          /gm, '');
+          const shortVariants = `const VARIANTS = [
+            { id: "train1-wide4x2", trainLength: 1, wall: "wide4x2" },
+            { id: "train2-wide4x2", trainLength: 2, wall: "wide4x2" },
+            { id: "train3-wide4x2", trainLength: 3, wall: "wide4x2" },
+          ];`.replace(/^          /gm, '');
+          const matches = source.split(oldVariants).length - 1;
+          if (matches !== 1) throw new Error(`short train variants anchor drift matches=${matches}`);
+          source = source.replace(oldVariants, shortVariants);
+          const splitPath = 'scripts/.world-v0-shared-consequence-short-split-lab.mjs';
+          writeFileSync(splitPath, source);
+
+          const trainZAnchor = 'const TRAIN_Z = 3.3;';
+          if (source.split(trainZAnchor).length - 1 !== 1) throw new Error('TRAIN_Z anchor drift');
+          const columnSource = source.replace(trainZAnchor, 'const TRAIN_Z = 2.83;');
+          const columnPath = 'scripts/.world-v0-shared-consequence-short-column-lab.mjs';
+          writeFileSync(columnPath, columnSource);
+          console.log('SHORT_TRAIN_ALIGNMENT_PREP_PASS', JSON.stringify({
+            splitPath,
+            columnPath,
+            trainLengths: [1, 2, 3],
+            splitAxisZ: 3.3,
+            columnAxisZ: 2.83,
+          }));
+          NODE
+          node --check scripts/.world-v0-shared-consequence-short-split-lab.mjs
+          node --check scripts/.world-v0-shared-consequence-short-column-lab.mjs
+
+      - name: Run short-train split-hit matrix
+        env:
+          MW_WORLD_V0_GEOMETRY_LAB_OUTPUT: world-v0-shared-consequence-short-split-lab.json
+        run: |
+          set -o pipefail
+          node --experimental-strip-types scripts/.world-v0-shared-consequence-short-split-lab.mjs | tee world-v0-shared-consequence-short-split-lab.log
+
+      - name: Run short-train single-column matrix
+        env:
+          MW_WORLD_V0_GEOMETRY_LAB_OUTPUT: world-v0-shared-consequence-short-column-lab.json
+        run: |
+          set -o pipefail
+          node --experimental-strip-types scripts/.world-v0-shared-consequence-short-column-lab.mjs | tee world-v0-shared-consequence-short-column-lab.log
+
       - name: Upload geometry evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -121,5 +176,9 @@ jobs:
             world-v0-shared-consequence-geometry-lab.log
             world-v0-shared-consequence-product-impact-lab.json
             world-v0-shared-consequence-product-impact-lab.log
+            world-v0-shared-consequence-short-split-lab.json
+            world-v0-shared-consequence-short-split-lab.log
+            world-v0-shared-consequence-short-column-lab.json
+            world-v0-shared-consequence-short-column-lab.log
           if-no-files-found: warn
           retention-days: 14

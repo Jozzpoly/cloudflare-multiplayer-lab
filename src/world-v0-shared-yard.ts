@@ -120,6 +120,10 @@ function bodyAngularVelocity(body: BodyId): Vec3 {
   return [out[0], out[1], out[2]];
 }
 
+function sameBodyId(a: BodyId, c: BodyId): boolean {
+  return a.index1 === c.index1 && a.world0 === c.world0 && a.generation === c.generation;
+}
+
 function readDynamicState(netEntityId: string, body: BodyId): DynamicState {
   return {
     netEntityId,
@@ -171,6 +175,9 @@ export class SharedYardV0 extends DurableObject<Env> {
   private catchupSteps = 0;
   private failure: string | null = null;
   private resetting = false;
+  private supportContacts: ReturnType<typeof b3.createContactsBuffer> | null = null;
+  private readonly supportContact = b3.createContact();
+  private readonly supportManifold = b3.createManifold();
 
   // World V0 has no hibernation reconstruction contract. If an object instance
   // is ever recreated while Hibernation API sockets survived, close those
@@ -287,7 +294,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         senderPlayerId: player.playerId,
         senderNetEntityId: player.netEntityId,
         batchSeq: message.batchSeq,
-        records: accepted.map(({ targetTick, x, z }) => ({ targetTick, x, z })),
+        records: accepted.map(({ targetTick, x, z, jump }) => ({ targetTick, x, z, jump: Boolean(jump) })),
         relayBoundaryTick: this.tick,
         serverTime: Date.now(),
         ...this.identityPayload(),
@@ -404,6 +411,7 @@ export class SharedYardV0 extends DurableObject<Env> {
     this.droppedTicks = 0;
     this.catchupSteps = 0;
     this.failure = null;
+    this.supportContacts = b3.createContactsBuffer();
 
     for (const box of WORLD_V0_ARENA.staticBoxes) {
       const bodyDef = b3.b3DefaultBodyDef();
@@ -553,7 +561,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       const input = active
         ? player.input.consume(targetTick)
         : { targetTick, x: 0, z: 0, fresh: false, source: "held" as const, missingStreak: 0 };
-      this.applyIntent(player.body, input.x, input.z);
+      this.applyIntent(player.body, input.x, input.z, Boolean(input.jump));
       consumed.push({
         sessionId: player.sessionId,
         playerId: player.playerId,
@@ -586,7 +594,30 @@ export class SharedYardV0 extends DurableObject<Env> {
     if (this.tick % SNAPSHOT_EVERY_TICKS === 0) this.broadcastSnapshot();
   }
 
-  private applyIntent(body: BodyId, inputX: number, inputZ: number): void {
+  private hasJumpSupport(body: BodyId): boolean {
+    const buffer = this.supportContacts;
+    if (!buffer) return false;
+    b3.getBodyContactData(buffer, body);
+    for (let i = 0, n = b3.getNumContacts(buffer); i < n; i += 1) {
+      b3.getContactAt(this.supportContact, buffer, i);
+      const bodyA = b3.b3Shape_GetBody(this.supportContact.shapeIdA);
+      const bodyB = b3.b3Shape_GetBody(this.supportContact.shapeIdB);
+      const playerIsA = sameBodyId(bodyA, body);
+      const playerIsB = sameBodyId(bodyB, body);
+      if (!playerIsA && !playerIsB) continue;
+      for (let m = 0; m < this.supportContact.manifoldCount; m += 1) {
+        b3.getManifoldAt(this.supportManifold, this.supportContact, m);
+        const supportNormalY = playerIsA ? -this.supportManifold.normal[1] : this.supportManifold.normal[1];
+        if (supportNormalY < WORLD_V0_MOVEMENT.supportMinNormalY) continue;
+        for (let p = 0; p < this.supportManifold.pointCount; p += 1) {
+          if (this.supportManifold.points[p].totalNormalImpulse > WORLD_V0_MOVEMENT.supportMinTotalNormalImpulse) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private applyIntent(body: BodyId, inputX: number, inputZ: number, jump: boolean): void {
     const velocity = bodyLinearVelocity(body);
     const hasInput = Math.hypot(inputX, inputZ) > 0.01;
     const [nextX, nextZ] = moveToward2(
@@ -597,7 +628,10 @@ export class SharedYardV0 extends DurableObject<Env> {
       (hasInput ? WORLD_V0_MOVEMENT.playerAcceleration : WORLD_V0_MOVEMENT.playerDeceleration) /
         WORLD_V0_TIMING.simulationHz,
     );
-    b3.b3Body_SetLinearVelocity(body, [nextX, velocity[1], nextZ]);
+    const nextY = jump && this.hasJumpSupport(body)
+      ? Math.max(velocity[1], WORLD_V0_MOVEMENT.jumpSpeed)
+      : velocity[1];
+    b3.b3Body_SetLinearVelocity(body, [nextX, nextY, nextZ]);
   }
 
   private sampleScene(): SharedYardSceneSample {
@@ -726,6 +760,10 @@ export class SharedYardV0 extends DurableObject<Env> {
     if (this.world) {
       try { b3.b3DestroyWorld(this.world); } catch { /* teardown only */ }
     }
+    if (this.supportContacts) {
+      try { b3.destroyContactsBuffer(this.supportContacts); } catch { /* teardown only */ }
+    }
+    this.supportContacts = null;
     this.world = null;
     this.worldId = null;
     this.worldEpoch = null;

@@ -51,12 +51,19 @@ const parsed = parseWorldV0ClientMessage(JSON.stringify({
   ...identity,
   batchSeq: 1,
   records: [
-    { targetTick: 20, x: 2, z: 0 },
-    { targetTick: 21, x: 0, z: 1 },
+    { targetTick: 20, x: 2, z: 0, jump: true },
+    { targetTick: 21, x: 0, z: 1, jump: false },
   ],
 }));
 assert(parsed && parsed.type === "world_v0_input_batch");
 assert.equal(parsed.records[0].x, 1, "input must be normalized at protocol boundary");
+assert.equal(parsed.records[0].jump, true, "jump edge must survive protocol normalization");
+assert.equal(parseWorldV0ClientMessage(JSON.stringify({
+  type: "world_v0_input_batch",
+  ...identity,
+  batchSeq: 99,
+  records: [{ targetTick: 20, x: 0, z: 0, jump: 1 }],
+})), null, "jump must be a boolean when present");
 assert.equal(parseWorldV0ClientMessage(JSON.stringify({
   type: "world_v0_ready",
   worldId,
@@ -70,17 +77,18 @@ const startTick = 20;
 const first = input.acceptBatch(parsed, 10, startTick);
 assert.deepEqual(first.records.map((record) => record.status), ["accepted", "accepted"]);
 assert.deepEqual(input.consume(20), {
-  targetTick: 20, x: 1, z: 0, fresh: true, source: "fresh", missingStreak: 0,
+  targetTick: 20, x: 1, z: 0, jump: true, fresh: true, source: "fresh", missingStreak: 0,
 });
 assert.deepEqual(input.consume(21), {
-  targetTick: 21, x: 0, z: 1, fresh: true, source: "fresh", missingStreak: 0,
+  targetTick: 21, x: 0, z: 1, jump: false, fresh: true, source: "fresh", missingStreak: 0,
 });
 
 let lastHeld = null;
 for (let tick = 22; tick < 22 + WORLD_V0_INPUT_LEASE_MISSING_TICKS - 1; tick += 1) {
   lastHeld = input.consume(tick);
   assert.equal(lastHeld.source, "held");
-  assert.deepEqual([lastHeld.x, lastHeld.z], [0, 1], "lease must hold the last consumed input before expiry");
+  assert.deepEqual([lastHeld.x, lastHeld.z], [0, 1], "lease must hold the last consumed movement before expiry");
+  assert.equal(Boolean(lastHeld.jump), false, "one-shot jump must never be lease-held");
 }
 assert(lastHeld);
 assert.equal(lastHeld.missingStreak, WORLD_V0_INPUT_LEASE_MISSING_TICKS - 1);
@@ -90,6 +98,7 @@ assert.deepEqual(expired, {
   targetTick: expiredTick,
   x: 0,
   z: 0,
+  jump: false,
   fresh: false,
   source: "lease_expired",
   missingStreak: WORLD_V0_INPUT_LEASE_MISSING_TICKS,

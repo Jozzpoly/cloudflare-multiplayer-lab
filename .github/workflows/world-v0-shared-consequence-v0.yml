@@ -37,15 +37,17 @@ jobs:
           git cat-file -e "$CONTROL_SHA^{commit}"
           mapfile -t changed < <(git diff --name-only "$CONTROL_SHA" "$GITHUB_SHA" -- ':!/.github/workflows/world-v0-shared-consequence-v0.yml')
           printf 'candidate delta:\n%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 3
+          test "${#changed[@]}" -eq 4
           test "${changed[0]}" = "public/world-v0/build-contract.js"
-          test "${changed[1]}" = "scripts/world-v0-shared-consequence-protocol-adapter.mjs"
-          test "${changed[2]}" = "src/world-v0-contract.ts"
+          test "${changed[1]}" = "scripts/world-v0-shared-consequence-authority-adapter.mjs"
+          test "${changed[2]}" = "scripts/world-v0-shared-consequence-protocol-adapter.mjs"
+          test "${changed[3]}" = "src/world-v0-contract.ts"
           git diff --quiet "$CONTROL_SHA" "$GITHUB_SHA" -- \
             src/world-v0-shared-yard.ts src/world-v0-protocol.ts src/world-slice-entry.ts \
             public/world-v0/app.js public/world-v0/friend-entry.js public/world-v0/friend-ready.js \
             public/world-v0/playable-control.js public/world-v0/solo-inspection-core.js public/world-v0/solo-inspection.js \
-            scripts/world-v0-protocol-smoke.ts scripts/world-v0-playable-interaction-smoke.mjs \
+            scripts/world-v0-protocol-smoke.ts scripts/world-v0-authority-runtime-smoke.mjs \
+            scripts/world-v0-playable-interaction-smoke.mjs \
             wrangler.jsonc package.json package-lock.json
       - name: Derive and validate Shared Consequence contract
         run: |
@@ -79,13 +81,15 @@ jobs:
           }
           console.log('SHARED_CONSEQUENCE_CONTRACT_PASS', JSON.stringify({ simBuildId:m.WORLD_V0_SIM_BUILD_ID, propCount:layout.length, counts, surfaceGap, wallColumns, trainAxis:axis }));
           NODE
-      - name: Preserve repository falsifiers with experiment-scoped width adapter
+      - name: Preserve repository falsifiers with experiment-scoped width adapters
         run: |
           set -euo pipefail
           node scripts/world-v0-friend-entry-core-smoke.mjs
           node scripts/world-v0-playable-control-smoke.mjs
           node scripts/world-v0-solo-inspection-core-smoke.mjs
           node scripts/world-v0-exact-failure-classifier-smoke.mjs
+          node --check scripts/world-v0-shared-consequence-protocol-adapter.mjs
+          node --check scripts/world-v0-shared-consequence-authority-adapter.mjs
           node scripts/world-v0-shared-consequence-protocol-adapter.mjs
           node --experimental-strip-types scripts/.world-v0-shared-consequence-protocol-smoke.ts
           npm run validate:staging-contract
@@ -111,7 +115,11 @@ jobs:
           MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
           MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-shared-consequence-authority.json
-        run: node scripts/world-v0-authority-runtime-smoke.mjs
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-shared-consequence-authority-adapter.mjs
+          node --check scripts/.world-v0-shared-consequence-authority-runtime-smoke.mjs
+          node scripts/.world-v0-shared-consequence-authority-runtime-smoke.mjs
       - name: Stop core Workerd
         if: always()
         run: |

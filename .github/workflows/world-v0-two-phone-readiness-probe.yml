@@ -1,0 +1,102 @@
+name: World V0 Two-Phone Readiness Probe
+
+on:
+  push:
+    branches: [world-v0-two-phone-readiness-probe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-two-phone-readiness-probe
+  cancel-in-progress: true
+
+env:
+  SOURCE_RUNTIME: 5dd28a899c4f60c9227f1eb93026f571ced733e3
+
+jobs:
+  probe-current-public-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact probe head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove product bytes are exact current public source
+        run: |
+          set -euo pipefail
+          git cat-file -e "$SOURCE_RUNTIME^{commit}"
+          protected=(public/world-v0 src wrangler.jsonc package.json package-lock.json)
+          if ! git diff --quiet "$SOURCE_RUNTIME" -- "${protected[@]}"; then
+            echo "Two-phone probe must not mutate product/runtime bytes."
+            git diff --stat "$SOURCE_RUNTIME" -- "${protected[@]}"
+            exit 1
+          fi
+          node --check scripts/world-v0-two-phone-interruption-probe.mjs
+          git diff --check
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start exact current source in local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-two-phone-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-two-phone-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "two-phone probe Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-two-phone-wrangler.log
+          exit 1
+
+      - name: Falsify interruption and orientation edges
+        env:
+          MW_WORLD_V0_TWO_PHONE_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_TWO_PHONE_OUTPUT: world-v0-two-phone-interruption-probe.json
+        run: node scripts/world-v0-two-phone-interruption-probe.mjs
+
+      - name: Classify measurement without upgrading it to real-device evidence
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const e = JSON.parse(fs.readFileSync("world-v0-two-phone-interruption-probe.json", "utf8"));
+          if (!String(e.verdict || "").startsWith("WORLD_V0_TWO_PHONE_")) throw new Error(`invalid probe verdict ${e.verdict}`);
+          console.log("WORLD_V0_TWO_PHONE_PROBE_CLASSIFICATION", JSON.stringify({
+            verdict: e.verdict,
+            blockers: e.blockers,
+            landscapeSafe: e.landscapeSafe,
+            portraitReturnSafe: e.portraitReturnSafe,
+            postRotationControlsSafe: e.postRotationControls?.safe,
+            claimBoundary: "Headless Chromium touch/mobile emulation only; not Android hardware qualification.",
+          }));
+          NODE
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-two-phone-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-two-phone-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-two-phone-readiness-probe
+          path: |
+            world-v0-two-phone-interruption-probe.json
+            world-v0-two-phone-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

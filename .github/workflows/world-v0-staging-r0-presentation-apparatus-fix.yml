@@ -58,3 +58,5 @@ jobs:
           test "$(git diff --cached --name-only | sort | tr '\n' ' ')" = "scripts/world-v0-runtime-shell-smoke.mjs scripts/world-v0-session-friction-smoke.mjs "
           git commit -m "test(world-v0): align staging presentation gates with R0"
           git push origin HEAD:world-v0-staging-r0-presentation-apparatus
+
+# retrigger after narrowing the session-recovery evidence boundary

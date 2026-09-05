@@ -25,30 +25,28 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install qualified dependency graph
         run: npm ci
-
-      - name: Prove bounded product delta
+      - name: Prove bounded experiment delta
         run: |
           set -euo pipefail
           git cat-file -e "$CONTROL_SHA^{commit}"
           mapfile -t changed < <(git diff --name-only "$CONTROL_SHA" "$GITHUB_SHA" -- ':!/.github/workflows/world-v0-shared-consequence-v0.yml')
-          printf 'candidate product delta:\n%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 2
+          printf 'candidate delta:\n%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 3
           test "${changed[0]}" = "public/world-v0/build-contract.js"
-          test "${changed[1]}" = "src/world-v0-contract.ts"
+          test "${changed[1]}" = "scripts/world-v0-shared-consequence-protocol-adapter.mjs"
+          test "${changed[2]}" = "src/world-v0-contract.ts"
           git diff --quiet "$CONTROL_SHA" "$GITHUB_SHA" -- \
             src/world-v0-shared-yard.ts src/world-v0-protocol.ts src/world-slice-entry.ts \
             public/world-v0/app.js public/world-v0/friend-entry.js public/world-v0/friend-ready.js \
             public/world-v0/playable-control.js public/world-v0/solo-inspection-core.js public/world-v0/solo-inspection.js \
-            scripts/world-v0-playable-interaction-smoke.mjs wrangler.jsonc package.json package-lock.json
-
+            scripts/world-v0-protocol-smoke.ts scripts/world-v0-playable-interaction-smoke.mjs \
+            wrangler.jsonc package.json package-lock.json
       - name: Derive and validate Shared Consequence contract
         run: |
           node --experimental-strip-types --input-type=module <<'NODE'
@@ -59,57 +57,45 @@ jobs:
             map[prop.cluster] = (map[prop.cluster] || 0) + 1;
             return map;
           }, {});
-          const ids = new Set(layout.map((prop) => prop.id));
           if (m.WORLD_V0_SCENE_REVISION !== 'shared-yard-v0-seed-c-shared-consequence-v0') throw new Error('scene revision drift');
           if (m.WORLD_V0_SIM_BUILD_ID !== process.env.EXPECTED_SIM_BUILD) throw new Error(`derived SimBuild drift ${m.WORLD_V0_SIM_BUILD_ID}`);
           if (b.WORLD_V0_EXPECTED_SIM_BUILD_ID !== m.WORLD_V0_SIM_BUILD_ID) throw new Error('browser/contract SimBuild drift');
-          if (layout.length !== 23) throw new Error(`expected 23 props, got ${layout.length}`);
-          if (m.WORLD_V0_NET_ENTITY_ORDER.length !== 25) throw new Error(`expected 25 dynamic entities, got ${m.WORLD_V0_NET_ENTITY_ORDER.length}`);
-          if (ids.size !== layout.length) throw new Error('duplicate prop id');
-          if (counts.barricade !== 6 || counts.tower !== 3 || counts['impact-train'] !== 6 || counts.breakwall !== 8) {
-            throw new Error(`cluster counts drift ${JSON.stringify(counts)}`);
-          }
+          if (layout.length !== 23 || m.WORLD_V0_NET_ENTITY_ORDER.length !== 25) throw new Error('bounded entity count drift');
+          if (new Set(layout.map((prop) => prop.id)).size !== layout.length) throw new Error('duplicate prop id');
+          if (counts.barricade !== 6 || counts.tower !== 3 || counts['impact-train'] !== 6 || counts.breakwall !== 8) throw new Error(`cluster drift ${JSON.stringify(counts)}`);
           const train = layout.filter((p) => p.cluster === 'impact-train');
           const wall = layout.filter((p) => p.cluster === 'breakwall');
-          const tail = train.at(-1);
-          const wallX = wall[0].position[0];
           const half = m.WORLD_V0_PROP_PHYSICS.halfExtents[0];
-          const surfaceGap = wallX - half - (tail.position[0] + half);
+          const surfaceGap = wall[0].position[0] - half - (train.at(-1).position[0] + half);
           if (Math.abs(surfaceGap - 0.04) > 1e-9) throw new Error(`train/wall gap ${surfaceGap}`);
           const wallColumns = [...new Set(wall.map((p) => p.position[2]))].sort((a,b) => a-b);
           const axis = train[0].position[2];
           if (!(wallColumns[1] < axis && axis < wallColumns[2])) throw new Error('train axis does not split middle wall columns');
           const minSeparation = 2 * half;
-          for (let i = 0; i < layout.length; i++) {
-            for (let j = i + 1; j < layout.length; j++) {
-              const a = layout[i].position;
-              const b2 = layout[j].position;
-              const overlapX = Math.abs(a[0] - b2[0]) < minSeparation - 1e-9;
-              const overlapY = Math.abs(a[1] - b2[1]) < minSeparation - 1e-9;
-              const overlapZ = Math.abs(a[2] - b2[2]) < minSeparation - 1e-9;
-              if (overlapX && overlapY && overlapZ) throw new Error(`authored overlap ${layout[i].id}/${layout[j].id}`);
-            }
+          for (let i = 0; i < layout.length; i++) for (let j = i + 1; j < layout.length; j++) {
+            const a = layout[i].position, c = layout[j].position;
+            const overlap = Math.abs(a[0]-c[0]) < minSeparation - 1e-9 && Math.abs(a[1]-c[1]) < minSeparation - 1e-9 && Math.abs(a[2]-c[2]) < minSeparation - 1e-9;
+            if (overlap) throw new Error(`authored overlap ${layout[i].id}/${layout[j].id}`);
           }
-          console.log('SHARED_CONSEQUENCE_CONTRACT_PASS', JSON.stringify({
-            sceneRevision: m.WORLD_V0_SCENE_REVISION,
-            simBuildId: m.WORLD_V0_SIM_BUILD_ID,
-            propCount: layout.length,
-            dynamicEntityCount: m.WORLD_V0_NET_ENTITY_ORDER.length,
-            counts,
-            surfaceGap,
-            wallColumns,
-            trainAxis: axis,
-          }));
+          console.log('SHARED_CONSEQUENCE_CONTRACT_PASS', JSON.stringify({ simBuildId:m.WORLD_V0_SIM_BUILD_ID, propCount:layout.length, counts, surfaceGap, wallColumns, trainAxis:axis }));
           NODE
-
-      - name: Preserve pure and repository falsifiers
+      - name: Preserve repository falsifiers with experiment-scoped width adapter
         run: |
+          set -euo pipefail
           node scripts/world-v0-friend-entry-core-smoke.mjs
           node scripts/world-v0-playable-control-smoke.mjs
           node scripts/world-v0-solo-inspection-core-smoke.mjs
           node scripts/world-v0-exact-failure-classifier-smoke.mjs
-          npm run check
-
+          node scripts/world-v0-shared-consequence-protocol-adapter.mjs
+          node --experimental-strip-types scripts/.world-v0-shared-consequence-protocol-smoke.ts
+          npm run validate:staging-contract
+          npm run test:staging-deploy-guard
+          npm run test:f5-protocol
+          npm run test:world-v0-browser
+          npm run check:client
+          npm run check:a2r
+          npm run typecheck
+          npm run validate:worker
       - name: Start core Workerd
         run: |
           npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-core-wrangler.log 2>&1 &
@@ -120,19 +106,16 @@ jobs:
           done
           cat world-v0-shared-consequence-core-wrangler.log
           exit 1
-
       - name: Preserve authority and changed SimBuild identity
         env:
           MW_WORLD_V0_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_SKIP_PRODUCTION_ISOLATION: "1"
           MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-shared-consequence-authority.json
         run: node scripts/world-v0-authority-runtime-smoke.mjs
-
       - name: Stop core Workerd
         if: always()
         run: |
           if [ -f /tmp/world-v0-shared-consequence-core.pid ]; then kill "$(cat /tmp/world-v0-shared-consequence-core.pid)" 2>/dev/null || true; fi
-
       - name: Upload core evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -151,19 +134,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        with: { node-version: 22 }
       - run: npm ci
       - name: Start presentation Workerd
         run: |
           npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-presentation-wrangler.log 2>&1 &
           echo $! > /tmp/world-v0-shared-consequence-presentation.pid
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
-            sleep 1
-          done
-          cat world-v0-shared-consequence-presentation-wrangler.log
-          exit 1
+          for i in {1..60}; do if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi; sleep 1; done
+          cat world-v0-shared-consequence-presentation-wrangler.log; exit 1
       - name: Preserve host-to-friend entry
         env:
           MW_WORLD_V0_FRIEND_ENTRY_BASE_URL: http://127.0.0.1:8787
@@ -210,19 +188,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        with: { node-version: 22 }
       - run: npm ci
       - name: Start solo Workerd
         run: |
           npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-solo-wrangler.log 2>&1 &
           echo $! > /tmp/world-v0-shared-consequence-solo.pid
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
-            sleep 1
-          done
-          cat world-v0-shared-consequence-solo-wrangler.log
-          exit 1
+          for i in {1..60}; do if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi; sleep 1; done
+          cat world-v0-shared-consequence-solo-wrangler.log; exit 1
       - name: Preserve real-authority Inspect solo
         env:
           MW_WORLD_V0_SOLO_BASE_URL: http://127.0.0.1:8787
@@ -250,8 +223,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        with: { node-version: 22 }
       - run: npm ci
       - name: Verify exact-state apparatus
         run: |
@@ -262,22 +234,17 @@ jobs:
         run: |
           npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-shared-consequence-exact-wrangler.log 2>&1 &
           echo $! > /tmp/world-v0-shared-consequence-exact.pid
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
-            sleep 1
-          done
-          cat world-v0-shared-consequence-exact-wrangler.log
-          exit 1
+          for i in {1..60}; do if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi; sleep 1; done
+          cat world-v0-shared-consequence-exact-wrangler.log; exit 1
       - name: Prepare local exact-state target
         run: |
           node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from "node:fs";
-          let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
+          import { readFileSync, writeFileSync } from 'node:fs';
+          let chromium = readFileSync('scripts/world-v0-chromium-cloud-smoke.mjs', 'utf8');
           const remote = 'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";';
           const local = 'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";';
-          if (!chromium.includes(remote)) throw new Error("Shared Consequence exact-state local-target anchor drift");
-          chromium = chromium.replace(remote, local);
-          writeFileSync("scripts/.world-v0-shared-consequence-exact.mjs", chromium);
+          if (!chromium.includes(remote)) throw new Error('Shared Consequence exact-state local-target anchor drift');
+          writeFileSync('scripts/.world-v0-shared-consequence-exact.mjs', chromium.replace(remote, local));
           NODE
       - name: Preserve exact-state causal envelope
         id: exact

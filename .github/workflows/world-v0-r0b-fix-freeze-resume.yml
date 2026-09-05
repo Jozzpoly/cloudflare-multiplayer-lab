@@ -15,20 +15,19 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Fix visibility bridge syntax and prove script parses
+      - name: Order resume after queued epoch-close delivery
         run: |
           python3 - <<'PY'
           from pathlib import Path
           path = Path('scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs')
           text = path.read_text()
-          old = '        return `bridge-error:${error?.message || error}`;'
-          new = '        return "bridge-error:" + (error?.message || error);'
+          old = '''  await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);\n  await cdp.call("Page.bringToFront", {}, sessionId);\n  let returnVisibility = await cdp.evaluate(sessionId, `document.visibilityState`);'''
+          new = '''  await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);\n  await cdp.call("Page.bringToFront", {}, sessionId);\n  const pendingAfterResume = await waitForBrowser(cdp, sessionId, `(() => {\n    const e = window.__sharedYardV0Evidence?.();\n    return e?.session?.roomRecovery?.pending ? e.session.roomRecovery : null;\n  })()`, "queued epoch close reaches room recovery", 5000);\n  assert(String(pendingAfterResume.reason || "").startsWith("input_lease_expired:"), `unexpected pending recovery ${JSON.stringify(pendingAfterResume)}`);\n  let returnVisibility = await cdp.evaluate(sessionId, `document.visibilityState`);'''
           if text.count(old) != 1:
-              raise SystemExit(f'expected one nested-template seam, got {text.count(old)}')
+              raise SystemExit(f'expected one resume-order seam, got {text.count(old)}')
           path.write_text(text.replace(old, new, 1))
           PY
           node --check scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
-          node --check scripts/world-v0-public-room-r0b-browser-smoke.mjs
           git diff --check
           git diff -- scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
       - name: Commit apparatus-only correction
@@ -37,5 +36,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs
           test "$(git diff --cached --name-only)" = "scripts/world-v0-public-room-r0b-freeze-recovery-smoke.mjs"
-          git commit -m "test(world-v0): fix R0b visibility bridge syntax"
+          git commit -m "test(world-v0): order R0b resume after queued epoch close"
           git push origin HEAD:world-v0-public-room-r0

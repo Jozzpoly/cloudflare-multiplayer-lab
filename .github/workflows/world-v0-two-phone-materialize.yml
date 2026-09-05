@@ -1,0 +1,72 @@
+name: World V0 Two-Phone Candidate Materialization
+
+on:
+  push:
+    branches: [world-v0-two-phone-materialize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-two-phone-materialize
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUNTIME: 5dd28a899c4f60c9227f1eb93026f571ced733e3
+  TARGET_BRANCH: world-v0-two-phone-readiness-candidate
+  TRANSFORM: scripts/world-v0-two-phone-interruption-transform.mjs
+  TESTED_APP_SHA256: 33c89b2f37c032655bbd260309044814a77ebc987917624821a42fd771d029e8
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact materialization apparatus
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source and apparatus boundary
+        run: |
+          set -euo pipefail
+          git cat-file -e "$SOURCE_RUNTIME^{commit}"
+          protected=(public/world-v0 src wrangler.jsonc package.json package-lock.json)
+          if ! git diff --quiet "$SOURCE_RUNTIME" -- "${protected[@]}"; then
+            echo "Materializer apparatus must start from exact current public product bytes."
+            git diff --stat "$SOURCE_RUNTIME" -- "${protected[@]}"
+            exit 1
+          fi
+          node --check "$TRANSFORM"
+
+      - name: Recreate and pin exact tested transformed byte
+        run: |
+          set -euo pipefail
+          node "$TRANSFORM"
+          test "$(sha256sum public/world-v0/app.js | awk '{print $1}')" = "$TESTED_APP_SHA256"
+          mapfile -t changed < <(git diff --name-only "$SOURCE_RUNTIME" -- public/world-v0 src wrangler.jsonc package.json package-lock.json)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "public/world-v0/app.js"
+          cp public/world-v0/app.js /tmp/world-v0-two-phone-tested-app.js
+
+      - name: Materialize one-file product candidate from exact source
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "Target branch already exists; refusing to overwrite it."
+            exit 1
+          fi
+          git checkout -B "$TARGET_BRANCH" "$SOURCE_RUNTIME"
+          cp /tmp/world-v0-two-phone-tested-app.js public/world-v0/app.js
+          test "$(sha256sum public/world-v0/app.js | awk '{print $1}')" = "$TESTED_APP_SHA256"
+          mapfile -t changed < <(git diff --name-only "$SOURCE_RUNTIME" -- public/world-v0 src wrangler.jsonc package.json package-lock.json)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "public/world-v0/app.js"
+          git diff --check
+          git config user.name "Jozzpoly"
+          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
+          git add public/world-v0/app.js
+          git commit -m "fix(world-v0): neutralize interrupted mobile touch state [runtime-qualify]"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_RUNTIME"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "WORLD_V0_TWO_PHONE_MATERIALIZED_SHA=$(git rev-parse HEAD)"

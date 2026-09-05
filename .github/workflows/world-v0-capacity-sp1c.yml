@@ -1,4 +1,4 @@
-name: World V0 Capacity SP1C Ram Correction Shock
+name: World V0 Capacity SP1C Correction Scaling
 
 on:
   push:
@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ram-correction-shock:
+  correction-scaling:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -32,19 +32,20 @@ jobs:
         run: |
           node --check public/world-v0-stress/phenomenon-manifest.js
           node --check scripts/world-v0-sp1c-correction-shock.mjs
+          node --check scripts/world-v0-sp1c-correction-scaling.mjs
           git diff --check
 
       - name: Preserve repository regression suite
         run: npm run check
 
-      - name: Run production-shaped ram correction shock
-        run: node scripts/world-v0-sp1c-correction-shock.mjs | tee world-v0-sp1c-ram-correction-shock.json
+      - name: Run non-boundary correction scaling
+        run: node scripts/world-v0-sp1c-correction-scaling.mjs | tee world-v0-sp1c-correction-scaling.json
 
-      - name: Upload SP1C evidence
+      - name: Upload SP1C scaling evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: world-v0-capacity-sp1c-ram-shock-attempt-${{ github.run_attempt }}
-          path: world-v0-sp1c-ram-correction-shock.json
+          name: world-v0-capacity-sp1c-scaling-attempt-${{ github.run_attempt }}
+          path: world-v0-sp1c-correction-scaling.json
           if-no-files-found: error
           retention-days: 14

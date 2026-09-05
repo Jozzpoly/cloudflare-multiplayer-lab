@@ -43,6 +43,7 @@ jobs:
           node --check public/world-v0/build-contract.js
           node --check scripts/world-v0-jump-authority-smoke.mjs
           node --check scripts/world-v0-jump-browser-smoke.mjs
+          node --check scripts/world-v0-jump-browser-rollback-smoke.mjs
           node --check scripts/world-v0-solo-inspection-browser-smoke.mjs
           node --experimental-strip-types scripts/world-v0-protocol-smoke.ts
           git diff --check
@@ -164,5 +165,60 @@ jobs:
             world-v0-jump-solo-baseline.json
             world-v0-jump-browser-evidence.json
             world-v0-jump-browser-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualify-browser-jump-rollback:
+    needs: qualify-browser-jump
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact jump branch head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start rollback Worker in local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-jump-rollback-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-jump-rollback-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "jump rollback Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-jump-rollback-wrangler.log
+          exit 1
+
+      - name: Force canonical contradiction across predicted jump
+        env:
+          MW_WORLD_V0_JUMP_ROLLBACK_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_JUMP_ROLLBACK_OUTPUT: world-v0-jump-browser-rollback-evidence.json
+        run: node scripts/world-v0-jump-browser-rollback-smoke.mjs
+
+      - name: Stop rollback Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-jump-rollback-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-jump-rollback-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload jump rollback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-jump-browser-rollback-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-jump-browser-rollback-evidence.json
+            world-v0-jump-rollback-wrangler.log
           if-no-files-found: warn
           retention-days: 14

@@ -204,7 +204,8 @@ try {
     `(() => {
       const e = window.__sharedYardV0Evidence?.();
       const i = window.__sharedYardV0Inspection?.();
-      return e?.networkState?.startsWith("live") && e?.runtimeFailed === false &&
+      return Number.isInteger(e?.localBoundaryTick) && Number.isInteger(e?.protocolStartTick) &&
+        e.localBoundaryTick >= e.protocolStartTick && e?.runtimeFailed === false &&
         e?.jump?.buttonEnabled === true && e?.metrics?.guardMatches >= 8 && e?.metrics?.guardMismatches === 0 &&
         i?.mode === "inspection" && i?.companion?.state === "live";
     })()`,
@@ -292,8 +293,6 @@ try {
     12_000,
   );
 
-  // The transport wrapper drops exactly one jump batch. A second jump must travel canonically
-  // and still agree with authority after the rollback generation change.
   await pressSpace(cdp, sessionId);
   const canonicalRejump = await waitFor(
     cdp,

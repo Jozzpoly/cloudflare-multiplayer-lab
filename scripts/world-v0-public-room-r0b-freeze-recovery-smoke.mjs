@@ -278,6 +278,11 @@ try {
 
   await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);
   await cdp.call("Page.bringToFront", {}, sessionId);
+  const pendingAfterResume = await waitForBrowser(cdp, sessionId, `(() => {
+    const e = window.__sharedYardV0Evidence?.();
+    return e?.session?.roomRecovery?.pending ? e.session.roomRecovery : null;
+  })()`, "queued epoch close reaches room recovery", 5000);
+  assert(String(pendingAfterResume.reason || "").startsWith("input_lease_expired:"), `unexpected pending recovery ${JSON.stringify(pendingAfterResume)}`);
   let returnVisibility = await cdp.evaluate(sessionId, `document.visibilityState`);
   let visibilityBridgeUsed = false;
   if (returnVisibility !== "visible") {

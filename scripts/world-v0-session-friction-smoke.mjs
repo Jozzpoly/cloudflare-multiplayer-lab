@@ -221,55 +221,47 @@ try {
   const firstEpoch = live.identity.worldEpoch;
 
   rawPeer.close(1000, "session-smoke-peer-leave");
-  await waitFor(cdp, sessionId, `(() => {
-    const s = window.__sharedYardV0Session?.();
-    return s?.restartAvailable === true && s?.networkState?.startsWith("closed") && !document.querySelector("#restart-round")?.classList.contains("hidden");
-  })()`, "restart available after peer leaves");
-  const ended = await cdp.evaluate(sessionId, `({ session: window.__sharedYardV0Session(), evidence: window.__sharedYardV0Evidence(), restartText: document.querySelector("#restart-round").textContent })`);
-  assert(ended.evidence.runtimeFailed === false, `ended runtime failed ${ended.evidence.runtimeFailureReason}`);
-  assert(ended.evidence.session?.end?.kind === "epoch-ended", `expected normal epoch-end classification ${JSON.stringify(ended.evidence.session?.end)}`);
-  assert(ended.evidence.lifecycleEvents?.some((event) => event.type === "epoch-ended"), "epoch-ended lifecycle evidence missing");
-  assert(ended.evidence.lifecycleEvents?.some((event) => event.type === "socket-close" && event.expectedAfterEpochEnd === true), "expected socket-close lifecycle classification missing");
-  assert(ended.session.restartAvailable === true, "restart helper not available");
-  assert(ended.restartText.includes("Restart"), `restart action label ${ended.restartText}`);
-
-  await cdp.evaluate(sessionId, `document.querySelector("#restart-round").click(); true`);
+  rawPeer = null;
   await waitFor(cdp, sessionId, `(() => {
     const s = window.__sharedYardV0Session?.();
     const e = window.__sharedYardV0Evidence?.();
-    return s?.networkState === "waiting for peer" && e?.identity?.worldEpoch && e.identity.worldEpoch !== ${JSON.stringify(firstEpoch)};
-  })()`, "fresh epoch restart");
+    return s?.networkState === "waiting for peer" &&
+      e?.identity?.worldEpoch && e.identity.worldEpoch !== ${JSON.stringify(firstEpoch)} &&
+      e?.session?.roomRecovery?.pending === false &&
+      e?.lifecycleEvents?.some((event) => event.type === "room-recovered" && event.sourceEpoch === ${JSON.stringify(firstEpoch)});
+  })()`, "automatic same-room recovery after peer leaves");
 
-  const restarted = await cdp.evaluate(sessionId, `({ session: window.__sharedYardV0Session(), evidence: window.__sharedYardV0Evidence(), inviteHidden: document.querySelector("#copy-invite").classList.contains("hidden"), restartHidden: document.querySelector("#restart-round").classList.contains("hidden") })`);
-  assert(restarted.evidence.runtimeFailed === false, `restart runtime failed ${restarted.evidence.runtimeFailureReason}`);
-  assert(restarted.evidence.identity.worldEpoch !== firstEpoch, "restart reused old world epoch");
-  assert(restarted.evidence.protocolStartTick === null, `fresh waiting round unexpectedly active ${restarted.evidence.protocolStartTick}`);
-  assert(restarted.session.runKey === run, `restart changed Run key ${restarted.session.runKey}`);
-  assert(restarted.inviteHidden === false, "invite action missing after restart");
-  assert(restarted.restartHidden === true, "restart should hide once new round is waiting");
+  const recovered = await cdp.evaluate(sessionId, `({ session: window.__sharedYardV0Session(), evidence: window.__sharedYardV0Evidence(), inviteHidden: document.querySelector("#copy-invite").classList.contains("hidden"), restartHidden: document.querySelector("#restart-round").classList.contains("hidden") })`);
+  assert(recovered.evidence.runtimeFailed === false, `recovery runtime failed ${recovered.evidence.runtimeFailureReason}`);
+  assert(recovered.evidence.identity.worldEpoch !== firstEpoch, "room recovery reused old world epoch");
+  assert(recovered.evidence.protocolStartTick === null, `recovered waiting epoch unexpectedly active ${recovered.evidence.protocolStartTick}`);
+  assert(recovered.session.runKey === run, `room recovery changed Run key ${recovered.session.runKey}`);
+  assert(recovered.session.restartAvailable === false, "manual restart remained primary after automatic recovery");
+  assert(recovered.inviteHidden === false, "invite action missing after room recovery");
+  assert(recovered.restartHidden === true, "restart action should stay hidden after automatic room recovery");
+  assert(recovered.evidence.session?.roomRecovery?.lastRecoveredEpoch === recovered.evidence.identity.worldEpoch, `recovery provenance drift ${JSON.stringify(recovered.evidence.session?.roomRecovery)}`);
+  assert(recovered.evidence.lifecycleEvents?.some((event) => event.type === "room-recovered" && event.sourceEpoch === firstEpoch && event.recoveredEpoch === recovered.evidence.identity.worldEpoch), "room-recovered lifecycle evidence missing");
 
   Object.assign(result, {
     verdict: "WORLD_V0_SESSION_FRICTION_PASS",
     run,
     firstEpoch,
-    secondEpoch: restarted.evidence.identity.worldEpoch,
+    secondEpoch: recovered.evidence.identity.worldEpoch,
     inviteUrl: waiting.session.inviteUrl,
     waiting: {
       networkState: waiting.session.networkState,
       protocolStartTick: waiting.evidence.protocolStartTick,
     },
-    ended: {
-      networkState: ended.session.networkState,
-      restartAvailable: ended.session.restartAvailable,
-    },
-    restarted: {
-      networkState: restarted.session.networkState,
-      protocolStartTick: restarted.evidence.protocolStartTick,
-      runtimeFailed: restarted.evidence.runtimeFailed,
+    recovery: {
+      networkState: recovered.session.networkState,
+      protocolStartTick: recovered.evidence.protocolStartTick,
+      restartAvailable: recovered.session.restartAvailable,
+      runtimeFailed: recovered.evidence.runtimeFailed,
+      roomRecovery: recovered.evidence.session?.roomRecovery,
     },
   });
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
-  console.log("WORLD_V0_SESSION_FRICTION_PASS", JSON.stringify({ run, firstEpoch, secondEpoch: restarted.evidence.identity.worldEpoch }));
+  console.log("WORLD_V0_SESSION_FRICTION_PASS", JSON.stringify({ run, firstEpoch, secondEpoch: recovered.evidence.identity.worldEpoch, automaticRoomRecovery: true }));
 } catch (error) {
   result.error = error instanceof Error ? error.stack || error.message : String(error);
   result.chromeStderr = Buffer.concat(stderr).toString("utf8").slice(-8000);

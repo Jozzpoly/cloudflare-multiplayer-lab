@@ -1,0 +1,41 @@
+name: World V0 R0b Fix Peer Cleanup
+
+on:
+  push:
+    branches:
+      - world-v0-public-room-r0
+    paths:
+      - .github/workflows/world-v0-r0b-fix-peer-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-apparatus:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make explicit test teardown non-asserting
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs')
+          text = path.read_text()
+          old = '''    close(reason = "cleanup") {\n      if (pingTimer) clearInterval(pingTimer);\n      pingTimer = null;\n      try { ws.close(1000, reason); } catch { /* cleanup */ }\n    },'''
+          new = '''    close(reason = "cleanup") {\n      if (pingTimer) clearInterval(pingTimer);\n      pingTimer = null;\n      ended = true;\n      try { ws.close(1000, reason); } catch { /* cleanup */ }\n    },'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one visibility-peer cleanup seam, got {count}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          node --check scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs
+          git diff --check
+          git diff -- scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs
+      - name: Commit apparatus-only cleanup correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs
+          test "$(git diff --cached --name-only)" = "scripts/world-v0-public-room-r0b-visibility-recovery-smoke.mjs"
+          git commit -m "test(world-v0): make R0b peer teardown non-asserting"
+          git push origin HEAD:world-v0-public-room-r0

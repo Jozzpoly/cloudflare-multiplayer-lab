@@ -1,5 +1,6 @@
 name: World V0 Public Room R0b Check
 
+# R0b models a stable social room across multiple strict simulation epochs.
 on:
   push:
     branches:

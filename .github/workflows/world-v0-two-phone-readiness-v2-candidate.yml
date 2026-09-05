@@ -1,0 +1,137 @@
+name: World V0 Two-Phone Readiness V2 Candidate
+
+on:
+  push:
+    branches: [world-v0-two-phone-readiness-v2-probe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-two-phone-readiness-v2-candidate
+  cancel-in-progress: true
+
+env:
+  SOURCE_RUNTIME: 5dd28a899c4f60c9227f1eb93026f571ced733e3
+  TRANSFORM: scripts/world-v0-two-phone-interruption-v2-transform.mjs
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact v2 apparatus head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove apparatus starts from exact public runtime
+        run: |
+          set -euo pipefail
+          git cat-file -e "$SOURCE_RUNTIME^{commit}"
+          protected=(public/world-v0 src wrangler.jsonc package.json package-lock.json)
+          if ! git diff --quiet "$SOURCE_RUNTIME" -- "${protected[@]}"; then
+            echo "V2 apparatus must start from exact public product bytes."
+            git diff --stat "$SOURCE_RUNTIME" -- "${protected[@]}"
+            exit 1
+          fi
+          node --check "$TRANSFORM"
+          node --check scripts/world-v0-two-phone-interruption-probe.mjs
+          git diff --check
+
+      - name: Apply bounded v2 candidate in worktree only
+        run: |
+          set -euo pipefail
+          node "$TRANSFORM"
+          git diff --check
+          mapfile -t changed < <(git diff --name-only "$SOURCE_RUNTIME" -- public/world-v0 src wrangler.jsonc package.json package-lock.json)
+          printf 'v2 candidate product diff:\n%s\n' "${changed[*]}"
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "public/world-v0/app.js"
+          sha256sum public/world-v0/app.js | tee world-v0-two-phone-v2-app.sha256
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start transformed v2 candidate in local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-two-phone-v2-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-two-phone-v2.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-two-phone-v2-wrangler.log
+          exit 1
+
+      - name: Require interruption and orientation blocker set to remain closed
+        env:
+          MW_WORLD_V0_TWO_PHONE_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_TWO_PHONE_OUTPUT: world-v0-two-phone-v2-readiness.json
+        run: |
+          node scripts/world-v0-two-phone-interruption-probe.mjs
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const e = JSON.parse(fs.readFileSync("world-v0-two-phone-v2-readiness.json", "utf8"));
+          if (e.blockers?.length) throw new Error(`v2 blockers remain: ${JSON.stringify(e.blockers)}`);
+          if (e.landscapeSafe !== true || e.portraitReturnSafe !== true || e.postRotationControls?.safe !== true) throw new Error("v2 orientation/control envelope regressed");
+          if (e.verdict !== "WORLD_V0_TWO_PHONE_CURRENT_RELEASE_SAFE_IN_EMULATED_ENVELOPE") throw new Error(`unexpected v2 verdict ${e.verdict}`);
+          NODE
+
+      - name: Require four fresh interaction passes
+        env:
+          MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
+        run: |
+          set -euo pipefail
+          for trial in 1 2 3 4; do
+            echo "interaction v2 trial ${trial}"
+            MW_WORLD_V0_PLAYABLE_OUTPUT="world-v0-two-phone-v2-interaction-${trial}.json" node scripts/world-v0-playable-interaction-smoke.mjs
+          done
+
+      - name: Preserve host-to-friend entry journey
+        env:
+          MW_WORLD_V0_FRIEND_ENTRY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_FRIEND_ENTRY_OUTPUT: world-v0-two-phone-v2-entry.json
+        run: node scripts/world-v0-friend-entry-browser-smoke.mjs
+
+      - name: Preserve epoch-end / restart baseline
+        env:
+          MW_WORLD_V0_SESSION_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SESSION_OUTPUT: world-v0-two-phone-v2-session.json
+        run: node scripts/world-v0-session-friction-smoke.mjs
+
+      - name: Preserve desktop / portrait shell
+        env:
+          MW_WORLD_V0_SHELL_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SHELL_OUTPUT: world-v0-two-phone-v2-shell.json
+        run: node scripts/world-v0-runtime-shell-smoke.mjs
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-two-phone-v2.pid ]; then kill "$(cat /tmp/world-v0-two-phone-v2.pid)" 2>/dev/null || true; fi
+
+      - name: Upload exact v2 candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-two-phone-readiness-v2-candidate
+          path: |
+            public/world-v0/app.js
+            world-v0-two-phone-v2-app.sha256
+            world-v0-two-phone-v2-readiness.json
+            world-v0-two-phone-v2-interaction-*.json
+            world-v0-two-phone-v2-entry.json
+            world-v0-two-phone-v2-session.json
+            world-v0-two-phone-v2-shell.json
+            world-v0-runtime-shell-*.png
+            world-v0-two-phone-v2-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

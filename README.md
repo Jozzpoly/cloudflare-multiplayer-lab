@@ -12,12 +12,12 @@ It records the active lanes, source-of-truth hierarchy, current qualification wo
 
 ## Current active spine
 
-| Role | Branch | Verified 2026-09-04 snapshot |
+| Role | Branch | Verified 2026-09-05 snapshot |
 | --- | --- | --- |
 | Frozen foundation control | `world-v0-shared-yard` | `b27de8b04c27777250c47e7e936674e0f147fdfa` |
-| Product / playable frontier | `world-v0-playable-frontier` | `34f4e9dac3cc749fc8ab15c2e234bbff33921a7c` |
-| Explicit isolated staging delivery | `world-v0-staging-delivery` | `d110dee36aa5cff9f55da7ecff62257c96153d35` |
-| Stress / capacity research | `world-v0-capacity-cartography` | `bd90f238684961fcd1485d493b0c3bbe9aeb72ec` |
+| Product / playable frontier | `world-v0-playable-frontier` | `1699fb71b3abef425aea6e21cdb81cb7d11250d5` |
+| Explicit isolated staging delivery | `world-v0-staging-delivery` | `d6e9d47d72aeac34bc6341a76ebdf7e53ff6522f` |
+| Stress / capacity research | `world-v0-capacity-cartography` | `d086f51792795d1ab73ba43f9e3b4dbf97441bb7` |
 
 Verify live branch heads before acting; these SHAs are a grounded snapshot, not permanent aliases.
 
@@ -25,8 +25,12 @@ Verify live branch heads before acting; these SHAs are a grounded snapshot, not 
 
 - browser UI: `shared-yard-v0-browser-ui-v7-solo-inspection`;
 - frozen SimBuild: `shared-yard-v0-sim-579c7aa172198390`;
+- committed npm dependency lock is part of the playable product specimen; active playable qualification uses `npm ci`;
 - public isolated staging: `https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/`;
-- staging delivery run `33901496389`: full PASS, including explicit deploy, authority/production isolation, presentation/lifecycle, remote `Inspect solo`, and two-Chromium exact-state on attempt 1.
+- playable qualification run `33957370821`: full PASS across isolated core, presentation/lifecycle, `Inspect solo`, and two-Chromium exact-state jobs;
+- staging delivery run `33957492089`: full PASS on first attempt, including exact promoted-product provenance, explicit staging deploy, authority/production isolation, presentation/lifecycle, remote `Inspect solo`, and remote two-Chromium exact-state.
+
+The staging lane now carries an explicit `.github/world-v0-product-source.json` promotion pointer and publishes `world-v0/deploy-provenance.json`. The delivery gate proves protected product/runtime bytes match the pinned playable SHA before deployment and then proves that exact provenance is public.
 
 `Inspect solo` uses the real two-peer authority/session machinery with a lightweight neutral AUTO peer. Its evidence is marked `qualificationEligible=false`; it is an Owner inspection convenience, **not** a substitute for real two-human/two-device qualification when that is the question.
 
@@ -37,6 +41,7 @@ Verify live branch heads before acting; these SHAs are a grounded snapshot, not 
 - Product work belongs on `world-v0-playable-frontier` and is promoted explicitly through `world-v0-staging-delivery`.
 - Stress/capacity work belongs on the isolated research lane and does not silently redefine the foundation.
 - `main` is currently the repository landing/navigation branch, not the live product runtime branch.
+- Heavy Chromium/SwiftShader qualification classes are deliberately isolated onto fresh hosted runners; do not recombine them into one long browser-heavy job without new evidence.
 
 ## Historical docs and branches
 
@@ -47,7 +52,7 @@ Do not delete historical evidence simply because it is old. Do not treat every p
 ## Basic repository validation
 
 ```bash
-npm install
+npm ci
 npm run check
 ```
 

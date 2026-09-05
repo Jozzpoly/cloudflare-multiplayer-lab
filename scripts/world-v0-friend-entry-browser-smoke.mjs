@@ -175,6 +175,18 @@ async function diagnostic(client) {
   }
 }
 
+function assertJoinedWorld(evidence, label) {
+  assert(evidence && evidence.runtimeFailed === false, `${label} runtime failure ${evidence?.runtimeFailureReason}`);
+  assert(evidence.identity?.worldId && evidence.identity?.worldEpoch, `${label} missing world identity`);
+  assert(Number.isInteger(evidence.localBoundaryTick) && evidence.localBoundaryTick >= 24, `${label} insufficient world progression B(${evidence.localBoundaryTick})`);
+  assert(evidence.presentation?.selfPresence === "YOU", `${label} self presence missing`);
+  assert(evidence.presentation?.remotePresence === "PEER", `${label} peer presence missing`);
+  assert(evidence.lifecycleEvents?.some((event) => event.type === "world-start"), `${label} world-start lifecycle missing`);
+  assert(!String(evidence.networkState || "").startsWith("closed"), `${label} transport closed ${evidence.networkState}`);
+  assert(evidence.metrics?.guardMismatches === 0, `${label} guard mismatches ${evidence.metrics?.guardMismatches}`);
+  assert(evidence.metrics?.firstStateMismatch == null, `${label} first state mismatch ${JSON.stringify(evidence.metrics?.firstStateMismatch)}`);
+}
+
 const chrome = findChrome();
 let host = null;
 let friend = null;
@@ -266,31 +278,42 @@ try {
     return true;
   })()`);
 
-  await waitFor(host, `(() => {
+  const joinedPredicate = `(() => {
     const e = window.__sharedYardV0Evidence?.();
-    return e?.runtimeFailed || e?.networkState?.startsWith("live") || e?.networkState?.startsWith("closed");
-  })()`, "host terminal/live state after friend join");
-  await waitFor(friend, `(() => {
+    if (!e) return false;
+    if (e.runtimeFailed || String(e.networkState || "").startsWith("closed")) return true;
+    return Boolean(e.identity?.worldId && e.identity?.worldEpoch) &&
+      Number.isInteger(e.localBoundaryTick) && e.localBoundaryTick >= 24 &&
+      e.presentation?.selfPresence === "YOU" && e.presentation?.remotePresence === "PEER" &&
+      e.lifecycleEvents?.some((event) => event.type === "world-start");
+  })()`;
+  await waitFor(host, joinedPredicate, "host shared-world evidence after friend join");
+  await waitFor(friend, joinedPredicate, "friend shared-world evidence after invite join");
+
+  let hostLive = await evaluate(host, `window.__sharedYardV0Evidence()`);
+  let friendLive = await evaluate(friend, `window.__sharedYardV0Evidence()`);
+  assertJoinedWorld(hostLive, "host");
+  assertJoinedWorld(friendLive, "friend");
+
+  const guardPredicate = `(() => {
     const e = window.__sharedYardV0Evidence?.();
-    return e?.runtimeFailed || e?.networkState?.startsWith("live") || e?.networkState?.startsWith("closed");
-  })()`, "friend terminal/live state after invite join");
+    return e?.runtimeFailed || String(e?.networkState || "").startsWith("closed") ||
+      (e?.metrics?.guardMatches >= 4 && e?.metrics?.guardMismatches === 0);
+  })()`;
+  await waitFor(host, guardPredicate, "host exact-state runway");
+  await waitFor(friend, guardPredicate, "friend exact-state runway");
 
-  const hostPostJoin = await evaluate(host, `window.__sharedYardV0Evidence()`);
-  const friendPostJoin = await evaluate(friend, `window.__sharedYardV0Evidence()`);
-  assert(hostPostJoin.runtimeFailed === false && hostPostJoin.networkState.startsWith("live"), `host failed to become live ${JSON.stringify({ state: hostPostJoin.networkState, failure: hostPostJoin.runtimeFailureReason, end: hostPostJoin.session?.end })}`);
-  assert(friendPostJoin.runtimeFailed === false && friendPostJoin.networkState.startsWith("live"), `friend failed to become live ${JSON.stringify({ state: friendPostJoin.networkState, failure: friendPostJoin.runtimeFailureReason, end: friendPostJoin.session?.end })}`);
+  hostLive = await evaluate(host, `window.__sharedYardV0Evidence()`);
+  friendLive = await evaluate(friend, `window.__sharedYardV0Evidence()`);
+  assertJoinedWorld(hostLive, "host final");
+  assertJoinedWorld(friendLive, "friend final");
+  assert(hostLive.metrics.guardMatches >= 4, `host guard runway ${hostLive.metrics.guardMatches}`);
+  assert(friendLive.metrics.guardMatches >= 4, `friend guard runway ${friendLive.metrics.guardMatches}`);
+  assert(hostLive.identity.worldId === friendLive.identity.worldId, `worldId mismatch ${hostLive.identity.worldId} != ${friendLive.identity.worldId}`);
+  assert(hostLive.identity.worldEpoch === friendLive.identity.worldEpoch, "host/friend joined different epochs");
+  assert(hostLive.identity.worldId === `shared-yard-v0-${roomKey}`, `unexpected logical world ${hostLive.identity.worldId}`);
 
-  await waitFor(host, `window.__sharedYardV0Evidence?.().metrics?.guardMatches >= 2`, "host exact-state runway");
-  await waitFor(friend, `window.__sharedYardV0Evidence?.().metrics?.guardMatches >= 2`, "friend exact-state runway");
-
-  const hostLive = await evaluate(host, `window.__sharedYardV0Evidence()`);
-  const friendLive = await evaluate(friend, `window.__sharedYardV0Evidence()`);
-  assert(hostLive.runtimeFailed === false && friendLive.runtimeFailed === false, "runtime failure during friend entry journey");
-  assert(hostLive.identity?.worldId === friendLive.identity?.worldId, `worldId mismatch ${hostLive.identity?.worldId} != ${friendLive.identity?.worldId}`);
-  assert(hostLive.identity?.worldEpoch === friendLive.identity?.worldEpoch, "host/friend joined different epochs");
-  assert(hostLive.identity?.worldId === `shared-yard-v0-${roomKey}`, `unexpected logical world ${hostLive.identity?.worldId}`);
-  assert(hostLive.metrics.guardMismatches === 0 && friendLive.metrics.guardMismatches === 0, "exact-state mismatch during friend entry journey");
-
+  const startupBacklogObserved = [hostLive, friendLive].some((evidence) => evidence.networkState === "prediction backlog");
   Object.assign(result, {
     verdict: "WORLD_V0_FRIEND_ENTRY_PASS",
     uiRevision: hostLive.uiRevision,
@@ -298,27 +321,37 @@ try {
     roomKey,
     inviteUrl: inviteUrl.toString(),
     browsers: "two-independent-chromium-processes",
+    startupBacklogObserved,
+    claimBoundary: "friend-entry PASS is based on shared identity, world-start, two-sided presence and exact guards; prediction-backlog status is retained as a hosted startup diagnostic rather than treated as disconnect",
     host: {
       entryMode: hostBoot.entry.mode,
       waitingStatus: hostWaiting.status,
       inviteText: hostWaiting.inviteText,
+      networkState: hostLive.networkState,
       worldId: hostLive.identity.worldId,
       worldEpoch: hostLive.identity.worldEpoch,
+      boundaryTick: hostLive.localBoundaryTick,
       guardMatches: hostLive.metrics.guardMatches,
       guardMismatches: hostLive.metrics.guardMismatches,
+      frameP95Ms: hostLive.frame.p95Ms,
+      frameMaxMs: hostLive.frame.maxMs,
     },
     friend: {
       entryMode: friendBoot.entry.mode,
       title: friendBoot.title,
       enterText: friendBoot.enterText,
+      networkState: friendLive.networkState,
       worldId: friendLive.identity.worldId,
       worldEpoch: friendLive.identity.worldEpoch,
+      boundaryTick: friendLive.localBoundaryTick,
       guardMatches: friendLive.metrics.guardMatches,
       guardMismatches: friendLive.metrics.guardMismatches,
+      frameP95Ms: friendLive.frame.p95Ms,
+      frameMaxMs: friendLive.frame.maxMs,
     },
   });
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
-  console.log("WORLD_V0_FRIEND_ENTRY_PASS", JSON.stringify({ roomKey, worldEpoch: hostLive.identity.worldEpoch }));
+  console.log("WORLD_V0_FRIEND_ENTRY_PASS", JSON.stringify({ roomKey, worldEpoch: hostLive.identity.worldEpoch, startupBacklogObserved }));
 } catch (error) {
   result.error = error instanceof Error ? error.stack || error.message : String(error);
   result.hostDiagnostic = await diagnostic(host);

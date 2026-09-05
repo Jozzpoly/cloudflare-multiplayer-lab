@@ -42,6 +42,7 @@ jobs:
           node --check public/world-v0/app.js
           node --check public/world-v0/build-contract.js
           node --check scripts/world-v0-jump-authority-smoke.mjs
+          node --check scripts/world-v0-jump-browser-smoke.mjs
           node --experimental-strip-types scripts/world-v0-protocol-smoke.ts
           git diff --check
 
@@ -100,5 +101,60 @@ jobs:
           path: |
             world-v0-jump-authority-evidence.json
             world-v0-jump-authority-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualify-browser-jump:
+    needs: qualify-authority-jump
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact jump branch head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start browser jump Worker in local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-jump-browser-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-jump-browser-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "jump browser Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-jump-browser-wrangler.log
+          exit 1
+
+      - name: Falsify browser prediction and exact-state jump path
+        env:
+          MW_WORLD_V0_JUMP_BROWSER_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_JUMP_BROWSER_OUTPUT: world-v0-jump-browser-evidence.json
+        run: node scripts/world-v0-jump-browser-smoke.mjs
+
+      - name: Stop browser Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-jump-browser-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-jump-browser-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload browser jump evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-jump-browser-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-jump-browser-evidence.json
+            world-v0-jump-browser-wrangler.log
           if-no-files-found: warn
           retention-days: 14

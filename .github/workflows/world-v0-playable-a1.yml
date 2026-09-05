@@ -13,9 +13,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  qualify-playable-frontier:
+  qualify-core:
     runs-on: ubuntu-24.04
-    timeout-minutes: 18
+    timeout-minutes: 12
     outputs:
       exact_required: ${{ steps.exact_scope.outputs.required }}
       exact_reason: ${{ steps.exact_scope.outputs.reason }}
@@ -49,6 +49,7 @@ jobs:
           node --check scripts/world-v0-solo-inspection-browser-smoke.mjs
           node --check scripts/world-v0-session-friction-smoke.mjs
           node --check scripts/world-v0-runtime-shell-smoke.mjs
+          node --check scripts/world-v0-chromium-cloud-smoke.mjs
           node --check scripts/world-v0-exact-failure-classifier.mjs
           node --check scripts/world-v0-exact-failure-classifier-smoke.mjs
           git diff --check
@@ -137,18 +138,18 @@ jobs:
       - name: Preserve full repository regression suite
         run: npm run check
 
-      - name: Start frontier Worker/assets in local Workerd
+      - name: Start core Worker/assets in local Workerd
         run: |
-          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playable-frontier-wrangler.log 2>&1 &
-          echo $! > /tmp/world-v0-playable-frontier-wrangler.pid
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playable-frontier-core-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-playable-frontier-core-wrangler.pid
           for i in {1..60}; do
             if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
-              echo "local Workerd ready"
+              echo "core Workerd ready"
               exit 0
             fi
             sleep 1
           done
-          cat world-v0-playable-frontier-wrangler.log
+          cat world-v0-playable-frontier-core-wrangler.log
           exit 1
 
       - name: Prove authority and simulation baseline unchanged
@@ -158,17 +159,63 @@ jobs:
           MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-playable-frontier-authority.json
         run: node scripts/world-v0-authority-runtime-smoke.mjs
 
+      - name: Record scoped exact-state skip
+        if: steps.exact_scope.outputs.required != 'true'
+        run: echo "Exact-state causal envelope intentionally reused from the last qualified runtime bytes; this push changed no causal runtime path."
+
+      - name: Stop core Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-playable-frontier-core-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-playable-frontier-core-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload core evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playable-frontier-core-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-playable-frontier-authority.json
+            world-v0-playable-frontier-core-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualify-presentation:
+    needs: qualify-core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact playable head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install qualified dependency graph
+        run: npm ci
+
+      - name: Start presentation Worker/assets in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playable-frontier-presentation-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-playable-frontier-presentation-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "presentation Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-playable-frontier-presentation-wrangler.log
+          exit 1
+
       - name: Prove rendered playable interactions
         env:
           MW_WORLD_V0_PLAYABLE_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-playable-frontier-interaction.json
         run: node scripts/world-v0-playable-interaction-smoke.mjs
-
-      - name: Prove one-browser real-authority Inspect solo
-        env:
-          MW_WORLD_V0_SOLO_BASE_URL: http://127.0.0.1:8787
-          MW_WORLD_V0_SOLO_OUTPUT: world-v0-playable-frontier-solo-inspection.json
-        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
 
       - name: Prove normal epoch end and fresh restart semantics
         env:
@@ -182,36 +229,84 @@ jobs:
           MW_WORLD_V0_SHELL_OUTPUT: world-v0-playable-frontier-shell.json
         run: node scripts/world-v0-runtime-shell-smoke.mjs
 
-      - name: Record scoped exact-state skip
-        if: steps.exact_scope.outputs.required != 'true'
-        run: echo "Exact-state causal envelope intentionally reused from the last qualified runtime bytes; this push changed no causal runtime path."
-
-      - name: Stop local Workerd
+      - name: Stop presentation Workerd
         if: always()
         run: |
-          if [ -f /tmp/world-v0-playable-frontier-wrangler.pid ]; then
-            kill "$(cat /tmp/world-v0-playable-frontier-wrangler.pid)" 2>/dev/null || true
+          if [ -f /tmp/world-v0-playable-frontier-presentation-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-playable-frontier-presentation-wrangler.pid)" 2>/dev/null || true
           fi
 
-      - name: Upload playable frontier evidence
+      - name: Upload presentation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: world-v0-playable-frontier-evidence-attempt-${{ github.run_attempt }}
+          name: world-v0-playable-frontier-presentation-attempt-${{ github.run_attempt }}
           path: |
-            world-v0-playable-frontier-authority.json
             world-v0-playable-frontier-interaction.json
-            world-v0-playable-frontier-solo-inspection.json
             world-v0-playable-frontier-session.json
             world-v0-playable-frontier-shell.json
             world-v0-runtime-shell-*.png
-            world-v0-playable-frontier-wrangler.log
+            world-v0-playable-frontier-presentation-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualify-solo-inspection:
+    needs: qualify-core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact playable head
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install qualified dependency graph
+        run: npm ci
+
+      - name: Start solo Worker/assets in local Workerd
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playable-frontier-solo-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-playable-frontier-solo-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "solo Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-playable-frontier-solo-wrangler.log
+          exit 1
+
+      - name: Prove one-browser real-authority Inspect solo
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-playable-frontier-solo-inspection.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
+
+      - name: Stop solo Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-playable-frontier-solo-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-playable-frontier-solo-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload solo evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playable-frontier-solo-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-playable-frontier-solo-inspection.json
+            world-v0-playable-frontier-solo-wrangler.log
           if-no-files-found: warn
           retention-days: 14
 
   qualify-exact-state:
-    needs: qualify-playable-frontier
-    if: needs.qualify-playable-frontier.outputs.exact_required == 'true'
+    needs: qualify-core
+    if: needs.qualify-core.outputs.exact_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -234,13 +329,13 @@ jobs:
           node --check scripts/world-v0-exact-failure-classifier.mjs
           node scripts/world-v0-exact-failure-classifier-smoke.mjs
 
-      - name: Start fresh-runner Worker/assets in local Workerd
+      - name: Start exact Worker/assets in local Workerd
         run: |
           npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playable-frontier-exact-wrangler.log 2>&1 &
           echo $! > /tmp/world-v0-playable-frontier-exact-wrangler.pid
           for i in {1..60}; do
             if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
-              echo "fresh exact-state Workerd ready"
+              echo "exact Workerd ready"
               exit 0
             fi
             sleep 1
@@ -275,8 +370,9 @@ jobs:
       - name: Require exact-state qualification
         env:
           EXACT_OUTCOME: ${{ steps.exact.outcome }}
+          EXACT_REASON: ${{ needs.qualify-core.outputs.exact_reason }}
         run: |
-          echo "fresh-runner exact-state outcome=${EXACT_OUTCOME} · reason=${{ needs.qualify-playable-frontier.outputs.exact_reason }}"
+          echo "fresh-runner exact-state outcome=${EXACT_OUTCOME} · reason=${EXACT_REASON}"
           test "${EXACT_OUTCOME}" = success
 
       - name: Stop exact Workerd

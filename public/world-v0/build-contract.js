@@ -1,4 +1,4 @@
-export const WORLD_V0_BROWSER_UI_REVISION = "shared-yard-v0-browser-ui-v9-jump";
+export const WORLD_V0_BROWSER_UI_REVISION = "shared-yard-v0-browser-ui-v10-room-recovery";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v2-jump";
 export const WORLD_V0_EXPECTED_SERVER_REVISION = "shared-yard-v0-authority-v2-jump";
 export const WORLD_V0_EXPECTED_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v2-jump";

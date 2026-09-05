@@ -277,6 +277,8 @@ try {
   assert(stillEmpty.occupancy === 0, "reconnect loop occurred while browser frozen");
 
   await cdp.call("Page.setWebLifecycleState", { state: "active" }, sessionId);
+  await cdp.call("Page.bringToFront", {}, sessionId);
+  await waitForBrowser(cdp, sessionId, `document.visibilityState === "visible" ? true : null`, "page visible after return", 5000);
 
   const recovered = await waitForBrowser(cdp, sessionId, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.runKey === "yard-1" && e?.identity?.worldEpoch && e.identity.worldEpoch !== ${JSON.stringify(epochA)} && e.networkState === "waiting for peer" && e.session?.roomRecovery?.pending === false ? e : null; })()`, "same-room recovery after unfreeze", 12_000);
   const epochB = recovered.identity.worldEpoch;

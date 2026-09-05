@@ -196,6 +196,7 @@ async function openDrivingPeer(player) {
     close(reason = "cleanup") {
       if (pingTimer) clearInterval(pingTimer);
       pingTimer = null;
+      ended = true;
       try { ws.close(1000, reason); } catch { /* cleanup */ }
     },
   };

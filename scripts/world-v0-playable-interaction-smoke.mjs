@@ -201,7 +201,7 @@ try {
   const gimbalDuring = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
   await touch(cdp, sessionId, "touchEnd", []);
   await sleep(60);
-  const gimbalAfter = await cdp.evaluate(sessionId, `window.__sharedYardV0PlayableControl()`);
+  const gimbalAfter = await cdp.evaluate(sessionId, `({ ...window.__sharedYardV0PlayableControl(), gimbalInput: window.__sharedYardV0Evidence().presentation.cameraGimbalInput })`);
   assert(gimbalDuring.cameraOrbit.pitch > gimbalBefore.cameraOrbit.pitch, `gimbal-up did not raise orbit ${gimbalBefore.cameraOrbit.pitch} -> ${gimbalDuring.cameraOrbit.pitch}`);
   assert(Math.abs(gimbalDuring.cameraOrbit.yaw - gimbalBefore.cameraOrbit.yaw) > 0.03, `gimbal yaw barely changed ${gimbalBefore.cameraOrbit.yaw} -> ${gimbalDuring.cameraOrbit.yaw}`);
   assert(Math.hypot(gimbalAfter.gimbalInput?.x || 0, gimbalAfter.gimbalInput?.y || 0) < 1e-6, `gimbal did not release ${JSON.stringify(gimbalAfter.gimbalInput)}`);

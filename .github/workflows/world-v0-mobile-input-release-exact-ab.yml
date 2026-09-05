@@ -1,0 +1,165 @@
+name: World V0 Mobile Input Release Exact A-B
+
+on:
+  push:
+    branches: [world-v0-mobile-input-release-probe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-mobile-input-release-exact-ab
+  cancel-in-progress: true
+
+env:
+  FR_A_SOURCE: f9686b6bb7e3414fbc9c2bc0bf981e14c65d09c6
+  TRANSFORM: scripts/world-v0-mobile-input-release-transform.mjs
+
+jobs:
+  exact-ab:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [control, candidate]
+        trial: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact measurement head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact FR-A product baseline
+        run: |
+          set -euo pipefail
+          git cat-file -e "$FR_A_SOURCE^{commit}"
+          protected=(public/world-v0 src wrangler.jsonc package.json package-lock.json)
+          if ! git diff --quiet "$FR_A_SOURCE" -- "${protected[@]}"; then
+            echo "A-B measurement branch drifted from exact FR-A product bytes."
+            git diff --stat "$FR_A_SOURCE" -- "${protected[@]}"
+            exit 1
+          fi
+
+      - name: Apply candidate only in candidate cells
+        if: matrix.mode == 'candidate'
+        run: |
+          set -euo pipefail
+          node "$TRANSFORM"
+          git diff --check
+          mapfile -t changed < <(git diff --name-only "$FR_A_SOURCE" -- public/world-v0 src wrangler.jsonc package.json package-lock.json)
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "public/world-v0/app.js"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Verify exact-state apparatus
+        run: |
+          node --check scripts/world-v0-chromium-cloud-smoke.mjs
+          node --check scripts/world-v0-exact-failure-classifier.mjs
+          node scripts/world-v0-exact-failure-classifier-smoke.mjs
+
+      - name: Start local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "world-v0-exact-ab-${{ matrix.mode }}-${{ matrix.trial }}-wrangler.log" 2>&1 &
+          echo $! > /tmp/world-v0-exact-ab.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "world-v0-exact-ab-${{ matrix.mode }}-${{ matrix.trial }}-wrangler.log"
+          exit 1
+
+      - name: Prepare identical local exact-state target
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          let chromium = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
+          const remote = 'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";';
+          const local = 'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";';
+          if (!chromium.includes(remote)) throw new Error("exact A-B local-target anchor drift");
+          chromium = chromium.replace(remote, local);
+          writeFileSync("scripts/.world-v0-exact-ab.mjs", chromium);
+          NODE
+
+      - name: Measure exact-state without upgrading failure to PASS
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-exact-ab-${{ matrix.mode }}-${{ matrix.trial }}.json
+        run: |
+          set +e
+          node scripts/.world-v0-exact-ab.mjs
+          status=$?
+          set -e
+          echo "exact_exit=$status" >> "$GITHUB_ENV"
+          test -f "world-v0-exact-ab-${{ matrix.mode }}-${{ matrix.trial }}.json"
+
+      - name: Summarize raw measurement
+        env:
+          MODE: ${{ matrix.mode }}
+          TRIAL: ${{ matrix.trial }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const path = `world-v0-exact-ab-${process.env.MODE}-${process.env.TRIAL}.json`;
+          const e = JSON.parse(fs.readFileSync(path, "utf8"));
+          const clients = (e.clients || []).map((client) => {
+            const x = client.evidence || {};
+            const m = x.metrics || {};
+            return {
+              index: client.index,
+              networkState: x.networkState ?? null,
+              runtimeFailed: x.runtimeFailed ?? null,
+              localBoundaryTick: x.localBoundaryTick ?? null,
+              sessionEnd: x.session?.end ?? null,
+              guardMatches: m.guardMatches ?? null,
+              guardMismatches: m.guardMismatches ?? null,
+              guardPending: m.guardPending ?? null,
+              firstStateMismatch: m.firstStateMismatch ?? null,
+              leaseExpiredSeen: m.leaseExpiredSeen ?? null,
+              serverLate: m.serverLate ?? null,
+              serverRejected: m.serverRejected ?? null,
+              remapFailures: m.remapFailures ?? null,
+              maxFrameMs: m.maxFrameMs ?? null,
+              rttP95Ms: x.rtt?.p95Ms ?? null,
+            };
+          });
+          const summary = {
+            measurementOnly: true,
+            mode: process.env.MODE,
+            trial: Number(process.env.TRIAL),
+            sourceRuntime: process.env.FR_A_SOURCE,
+            exactExit: Number(process.env.exact_exit ?? -1),
+            verdict: e.verdict ?? null,
+            error: e.error ?? null,
+            clients,
+          };
+          fs.writeFileSync(`world-v0-exact-ab-${process.env.MODE}-${process.env.TRIAL}-summary.json`, JSON.stringify(summary, null, 2));
+          console.log("WORLD_V0_EXACT_AB_MEASUREMENT", JSON.stringify(summary));
+          NODE
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-exact-ab.pid ]; then kill "$(cat /tmp/world-v0-exact-ab.pid)" 2>/dev/null || true; fi
+
+      - name: Upload A-B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-exact-ab-${{ matrix.mode }}-${{ matrix.trial }}
+          path: |
+            world-v0-exact-ab-${{ matrix.mode }}-${{ matrix.trial }}.json
+            world-v0-exact-ab-${{ matrix.mode }}-${{ matrix.trial }}-summary.json
+            world-v0-exact-ab-${{ matrix.mode }}-${{ matrix.trial }}-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

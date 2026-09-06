@@ -42,6 +42,10 @@ function bodyVelocity(body: BodyId): Vec3 {
   return [out[0], out[1], out[2]];
 }
 
+function bodyHandle(body: BodyId) {
+  return { index1: body.index1, world0: body.world0, generation: body.generation };
+}
+
 function finiteVec(values: readonly number[]): boolean {
   return values.every(Number.isFinite);
 }
@@ -145,6 +149,7 @@ export class ContinuityAuditDO extends DurableObject<any> {
       playerId: actor.playerId,
       token: actor.token,
       actorId: actor.actorId,
+      bodyHandle: bodyHandle(actor.body),
       slot: actor.slot,
       resumed,
       resumeCount: actor.resumeCount,
@@ -162,8 +167,6 @@ export class ContinuityAuditDO extends DurableObject<any> {
     this.worldEpoch = crypto.randomUUID();
     this.tick = 0;
 
-    // One shared dynamic prop is enough to prove that the world itself survives
-    // transport loss rather than merely preserving actor metadata.
     const propDef = b3.b3DefaultBodyDef();
     propDef.type = b3.b3BodyType.b3_dynamicBody;
     propDef.position = [0, 0, 0];
@@ -230,9 +233,6 @@ export class ContinuityAuditDO extends DurableObject<any> {
     const actor = this.actorsByToken.get(token);
     if (!actor || actor.socket !== ws) return;
     actor.socket = null;
-    // Crucial contract: transport loss does not rotate WorldEpoch, destroy the
-    // Box3D body, or immediately synthesize a new actor. Lease logic alone will
-    // later neutralize this actor's intent.
   }
 
   private status() {
@@ -241,6 +241,7 @@ export class ContinuityAuditDO extends DurableObject<any> {
       .map((actor) => ({
         playerId: actor.playerId,
         actorId: actor.actorId,
+        bodyHandle: bodyHandle(actor.body),
         slot: actor.slot,
         connected: actor.socket?.readyState === WebSocket.OPEN,
         stale: actor.stale,
@@ -252,6 +253,7 @@ export class ContinuityAuditDO extends DurableObject<any> {
       }));
     const prop = this.sharedProp ? {
       actorId: "shared:prop",
+      bodyHandle: bodyHandle(this.sharedProp),
       position: bodyPosition(this.sharedProp),
       linearVelocity: bodyVelocity(this.sharedProp),
     } : null;
@@ -259,7 +261,7 @@ export class ContinuityAuditDO extends DurableObject<any> {
       (!prop || finiteVec([...prop.position, ...prop.linearVelocity]));
     return {
       ok: finite,
-      revision: "world-v0-continuity-audit-do-v1",
+      revision: "world-v0-continuity-audit-do-v2-body-handle",
       worldEpoch: this.worldEpoch,
       boundaryTick: this.tick,
       simulationHz: SIM_HZ,

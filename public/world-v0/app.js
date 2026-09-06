@@ -1262,7 +1262,7 @@ function classifyBatchAck(message) {
   if (message.batchStatus === "stale_batch") metrics.serverRejected += 1;
   for (const record of message.records || []) {
     if (record.status === "late") metrics.serverLate += 1;
-    if (["before_start", "too_future", "conflict"].includes(record.status)) metrics.serverRejected += 1;
+    if (["before_start", "too_future"].includes(record.status)) metrics.serverRejected += 1;
   }
 }
 
@@ -1274,9 +1274,12 @@ function handlePeerRecords(message) {
   for (const record of message.records || []) {
     if (!Number.isInteger(record.targetTick) || !Number.isFinite(record.x) || !Number.isFinite(record.z)) continue;
     const existing = peerRemote.get(record.targetTick);
-    if (existing && !sameInput(existing, record)) throw new Error(`conflicting relayed remote record at ${record.targetTick}`);
-    if (!existing) {
-      peerRemote.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });
+    const next = { x: record.x, z: record.z, jump: Boolean(record.jump) };
+    // I2 future-intent supersession: WebSocket relay order mirrors authority batchSeq order.
+    // A changed, still-correctable tick replaces the earlier prefill and reuses the existing
+    // prediction correction path; identical relay data stays idempotent.
+    if (!existing || !sameInput(existing, next)) {
+      peerRemote.set(record.targetTick, next);
       candidates.push(record.targetTick);
     }
   }

@@ -298,7 +298,9 @@ export class SharedYardV0 extends DurableObject<Env> {
       this.protocolStartTick,
       WORLD_V0_MAX_FUTURE_TICKS,
     );
-    const accepted = acceptance.records.filter((record) => record.status === "accepted");
+    const accepted = acceptance.records.filter((record) =>
+      record.status === "accepted" || record.status === "superseded"
+    );
     if (accepted.length) {
       const payload = {
         type: "world_v0_peer_records",

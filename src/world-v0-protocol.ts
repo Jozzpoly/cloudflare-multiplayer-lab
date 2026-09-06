@@ -35,7 +35,7 @@ export type WorldV0RecordStatus =
   | "late"
   | "before_start"
   | "too_future"
-  | "conflict";
+  | "superseded";
 
 export type WorldV0RecordAcceptance = {
   targetTick: number;
@@ -66,7 +66,7 @@ export type WorldV0InputBufferStats = {
   lateRecords: number;
   beforeStartRecords: number;
   tooFutureRecords: number;
-  conflictRecords: number;
+  supersededRecords: number;
   staleBatches: number;
   consumedFresh: number;
   consumedMissing: number;
@@ -181,7 +181,7 @@ export class WorldV0ScheduledInputBuffer {
   private lateRecords = 0;
   private beforeStartRecords = 0;
   private tooFutureRecords = 0;
-  private conflictRecords = 0;
+  private supersededRecords = 0;
   private staleBatches = 0;
   private consumedFresh = 0;
   private consumedMissing = 0;
@@ -219,8 +219,11 @@ export class WorldV0ScheduledInputBuffer {
             status = "duplicate_same";
             this.duplicateSameRecords += 1;
           } else {
-            status = "conflict";
-            this.conflictRecords += 1;
+            // I2: higher batchSeq is later authority for an unconsumed future tick.
+            // Consumed history remains immutable because late is checked above.
+            this.pending.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });
+            status = "superseded";
+            this.supersededRecords += 1;
           }
         } else {
           this.pending.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });
@@ -283,7 +286,7 @@ export class WorldV0ScheduledInputBuffer {
       lateRecords: this.lateRecords,
       beforeStartRecords: this.beforeStartRecords,
       tooFutureRecords: this.tooFutureRecords,
-      conflictRecords: this.conflictRecords,
+      supersededRecords: this.supersededRecords,
       staleBatches: this.staleBatches,
       consumedFresh: this.consumedFresh,
       consumedMissing: this.consumedMissing,

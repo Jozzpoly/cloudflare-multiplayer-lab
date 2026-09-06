@@ -27,6 +27,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Clean revalidation: I1 + I2 patchers must be idempotent and produce zero runtime diff.
       - name: Apply bounded I2 protocol-generation patch
         shell: bash
         run: |

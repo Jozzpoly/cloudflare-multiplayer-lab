@@ -12,7 +12,7 @@ permissions:
 jobs:
   i4a-pinned-rebase-runtime-seam:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v4
@@ -83,11 +83,12 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8795/world-v0/ >/dev/null
 
-          MW_WORLD_V0_I3_MODE=candidate \
           MW_WORLD_V0_I3_BASE=http://127.0.0.1:8795 \
           MW_WORLD_V0_I3_FREEZE_MS=1200 \
-          MW_WORLD_V0_CHROMIUM_OUTPUT=world-v0-i4a-i3-chromium.json \
-            node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee world-v0-i4a-i3-chromium.log
+          MW_WORLD_V0_I3B_CLEAN_REQUIRED=1 \
+          MW_WORLD_V0_I3B_MAX_ATTEMPTS=4 \
+          MW_WORLD_V0_I3B_PREFIX=world-v0-i4a-i3 \
+            node scripts/world-v0-integration-i3b-clean-campaign.mjs | tee world-v0-i4a-i3-campaign.log
           MW_WORLD_V0_I2_BASE=http://127.0.0.1:8795 \
             node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-i4a-i2-regression.log
           MW_WORLD_V0_I1_BASE=http://127.0.0.1:8795 \
@@ -131,8 +132,10 @@ jobs:
             world-v0-i4a-box3d-sha256.log
             world-v0-i4a-sim-build.log
             world-v0-i4a-seam-probe.log
-            world-v0-i4a-i3-chromium.json
-            world-v0-i4a-i3-chromium.log
+            world-v0-i4a-i3-campaign.log
+            world-v0-i4a-i3-campaign-summary.json
+            world-v0-i4a-i3-attempt-*.json
+            world-v0-i4a-i3-attempt-*.log
             world-v0-i4a-i2-regression.log
             world-v0-i4a-i1-regression.log
             world-v0-i4a-i1-prestart-regression.log

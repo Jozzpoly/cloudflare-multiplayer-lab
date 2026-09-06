@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "world-v0-continuity-audit",
+  "main": "src/world-v0-continuity-audit.ts",
+  "compatibility_date": "2026-08-29",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CONTINUITY_AUDIT",
+        "class_name": "ContinuityAuditDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ContinuityAuditDO"]
+    }
+  ]
+}

@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  i1-server-session-continuity:
+  i2-future-intent-supersession:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -27,56 +27,78 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Clean revalidation after both I1 runtime changes were committed: both patchers
-      # must now be idempotent and leave src/world-v0-shared-yard.ts unchanged.
-      - name: Apply bounded I1 server/session patches
+      - name: Apply bounded I2 protocol-generation patch
+        shell: bash
         run: |
           set -euo pipefail
+          # I1 is closed evidence. These calls are only idempotence guards against accidental regression.
           node scripts/world-v0-integration-i1-apply.mjs
           node scripts/world-v0-integration-i1-prestart-apply.mjs
+          node scripts/world-v0-integration-i2-apply.mjs
+          NEW_SIM_BUILD_ID="$(node --experimental-strip-types -e 'import("./src/world-v0-contract.ts").then((m) => process.stdout.write(m.WORLD_V0_SIM_BUILD_ID))')"
+          node scripts/world-v0-integration-i2-build-contract-apply.mjs "$NEW_SIM_BUILD_ID"
+          echo "I2 computed SimBuildId: $NEW_SIM_BUILD_ID"
           git diff --check
-          git diff -- src/world-v0-shared-yard.ts | tee world-v0-i1-runtime.patch
+          git diff -- \
+            src/world-v0-contract.ts \
+            src/world-v0-protocol.ts \
+            src/world-v0-shared-yard.ts \
+            public/world-v0/app.js \
+            public/world-v0/build-contract.js | tee world-v0-i2-runtime.patch
+
+      - name: Run focused I2 semantic falsifier
+        run: node --experimental-strip-types scripts/world-v0-integration-i2-semantics-probe.mjs | tee world-v0-i2-semantics-probe.log
 
       - name: Run full repository validation
         run: npm run check
 
-      - name: Run real local Durable Object/WebSocket I1 lifecycle proofs
+      - name: Run real local DO/WebSocket I2 proof plus closed-I1 regressions
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler dev --env staging --ip 127.0.0.1 --port 8792 --log-level warn > world-v0-i1-wrangler.log 2>&1 &
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8792 --log-level warn > world-v0-i2-wrangler.log 2>&1 &
           WRANGLER_PID=$!
           cleanup() {
             kill "$WRANGLER_PID" 2>/dev/null || true
             wait "$WRANGLER_PID" 2>/dev/null || true
           }
           trap cleanup EXIT
-          node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-i1-lifecycle-probe.log
-          node scripts/world-v0-integration-i1-prestart-probe.mjs | tee world-v0-i1-prestart-probe.log
+          node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-i2-lifecycle-probe.log
+          node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-i1-regression-lifecycle.log
+          node scripts/world-v0-integration-i1-prestart-probe.mjs | tee world-v0-i1-regression-prestart.log
 
-      - name: Commit runtime only after validation PASS
+      - name: Commit I2 runtime only after every gate PASS
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- src/world-v0-shared-yard.ts; then
-            echo "I1 runtime already committed; nothing to push"
+          RUNTIME_FILES=(
+            src/world-v0-contract.ts
+            src/world-v0-protocol.ts
+            src/world-v0-shared-yard.ts
+            public/world-v0/app.js
+            public/world-v0/build-contract.js
+          )
+          if git diff --quiet -- "${RUNTIME_FILES[@]}"; then
+            echo "I2 runtime already committed; nothing to push"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/world-v0-shared-yard.ts
-          git commit -m "fix(world-v0): fail closed on pre-start peer loss"
+          git add -- "${RUNTIME_FILES[@]}"
+          git commit -m "feat(world-v0): integrate I2 future intent supersession"
           git push origin HEAD:world-v0-multiplayer-foundation-integration
 
-      - name: Upload I1 evidence
+      - name: Upload I2 evidence
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: world-v0-integration-i1
+          name: world-v0-integration-i2
           path: |
-            world-v0-i1-runtime.patch
-            world-v0-i1-lifecycle-probe.log
-            world-v0-i1-prestart-probe.log
-            world-v0-i1-wrangler.log
+            world-v0-i2-runtime.patch
+            world-v0-i2-semantics-probe.log
+            world-v0-i2-lifecycle-probe.log
+            world-v0-i1-regression-lifecycle.log
+            world-v0-i1-regression-prestart.log
+            world-v0-i2-wrangler.log
           if-no-files-found: warn
           retention-days: 14

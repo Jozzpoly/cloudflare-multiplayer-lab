@@ -33,6 +33,7 @@ jobs:
           set -euo pipefail
           python scripts/world-v0-integration-i4b-apply.py
           node scripts/world-v0-integration-i4b-worker-prewarm-apply.mjs
+          node scripts/world-v0-integration-i4b-liveness-apply.mjs
           NEW_SIM_BUILD_ID="$(node --experimental-strip-types -e 'import("./src/world-v0-contract.ts").then((m) => process.stdout.write(m.WORLD_V0_SIM_BUILD_ID))')"
           node scripts/world-v0-integration-i4b-build-contract-apply.mjs "$NEW_SIM_BUILD_ID"
           echo "I4b computed SimBuildId: $NEW_SIM_BUILD_ID" | tee world-v0-i4b-sim-build.log

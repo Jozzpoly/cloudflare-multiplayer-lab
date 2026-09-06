@@ -364,6 +364,76 @@ function consumeIntendedInput() {
   return { x: movement.x, z: movement.z, jump };
 }
 
+// I3 logical input authorship scheduler. This is deliberately a same-main-thread
+// fixed logical clock: it decouples canonical intent production from rAF while the
+// event loop is runnable, without claiming survival of a fully blocked main thread.
+function stopLogicalInputScheduler() {
+  if (logicalInputTimer) clearInterval(logicalInputTimer);
+  logicalInputTimer = null;
+}
+
+function pumpLogicalInputScheduler() {
+  if (!playing || runtimeFailed || !simulation || protocolStartTick === null || !phaseAnchor) return;
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  const estimate = authorityTickEstimate();
+  if (!Number.isFinite(estimate)) return;
+
+  const startTick = Math.max(protocolStartTick, Math.floor(estimate));
+  const authoredThrough = Math.floor(estimate + simulation.timing.predictionLeadTicks) - 1;
+  if (authoredThrough < startTick) return;
+
+  logicalInputPumps += 1;
+  const movement = currentInput();
+  const jumpTarget = jumpQueued ? startTick : null;
+  if (jumpTarget !== null) jumpQueued = false;
+  const revisions = [];
+
+  for (let tick = startTick; tick <= authoredThrough; tick += 1) {
+    const existing = intendedSelf.get(tick);
+    if (!existing) {
+      const next = { x: movement.x, z: movement.z, jump: tick === jumpTarget };
+      intendedSelf.set(tick, next);
+      queueInputRecord(tick, next);
+      logicalInputAuthored += 1;
+      continue;
+    }
+
+    const next = {
+      x: movement.x,
+      z: movement.z,
+      // Movement/camera revisions must not erase an already-authored one-shot jump.
+      jump: Boolean(existing.jump || tick === jumpTarget),
+    };
+    if (sameInput(existing, next)) continue;
+    intendedSelf.set(tick, next);
+
+    const unsent = pendingBatch.find((record) => record.targetTick === tick);
+    if (unsent) {
+      unsent.x = next.x;
+      unsent.z = next.z;
+      unsent.jump = Boolean(next.jump);
+    } else {
+      revisions.push({ targetTick: tick, x: next.x, z: next.z, jump: Boolean(next.jump) });
+      logicalInputSuperseded += 1;
+    }
+  }
+
+  sendInputRevisionRecords(revisions);
+}
+
+function startLogicalInputScheduler() {
+  stopLogicalInputScheduler();
+  pumpLogicalInputScheduler();
+  logicalInputTimer = setInterval(() => {
+    if (!playing || runtimeFailed) return;
+    try { pumpLogicalInputScheduler(); }
+    catch (error) {
+      stopLogicalInputScheduler();
+      candidateError(error);
+    }
+  }, STEP_MS);
+}
+
 function sameInput(a, c) {
   return Math.abs(a.x - c.x) <= EPS &&
     Math.abs(a.z - c.z) <= EPS &&
@@ -446,6 +516,10 @@ let phaseAnchor = null;
 let localState = null;
 let batchSeq = 0;
 let pendingBatch = [];
+let logicalInputTimer = null;
+let logicalInputPumps = 0;
+let logicalInputAuthored = 0;
+let logicalInputSuperseded = 0;
 let pingTimer = null;
 let hudTimer = null;
 let lastFrameAt = null;
@@ -935,11 +1009,9 @@ function truncateUsedFrom(targetTick) {
 }
 
 function applyResolvedTick(sim, tick, allowGenerateSelf) {
-  if (allowGenerateSelf && protocolStartTick !== null && tick >= protocolStartTick && !intendedSelf.has(tick)) {
-    const intended = consumeIntendedInput();
-    intendedSelf.set(tick, { ...intended });
-    queueInputRecord(tick, intended);
-  }
+  // I3: prediction/replay only consume the canonical intended-input timeline.
+  // Authorship belongs exclusively to pumpLogicalInputScheduler().
+  void allowGenerateSelf;
   const previous = previousUsedInput(tick);
   const resolved = resolveInputsForTick(tick, previous);
   usedByTick.set(tick, { self: { ...resolved.self }, remote: { ...resolved.remote } });
@@ -1216,9 +1288,35 @@ function socketUrl() {
   return url.toString();
 }
 
-function queueInputRecord(targetTick, input) {
-  pendingBatch.push({ targetTick, x: input.x, z: input.z, jump: Boolean(input.jump) });
-  if (pendingBatch.length < simulation.timing.inputBatchSize) return;
+function sendInputRevisionRecords(records) {
+  if (!records.length) return;
+  if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error("input transport closed while revising canonical records");
+  let cursor = 0;
+  while (cursor < records.length) {
+    const chunk = [records[cursor]];
+    cursor += 1;
+    while (cursor < records.length &&
+        chunk.length < simulation.timing.inputBatchSize &&
+        records[cursor].targetTick === chunk[chunk.length - 1].targetTick + 1) {
+      chunk.push(records[cursor]);
+      cursor += 1;
+    }
+    batchSeq += 1;
+    socket.send(JSON.stringify({
+      type: "world_v0_input_batch",
+      ...identityFields(),
+      batchSeq,
+      records: chunk,
+    }));
+  }
+}
+
+// I3 gap-safe pending-batch flush. If scheduler cadence skips past one or more
+// ticks, never combine an old half-batch with a non-consecutive new record. Flush
+// the old record legally as a one-record batch; missing ticks remain missing so the
+// authority's existing hold-last/lease semantics preserve temporal truth.
+function flushPendingInputBatch() {
+  if (!pendingBatch.length) return;
   if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error("input transport closed while generating canonical records");
   batchSeq += 1;
   const records = pendingBatch.splice(0, simulation.timing.inputBatchSize);
@@ -1228,6 +1326,13 @@ function queueInputRecord(targetTick, input) {
     batchSeq,
     records,
   }));
+}
+
+function queueInputRecord(targetTick, input) {
+  const previousPending = pendingBatch[pendingBatch.length - 1];
+  if (previousPending && targetTick !== previousPending.targetTick + 1) flushPendingInputBatch();
+  pendingBatch.push({ targetTick, x: input.x, z: input.z, jump: Boolean(input.jump) });
+  if (pendingBatch.length >= simulation.timing.inputBatchSize) flushPendingInputBatch();
 }
 
 function sendPing() {
@@ -1335,6 +1440,7 @@ function handleStart(message) {
   createHistory(sim);
   compareStateGuard(0, message.state.stateGuard);
   updatePhaseFromStart(message, performance.now());
+  startLogicalInputScheduler();
   if (!selfMesh) selfMesh = createPlayerMesh(true);
   if (!remoteMesh) remoteMesh = createPlayerMesh(false);
   sessionEnd = null;
@@ -1469,6 +1575,7 @@ function connect() {
   });
   socket.addEventListener("close", (event) => {
     playing = false;
+    stopLogicalInputScheduler();
     if (pingTimer) clearInterval(pingTimer);
     if (hudTimer) clearInterval(hudTimer);
     pingTimer = null;
@@ -1623,6 +1730,15 @@ function buildEvidence() {
     runtimeFailed,
     runtimeFailureReason,
     runtimeFailureAt,
+    inputScheduler: {
+      revision: "shared-yard-v0-logical-input-scheduler-v1",
+      active: logicalInputTimer !== null,
+      pumps: logicalInputPumps,
+      authored: logicalInputAuthored,
+      superseded: logicalInputSuperseded,
+      cadenceMs: STEP_MS,
+      ownsCanonicalAuthorship: true,
+    },
     localBoundaryTick: localState?.boundaryTick ?? null,
     protocolStartTick,
     presentation: {
@@ -1760,6 +1876,10 @@ function updateHud() {
 }
 
 function resetProtocolState({ preserveRoomRecovery = false } = {}) {
+  stopLogicalInputScheduler();
+  logicalInputPumps = 0;
+  logicalInputAuthored = 0;
+  logicalInputSuperseded = 0;
   destroyLocalState();
   intendedSelf.clear();
   peerRemote.clear();
@@ -2123,6 +2243,9 @@ function frame(now) {
   advanceCameraGimbal(now);
   if (playing && !runtimeFailed) {
     try {
+      // Keep scheduler ownership even when rAF is healthy; the interval remains the
+      // independent progress source when rAF cadence degrades.
+      pumpLogicalInputScheduler();
       advancePrediction();
       syncMeshes();
     } catch (error) {

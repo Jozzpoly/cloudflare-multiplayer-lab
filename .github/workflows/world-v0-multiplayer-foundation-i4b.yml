@@ -32,11 +32,12 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/world-v0-integration-i4b-apply.py
+          node scripts/world-v0-integration-i4b-worker-prewarm-apply.mjs
           NEW_SIM_BUILD_ID="$(node --experimental-strip-types -e 'import("./src/world-v0-contract.ts").then((m) => process.stdout.write(m.WORLD_V0_SIM_BUILD_ID))')"
           node scripts/world-v0-integration-i4b-build-contract-apply.mjs "$NEW_SIM_BUILD_ID"
           echo "I4b computed SimBuildId: $NEW_SIM_BUILD_ID" | tee world-v0-i4b-sim-build.log
           git diff --check
-          git diff -- src/world-v0-contract.ts src/world-v0-shared-yard.ts public/world-v0/app.js public/world-v0/build-contract.js | tee world-v0-i4b-runtime.patch
+          git diff -- src/box3d-runtime.ts src/world-v0-contract.ts src/world-v0-shared-yard.ts public/world-v0/app.js public/world-v0/build-contract.js | tee world-v0-i4b-runtime.patch
 
       - name: Run focused I4b seam falsifier
         run: node --experimental-strip-types scripts/world-v0-integration-i4b-seam-probe.mjs | tee world-v0-i4b-seam-probe.log
@@ -89,6 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           RUNTIME_FILES=(
+            src/box3d-runtime.ts
             src/world-v0-contract.ts
             src/world-v0-shared-yard.ts
             public/world-v0/app.js

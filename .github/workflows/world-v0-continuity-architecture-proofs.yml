@@ -77,6 +77,11 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/world-v0-box3d-raw-seed-roundtrip-audit.mjs .audit/box3d-js/dist/box3d.inline.mjs | tee world-v0-box3d-raw-seed-roundtrip.log
+      - name: Prove process-loss checkpoint reconstruction with explicit epoch rotation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-authority-restart-checkpoint-audit.mjs --module=.audit/box3d-js/dist/box3d.inline.mjs | tee world-v0-authority-restart-checkpoint.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -84,5 +89,6 @@ jobs:
           path: |
             world-v0-box3d-raw-seed-build.log
             world-v0-box3d-raw-seed-roundtrip.log
+            world-v0-authority-restart-checkpoint.log
           if-no-files-found: warn
           retention-days: 14

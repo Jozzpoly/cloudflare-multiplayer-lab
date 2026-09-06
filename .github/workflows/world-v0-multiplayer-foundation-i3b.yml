@@ -1,0 +1,140 @@
+name: World V0 Multiplayer Foundation I3b
+
+on:
+  push:
+    branches:
+      - world-v0-multiplayer-foundation-integration
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  i3b-authority-temporal-floor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply bounded I3b temporal-floor candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-integration-i3b-temporal-floor-apply.mjs
+          NEW_SIM_BUILD_ID="$(node --experimental-strip-types -e 'import("./src/world-v0-contract.ts").then((m) => process.stdout.write(m.WORLD_V0_SIM_BUILD_ID))')"
+          node scripts/world-v0-integration-i3b-build-contract-apply.mjs "$NEW_SIM_BUILD_ID"
+          echo "I3b computed SimBuildId: $NEW_SIM_BUILD_ID" | tee world-v0-i3b-sim-build.log
+          git diff --check
+          git diff -- src/world-v0-contract.ts public/world-v0/app.js public/world-v0/build-contract.js | tee world-v0-i3b-runtime.patch
+
+      - name: Falsify stale-phase and current-boundary authorship
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/world-v0-integration-i3b-temporal-floor-probe.mjs | tee world-v0-i3b-temporal-floor-probe.log
+          node --experimental-strip-types scripts/world-v0-integration-i3-semantics-probe.mjs | tee world-v0-i3b-i3-semantics.log
+          node --experimental-strip-types scripts/world-v0-integration-i3-gap-safe-probe.mjs | tee world-v0-i3b-i3-gap-safe.log
+          node --experimental-strip-types scripts/world-v0-integration-i4a-seam-probe.mjs | tee world-v0-i3b-i4a-seam.log
+          node --experimental-strip-types scripts/world-v0-integration-i4b-seam-probe.mjs | tee world-v0-i3b-i4b-seam.log
+
+      - name: Run full repository validation
+        run: npm run check
+
+      - name: Prove repeated real Chromium rAF independence and I1-I4 carry-forward
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8797 --log-level warn > world-v0-i3b-candidate-wrangler.log 2>&1 &
+          WRANGLER_PID=$!
+          cleanup() {
+            kill "$WRANGLER_PID" 2>/dev/null || true
+            wait "$WRANGLER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 120); do
+            if ! kill -0 "$WRANGLER_PID" 2>/dev/null; then
+              echo "I3b candidate wrangler exited before readiness"
+              cat world-v0-i3b-candidate-wrangler.log
+              exit 1
+            fi
+            if curl -fsS http://127.0.0.1:8797/world-v0/ >/dev/null 2>&1; then break; fi
+            sleep 0.1
+          done
+          curl -fsS http://127.0.0.1:8797/world-v0/ >/dev/null
+
+          for repeat in 1 2 3 4; do
+            echo "WORLD_V0_I3B_REPEAT_BEGIN $repeat"
+            MW_WORLD_V0_I3_MODE=candidate \
+            MW_WORLD_V0_I3_BASE=http://127.0.0.1:8797 \
+            MW_WORLD_V0_I3_FREEZE_MS=1200 \
+            MW_WORLD_V0_CHROMIUM_OUTPUT="world-v0-i3b-i3-repeat-${repeat}.json" \
+              node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee "world-v0-i3b-i3-repeat-${repeat}.log"
+            echo "WORLD_V0_I3B_REPEAT_PASS $repeat"
+          done
+
+          MW_WORLD_V0_I4B_BASE=http://127.0.0.1:8797 \
+            node --experimental-strip-types scripts/world-v0-integration-i4b-authority-probe.mjs | tee world-v0-i3b-i4b-authority.log
+          MW_WORLD_V0_I4B_BASE=http://127.0.0.1:8797 \
+          MW_WORLD_V0_I4B_OUTPUT=world-v0-i3b-i4b-browser.json \
+            node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-i3b-i4b-browser.log
+          MW_WORLD_V0_I2_BASE=http://127.0.0.1:8797 \
+            node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-i3b-i2-regression.log
+          MW_WORLD_V0_I1_BASE=http://127.0.0.1:8797 \
+            node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-i3b-i1-regression.log
+          MW_WORLD_V0_I1_BASE=http://127.0.0.1:8797 \
+            node scripts/world-v0-integration-i1-prestart-probe.mjs | tee world-v0-i3b-i1-prestart-regression.log
+
+      - name: Commit I3b runtime only after every gate PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME_FILES=(
+            src/world-v0-contract.ts
+            public/world-v0/app.js
+            public/world-v0/build-contract.js
+          )
+          if test -z "$(git status --porcelain -- "${RUNTIME_FILES[@]}")"; then
+            echo "I3b temporal-floor runtime already committed; nothing to push"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${RUNTIME_FILES[@]}"
+          git commit -m "fix(world-v0): floor I3 authorship to observed authority"
+          git push origin HEAD:world-v0-multiplayer-foundation-integration
+
+      - name: Upload I3b evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-v0-integration-i3b
+          path: |
+            world-v0-i3b-sim-build.log
+            world-v0-i3b-runtime.patch
+            world-v0-i3b-temporal-floor-probe.log
+            world-v0-i3b-i3-semantics.log
+            world-v0-i3b-i3-gap-safe.log
+            world-v0-i3b-i4a-seam.log
+            world-v0-i3b-i4b-seam.log
+            world-v0-i3b-i3-repeat-*.json
+            world-v0-i3b-i3-repeat-*.log
+            world-v0-i3b-i4b-authority.log
+            world-v0-i3b-i4b-browser.json
+            world-v0-i3b-i4b-browser.log
+            world-v0-i3b-i2-regression.log
+            world-v0-i3b-i1-regression.log
+            world-v0-i3b-i1-prestart-regression.log
+            world-v0-i3b-candidate-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

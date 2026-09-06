@@ -92,8 +92,8 @@ browser = replaceOnce(
 
 browser = replaceOnce(
   browser,
-  `    runtimeFailed,\n    metrics: { ...metrics },`,
-  `    runtimeFailed,\n    inputScheduler: {\n      revision: "shared-yard-v0-logical-input-scheduler-v1",\n      active: logicalInputTimer !== null,\n      pumps: logicalInputPumps,\n      authored: logicalInputAuthored,\n      superseded: logicalInputSuperseded,\n      cadenceMs: STEP_MS,\n      ownsCanonicalAuthorship: true,\n    },\n    metrics: { ...metrics },`,
+  `    runtimeFailureAt,\n    localBoundaryTick: localState?.boundaryTick ?? null,`,
+  `    runtimeFailureAt,\n    inputScheduler: {\n      revision: "shared-yard-v0-logical-input-scheduler-v1",\n      active: logicalInputTimer !== null,\n      pumps: logicalInputPumps,\n      authored: logicalInputAuthored,\n      superseded: logicalInputSuperseded,\n      cadenceMs: STEP_MS,\n      ownsCanonicalAuthorship: true,\n    },\n    localBoundaryTick: localState?.boundaryTick ?? null,`,
   "scheduler evidence",
 );
 

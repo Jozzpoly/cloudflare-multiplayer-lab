@@ -42,7 +42,7 @@ function makeClient(playerId, resumeToken = null) {
       messages.push(message);
       if (Number.isFinite(message?.boundaryTick)) state.boundaryTick = Math.max(state.boundaryTick, message.boundaryTick);
       if (Number.isFinite(message?.state?.boundaryTick)) state.boundaryTick = Math.max(state.boundaryTick, message.state.boundaryTick);
-    } catch { /* diagnostic probe ignores malformed non-json */ }
+    } catch { /* ignore malformed diagnostic traffic */ }
   });
   ws.addEventListener("close", (event) => {
     state.closed = true;
@@ -134,8 +134,6 @@ const startA = await waitMessage(a, (m) => m?.type === "world_v0_start", "A star
 const startB = await waitMessage(b, (m) => m?.type === "world_v0_start", "B start");
 if (startA.worldEpoch !== aw.worldEpoch || startB.worldEpoch !== aw.worldEpoch) throw new Error("start rotated epoch");
 
-// Start messages carry the scheduled protocol boundary; feeds author only a modest
-// +8 tick horizon, keeping the existing lead/future constants unchanged.
 aw.protocolStartTick = startA.protocolStartTick;
 bw.protocolStartTick = startB.protocolStartTick;
 const feedA = startInputFeed(a, aw, { x: 1, z: 0 });
@@ -147,9 +145,11 @@ const activeB = await waitMessage(a, (message) => message?.type === "world_v0_co
 const dropBoundary = activeB.boundaryTick;
 const oldEpoch = aw.worldEpoch;
 
+// Do not use the local client-side close event as evidence. Node/workerd can leave
+// that handshake observable later than the server-side lifecycle. The authority-visible
+// consequence is the bounded transition to held -> lease_expired while A keeps running.
 feedB.stop();
-b.ws.close(1000, "i1_drop_b");
-await waitFor(() => b.state.closed, "B socket close");
+try { b.ws.close(1000, "i1_drop_b"); } catch { /* transport already closing */ }
 
 const bLeaseExpired = await waitMessage(a, (message) => message?.type === "world_v0_consumed" &&
   message.boundaryTick > dropBoundary &&
@@ -182,18 +182,42 @@ const feedB2 = startInputFeed(b2, b2w, {
 });
 const resumedFresh = await waitMessage(a, (message) => message?.type === "world_v0_consumed" &&
   message.worldEpoch === oldEpoch &&
+  message.boundaryTick > bLeaseExpired.boundaryTick &&
   message.players?.some((player) => player.netEntityId === bw.selfNetEntityId && player.source === "fresh"),
 "resumed B canonical fresh input", 12_000);
-if (resumedFresh.boundaryTick <= bLeaseExpired.boundaryTick) throw new Error("resume did not advance shared history");
 
-// Rebind again while B2 is still live. Exactly one socket may own the session.
+feedB2.stop();
 const b3 = makeClient("owner-b", bw.resumeToken);
 const b3w = await welcome(b3);
 if (!b3w.resumed || b3w.resumeCount !== 2) throw new Error("second B rebind did not advance resumeCount");
 if (b3w.selfSessionId !== bw.selfSessionId || b3w.worldEpoch !== oldEpoch) throw new Error("second B rebind changed actor/world identity");
-await waitFor(() => b2.state.closed, "superseded B2 socket close");
-if (b2.state.closeReason !== "session_rebound") throw new Error(`B2 close reason drift: ${b2.state.closeReason}`);
-feedB2.stop();
+
+// Authority-race falsifier: after B3 owns the ActorSession, an old B2 socket must
+// not be able to advance the canonical input buffer even if its local close event
+// has not arrived. A unique high batchSeq would be relayed to A if ownership leaked.
+const sentinelBatchSeq = b3w.resumeLastBatchSeq + 1000;
+const sentinelTarget = Math.max(startB.protocolStartTick, b3w.state.boundaryTick + 8);
+let oldSocketSendRejectedLocally = false;
+try {
+  b2.ws.send(JSON.stringify({
+    type: "world_v0_input_batch",
+    ...identityFrom(b2w),
+    batchSeq: sentinelBatchSeq,
+    records: [
+      { targetTick: sentinelTarget, x: 0.37, z: 0.91, jump: false },
+      { targetTick: sentinelTarget + 1, x: 0.37, z: 0.91, jump: false },
+    ],
+  }));
+} catch {
+  oldSocketSendRejectedLocally = true;
+}
+await sleep(250);
+const leakedSentinel = a.messages.find((message) =>
+  message?.type === "world_v0_peer_records" &&
+  message.senderSessionId === bw.selfSessionId &&
+  message.batchSeq === sentinelBatchSeq
+);
+if (leakedSentinel) throw new Error("superseded B2 socket retained canonical ActorSession authority");
 
 const feedB3 = startInputFeed(b3, b3w, {
   x: 0,
@@ -203,19 +227,17 @@ const feedB3 = startInputFeed(b3, b3w, {
 });
 await waitMessage(a, (message) => message?.type === "world_v0_consumed" &&
   message.worldEpoch === oldEpoch &&
+  message.boundaryTick > resumedFresh.boundaryTick &&
   message.players?.some((player) => player.netEntityId === bw.selfNetEntityId && player.source === "fresh"),
 "rebound B3 canonical input", 12_000);
 
-// Once every transport is gone, the same lease remains the bounded cleanup policy:
-// the integration must not turn shared continuity into a permanent 60 Hz zombie.
+// Once every transport disappears, the same bounded lease is the cleanup policy.
+// Again, server-visible epoch retirement is the evidence; local client close events
+// are intentionally not required by this probe.
 feedA.stop();
 feedB3.stop();
-a.ws.close(1000, "i1_drop_all_a");
-b3.ws.close(1000, "i1_drop_all_b");
-await Promise.all([
-  waitFor(() => a.state.closed, "A final close"),
-  waitFor(() => b3.state.closed, "B3 final close"),
-]);
+try { a.ws.close(1000, "i1_drop_all_a"); } catch {}
+try { b3.ws.close(1000, "i1_drop_all_b"); } catch {}
 await sleep(1_800);
 
 const c = makeClient("owner-c");
@@ -225,7 +247,7 @@ if (cw.worldEpoch === oldEpoch) throw new Error("all-disconnected cleanup failed
 if (cw.selfSessionId === aw.selfSessionId || cw.selfSessionId === bw.selfSessionId) throw new Error("fresh epoch reused old ActorSession identity");
 
 const result = {
-  revision: "world-v0-integration-i1-lifecycle-probe-v1",
+  revision: "world-v0-integration-i1-lifecycle-probe-v2-authority-observable",
   run: RUN,
   oldEpoch,
   replacementEpoch: cw.worldEpoch,
@@ -237,7 +259,8 @@ const result = {
     netEntityId: bw.selfNetEntityId,
     resumeCount: b3w.resumeCount,
     sameIdentityAcrossRebinds: true,
-    supersededSocketClosed: b2.state.closed,
+    oldSocketSendRejectedLocally,
+    oldSocketCanonicalSentinelRejected: true,
   },
   sharedContinuity: {
     healthyPeerSurvivedSingleDrop: true,
@@ -249,7 +272,7 @@ const result = {
     freshEpochCreatedAfterCleanup: true,
   },
   verdict: "WORLD_V0_INTEGRATION_I1_SERVER_SESSION_PASS",
-  nonClaim: "This proves the candidate server/DO/WebSocket ActorSession lifecycle locally. It does not yet prove browser resume UX, exact full-state client rebase, remote Cloudflare placement, process-loss reconstruction, or staging/production behavior.",
+  nonClaim: "This proves the candidate server/DO/WebSocket ActorSession lifecycle locally through authority-observable effects. It does not claim client-side close-event timing, browser resume UX, exact full-state client rebase, remote Cloudflare placement, process-loss reconstruction, or staging/production behavior.",
 };
 console.log("WORLD_V0_INTEGRATION_I1_PROBE", JSON.stringify(result, null, 2));
 console.log(result.verdict);

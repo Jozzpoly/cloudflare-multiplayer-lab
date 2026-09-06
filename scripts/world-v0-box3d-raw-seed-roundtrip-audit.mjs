@@ -15,7 +15,7 @@ if (!modulePath) throw new Error("usage: node world-v0-box3d-raw-seed-roundtrip-
 const { default: Box3D } = await import(pathToFileURL(modulePath).href);
 const b3 = await Box3D();
 
-for (const name of ["b3Recording_CopyData", "b3RecPlayer_CreateFromBytes"]) {
+for (const name of ["b3Recording_CopyData", "b3RecPlayer_CreateFromBytes", "b3Bytes_Fnv1a32"]) {
   if (typeof b3[name] !== "function") throw new Error(`patched binding missing ${name}`);
 }
 
@@ -44,14 +44,15 @@ function exactBody(a, c) {
   const x = flat(a), y = flat(c);
   return x.length === y.length && x.every((value, index) => f32bits(value) === f32bits(y[index]));
 }
-function hashBytes(bytes) {
+function hashBytesU32(bytes) {
   let hash = 0x811c9dc5;
   for (const value of bytes) {
     hash ^= value;
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return hash.toString(16).padStart(8, "0");
+  return hash >>> 0;
 }
+function hashHex(value) { return (value >>> 0).toString(16).padStart(8, "0"); }
 function moveToward2(vx, vz, tx, tz, delta) {
   const dx = tx - vx, dz = tz - vz;
   const length = Math.hypot(dx, dz);
@@ -175,11 +176,13 @@ b3.b3World_StopRecording(authority.world);
 if (!(copiedBytes instanceof Uint8Array)) throw new Error(`copy binding returned ${copiedBytes?.constructor?.name}`);
 if (copiedBytes.byteLength !== nativeSize) throw new Error(`raw byte size mismatch ${copiedBytes.byteLength} != ${nativeSize}`);
 if (copiedBytes.byteLength < 1024) throw new Error(`raw seed unexpectedly small ${copiedBytes.byteLength}`);
-const copiedHash = hashBytes(copiedBytes);
+const copiedHashU32 = hashBytesU32(copiedBytes);
+const copiedHash = hashHex(copiedHashU32);
+const cppHashCopied = Number(b3.b3Bytes_Fnv1a32(copiedBytes)) >>> 0;
+if (cppHashCopied !== copiedHashU32) {
+  throw new Error(`JS->C++ ingress checksum mismatch on source copy js=${copiedHash} cpp=${hashHex(cppHashCopied)}`);
+}
 
-// Validate the pre-existing wrapper path first, but do not leave its replay world
-// alive while constructing the raw player: recording snapshots restore world identity
-// and two simultaneous replay worlds from the same seed can collide in one module.
 const directPlayer = b3.b3RecPlayer_CreateFromRecording(recording, 1);
 if (!directPlayer) throw new Error("control CreateFromRecording failed");
 const direct = remapFromPlayer(directPlayer);
@@ -187,26 +190,30 @@ const directSeedExact = exactWorld(authority, direct);
 if (!directSeedExact.exact) throw new Error(`control recording seed mismatch ${directSeedExact.id}`);
 b3.b3RecPlayer_Destroy(directPlayer);
 
-// Model a real wire boundary. The transport copy must stay bit-identical after the
-// native Recording has been destroyed and the first JS-owned copy has been zeroed.
 const wireBytes = new Uint8Array(copiedBytes);
-const wireHashBeforeDestroy = hashBytes(wireBytes);
-if (wireHashBeforeDestroy !== copiedHash) throw new Error("wire copy differs before native Recording destruction");
+const wireHashBeforeDestroyU32 = hashBytesU32(wireBytes);
+if (wireHashBeforeDestroyU32 !== copiedHashU32) throw new Error("wire copy differs before native Recording destruction");
+const cppHashWireBeforeDestroy = Number(b3.b3Bytes_Fnv1a32(wireBytes)) >>> 0;
+if (cppHashWireBeforeDestroy !== copiedHashU32) {
+  throw new Error(`JS->C++ ingress checksum mismatch on wire copy js=${copiedHash} cpp=${hashHex(cppHashWireBeforeDestroy)}`);
+}
 b3.b3DestroyRecording(recording);
-const wireHashAfterRecordingDestroy = hashBytes(wireBytes);
-if (wireHashAfterRecordingDestroy !== copiedHash) throw new Error("wire bytes changed when native Recording was destroyed");
+const wireHashAfterRecordingDestroyU32 = hashBytesU32(wireBytes);
+if (wireHashAfterRecordingDestroyU32 !== copiedHashU32) throw new Error("wire bytes changed when native Recording was destroyed");
 copiedBytes.fill(0);
-const wireHashAfterSourceZero = hashBytes(wireBytes);
-if (wireHashAfterSourceZero !== copiedHash) throw new Error("wire bytes alias source JS copy");
+const wireHashAfterSourceZeroU32 = hashBytesU32(wireBytes);
+if (wireHashAfterSourceZeroU32 !== copiedHashU32) throw new Error("wire bytes alias source JS copy");
+const cppHashWireFinal = Number(b3.b3Bytes_Fnv1a32(wireBytes)) >>> 0;
+if (cppHashWireFinal !== copiedHashU32) {
+  throw new Error(`final JS->C++ ingress checksum mismatch js=${copiedHash} cpp=${hashHex(cppHashWireFinal)}`);
+}
 
 const rawPlayer = b3.b3RecPlayer_CreateFromBytes(wireBytes, 1);
-if (!rawPlayer) throw new Error("CreateFromBytes failed after native Recording destruction");
+if (!rawPlayer) throw new Error("CreateFromBytes failed after byte-faithful ingress verification");
 const raw = remapFromPlayer(rawPlayer);
 const rawSeedExact = exactWorld(authority, raw);
 if (!rawSeedExact.exact) throw new Error(`raw wire seed mismatch ${rawSeedExact.id}`);
 
-// Native RecPlayer owns its own copy. Destroy the JS transport contents and require
-// exact continuation against the still-live authority world.
 wireBytes.fill(0);
 let continuationExactTicks = 0;
 for (let tick = SEED_TICK; tick < SEED_TICK + CONTINUE_TICKS; tick += 1) {
@@ -218,7 +225,7 @@ for (let tick = SEED_TICK; tick < SEED_TICK + CONTINUE_TICKS; tick += 1) {
 }
 
 const result = {
-  revision: "world-v0-box3d-raw-seed-roundtrip-audit-v2-isolated-replay",
+  revision: "world-v0-box3d-raw-seed-roundtrip-audit-v3-bytewise-ingress",
   upstream: {
     package: "box3d.js@0.1.1",
     commit: "5d5a3af049cccd9948b2b55bac4342414af0ef64",
@@ -228,11 +235,13 @@ const result = {
     copiedBytes: nativeSize,
     copiedHash,
     copiedAsJsOwnedUint8Array: true,
+    cppIngressHashMatchesJs: cppHashWireFinal === copiedHashU32,
     directControlDestroyedBeforeRawReplay: true,
     nativeRecordingDestroyedBeforeRawPlayerCreate: true,
-    wireHashStableAfterRecordingDestroy: wireHashAfterRecordingDestroy === copiedHash,
-    wireHashStableAfterSourceCopyZero: wireHashAfterSourceZero === copiedHash,
+    wireHashStableAfterRecordingDestroy: wireHashAfterRecordingDestroyU32 === copiedHashU32,
+    wireHashStableAfterSourceCopyZero: wireHashAfterSourceZeroU32 === copiedHashU32,
     wireBufferZeroedAfterRawPlayerCreate: true,
+    ingressMethod: "audit bytewise JS Uint8Array -> C++ std::vector<uint8_t>",
   },
   exactness: {
     directSeedExact: directSeedExact.exact,
@@ -240,7 +249,7 @@ const result = {
     continuationExactTicks,
   },
   verdict: "WORLD_V0_BOX3D_RAW_SEED_WIRE_ROUNDTRIP_PASS",
-  nonClaim: "This qualifies same-build ephemeral recording bytes as a wire/rebase substrate for the pinned wrapper. It does not make Box3D recording a durable save format, cross-version migration format, authenticated protocol payload, or production compression choice.",
+  nonClaim: "This qualifies same-build ephemeral recording bytes as a wire/rebase substrate for the pinned wrapper. The bytewise ingress is an audit proof, not a production-performance choice. This does not make Box3D recording a durable save format, cross-version migration format, authenticated protocol payload, or compression decision.",
 };
 console.log("WORLD_V0_BOX3D_RAW_SEED_ROUNDTRIP", JSON.stringify(result, null, 2));
 console.log(result.verdict);

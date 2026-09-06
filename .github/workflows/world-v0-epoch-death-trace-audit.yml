@@ -1,0 +1,67 @@
+name: World V0 Epoch Death Trace Audit
+
+on:
+  push:
+    branches:
+      - world-v0-multiplayer-foundation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  epoch-death-trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node --check scripts/world-v0-chromium-epoch-death-trace-runner.mjs
+      - name: Trace one-client 750 ms stall through epoch death and recovery
+        env:
+          MW_WORLD_V0_AUDIT_STALL_MS: 750
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-epoch-death-final.json
+          MW_WORLD_V0_EPOCH_TRACE_OUTPUT: world-v0-epoch-death-trace-750.json
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+        run: node scripts/world-v0-chromium-epoch-death-trace-runner.mjs | tee world-v0-epoch-death-trace-750.log
+      - name: Verify preserved pre-death evidence
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const trace = JSON.parse(readFileSync("world-v0-epoch-death-trace-750.json", "utf8"));
+          if (!trace.sourceEpoch) throw new Error("source epoch missing");
+          if (!trace.bothRecovered) throw new Error("both clients did not recover into a replacement epoch");
+          const ended = trace.finalLast.map((e) => e?.sessionEnd?.reason || null);
+          if (ended.some((reason) => !String(reason || "").startsWith("input_lease_expired:"))) {
+            throw new Error(`unexpected pre-death reasons ${JSON.stringify(ended)}`);
+          }
+          const recovered = trace.finalCurrent.map((e) => e?.identity?.worldEpoch || null);
+          if (recovered.some((epoch) => !epoch || epoch === trace.sourceEpoch)) {
+            throw new Error(`epoch did not rotate ${JSON.stringify({ source: trace.sourceEpoch, recovered })}`);
+          }
+          console.log("WORLD_V0_EPOCH_DEATH_CAUSAL_PASS", JSON.stringify({
+            sourceEpoch: trace.sourceEpoch,
+            ended,
+            recovered,
+            last: trace.finalLast.map((e) => ({
+              persistedReason: e?.persistedReason,
+              boundary: e?.boundary,
+              late: e?.metrics?.serverLate,
+              lease: e?.metrics?.leaseExpiredSeen,
+              guards: [e?.metrics?.guardMatches, e?.metrics?.guardMismatches],
+            })),
+          }, null, 2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-v0-epoch-death-trace-750
+          path: |
+            world-v0-epoch-death-trace-750.json
+            world-v0-epoch-death-final.json
+            world-v0-epoch-death-trace-750.log
+          if-no-files-found: warn
+          retention-days: 14

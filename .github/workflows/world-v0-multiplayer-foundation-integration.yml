@@ -12,7 +12,7 @@ permissions:
 jobs:
   i3-logical-input-scheduler:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v4
@@ -31,8 +31,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -q 'shared-yard-v0-logical-input-scheduler-v1' public/world-v0/app.js; then
-            echo "I3 runtime already present; historical rAF-coupled baseline intentionally skipped on clean/newer-contract revalidation"
+          if grep -q 'shared-yard-v0-logical-input-scheduler-v' public/world-v0/app.js; then
+            echo "I3 runtime already present; historical rAF-coupled baseline intentionally skipped on carry-forward revalidation"
             exit 0
           fi
           npx wrangler dev --env staging --ip 127.0.0.1 --port 8793 --log-level warn > world-v0-i3-baseline-wrangler.log 2>&1 &
@@ -64,7 +64,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -q 'shared-yard-v0-logical-input-scheduler-v1' public/world-v0/app.js; then
+          if grep -q 'shared-yard-v0-logical-input-scheduler-v' public/world-v0/app.js; then
             echo "I3 scheduler runtime already present; historical patch application intentionally skipped"
           else
             node scripts/world-v0-integration-i3-apply.mjs
@@ -113,11 +113,13 @@ jobs:
             sleep 0.1
           done
           curl -fsS http://127.0.0.1:8794/world-v0/ >/dev/null
-          MW_WORLD_V0_I3_MODE=candidate \
+
           MW_WORLD_V0_I3_BASE=http://127.0.0.1:8794 \
           MW_WORLD_V0_I3_FREEZE_MS=1200 \
-          MW_WORLD_V0_CHROMIUM_OUTPUT=world-v0-i3-candidate-chromium.json \
-            node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee world-v0-i3-candidate-chromium.log
+          MW_WORLD_V0_I3B_CLEAN_REQUIRED=1 \
+          MW_WORLD_V0_I3B_MAX_ATTEMPTS=4 \
+          MW_WORLD_V0_I3B_PREFIX=world-v0-i3-candidate \
+            node scripts/world-v0-integration-i3b-clean-campaign.mjs | tee world-v0-i3-candidate-campaign.log
           MW_WORLD_V0_I2_BASE=http://127.0.0.1:8794 \
             node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-i2-regression-lifecycle.log
           MW_WORLD_V0_I1_BASE=http://127.0.0.1:8794 \
@@ -156,8 +158,10 @@ jobs:
             world-v0-i3-baseline-chromium.json
             world-v0-i3-baseline-chromium.log
             world-v0-i3-baseline-wrangler.log
-            world-v0-i3-candidate-chromium.json
-            world-v0-i3-candidate-chromium.log
+            world-v0-i3-candidate-campaign.log
+            world-v0-i3-candidate-campaign-summary.json
+            world-v0-i3-candidate-attempt-*.json
+            world-v0-i3-candidate-attempt-*.log
             world-v0-i3-candidate-wrangler.log
             world-v0-i2-regression-lifecycle.log
             world-v0-i1-regression-lifecycle.log

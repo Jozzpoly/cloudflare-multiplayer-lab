@@ -169,28 +169,40 @@ try {
   assert(duringB.metrics.guardMismatches === 0, "healthy peer exact-state mismatch during A drop");
 
   await setOffline(clients[0], false);
-  await waitFor(clients[0], `(() => { const e=window.__sharedYardV0Evidence?.(); return e && !e.runtimeFailed && e.metrics.rebases >= 1 && e.session.actorResume.pending === false && e.metrics.latestRebaseGapTicks > ${WORLD_V0_TIMING.inputLeaseMissingTicks} && e.localBoundaryTick >= e.metrics.latestRebaseBoundary + 30 && e.metrics.guardMismatches === 0; })()`, "client A exact authority rebase and continuation", 30_000);
-  await sleep(500);
+  await waitFor(clients[0], `(() => {
+    const e=window.__sharedYardV0Evidence?.();
+    if (!e || e.runtimeFailed || e.session.actorResume.pending || e.metrics.guardMismatches !== 0) return false;
+    const targeted=(e.lifecycleEvents || []).find((event) =>
+      event.type === "authority-rebase" &&
+      event.sourceBoundary === ${sourceBoundary} &&
+      event.gapTicks > ${WORLD_V0_TIMING.inputLeaseMissingTicks});
+    return Boolean(targeted && e.localBoundaryTick >= targeted.boundaryTick + 30);
+  })()`, "client A exact targeted authority rebase and continuation", 30_000);
   const afterA = await evidence(clients[0]);
   const afterB = await evidence(clients[1]);
+
+  const rebaseEvent = (afterA.lifecycleEvents || []).find((event) =>
+    event.type === "authority-rebase" &&
+    event.sourceBoundary === sourceBoundary &&
+    event.gapTicks > WORLD_V0_TIMING.inputLeaseMissingTicks);
+  assert(rebaseEvent, "targeted browser authority-rebase lifecycle evidence missing");
+  const resumeComplete = (afterA.lifecycleEvents || []).find((event) =>
+    event.type === "actor-resume-complete" && event.boundaryTick === rebaseEvent.boundaryTick);
 
   assert(afterA.identity.worldEpoch === beforeA.identity.worldEpoch, "A rebase rotated WorldEpoch");
   assert(afterA.session.actorSessionId === beforeA.session.actorSessionId, "A rebase changed ActorSession");
   assert(afterA.session.selfNetEntityId === beforeA.session.selfNetEntityId, "A rebase changed NetEntityId");
-  assert(afterA.metrics.latestRebaseGapTicks > WORLD_V0_CLIENT_HISTORY.retainTicks, "A rebase did not cross history horizon");
-  assert(afterA.metrics.latestRebaseGapTicks > WORLD_V0_TIMING.inputLeaseMissingTicks, "A rebase did not cross input lease");
-  assert(afterA.metrics.latestRebaseBytes > 1024, "A rebase seed unexpectedly small");
-  assert(/^[0-9a-f]{8}$/.test(afterA.metrics.latestRebaseHash || ""), "A rebase checksum evidence missing");
+  assert(rebaseEvent.gapTicks > WORLD_V0_CLIENT_HISTORY.retainTicks, "A targeted rebase did not cross history horizon");
+  assert(rebaseEvent.gapTicks > WORLD_V0_TIMING.inputLeaseMissingTicks, "A targeted rebase did not cross input lease");
+  assert(rebaseEvent.byteLength > 1024, "A targeted rebase seed unexpectedly small");
+  assert(/^[0-9a-f]{8}$/.test(rebaseEvent.fnv1a32 || ""), "A targeted rebase checksum evidence missing");
   assert(afterA.metrics.guardMismatches === 0 && afterA.metrics.firstStateMismatch === null, "A exact guard failed after rebase");
   assert(afterA.metrics.guardMatches > beforeA.metrics.guardMatches, "A exact guard did not continue after rebase");
   assert(afterB.identity.worldEpoch === beforeB.identity.worldEpoch && !afterB.runtimeFailed, "healthy B continuity failed");
-  const resumeComplete = afterA.lifecycleEvents.find((event) => event.type === "actor-resume-complete");
-  const rebaseEvent = afterA.lifecycleEvents.find((event) => event.type === "authority-rebase");
-  assert(resumeComplete?.resumeCount >= 1, "browser resume completion evidence missing");
-  assert(rebaseEvent?.gapTicks === afterA.metrics.latestRebaseGapTicks, "browser rebase lifecycle/metric gap mismatch");
+  assert(resumeComplete?.resumeCount >= 1, "targeted browser resume completion evidence missing");
 
   const result = {
-    revision: "world-v0-integration-i4b-real-chromium-rebase-v1",
+    revision: "world-v0-integration-i4b-real-chromium-rebase-v2-targeted-outage",
     runKey,
     chromeVersion: version,
     offlineMs: OFFLINE_MS,
@@ -205,12 +217,12 @@ try {
     gap: {
       sourceBoundary,
       healthyPeerBoundaryDuringGap: duringB.localBoundaryTick,
-      rebaseBoundary: afterA.metrics.latestRebaseBoundary,
-      gapTicks: afterA.metrics.latestRebaseGapTicks,
+      rebaseBoundary: rebaseEvent.boundaryTick,
+      gapTicks: rebaseEvent.gapTicks,
       historyRetainTicks: WORLD_V0_CLIENT_HISTORY.retainTicks,
       inputLeaseMissingTicks: WORLD_V0_TIMING.inputLeaseMissingTicks,
     },
-    seed: { bytes: afterA.metrics.latestRebaseBytes, fnv1a32: afterA.metrics.latestRebaseHash },
+    seed: { bytes: rebaseEvent.byteLength, fnv1a32: rebaseEvent.fnv1a32 },
     exactness: {
       rebaseCount: afterA.metrics.rebases,
       guardMatchesBefore: beforeA.metrics.guardMatches,
@@ -218,9 +230,14 @@ try {
       guardMismatches: afterA.metrics.guardMismatches,
       firstStateMismatch: afterA.metrics.firstStateMismatch,
     },
+    incidentalRecovery: {
+      authoritySilenceResumes: afterA.metrics.authoritySilenceResumes,
+      latestRebaseBoundary: afterA.metrics.latestRebaseBoundary,
+      latestRebaseGapTicks: afterA.metrics.latestRebaseGapTicks,
+    },
     healthyPeer: { boundaryAfter: afterB.localBoundaryTick, runtimeFailed: afterB.runtimeFailed, guardMismatches: afterB.metrics.guardMismatches },
     verdict: "WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS",
-    nonClaim: "This proves automatic same-ActorSession browser recovery through a controlled per-target network outage on local Wrangler/Chrome, beyond both the retained rewind horizon and actor input lease. It does not claim remote Cloudflare placement, process-loss reconstruction, durable persistence, cross-build replay, or mobile browser behavior.",
+    nonClaim: "This proves automatic same-ActorSession browser recovery through the specifically controlled per-target network outage on local Wrangler/Chrome, beyond both the retained rewind horizon and actor input lease. Later incidental authority-silence resumes are recorded separately and cannot overwrite attribution of the targeted outage. It does not claim remote Cloudflare placement, process-loss reconstruction, durable persistence, cross-build replay, or mobile browser behavior.",
   };
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
   console.log("WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_REBASE", JSON.stringify(result, null, 2));

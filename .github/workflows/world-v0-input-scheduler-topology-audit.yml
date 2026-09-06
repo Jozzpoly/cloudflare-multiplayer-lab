@@ -1,0 +1,30 @@
+name: World V0 Input Scheduler Topology Audit
+
+on:
+  push:
+    branches:
+      - world-v0-multiplayer-foundation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scheduler-topology:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node --check scripts/world-v0-input-scheduler-topology-audit.mjs
+      - run: node scripts/world-v0-input-scheduler-topology-audit.mjs | tee world-v0-input-scheduler-topology.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-v0-input-scheduler-topology
+          path: world-v0-input-scheduler-topology.log
+          if-no-files-found: warn
+          retention-days: 14

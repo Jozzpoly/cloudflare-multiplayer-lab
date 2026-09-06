@@ -9,9 +9,12 @@ import {
   WORLD_V0_SIM_BUILD_ID,
 } from "../src/world-v0-contract.ts";
 
-assert.equal(WORLD_V0_CONTRACT_REVISION, "shared-yard-v0-contract-v4-logical-input-scheduler");
-assert.equal(WORLD_V0_CLIENT_SIM_REVISION, "shared-yard-v0-browser-sim-v4-logical-input-scheduler");
-assert.equal(WORLD_V0_SERVER_REVISION, "shared-yard-v0-authority-v3-supersession");
+// I3 is a semantic capability, not an exact later-stage revision string. Keep
+// provenance visible, but allow I4+ contracts to carry the qualified scheduler
+// forward as long as the protocol/timing and structural invariants remain intact.
+assert.match(WORLD_V0_CONTRACT_REVISION, /^shared-yard-v0-contract-v\d+/);
+assert.match(WORLD_V0_CLIENT_SIM_REVISION, /^shared-yard-v0-browser-sim-v\d+/);
+assert.match(WORLD_V0_SERVER_REVISION, /^shared-yard-v0-authority-v\d+/);
 assert.equal(WORLD_V0_PROTOCOL_REVISION, "shared-yard-v0-scheduled-input-v3-supersession");
 assert.equal(WORLD_V0_TIMING.simulationHz, 60);
 assert.equal(WORLD_V0_TIMING.predictionLeadTicks, 8);
@@ -125,10 +128,15 @@ assert(browser.includes("pendingBatch.find((record) => record.targetTick === tic
 assert(browser.includes("jump: Boolean(existing.jump || tick === jumpTarget)"), "movement revisions can erase jump edge");
 
 const evidence = {
-  revision: "world-v0-integration-i3-semantics-v1",
+  revision: "world-v0-integration-i3-semantics-v2-carry-forward",
   simBuildId: WORLD_V0_SIM_BUILD_ID,
+  runtimeRevisions: {
+    contract: WORLD_V0_CONTRACT_REVISION,
+    clientSim: WORLD_V0_CLIENT_SIM_REVISION,
+    server: WORLD_V0_SERVER_REVISION,
+    protocol: WORLD_V0_PROTOCOL_REVISION,
+  },
   preserved: {
-    serverRevision: WORLD_V0_SERVER_REVISION,
     protocolRevision: WORLD_V0_PROTOCOL_REVISION,
     simulationHz: WORLD_V0_TIMING.simulationHz,
     predictionLeadTicks: WORLD_V0_TIMING.predictionLeadTicks,
@@ -145,7 +153,7 @@ const evidence = {
     "jump-edge-preserved-across-movement-revision",
   ],
   verdict: "WORLD_V0_INTEGRATION_I3_SEMANTICS_PASS",
-  nonClaim: "This is a structural/pure semantic gate. Real Chromium rAF-decoupling evidence is required before the runtime candidate may be committed.",
+  nonClaim: "This is a structural/pure semantic carry-forward gate. Real Chromium rAF-decoupling evidence remains required for current runtime qualification.",
 };
 console.log("WORLD_V0_INTEGRATION_I3_SEMANTICS", JSON.stringify(evidence, null, 2));
 console.log(evidence.verdict);

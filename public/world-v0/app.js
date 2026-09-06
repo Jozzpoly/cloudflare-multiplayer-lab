@@ -2,6 +2,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.m
 import {
   WORLD_V0_BROWSER_UI_REVISION,
   WORLD_V0_BOX3D_PACKAGE,
+  WORLD_V0_BOX3D_BUILD,
   WORLD_V0_BOX3D_URL,
   WORLD_V0_CLIENT_SIM_REVISION,
   WORLD_V0_EXPECTED_PROTOCOL_REVISION,
@@ -82,6 +83,7 @@ try {
   b3 = await module.default();
   const recordingFns = [
     "b3CreateRecording", "b3DestroyRecording", "b3World_StartRecording", "b3World_StopRecording", "b3Recording_GetSize",
+    "b3Recording_CopyData", "b3RecPlayer_CreateFromBytes", "b3Bytes_Fnv1a32",
     "b3RecPlayer_CreateFromRecording", "b3RecPlayer_Destroy", "b3RecPlayer_GetWorldId", "b3RecPlayer_GetBodyCount",
     "b3RecPlayer_GetBodyId", "b3RecPlayer_SeekFrame", "b3RecPlayer_GetFrame", "b3RecPlayer_HasDiverged",
     "b3RecPlayer_GetDivergeFrame", "b3Body_SetName", "b3Body_GetName", "b3Body_IsValid",
@@ -685,6 +687,7 @@ function assertSimulationContract(contract, phase) {
   if (contract.protocolRevision !== WORLD_V0_EXPECTED_PROTOCOL_REVISION) throw new Error(`${phase} protocol revision mismatch ${contract.protocolRevision}`);
   if (contract.stateGuardRevision !== WORLD_V0_EXPECTED_STATE_GUARD_REVISION) throw new Error(`${phase} state guard revision mismatch ${contract.stateGuardRevision}`);
   if (contract.box3dRuntime?.package !== WORLD_V0_BOX3D_PACKAGE) throw new Error(`${phase} Box3D package mismatch ${contract.box3dRuntime?.package}`);
+  if (contract.box3dRuntime?.build !== WORLD_V0_BOX3D_BUILD) throw new Error(`${phase} Box3D build mismatch ${contract.box3dRuntime?.build}`);
   if (contract.timing?.simulationHz !== 60 || contract.timing?.substeps !== 4) throw new Error(`${phase} fixed-step contract mismatch`);
   if (!Array.isArray(contract.netEntityOrder) || contract.netEntityOrder.length !== 14) throw new Error(`${phase} invalid NetEntityId order`);
   if (!Array.isArray(contract.stateComponents) || contract.stateComponents.length !== 13) throw new Error(`${phase} invalid state component contract`);

@@ -372,7 +372,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         resumeToken: crypto.randomUUID(),
         netEntityId: `actor:${slot}`,
         slot,
-        body: this.createPlayerBody(start),
+        body: this.createPlayerBody(start, `actor:${slot}`),
         ready: false,
         input: new WorldV0ScheduledInputBuffer(),
         socket: null,
@@ -487,7 +487,8 @@ export class SharedYardV0 extends DurableObject<Env> {
       bodyDef.linearDamping = WORLD_V0_PROP_PHYSICS.linearDamping;
       bodyDef.angularDamping = WORLD_V0_PROP_PHYSICS.angularDamping;
       const body = b3.b3CreateBody(this.world, bodyDef);
-      b3.b3Body_SetName(body, authored.id);
+      // I4 authority recording locator: must match the browser replay locator exactly.
+      b3.b3Body_SetName(body, `prop:${authored.id}`);
       const shapeDef = b3.b3DefaultShapeDef();
       shapeDef.density = WORLD_V0_PROP_PHYSICS.density;
       shapeDef.baseMaterial.friction = WORLD_V0_PROP_PHYSICS.friction;
@@ -503,7 +504,7 @@ export class SharedYardV0 extends DurableObject<Env> {
     }
   }
 
-  private createPlayerBody(start: readonly [number, number, number]): BodyId {
+  private createPlayerBody(start: readonly [number, number, number], locator: string): BodyId {
     if (!this.world) throw new Error("world_not_ready");
     const bodyDef = b3.b3DefaultBodyDef();
     bodyDef.type = b3.b3BodyType.b3_dynamicBody;
@@ -511,6 +512,8 @@ export class SharedYardV0 extends DurableObject<Env> {
     bodyDef.linearDamping = WORLD_V0_PLAYER_PHYSICS.linearDamping;
     bodyDef.angularDamping = WORLD_V0_PLAYER_PHYSICS.angularDamping;
     const body = b3.b3CreateBody(this.world, bodyDef);
+    // I4 authority recording locator: ActorSession slot maps to the browser actor locator.
+    b3.b3Body_SetName(body, locator);
     const shapeDef = b3.b3DefaultShapeDef();
     shapeDef.density = WORLD_V0_PLAYER_PHYSICS.density;
     shapeDef.baseMaterial.friction = WORLD_V0_PLAYER_PHYSICS.friction;

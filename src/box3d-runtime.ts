@@ -1,5 +1,7 @@
-import Box3D from "box3d.js/inline";
-import box3dWasm from "../node_modules/box3d.js/dist/box3d.wasm";
+// I4a: one pinned custom artifact is used by both Worker and browser.
+// @ts-ignore generated pinned Emscripten module has no TypeScript declaration
+import Box3D from "../public/world-v0/box3d-i4/box3d.inline.mjs";
+import box3dWasm from "../public/world-v0/box3d-i4/box3d.wasm";
 
 type InstantiateSuccess = (instance: WebAssembly.Instance, module?: WebAssembly.Module) => void;
 type Box3DFactoryOptions = {
@@ -24,5 +26,5 @@ export const b3 = await factory({
 
 export const BOX3D_RUNTIME = {
   package: "box3d.js@0.1.1",
-  build: "inline-glue-precompiled-wasm-startup-init-single-threaded",
+  build: "i4-raw-seed-bindings-box3djs-5d5a3af-emsdk-6.0.2",
 } as const;

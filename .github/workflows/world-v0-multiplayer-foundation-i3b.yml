@@ -51,7 +51,7 @@ jobs:
       - name: Run full repository validation
         run: npm run check
 
-      - name: Prove repeated real Chromium rAF independence and I1-I4 carry-forward
+      - name: Prove clean repeated rAF independence and I1-I4 carry-forward
         shell: bash
         run: |
           set -euo pipefail
@@ -73,15 +73,15 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8797/world-v0/ >/dev/null
 
-          for repeat in 1 2 3 4; do
-            echo "WORLD_V0_I3B_REPEAT_BEGIN $repeat"
-            MW_WORLD_V0_I3_MODE=candidate \
-            MW_WORLD_V0_I3_BASE=http://127.0.0.1:8797 \
-            MW_WORLD_V0_I3_FREEZE_MS=1200 \
-            MW_WORLD_V0_CHROMIUM_OUTPUT="world-v0-i3b-i3-repeat-${repeat}.json" \
-              node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee "world-v0-i3b-i3-repeat-${repeat}.log"
-            echo "WORLD_V0_I3B_REPEAT_PASS $repeat"
-          done
+          MW_WORLD_V0_I3_BASE=http://127.0.0.1:8797 \
+          MW_WORLD_V0_I3_FREEZE_MS=1200 \
+          MW_WORLD_V0_I3B_CLEAN_REQUIRED=4 \
+          MW_WORLD_V0_I3B_MAX_ATTEMPTS=12 \
+          MW_WORLD_V0_I3B_PREFIX=world-v0-i3b-i3 \
+            node scripts/world-v0-integration-i3b-clean-campaign.mjs | tee world-v0-i3b-clean-campaign.log
+
+          MW_WORLD_V0_I3B_BASE=http://127.0.0.1:8797 \
+            node --experimental-strip-types scripts/world-v0-integration-i3b-resume-buffer-probe.mjs | tee world-v0-i3b-resume-buffer.log
 
           MW_WORLD_V0_I4B_BASE=http://127.0.0.1:8797 \
             node --experimental-strip-types scripts/world-v0-integration-i4b-authority-probe.mjs | tee world-v0-i3b-i4b-authority.log
@@ -127,8 +127,11 @@ jobs:
             world-v0-i3b-i3-gap-safe.log
             world-v0-i3b-i4a-seam.log
             world-v0-i3b-i4b-seam.log
-            world-v0-i3b-i3-repeat-*.json
-            world-v0-i3b-i3-repeat-*.log
+            world-v0-i3b-clean-campaign.log
+            world-v0-i3b-i3-campaign-summary.json
+            world-v0-i3b-i3-attempt-*.json
+            world-v0-i3b-i3-attempt-*.log
+            world-v0-i3b-resume-buffer.log
             world-v0-i3b-i4b-authority.log
             world-v0-i3b-i4b-browser.json
             world-v0-i3b-i4b-browser.log

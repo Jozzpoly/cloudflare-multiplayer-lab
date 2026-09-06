@@ -1,9 +1,17 @@
-import { b3 } from "../src/box3d-runtime.ts";
+import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
 import {
   WORLD_V0_NET_ENTITY_ORDER,
   WORLD_V0_STATE_COMPONENTS,
   WORLD_V0_TIMING,
 } from "../src/world-v0-contract.ts";
+
+const modulePath = resolve("public/world-v0/box3d-i4/box3d.inline.mjs");
+const { default: Box3D } = await import(`${pathToFileURL(modulePath).href}?i4b=${Date.now()}`);
+const b3 = await Box3D();
+for (const name of ["b3Recording_CopyData", "b3RecPlayer_CreateFromBytes", "b3Bytes_Fnv1a32"]) {
+  if (typeof b3[name] !== "function") throw new Error(`I4b custom Box3D binding missing ${name}`);
+}
 
 const BASE = process.env.MW_WORLD_V0_I4B_BASE ?? "http://127.0.0.1:8796";
 const WS_BASE = BASE.replace(/^http/, "ws");

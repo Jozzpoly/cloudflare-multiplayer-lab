@@ -62,11 +62,14 @@ type SharedYardProp = {
 type SharedYardPlayer = {
   playerId: string;
   sessionId: string;
+  resumeToken: string;
   netEntityId: string;
   slot: number;
   body: BodyId;
   ready: boolean;
   input: WorldV0ScheduledInputBuffer;
+  socket: WebSocket | null;
+  resumeCount: number;
 };
 
 type SharedYardSceneSample = {
@@ -163,7 +166,10 @@ export class SharedYardV0 extends DurableObject<Env> {
   private worldId: string | null = null;
   private worldEpoch: string | null = null;
   private props: SharedYardProp[] = [];
-  private readonly players = new Map<WebSocket, SharedYardPlayer>();
+  // ActorSession lifetime is deliberately independent from transport lifetime.
+  // sessionId is public simulation identity; resumeToken is private reconnect authority.
+  private readonly players = new Map<string, SharedYardPlayer>();
+  private readonly sessionBySocket = new Map<WebSocket, string>();
   private loopTimer: ReturnType<typeof setInterval> | null = null;
   private epochPinTimer: ReturnType<typeof setInterval> | null = null;
   private lastPumpAt = 0;
@@ -204,6 +210,10 @@ export class SharedYardV0 extends DurableObject<Env> {
         boundaryTick: this.tick,
         protocolStartTick: this.protocolStartTick,
         players: this.players.size,
+        connectedPlayers: this.connectedPlayerCount(),
+        stalePlayers: [...this.players.values()].filter((player) =>
+          player.input.stats().currentMissingStreak >= WORLD_V0_TIMING.inputLeaseMissingTicks
+        ).length,
         physicsLoopActive: this.loopTimer !== null,
         epochPinned: this.epochPinTimer !== null,
         restoredSocketsClosed: this.restoredSocketsClosed,
@@ -216,7 +226,7 @@ export class SharedYardV0 extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
-    const player = this.players.get(ws);
+    const player = this.playerForSocket(ws);
     if (!player) {
       try { ws.close(1011, "missing_world_v0_player"); } catch { /* lifecycle race */ }
       return;
@@ -258,7 +268,9 @@ export class SharedYardV0 extends DurableObject<Env> {
         },
         ...this.identityPayload(),
       });
-      this.endEpoch(`world_identity_mismatch:${player.netEntityId}`);
+      // A stale/bad transport must not be allowed to destroy the shared WorldEpoch.
+      this.detachSocket(ws);
+      try { ws.close(1008, "world_identity_mismatch"); } catch { /* close race */ }
       return;
     }
 
@@ -299,8 +311,8 @@ export class SharedYardV0 extends DurableObject<Env> {
         serverTime: Date.now(),
         ...this.identityPayload(),
       };
-      for (const [peerSocket] of this.players) {
-        if (peerSocket !== ws) this.send(peerSocket, payload);
+      for (const peer of this.players.values()) {
+        if (peer.socket && peer.socket !== ws) this.send(peer.socket, payload);
       }
     }
 
@@ -315,52 +327,90 @@ export class SharedYardV0 extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
-    this.endEpochFromSocket(ws, "peer_left_restart_required");
+    this.detachSocket(ws);
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    this.endEpochFromSocket(ws, "peer_error_restart_required");
+    this.detachSocket(ws);
   }
 
   private acceptPlayer(request: Request): Response {
     const url = new URL(request.url);
     const playerId = (url.searchParams.get("player") ?? "").trim();
+    const requestedResumeToken = (url.searchParams.get("resume") ?? "").trim();
     const runKey = normalizeRunKey(url.searchParams.get("run"));
     const requestedWorldId = `shared-yard-v0-${runKey}`;
     if (!PLAYER_ID_PATTERN.test(playerId)) return json({ ok: false, error: "invalid_player" }, 400);
-    if (this.protocolStartTick !== null || this.loopTimer) return json({ ok: false, error: "world_v0_run_already_active" }, 409);
-    if (this.players.size >= MAX_PLAYERS) return json({ ok: false, error: "world_v0_full" }, 503);
 
-    if (!this.world) this.createWorld(requestedWorldId);
-    if (!this.world || !this.worldId || !this.worldEpoch) return json({ ok: false, error: "world_not_ready" }, 500);
-    if (this.worldId !== requestedWorldId) return json({ ok: false, error: "world_id_mismatch" }, 409);
+    let player: SharedYardPlayer | undefined;
+    let resumed = false;
+
+    if (requestedResumeToken) {
+      if (!this.world || !this.worldId || !this.worldEpoch) {
+        return json({ ok: false, error: "invalid_resume_token" }, 403);
+      }
+      if (this.worldId !== requestedWorldId) return json({ ok: false, error: "world_id_mismatch" }, 409);
+      player = [...this.players.values()].find((candidate) => candidate.resumeToken === requestedResumeToken);
+      if (!player || player.playerId !== playerId) return json({ ok: false, error: "invalid_resume_token" }, 403);
+      resumed = true;
+    } else {
+      // Fresh actors may only join before the run starts. Reconnects use the private token above.
+      if (this.protocolStartTick !== null || this.loopTimer) return json({ ok: false, error: "world_v0_run_already_active" }, 409);
+      if (this.players.size >= MAX_PLAYERS) return json({ ok: false, error: "world_v0_full" }, 503);
+      if (!this.world) this.createWorld(requestedWorldId);
+      if (!this.world || !this.worldId || !this.worldEpoch) return json({ ok: false, error: "world_not_ready" }, 500);
+      if (this.worldId !== requestedWorldId) return json({ ok: false, error: "world_id_mismatch" }, 409);
+
+      const slot = this.players.size;
+      const start = WORLD_V0_PLAYER_STARTS[slot];
+      if (!start) return json({ ok: false, error: "world_v0_slot_missing" }, 500);
+      player = {
+        playerId,
+        sessionId: crypto.randomUUID(),
+        resumeToken: crypto.randomUUID(),
+        netEntityId: `actor:${slot}`,
+        slot,
+        body: this.createPlayerBody(start),
+        ready: false,
+        input: new WorldV0ScheduledInputBuffer(),
+        socket: null,
+        resumeCount: 0,
+      };
+      this.players.set(player.sessionId, player);
+    }
+
+    if (!player || !this.world || !this.worldId || !this.worldEpoch) {
+      return json({ ok: false, error: "world_not_ready" }, 500);
+    }
+
+    // A newer connection owns the ActorSession. The old socket is detached before
+    // closing so its eventual close callback cannot detach the replacement socket.
+    const previousSocket = player.socket;
+    if (previousSocket) {
+      this.sessionBySocket.delete(previousSocket);
+      player.socket = null;
+      try { previousSocket.close(1012, "session_rebound"); } catch { /* rebound race */ }
+    }
 
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket];
-    const slot = this.players.size;
-    const start = WORLD_V0_PLAYER_STARTS[slot];
-    if (!start) return json({ ok: false, error: "world_v0_slot_missing" }, 500);
-    const netEntityId = `actor:${slot}`;
-    const body = this.createPlayerBody(start);
-    const player: SharedYardPlayer = {
-      playerId,
-      sessionId: crypto.randomUUID(),
-      netEntityId,
-      slot,
-      body,
-      ready: false,
-      input: new WorldV0ScheduledInputBuffer(),
-    };
-
     this.ensureEpochPinned();
     this.ctx.acceptWebSocket(server, ["shared-yard-v0-player"]);
-    this.players.set(server, player);
+    player.socket = server;
+    if (resumed) player.resumeCount += 1;
+    this.sessionBySocket.set(server, player.sessionId);
+
     this.send(server, {
       type: "world_v0_welcome",
       revision: WORLD_V0_SERVER_REVISION,
       selfSessionId: player.sessionId,
       selfNetEntityId: player.netEntityId,
-      slot,
-      waitingForPeer: this.players.size < MAX_PLAYERS,
+      resumeToken: player.resumeToken,
+      resumed,
+      resumeCount: player.resumeCount,
+      resumeLastBatchSeq: player.input.stats().lastBatchSeq,
+      slot: player.slot,
+      waitingForPeer: this.connectedPlayerCount() < MAX_PLAYERS,
+      protocolStartTick: this.protocolStartTick,
       simulation: worldV0SimulationContract(),
       state: this.snapshotState(),
       serverTime: Date.now(),
@@ -555,7 +605,6 @@ export class SharedYardV0 extends DurableObject<Env> {
       netEntityId: string;
       slot: number;
     } & WorldV0ConsumedInput> = [];
-    let leaseExpiredBy: SharedYardPlayer | null = null;
 
     for (const player of this.sortedPlayers()) {
       const input = active
@@ -569,7 +618,6 @@ export class SharedYardV0 extends DurableObject<Env> {
         slot: player.slot,
         ...input,
       });
-      if (active && input.source === "lease_expired" && !leaseExpiredBy) leaseExpiredBy = player;
     }
 
     b3.b3World_Step(this.world, 1 / WORLD_V0_TIMING.simulationHz, WORLD_V0_TIMING.substeps);
@@ -586,8 +634,14 @@ export class SharedYardV0 extends DurableObject<Env> {
       });
     }
 
-    if (leaseExpiredBy) {
-      this.endEpoch(`input_lease_expired:${leaseExpiredBy.netEntityId}`);
+    // Lease expiry is actor-local containment, not WorldEpoch death. Once no
+    // transport survives, however, allow the run to die after every session has
+    // crossed the same bounded lease rather than creating an always-on zombie DO.
+    if (active && this.players.size > 0 && this.connectedPlayerCount() === 0 &&
+        [...this.players.values()].every((player) =>
+          player.input.stats().currentMissingStreak >= WORLD_V0_TIMING.inputLeaseMissingTicks
+        )) {
+      this.endEpoch("all_players_disconnected_lease_expired");
       return;
     }
 
@@ -725,9 +779,32 @@ export class SharedYardV0 extends DurableObject<Env> {
     return expectedWorldV0Identity(this.worldId, this.worldEpoch);
   }
 
-  private endEpochFromSocket(ws: WebSocket, reason: string): void {
-    if (!this.players.has(ws)) return;
-    this.endEpoch(reason);
+  private playerForSocket(ws: WebSocket): SharedYardPlayer | null {
+    const sessionId = this.sessionBySocket.get(ws);
+    return sessionId ? this.players.get(sessionId) ?? null : null;
+  }
+
+  private connectedPlayerCount(): number {
+    let count = 0;
+    for (const player of this.players.values()) {
+      if (player.socket?.readyState === WebSocket.OPEN) count += 1;
+    }
+    return count;
+  }
+
+  private detachSocket(ws: WebSocket): void {
+    const sessionId = this.sessionBySocket.get(ws);
+    this.sessionBySocket.delete(ws);
+    if (!sessionId) return;
+    const player = this.players.get(sessionId);
+    if (!player || player.socket !== ws) return;
+    player.socket = null;
+
+    // Before canonical play starts there is no ticking lease to clean up an empty
+    // run, so an entirely abandoned waiting room may end immediately.
+    if (this.protocolStartTick === null && this.connectedPlayerCount() === 0) {
+      this.endEpoch("all_players_disconnected_before_start");
+    }
   }
 
   private endEpoch(reason: string): void {
@@ -742,9 +819,11 @@ export class SharedYardV0 extends DurableObject<Env> {
         serverTime: Date.now(),
         ...identity,
       });
-      for (const socket of this.players.keys()) {
-        try { socket.close(1012, reason); } catch { /* lifecycle race */ }
+      for (const player of this.players.values()) {
+        if (!player.socket) continue;
+        try { player.socket.close(1012, reason); } catch { /* lifecycle race */ }
       }
+      this.sessionBySocket.clear();
       this.players.clear();
       this.stopLoop();
       this.stopEpochPin();
@@ -771,7 +850,9 @@ export class SharedYardV0 extends DurableObject<Env> {
   }
 
   private broadcast(payload: unknown): void {
-    for (const socket of this.players.keys()) this.send(socket, payload);
+    for (const player of this.players.values()) {
+      if (player.socket) this.send(player.socket, payload);
+    }
   }
 
   private send(socket: WebSocket, payload: unknown): void {

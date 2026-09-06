@@ -56,7 +56,7 @@ jobs:
           curl -fsS http://127.0.0.1:8793/world-v0/ >/dev/null
           MW_WORLD_V0_I3_MODE=baseline \
           MW_WORLD_V0_I3_BASE=http://127.0.0.1:8793 \
-          MW_WORLD_V0_I3_RAF_MS=250 \
+          MW_WORLD_V0_I3_FREEZE_MS=1200 \
           MW_WORLD_V0_CHROMIUM_OUTPUT=world-v0-i3-baseline-chromium.json \
             node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee world-v0-i3-baseline-chromium.log
 
@@ -85,7 +85,7 @@ jobs:
       - name: Run full repository validation
         run: npm run check
 
-      - name: Prove I3 candidate survives rAF-only starvation in real Chromium
+      - name: Prove I3 candidate survives isolated rAF freeze in real Chromium
         shell: bash
         run: |
           set -euo pipefail
@@ -110,7 +110,7 @@ jobs:
           curl -fsS http://127.0.0.1:8794/world-v0/ >/dev/null
           MW_WORLD_V0_I3_MODE=candidate \
           MW_WORLD_V0_I3_BASE=http://127.0.0.1:8794 \
-          MW_WORLD_V0_I3_RAF_MS=250 \
+          MW_WORLD_V0_I3_FREEZE_MS=1200 \
           MW_WORLD_V0_CHROMIUM_OUTPUT=world-v0-i3-candidate-chromium.json \
             node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee world-v0-i3-candidate-chromium.log
           MW_WORLD_V0_I2_BASE=http://127.0.0.1:8794 \

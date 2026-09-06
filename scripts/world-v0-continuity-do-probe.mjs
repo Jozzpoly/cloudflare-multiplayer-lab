@@ -156,9 +156,6 @@ if (dist3(bPositionBeforeResume, bImmediatelyResumed.position) > 0.25) {
 
 const resumeTick = immediatelyResumed.boundaryTick;
 const bAckCountBefore = b2.messages.filter((message) => message?.type === "input_ack").length;
-// Both actors now move away from the center/contact cluster. v2 continued B toward
-// the shared prop and therefore could not distinguish a valid resumed controller
-// from a physically jammed body.
 await Promise.all([
   sustainInput(a, -1, 550),
   sustainInput(b2, 1, 550),
@@ -230,3 +227,5 @@ console.log(result.verdict);
 
 try { a.ws.close(1000, "audit_done"); } catch {}
 try { b2.ws.close(1000, "audit_done"); } catch {}
+await sleep(50);
+process.exit(0);

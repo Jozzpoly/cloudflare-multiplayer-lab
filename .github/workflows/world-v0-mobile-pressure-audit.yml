@@ -1,0 +1,71 @@
+name: World V0 Mobile Pressure Audit
+
+on:
+  push:
+    branches:
+      - world-v0-multiplayer-foundation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-pressure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node --check scripts/world-v0-chromium-mobile-pressure-audit-runner.mjs
+      - name: Run representative mobile pressure against public authority
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-mobile-pressure.json
+          MW_WORLD_V0_MOBILE_PRESSURE_LATENCY_MS: 100
+          MW_WORLD_V0_MOBILE_PRESSURE_CPU_RATE: 4
+          MW_WORLD_V0_MOBILE_PRESSURE_STALL_MS: 120
+          MW_WORLD_V0_MOBILE_PRESSURE_STALL_COUNT: 10
+          MW_WORLD_V0_MOBILE_PRESSURE_GAP_MS: 220
+        run: node scripts/world-v0-chromium-mobile-pressure-audit-runner.mjs | tee world-v0-mobile-pressure.log
+      - name: Summarize result
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const value = JSON.parse(readFileSync("world-v0-mobile-pressure.json", "utf8"));
+          const pages = value.pages || (value.clients || []).map((client) => client.evidence).filter(Boolean);
+          console.log("WORLD_V0_MOBILE_PRESSURE_FINAL", JSON.stringify({
+            verdict: value.verdict,
+            error: value.error || null,
+            pages: pages.map((p, index) => ({
+              index,
+              state: p?.networkState,
+              runtimeFailed: p?.runtimeFailed,
+              reason: p?.runtimeFailureReason,
+              boundary: p?.localBoundaryTick,
+              late: p?.metrics?.serverLate,
+              lease: p?.metrics?.leaseExpiredSeen,
+              guards: [p?.metrics?.guardMatches, p?.metrics?.guardMismatches],
+              firstStateMismatch: p?.metrics?.firstStateMismatch,
+              corrections: p?.metrics?.corrections,
+              maxRewind: p?.metrics?.maxRewind,
+              maxReplay: p?.metrics?.maxReplaySteps,
+              rtt: p?.rtt,
+              frame: p?.frame ? { p95Ms: p.frame.p95Ms, maxMs: p.frame.maxMs, longFrames: p.frame.longFrames } : null,
+              end: p?.session?.end,
+            })),
+          }, null, 2));
+          if (pages.length < 2) throw new Error("mobile-pressure runner did not preserve two evidence records");
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-v0-mobile-pressure
+          path: |
+            world-v0-mobile-pressure.json
+            world-v0-mobile-pressure.log
+          if-no-files-found: warn
+          retention-days: 14

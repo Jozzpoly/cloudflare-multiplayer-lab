@@ -1,0 +1,77 @@
+name: World V0 Multiplayer Foundation Integration
+
+on:
+  push:
+    branches:
+      - world-v0-multiplayer-foundation-integration
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  i1-server-session-continuity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply bounded I1 server/session patch
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-integration-i1-apply.mjs
+          git diff --check
+          git diff -- src/world-v0-shared-yard.ts | tee world-v0-i1-runtime.patch
+
+      - name: Run full repository validation
+        run: npm run check
+
+      - name: Run real local Durable Object/WebSocket I1 lifecycle proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8792 --log-level warn > world-v0-i1-wrangler.log 2>&1 &
+          WRANGLER_PID=$!
+          cleanup() {
+            kill "$WRANGLER_PID" 2>/dev/null || true
+            wait "$WRANGLER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-i1-lifecycle-probe.log
+
+      - name: Commit runtime only after validation PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src/world-v0-shared-yard.ts; then
+            echo "I1 runtime already committed; nothing to push"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/world-v0-shared-yard.ts
+          git commit -m "feat(world-v0): integrate I1 actor session continuity"
+          git push origin HEAD:world-v0-multiplayer-foundation-integration
+
+      - name: Upload I1 evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-v0-integration-i1
+          path: |
+            world-v0-i1-runtime.patch
+            world-v0-i1-lifecycle-probe.log
+            world-v0-i1-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

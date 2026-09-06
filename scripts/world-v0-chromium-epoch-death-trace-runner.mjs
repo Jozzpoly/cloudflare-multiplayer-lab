@@ -11,6 +11,7 @@ const source = readFileSync(sourcePath, "utf8");
 const needle = '  await dispatchMovement(clients[1], "KeyA", true);\n';
 if (!source.includes(needle)) throw new Error("Chromium smoke epoch-death trace patch anchor missing");
 
+const lastEvidenceExpression = "window.__sharedYardV0LastEvidence ? window.__sharedYardV0LastEvidence() : null";
 const injection = `${needle}
   await waitFor(
     clients[1],
@@ -62,7 +63,7 @@ const injection = `${needle}
     }));
     const last = await Promise.all(clients.map(async (client) => {
       try {
-        return await client.cdp.evaluate(client.page.sessionId, `window.__sharedYardV0LastEvidence ? window.__sharedYardV0LastEvidence() : null`);
+        return await client.cdp.evaluate(client.page.sessionId, ${JSON.stringify(lastEvidenceExpression)});
       } catch (error) {
         return { evidenceReadError: error instanceof Error ? error.message : String(error) };
       }
@@ -80,7 +81,7 @@ const injection = `${needle}
   const finalCurrent = await Promise.all(clients.map(evidence));
   const finalLast = await Promise.all(clients.map((client) => client.cdp.evaluate(
     client.page.sessionId,
-    `window.__sharedYardV0LastEvidence ? window.__sharedYardV0LastEvidence() : null`,
+    ${JSON.stringify(lastEvidenceExpression)},
   )));
   const trace = {
     revision: "world-v0-epoch-death-trace-v1",

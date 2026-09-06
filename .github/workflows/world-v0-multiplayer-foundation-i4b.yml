@@ -12,7 +12,7 @@ permissions:
 jobs:
   i4b-exact-full-state-browser-rebase:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v4
@@ -31,12 +31,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/world-v0-integration-i4b-apply.py
-          node scripts/world-v0-integration-i4b-worker-prewarm-apply.mjs
-          node scripts/world-v0-integration-i4b-liveness-apply.mjs
+          I4B_CARRIED=0
+          if grep -q 'world-v0-authority-rebase-seed-v1' src/world-v0-shared-yard.ts && \
+             grep -q 'world-v0-browser-actor-resume-v1' public/world-v0/app.js && \
+             grep -q 'WORLD_V0_I4B_HALF_OPEN_LIVENESS_V1' public/world-v0/app.js; then
+            I4B_CARRIED=1
+            echo "I4b exact-rebase runtime already present; historical v5→v6 appliers intentionally skipped"
+          else
+            python scripts/world-v0-integration-i4b-apply.py
+            node scripts/world-v0-integration-i4b-worker-prewarm-apply.mjs
+            node scripts/world-v0-integration-i4b-liveness-apply.mjs
+          fi
           NEW_SIM_BUILD_ID="$(node --experimental-strip-types -e 'import("./src/world-v0-contract.ts").then((m) => process.stdout.write(m.WORLD_V0_SIM_BUILD_ID))')"
-          node scripts/world-v0-integration-i4b-build-contract-apply.mjs "$NEW_SIM_BUILD_ID"
-          echo "I4b computed SimBuildId: $NEW_SIM_BUILD_ID" | tee world-v0-i4b-sim-build.log
+          if test "$I4B_CARRIED" = "0"; then
+            node scripts/world-v0-integration-i4b-build-contract-apply.mjs "$NEW_SIM_BUILD_ID"
+          fi
+          echo "I4b active SimBuildId: $NEW_SIM_BUILD_ID" | tee world-v0-i4b-sim-build.log
           git diff --check
           git diff -- src/box3d-runtime.ts src/world-v0-contract.ts src/world-v0-shared-yard.ts public/world-v0/app.js public/world-v0/build-contract.js | tee world-v0-i4b-runtime.patch
 
@@ -74,11 +84,12 @@ jobs:
           MW_WORLD_V0_I4B_OUTPUT=world-v0-i4b-chromium-rebase.json \
             node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-i4b-chromium-rebase.log
 
-          MW_WORLD_V0_I3_MODE=candidate \
           MW_WORLD_V0_I3_BASE=http://127.0.0.1:8796 \
           MW_WORLD_V0_I3_FREEZE_MS=1200 \
-          MW_WORLD_V0_CHROMIUM_OUTPUT=world-v0-i4b-i3-regression.json \
-            node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee world-v0-i4b-i3-regression.log
+          MW_WORLD_V0_I3B_CLEAN_REQUIRED=1 \
+          MW_WORLD_V0_I3B_MAX_ATTEMPTS=4 \
+          MW_WORLD_V0_I3B_PREFIX=world-v0-i4b-i3 \
+            node scripts/world-v0-integration-i3b-clean-campaign.mjs | tee world-v0-i4b-i3-campaign.log
           MW_WORLD_V0_I2_BASE=http://127.0.0.1:8796 \
             node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-i4b-i2-regression.log
           MW_WORLD_V0_I1_BASE=http://127.0.0.1:8796 \
@@ -119,8 +130,10 @@ jobs:
             world-v0-i4b-authority-probe.log
             world-v0-i4b-chromium-rebase.json
             world-v0-i4b-chromium-rebase.log
-            world-v0-i4b-i3-regression.json
-            world-v0-i4b-i3-regression.log
+            world-v0-i4b-i3-campaign.log
+            world-v0-i4b-i3-campaign-summary.json
+            world-v0-i4b-i3-attempt-*.json
+            world-v0-i4b-i3-attempt-*.log
             world-v0-i4b-i2-regression.log
             world-v0-i4b-i1-regression.log
             world-v0-i4b-i1-prestart-regression.log

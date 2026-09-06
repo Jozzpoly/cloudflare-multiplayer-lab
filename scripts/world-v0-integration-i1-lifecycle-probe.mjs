@@ -142,17 +142,14 @@ const feedB = startInputFeed(b, bw, { x: -1, z: 0 });
 const activeB = await waitMessage(a, (message) => message?.type === "world_v0_consumed" &&
   message.players?.some((player) => player.netEntityId === bw.selfNetEntityId && player.source === "fresh"),
 "B canonical fresh input before drop", 20_000);
-const dropBoundary = activeB.boundaryTick;
+const dropObservationBoundary = activeB.boundaryTick;
 const oldEpoch = aw.worldEpoch;
 
-// Do not use the local client-side close event as evidence. Node/workerd can leave
-// that handshake observable later than the server-side lifecycle. The authority-visible
-// consequence is the bounded transition to held -> lease_expired while A keeps running.
 feedB.stop();
 try { b.ws.close(1000, "i1_drop_b"); } catch { /* transport already closing */ }
 
 const bLeaseExpired = await waitMessage(a, (message) => message?.type === "world_v0_consumed" &&
-  message.boundaryTick > dropBoundary &&
+  message.boundaryTick > dropObservationBoundary &&
   message.worldEpoch === oldEpoch &&
   message.players?.some((player) => player.netEntityId === bw.selfNetEntityId && player.source === "lease_expired"),
 "B actor-local lease expiry while A remains alive", 20_000);
@@ -162,6 +159,20 @@ if (a.messages.some((message) => message?.type === "world_v0_epoch_ended")) {
 }
 const aAfterDrop = bLeaseExpired.players.find((player) => player.netEntityId === aw.selfNetEntityId);
 if (!aAfterDrop || aAfterDrop.source === "lease_expired") throw new Error("healthy A did not remain canonically live while B was stale");
+
+const consumedThroughExpiry = a.messages.filter((message) =>
+  message?.type === "world_v0_consumed" &&
+  message.worldEpoch === oldEpoch &&
+  message.boundaryTick <= bLeaseExpired.boundaryTick
+);
+const lastFreshB = [...consumedThroughExpiry].reverse().find((message) =>
+  message.players?.some((player) => player.netEntityId === bw.selfNetEntityId && player.source === "fresh")
+);
+if (!lastFreshB) throw new Error("could not locate B last fresh canonical boundary before lease expiry");
+const leaseAfterLastFreshTicks = bLeaseExpired.boundaryTick - lastFreshB.boundaryTick;
+if (leaseAfterLastFreshTicks !== 36) {
+  throw new Error(`actor-local lease boundary drift: expected 36 after last fresh, got ${leaseAfterLastFreshTicks}`);
+}
 
 const b2 = makeClient("owner-b", bw.resumeToken);
 const b2w = await welcome(b2);
@@ -192,9 +203,6 @@ const b3w = await welcome(b3);
 if (!b3w.resumed || b3w.resumeCount !== 2) throw new Error("second B rebind did not advance resumeCount");
 if (b3w.selfSessionId !== bw.selfSessionId || b3w.worldEpoch !== oldEpoch) throw new Error("second B rebind changed actor/world identity");
 
-// Authority-race falsifier: after B3 owns the ActorSession, an old B2 socket must
-// not be able to advance the canonical input buffer even if its local close event
-// has not arrived. A unique high batchSeq would be relayed to A if ownership leaked.
 const sentinelBatchSeq = b3w.resumeLastBatchSeq + 1000;
 const sentinelTarget = Math.max(startB.protocolStartTick, b3w.state.boundaryTick + 8);
 let oldSocketSendRejectedLocally = false;
@@ -231,9 +239,6 @@ await waitMessage(a, (message) => message?.type === "world_v0_consumed" &&
   message.players?.some((player) => player.netEntityId === bw.selfNetEntityId && player.source === "fresh"),
 "rebound B3 canonical input", 12_000);
 
-// Once every transport disappears, the same bounded lease is the cleanup policy.
-// Again, server-visible epoch retirement is the evidence; local client close events
-// are intentionally not required by this probe.
 feedA.stop();
 feedB3.stop();
 try { a.ws.close(1000, "i1_drop_all_a"); } catch {}
@@ -247,13 +252,17 @@ if (cw.worldEpoch === oldEpoch) throw new Error("all-disconnected cleanup failed
 if (cw.selfSessionId === aw.selfSessionId || cw.selfSessionId === bw.selfSessionId) throw new Error("fresh epoch reused old ActorSession identity");
 
 const result = {
-  revision: "world-v0-integration-i1-lifecycle-probe-v2-authority-observable",
+  revision: "world-v0-integration-i1-lifecycle-probe-v3-explicit-lease-boundary",
   run: RUN,
   oldEpoch,
   replacementEpoch: cw.worldEpoch,
-  dropBoundary,
-  staleBoundary: bLeaseExpired.boundaryTick,
-  leaseTicksObserved: bLeaseExpired.boundaryTick - dropBoundary,
+  transport: {
+    dropObservationBoundary,
+    lastFreshBoundary: lastFreshB.boundaryTick,
+    staleBoundary: bLeaseExpired.boundaryTick,
+    preauthoredTailTicks: lastFreshB.boundaryTick - dropObservationBoundary,
+    leaseAfterLastFreshTicks,
+  },
   actorSession: {
     sessionId: bw.selfSessionId,
     netEntityId: bw.selfNetEntityId,
@@ -272,7 +281,7 @@ const result = {
     freshEpochCreatedAfterCleanup: true,
   },
   verdict: "WORLD_V0_INTEGRATION_I1_SERVER_SESSION_PASS",
-  nonClaim: "This proves the candidate server/DO/WebSocket ActorSession lifecycle locally through authority-observable effects. It does not claim client-side close-event timing, browser resume UX, exact full-state client rebase, remote Cloudflare placement, process-loss reconstruction, or staging/production behavior.",
+  nonClaim: "The transport-to-stale delay includes already-authored future records. The asserted 36-tick lease is measured from the last canonical fresh record, not from the local close call. This remains a local server/DO/WebSocket proof and does not claim browser resume UX, exact full-state client rebase, remote placement, process-loss reconstruction, or staging/production behavior.",
 };
 console.log("WORLD_V0_INTEGRATION_I1_PROBE", JSON.stringify(result, null, 2));
 console.log(result.verdict);

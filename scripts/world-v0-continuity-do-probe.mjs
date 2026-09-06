@@ -132,10 +132,6 @@ if (dist3(aBeforeDrop.position, aDuringDrop.position) < 0.4) {
   throw new Error("healthy actor did not continue physical motion during peer loss");
 }
 
-// Capture a fresh state immediately before resume. The previous v1 apparatus
-// incorrectly compared against the first stale observation and then allowed ~12
-// additional world ticks before reconnect, falsely classifying legal physical
-// movement during that interval as a resume teleport.
 const preResume = await status();
 const bPreResume = preResume.actors.find((actor) => actor.actorId === bActorId);
 if (!bPreResume?.stale || bPreResume.connected) throw new Error("B was not still stale/disconnected at resume boundary");
@@ -159,10 +155,19 @@ if (dist3(bPositionBeforeResume, bImmediatelyResumed.position) > 0.25) {
 }
 
 const resumeTick = immediatelyResumed.boundaryTick;
+const bAckCountBefore = b2.messages.filter((message) => message?.type === "input_ack").length;
+// Both actors now move away from the center/contact cluster. v2 continued B toward
+// the shared prop and therefore could not distinguish a valid resumed controller
+// from a physically jammed body.
 await Promise.all([
-  sustainInput(a, 1, 550),
-  sustainInput(b2, -1, 550),
+  sustainInput(a, -1, 550),
+  sustainInput(b2, 1, 550),
 ]);
+const postResumeAck = await waitFor(() => {
+  const acks = b2.messages.filter((message) => message?.type === "input_ack");
+  if (acks.length <= bAckCountBefore) return false;
+  return acks.find((message) => message.boundaryTick >= resumeTick && message.worldEpoch === epoch) || false;
+}, "resumed B canonical input acknowledgement");
 const afterResume = await waitFor(async () => {
   const s = await status();
   return s.boundaryTick >= resumeTick + 24 ? s : false;
@@ -173,13 +178,14 @@ if (afterResume.worldEpoch !== epoch) throw new Error("WorldEpoch rotated after 
 if (!bAfterResume?.connected || bAfterResume.stale) throw new Error("resumed actor failed to return to active state");
 if (!sameHandle(bBodyHandle, bAfterResume.bodyHandle)) throw new Error("post-resume continuation replaced B physical body");
 if (!aAfterResume?.connected) throw new Error("healthy peer was disrupted by B resume");
-if (dist3(bImmediatelyResumed.position, bAfterResume.position) < 0.25) {
-  throw new Error("same actor did not continue physical motion after resume");
+const resumedDisplacement = dist3(bImmediatelyResumed.position, bAfterResume.position);
+if (resumedDisplacement < 0.25) {
+  throw new Error(`resumed actor acknowledged input but did not move away from contact cluster · displacement=${resumedDisplacement}`);
 }
 if (!afterResume.finite) throw new Error("post-resume world non-finite");
 
 const result = {
-  revision: "world-v0-continuity-do-probe-v2-body-handle",
+  revision: "world-v0-continuity-do-probe-v3-contact-isolated",
   transport: "real WebSocketPair through local Wrangler Durable Object",
   box3d: "project-pinned box3d.js@0.1.1 Worker runtime",
   contract: {
@@ -203,6 +209,7 @@ const result = {
     staleObservedTick: staleState.boundaryTick,
     preResumeTick: preResume.boundaryTick,
     resumeTick,
+    resumedInputAckTick: postResumeAck.boundaryTick,
     finalTick: afterResume.boundaryTick,
   },
   continuity: {
@@ -210,6 +217,8 @@ const result = {
     staleActorBodyRetained: true,
     sharedWorldRetained: true,
     resumedSameActor: true,
+    resumedCanonicalInputAcknowledged: true,
+    resumedPhysicalDisplacement: resumedDisplacement,
     finite: afterResume.finite,
   },
   verdict: "WORLD_V0_CONTINUITY_DO_SAME_EPOCH_RESUME_PASS",

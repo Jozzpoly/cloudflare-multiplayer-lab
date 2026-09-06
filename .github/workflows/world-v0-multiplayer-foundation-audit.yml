@@ -1,0 +1,45 @@
+name: World V0 Multiplayer Foundation Audit
+
+on:
+  push:
+    branches:
+      - world-v0-multiplayer-foundation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  timing-envelope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node --check scripts/world-v0-multiplayer-timing-envelope-audit.mjs
+      - run: node scripts/world-v0-multiplayer-timing-envelope-audit.mjs | tee world-v0-multiplayer-timing-envelope.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-multiplayer-timing-envelope
+          path: world-v0-multiplayer-timing-envelope.log
+          retention-days: 14
+
+  box3d-checkpoint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node --check scripts/world-v0-box3d-checkpoint-continuation-probe.mjs
+      - run: node scripts/world-v0-box3d-checkpoint-continuation-probe.mjs | tee world-v0-box3d-checkpoint-continuation.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-box3d-checkpoint-continuation
+          path: world-v0-box3d-checkpoint-continuation.log
+          retention-days: 14

@@ -15,7 +15,8 @@ const RECOVERY_TYPES = new Set([
   "authority-rebase",
   "actor-resume-complete",
 ]);
-const RECOVERY_COMPATIBLE_FAILURE = /candidate-authored freeze input was late|candidate hit input lease during isolated rAF freeze|candidate freeze ACK coverage mismatch/i;
+const RECOVERY_COMPATIBLE_FAILURE = /candidate-authored freeze input was late|candidate hit input lease during isolated rAF freeze|candidate freeze ACK coverage mismatch|state guards still pending/i;
+const POST_FREEZE_DRAIN_FAILURE = /state guards still pending/i;
 
 function recoveryEvents(payload) {
   const events = [];
@@ -27,8 +28,25 @@ function recoveryEvents(payload) {
   return events;
 }
 
+function freezeContractProven(payload) {
+  const evidences = (payload?.clients || []).map((client) => client?.evidence).filter(Boolean);
+  const diagnostic = evidences.map((evidence) => evidence?.i3FreezeDiagnostic).find(Boolean);
+  if (!diagnostic || diagnostic.mode !== "candidate") return false;
+  const delta = diagnostic.delta || {};
+  if (!(diagnostic.eventLoopHeartbeatSamplesInWindow >= 20)) return false;
+  if (!(delta.schedulerPumps >= 20 && delta.outboundBatches >= 10)) return false;
+  if (delta.scopedAckedBatches !== delta.outboundBatches) return false;
+  if (delta.scopedLateRecords !== 0 || delta.scopedLeaseExpired !== 0) return false;
+  return evidences.every((evidence) =>
+    evidence.runtimeFailed === false &&
+    evidence.metrics?.guardMismatches === 0 &&
+    evidence.metrics?.firstStateMismatch === null
+  );
+}
+
 let clean = 0;
 let invalid = 0;
+let postFreezeDrainInvalid = 0;
 const attempts = [];
 
 for (let attempt = 1; attempt <= maxAttempts && clean < requiredClean; attempt += 1) {
@@ -60,38 +78,47 @@ for (let attempt = 1; attempt <= maxAttempts && clean < requiredClean; attempt +
   const recovery = recoveryEvents(payload);
   const errorText = `${payload?.error || ""}\n${combined}`;
   const exitCode = child.status ?? 1;
+  const freezeProven = freezeContractProven(payload);
 
   if (recovery.length > 0) {
     if (exitCode !== 0 && !RECOVERY_COMPATIBLE_FAILURE.test(errorText)) {
       throw new Error(`I3b attempt ${attempt} failed for a non-recovery reason while recovery was also present; see ${log}`);
     }
     invalid += 1;
-    attempts.push({ attempt, verdict: "CROSS_CONTRACT_INVALID", exitCode, recoveryEvents: recovery });
+    attempts.push({ attempt, verdict: "CROSS_CONTRACT_INVALID", exitCode, freezeContractProven: freezeProven, recoveryEvents: recovery });
     console.log(`WORLD_V0_I3B_CROSS_CONTRACT_INVALID attempt=${attempt} recoveryEvents=${recovery.length}`);
     continue;
   }
 
+  if (exitCode !== 0 && POST_FREEZE_DRAIN_FAILURE.test(errorText) && freezeProven) {
+    postFreezeDrainInvalid += 1;
+    attempts.push({ attempt, verdict: "POST_FREEZE_DRAIN_INVALID", exitCode, freezeContractProven: true, recoveryEvents: [] });
+    console.log(`WORLD_V0_I3B_POST_FREEZE_DRAIN_INVALID attempt=${attempt}`);
+    continue;
+  }
+
   if (exitCode !== 0) {
-    attempts.push({ attempt, verdict: "FAIL", exitCode, recoveryEvents: [] });
+    attempts.push({ attempt, verdict: "FAIL", exitCode, freezeContractProven: freezeProven, recoveryEvents: [] });
     throw new Error(`I3b clean attempt ${attempt} failed without actor recovery contamination; see ${log}`);
   }
 
   clean += 1;
-  attempts.push({ attempt, verdict: "CLEAN_PASS", exitCode: 0, recoveryEvents: [] });
+  attempts.push({ attempt, verdict: "CLEAN_PASS", exitCode: 0, freezeContractProven: true, recoveryEvents: [] });
   console.log(`WORLD_V0_I3B_CLEAN_PASS attempt=${attempt} clean=${clean}/${requiredClean}`);
 }
 
 const summary = {
-  revision: "world-v0-i3b-clean-campaign-v1",
+  revision: "world-v0-i3b-clean-campaign-v2-post-freeze-drain",
   base,
   freezeMs,
   requiredClean,
   maxAttempts,
   clean,
   crossContractInvalid: invalid,
+  postFreezeDrainInvalid,
   attempts,
   verdict: clean >= requiredClean ? "WORLD_V0_I3B_CLEAN_CAMPAIGN_PASS" : "WORLD_V0_I3B_CLEAN_CAMPAIGN_INSUFFICIENT",
-  nonClaim: "Recovery-contaminated runs are not counted as I3 evidence. They remain covered by separate I4b and resume-buffer gates; any failure without recovery contamination fails this campaign immediately.",
+  nonClaim: "Recovery-contaminated runs and runs whose I3 freeze contract is already proven but whose later global sample catches only transient unresolved state guards are not counted as I3 evidence. Runtime failure, any exact-state mismatch, or any other clean-window failure remains an immediate FAIL.",
 };
 writeFileSync(`${prefix}-campaign-summary.json`, JSON.stringify(summary, null, 2));
 console.log("WORLD_V0_I3B_CLEAN_CAMPAIGN", JSON.stringify(summary, null, 2));

@@ -1,0 +1,85 @@
+name: World V0 Continuity Architecture Proofs
+
+on:
+  push:
+    branches:
+      - world-v0-continuity-architecture-proofs
+      - world-v0-multiplayer-foundation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  continuity-do-same-epoch-resume:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Validate isolated audit Worker bundle
+        run: npx wrangler deploy --dry-run --config wrangler.continuity-audit.jsonc --outdir .wrangler/continuity-audit-dry-run
+      - name: Run real local Durable Object/WebSocket continuity proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --config wrangler.continuity-audit.jsonc --ip 127.0.0.1 --port 8791 --log-level warn > world-v0-continuity-wrangler.log 2>&1 &
+          WRANGLER_PID=$!
+          cleanup() {
+            kill "$WRANGLER_PID" 2>/dev/null || true
+            wait "$WRANGLER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          node scripts/world-v0-continuity-do-probe.mjs | tee world-v0-continuity-do-probe.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-v0-continuity-do-proof
+          path: |
+            world-v0-continuity-do-probe.log
+            world-v0-continuity-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  raw-box3d-seed-wire-roundtrip:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build pinned box3d.js with minimal raw-seed audit bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .audit
+          git clone https://github.com/isaac-mason/box3d.js.git .audit/box3d-js
+          git -C .audit/box3d-js checkout 5d5a3af049cccd9948b2b55bac4342414af0ef64
+          git -C .audit/box3d-js submodule update --init --recursive
+
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git .audit/emsdk
+          .audit/emsdk/emsdk install 6.0.2
+          .audit/emsdk/emsdk activate 6.0.2
+          source .audit/emsdk/emsdk_env.sh
+          em++ --version
+
+          node scripts/world-v0-patch-box3d-raw-seed-binding.mjs .audit/box3d-js
+          (
+            cd .audit/box3d-js
+            node scripts/build.mjs
+          ) 2>&1 | tee world-v0-box3d-raw-seed-build.log
+      - name: Prove JS-owned bytes survive native Recording lifetime and continue exact
+        run: node scripts/world-v0-box3d-raw-seed-roundtrip-audit.mjs .audit/box3d-js/dist/box3d.inline.mjs | tee world-v0-box3d-raw-seed-roundtrip.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-v0-box3d-raw-seed-wire-proof
+          path: |
+            world-v0-box3d-raw-seed-build.log
+            world-v0-box3d-raw-seed-roundtrip.log
+          if-no-files-found: warn
+          retention-days: 14

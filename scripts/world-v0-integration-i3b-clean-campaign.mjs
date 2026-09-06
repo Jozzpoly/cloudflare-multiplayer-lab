@@ -18,18 +18,30 @@ const RECOVERY_TYPES = new Set([
 const RECOVERY_COMPATIBLE_FAILURE = /candidate-authored freeze input was late|candidate hit input lease during isolated rAF freeze|candidate freeze ACK coverage mismatch|state guards still pending/i;
 const POST_FREEZE_DRAIN_FAILURE = /state guards still pending/i;
 
+function payloadEvidences(payload) {
+  const values = [];
+  for (const client of payload?.clients || []) {
+    if (client?.evidence) values.push({ client: client.index, evidence: client.evidence });
+  }
+  for (let index = 0; index < (payload?.pages || []).length; index += 1) {
+    const evidence = payload.pages[index];
+    if (evidence) values.push({ client: index, evidence });
+  }
+  return values;
+}
+
 function recoveryEvents(payload) {
   const events = [];
-  for (const client of payload?.clients || []) {
-    for (const event of client?.evidence?.lifecycleEvents || []) {
-      if (RECOVERY_TYPES.has(event?.type)) events.push({ client: client.index, ...event });
+  for (const { client, evidence } of payloadEvidences(payload)) {
+    for (const event of evidence?.lifecycleEvents || []) {
+      if (RECOVERY_TYPES.has(event?.type)) events.push({ client, ...event });
     }
   }
   return events;
 }
 
 function freezeContractProven(payload) {
-  const evidences = (payload?.clients || []).map((client) => client?.evidence).filter(Boolean);
+  const evidences = payloadEvidences(payload).map(({ evidence }) => evidence);
   const diagnostic = evidences.map((evidence) => evidence?.i3FreezeDiagnostic).find(Boolean);
   if (!diagnostic || diagnostic.mode !== "candidate") return false;
   const delta = diagnostic.delta || {};
@@ -37,7 +49,7 @@ function freezeContractProven(payload) {
   if (!(delta.schedulerPumps >= 20 && delta.outboundBatches >= 10)) return false;
   if (delta.scopedAckedBatches !== delta.outboundBatches) return false;
   if (delta.scopedLateRecords !== 0 || delta.scopedLeaseExpired !== 0) return false;
-  return evidences.every((evidence) =>
+  return evidences.length >= 2 && evidences.every((evidence) =>
     evidence.runtimeFailed === false &&
     evidence.metrics?.guardMismatches === 0 &&
     evidence.metrics?.firstStateMismatch === null
@@ -102,13 +114,18 @@ for (let attempt = 1; attempt <= maxAttempts && clean < requiredClean; attempt +
     throw new Error(`I3b clean attempt ${attempt} failed without actor recovery contamination; see ${log}`);
   }
 
+  if (!freezeProven) {
+    attempts.push({ attempt, verdict: "FAIL", exitCode: 0, freezeContractProven: false, recoveryEvents: [] });
+    throw new Error(`I3b successful underlying run ${attempt} did not preserve sufficient freeze-contract evidence; see ${output}`);
+  }
+
   clean += 1;
   attempts.push({ attempt, verdict: "CLEAN_PASS", exitCode: 0, freezeContractProven: true, recoveryEvents: [] });
   console.log(`WORLD_V0_I3B_CLEAN_PASS attempt=${attempt} clean=${clean}/${requiredClean}`);
 }
 
 const summary = {
-  revision: "world-v0-i3b-clean-campaign-v2-post-freeze-drain",
+  revision: "world-v0-i3b-clean-campaign-v3-success-recovery-attribution",
   base,
   freezeMs,
   requiredClean,
@@ -118,7 +135,7 @@ const summary = {
   postFreezeDrainInvalid,
   attempts,
   verdict: clean >= requiredClean ? "WORLD_V0_I3B_CLEAN_CAMPAIGN_PASS" : "WORLD_V0_I3B_CLEAN_CAMPAIGN_INSUFFICIENT",
-  nonClaim: "Recovery-contaminated runs and runs whose I3 freeze contract is already proven but whose later global sample catches only transient unresolved state guards are not counted as I3 evidence. Runtime failure, any exact-state mismatch, or any other clean-window failure remains an immediate FAIL.",
+  nonClaim: "Recovery-contaminated runs and runs whose I3 freeze contract is already proven but whose later global sample catches only transient unresolved state guards are not counted as I3 evidence. Successful smoke payloads are inspected for recovery too. Runtime failure, any exact-state mismatch, missing freeze-contract evidence, or any other clean-window failure remains an immediate FAIL.",
 };
 writeFileSync(`${prefix}-campaign-summary.json`, JSON.stringify(summary, null, 2));
 console.log("WORLD_V0_I3B_CLEAN_CAMPAIGN", JSON.stringify(summary, null, 2));

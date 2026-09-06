@@ -1,0 +1,166 @@
+name: World V0 Multiplayer Foundation I4a
+
+on:
+  push:
+    branches:
+      - world-v0-multiplayer-foundation-integration
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  i4a-pinned-rebase-runtime-seam:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build pinned Box3D raw-seed artifact or use committed artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q 'shared-yard-v0-contract-v5-i4-rebase-runtime-seam' src/world-v0-contract.ts && \
+             test -s public/world-v0/box3d-i4/box3d.inline.mjs && \
+             test -s public/world-v0/box3d-i4/box3d.wasm; then
+            echo "WORLD_V0_I4A_PINNED_BOX3D already committed"
+            sha256sum public/world-v0/box3d-i4/box3d.inline.mjs public/world-v0/box3d-i4/box3d.wasm | tee world-v0-i4a-box3d-sha256.log
+            exit 0
+          fi
+
+          AUDIT_SHA=ad8a14156c9684af226a1c29235fd340a8aa96bb
+          BOX3D_JS_SHA=5d5a3af049cccd9948b2b55bac4342414af0ef64
+          mkdir -p .i4a public/world-v0/box3d-i4
+          git fetch --depth=1 origin "$AUDIT_SHA"
+          git show "$AUDIT_SHA":scripts/world-v0-patch-box3d-raw-seed-binding.mjs > scripts/.world-v0-i4a-patch-box3d.mjs
+          git show "$AUDIT_SHA":scripts/world-v0-box3d-raw-seed-roundtrip-audit.mjs > scripts/.world-v0-i4a-raw-seed-audit.mjs
+
+          git clone https://github.com/isaac-mason/box3d.js.git .i4a/box3d-js
+          git -C .i4a/box3d-js checkout "$BOX3D_JS_SHA"
+          git -C .i4a/box3d-js submodule update --init --recursive
+
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git .i4a/emsdk
+          .i4a/emsdk/emsdk install 6.0.2
+          .i4a/emsdk/emsdk activate 6.0.2
+          source .i4a/emsdk/emsdk_env.sh
+          em++ --version | tee world-v0-i4a-emscripten-version.log
+
+          node scripts/.world-v0-i4a-patch-box3d.mjs .i4a/box3d-js | tee world-v0-i4a-box3d-patch.log
+          (
+            cd .i4a/box3d-js
+            node scripts/build.mjs
+          ) 2>&1 | tee world-v0-i4a-box3d-build.log
+
+          node --experimental-strip-types scripts/.world-v0-i4a-raw-seed-audit.mjs .i4a/box3d-js/dist/box3d.inline.mjs | tee world-v0-i4a-donor-raw-seed.log
+          cp .i4a/box3d-js/dist/box3d.inline.mjs public/world-v0/box3d-i4/box3d.inline.mjs
+          cp .i4a/box3d-js/dist/box3d.wasm public/world-v0/box3d-i4/box3d.wasm
+          sha256sum public/world-v0/box3d-i4/box3d.inline.mjs public/world-v0/box3d-i4/box3d.wasm | tee world-v0-i4a-box3d-sha256.log
+          rm -f scripts/.world-v0-i4a-patch-box3d.mjs scripts/.world-v0-i4a-raw-seed-audit.mjs
+
+      - name: Apply bounded I4a runtime seam candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-integration-i4a-apply.mjs
+          NEW_SIM_BUILD_ID="$(node --experimental-strip-types -e 'import("./src/world-v0-contract.ts").then((m) => process.stdout.write(m.WORLD_V0_SIM_BUILD_ID))')"
+          node scripts/world-v0-integration-i4a-build-contract-apply.mjs "$NEW_SIM_BUILD_ID"
+          echo "I4a computed SimBuildId: $NEW_SIM_BUILD_ID" | tee world-v0-i4a-sim-build.log
+          git diff --check
+          git diff -- src/box3d-runtime.ts src/world-v0-contract.ts src/world-v0-shared-yard.ts public/world-v0/app.js public/world-v0/build-contract.js | tee world-v0-i4a-runtime.patch
+
+      - name: Run focused I4a runtime seam falsifier
+        run: node --experimental-strip-types scripts/world-v0-integration-i4a-seam-probe.mjs | tee world-v0-i4a-seam-probe.log
+
+      - name: Run full repository validation
+        run: npm run check
+
+      - name: Prove I1-I3 behavior survives custom runtime in real Chromium and DO
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8795 --log-level warn > world-v0-i4a-candidate-wrangler.log 2>&1 &
+          WRANGLER_PID=$!
+          cleanup() {
+            kill "$WRANGLER_PID" 2>/dev/null || true
+            wait "$WRANGLER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 120); do
+            if ! kill -0 "$WRANGLER_PID" 2>/dev/null; then
+              echo "I4a candidate wrangler exited before readiness"
+              cat world-v0-i4a-candidate-wrangler.log
+              exit 1
+            fi
+            if curl -fsS http://127.0.0.1:8795/world-v0/ >/dev/null 2>&1; then break; fi
+            sleep 0.1
+          done
+          curl -fsS http://127.0.0.1:8795/world-v0/ >/dev/null
+
+          MW_WORLD_V0_I3_MODE=candidate \
+          MW_WORLD_V0_I3_BASE=http://127.0.0.1:8795 \
+          MW_WORLD_V0_I3_FREEZE_MS=1200 \
+          MW_WORLD_V0_CHROMIUM_OUTPUT=world-v0-i4a-i3-chromium.json \
+            node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee world-v0-i4a-i3-chromium.log
+          MW_WORLD_V0_I2_BASE=http://127.0.0.1:8795 \
+            node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-i4a-i2-regression.log
+          MW_WORLD_V0_I1_BASE=http://127.0.0.1:8795 \
+            node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-i4a-i1-regression.log
+          MW_WORLD_V0_I1_BASE=http://127.0.0.1:8795 \
+            node scripts/world-v0-integration-i1-prestart-probe.mjs | tee world-v0-i4a-i1-prestart-regression.log
+
+      - name: Commit I4a seam only after every gate PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME_FILES=(
+            public/world-v0/box3d-i4/box3d.inline.mjs
+            public/world-v0/box3d-i4/box3d.wasm
+            src/box3d-runtime.ts
+            src/world-v0-contract.ts
+            src/world-v0-shared-yard.ts
+            public/world-v0/app.js
+            public/world-v0/build-contract.js
+          )
+          if test -z "$(git status --porcelain -- "${RUNTIME_FILES[@]}")"; then
+            echo "I4a runtime seam already committed; nothing to push"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${RUNTIME_FILES[@]}"
+          git commit -m "feat(world-v0): integrate I4a pinned rebase runtime seam"
+          git push origin HEAD:world-v0-multiplayer-foundation-integration
+
+      - name: Upload I4a evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-v0-integration-i4a
+          path: |
+            world-v0-i4a-emscripten-version.log
+            world-v0-i4a-box3d-patch.log
+            world-v0-i4a-box3d-build.log
+            world-v0-i4a-donor-raw-seed.log
+            world-v0-i4a-box3d-sha256.log
+            world-v0-i4a-sim-build.log
+            world-v0-i4a-runtime.patch
+            world-v0-i4a-seam-probe.log
+            world-v0-i4a-i3-chromium.json
+            world-v0-i4a-i3-chromium.log
+            world-v0-i4a-i2-regression.log
+            world-v0-i4a-i1-regression.log
+            world-v0-i4a-i1-prestart-regression.log
+            world-v0-i4a-candidate-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

@@ -42,6 +42,18 @@ jobs:
             wait "$WRANGLER_PID" 2>/dev/null || true
           }
           trap cleanup EXIT
+          for attempt in $(seq 1 100); do
+            if ! kill -0 "$WRANGLER_PID" 2>/dev/null; then
+              echo "baseline wrangler exited before readiness"
+              cat world-v0-i3-baseline-wrangler.log
+              exit 1
+            fi
+            if curl -fsS http://127.0.0.1:8793/world-v0/ >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.1
+          done
+          curl -fsS http://127.0.0.1:8793/world-v0/ >/dev/null
           MW_WORLD_V0_I3_MODE=baseline \
           MW_WORLD_V0_I3_BASE=http://127.0.0.1:8793 \
           MW_WORLD_V0_I3_RAF_MS=250 \
@@ -72,21 +84,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler dev --env staging --ip 127.0.0.1 --port 8793 --log-level warn > world-v0-i3-candidate-wrangler.log 2>&1 &
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8794 --log-level warn > world-v0-i3-candidate-wrangler.log 2>&1 &
           WRANGLER_PID=$!
           cleanup() {
             kill "$WRANGLER_PID" 2>/dev/null || true
             wait "$WRANGLER_PID" 2>/dev/null || true
           }
           trap cleanup EXIT
+          for attempt in $(seq 1 100); do
+            if ! kill -0 "$WRANGLER_PID" 2>/dev/null; then
+              echo "candidate wrangler exited before readiness"
+              cat world-v0-i3-candidate-wrangler.log
+              exit 1
+            fi
+            if curl -fsS http://127.0.0.1:8794/world-v0/ >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.1
+          done
+          curl -fsS http://127.0.0.1:8794/world-v0/ >/dev/null
           MW_WORLD_V0_I3_MODE=candidate \
-          MW_WORLD_V0_I3_BASE=http://127.0.0.1:8793 \
+          MW_WORLD_V0_I3_BASE=http://127.0.0.1:8794 \
           MW_WORLD_V0_I3_RAF_MS=250 \
           MW_WORLD_V0_CHROMIUM_OUTPUT=world-v0-i3-candidate-chromium.json \
             node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee world-v0-i3-candidate-chromium.log
-          node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-i2-regression-lifecycle.log
-          node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-i1-regression-lifecycle.log
-          node scripts/world-v0-integration-i1-prestart-probe.mjs | tee world-v0-i1-regression-prestart.log
+          MW_WORLD_V0_I2_BASE=http://127.0.0.1:8794 \
+            node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-i2-regression-lifecycle.log
+          MW_WORLD_V0_I1_BASE=http://127.0.0.1:8794 \
+            node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-i1-regression-lifecycle.log
+          MW_WORLD_V0_I1_BASE=http://127.0.0.1:8794 \
+            node scripts/world-v0-integration-i1-prestart-probe.mjs | tee world-v0-i1-regression-prestart.log
 
       - name: Commit I3 runtime only after every gate PASS
         shell: bash

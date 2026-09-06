@@ -169,10 +169,27 @@ for (let tick = 0; tick < SEED_TICK; tick += 1) step(authority, tick);
 
 const recording = b3.b3CreateRecording(0);
 b3.b3World_StartRecording(authority.world, recording);
-const nativeSize = b3.b3Recording_GetSize(recording);
-const copiedBytes = b3.b3Recording_CopyData(recording);
+
+// Negative specimen: while recording is still active, the buffer is not yet the finalized
+// replay payload. Pinned Box3D StopRecording writes the trailing geometry registry and
+// backpatches the header. Preserve the active-buffer facts so the prior failure remains
+// attributable rather than silently overwritten by the corrected experiment.
+const activeSize = b3.b3Recording_GetSize(recording);
+const activeBytes = b3.b3Recording_CopyData(recording);
+if (!(activeBytes instanceof Uint8Array)) throw new Error(`active copy binding returned ${activeBytes?.constructor?.name}`);
+if (activeBytes.byteLength !== activeSize) throw new Error(`active byte size mismatch ${activeBytes.byteLength} != ${activeSize}`);
+const activeHashU32 = hashBytesU32(activeBytes);
+const activeHash = hashHex(activeHashU32);
+const cppHashActive = Number(b3.b3Bytes_Fnv1a32(activeBytes)) >>> 0;
+if (cppHashActive !== activeHashU32) {
+  throw new Error(`JS->C++ ingress checksum mismatch on active recording copy js=${activeHash} cpp=${hashHex(cppHashActive)}`);
+}
+
+// Finalize first. This is the exact semantic boundary the earlier probe crossed in the wrong order.
 b3.b3World_StopRecording(authority.world);
 
+const nativeSize = b3.b3Recording_GetSize(recording);
+const copiedBytes = b3.b3Recording_CopyData(recording);
 if (!(copiedBytes instanceof Uint8Array)) throw new Error(`copy binding returned ${copiedBytes?.constructor?.name}`);
 if (copiedBytes.byteLength !== nativeSize) throw new Error(`raw byte size mismatch ${copiedBytes.byteLength} != ${nativeSize}`);
 if (copiedBytes.byteLength < 1024) throw new Error(`raw seed unexpectedly small ${copiedBytes.byteLength}`);
@@ -180,8 +197,10 @@ const copiedHashU32 = hashBytesU32(copiedBytes);
 const copiedHash = hashHex(copiedHashU32);
 const cppHashCopied = Number(b3.b3Bytes_Fnv1a32(copiedBytes)) >>> 0;
 if (cppHashCopied !== copiedHashU32) {
-  throw new Error(`JS->C++ ingress checksum mismatch on source copy js=${copiedHash} cpp=${hashHex(cppHashCopied)}`);
+  throw new Error(`JS->C++ ingress checksum mismatch on finalized source copy js=${copiedHash} cpp=${hashHex(cppHashCopied)}`);
 }
+
+const finalizedDiffersFromActive = nativeSize !== activeSize || copiedHashU32 !== activeHashU32;
 
 const directPlayer = b3.b3RecPlayer_CreateFromRecording(recording, 1);
 if (!directPlayer) throw new Error("control CreateFromRecording failed");
@@ -209,7 +228,7 @@ if (cppHashWireFinal !== copiedHashU32) {
 }
 
 const rawPlayer = b3.b3RecPlayer_CreateFromBytes(wireBytes, 1);
-if (!rawPlayer) throw new Error("CreateFromBytes failed after byte-faithful ingress verification");
+if (!rawPlayer) throw new Error("CreateFromBytes failed after finalized byte-faithful ingress verification");
 const raw = remapFromPlayer(rawPlayer);
 const rawSeedExact = exactWorld(authority, raw);
 if (!rawSeedExact.exact) throw new Error(`raw wire seed mismatch ${rawSeedExact.id}`);
@@ -225,15 +244,25 @@ for (let tick = SEED_TICK; tick < SEED_TICK + CONTINUE_TICKS; tick += 1) {
 }
 
 const result = {
-  revision: "world-v0-box3d-raw-seed-roundtrip-audit-v3-bytewise-ingress",
+  revision: "world-v0-box3d-raw-seed-roundtrip-audit-v4-finalized-recording-bytes",
   upstream: {
     package: "box3d.js@0.1.1",
     commit: "5d5a3af049cccd9948b2b55bac4342414af0ef64",
+    box3dCommit: "8441b4a06d6d09dcfb0b0f704df4d847d1437b92",
+  },
+  recordingFinalization: {
+    activeBytes: activeSize,
+    activeHash,
+    finalizedBytes: nativeSize,
+    finalizedHash: copiedHash,
+    finalizedDiffersFromActive,
+    causalBoundary: "b3World_StopRecording writes trailing geometry registry and backpatches header before bytes are copied for replay",
   },
   seed: {
     nativeBytes: nativeSize,
     copiedBytes: nativeSize,
     copiedHash,
+    copiedAfterStopRecording: true,
     copiedAsJsOwnedUint8Array: true,
     cppIngressHashMatchesJs: cppHashWireFinal === copiedHashU32,
     directControlDestroyedBeforeRawReplay: true,
@@ -248,8 +277,8 @@ const result = {
     rawSeedExact: rawSeedExact.exact,
     continuationExactTicks,
   },
-  verdict: "WORLD_V0_BOX3D_RAW_SEED_WIRE_ROUNDTRIP_PASS",
-  nonClaim: "This qualifies same-build ephemeral recording bytes as a wire/rebase substrate for the pinned wrapper. The bytewise ingress is an audit proof, not a production-performance choice. This does not make Box3D recording a durable save format, cross-version migration format, authenticated protocol payload, or compression decision.",
+  verdict: "WORLD_V0_BOX3D_FINALIZED_RAW_SEED_WIRE_ROUNDTRIP_PASS",
+  nonClaim: "This qualifies finalized same-build ephemeral recording bytes as a wire/rebase substrate for the pinned wrapper. The earlier pre-StopRecording copy remains negative apparatus evidence, not a contradiction. The bytewise ingress is an audit proof, not a production-performance choice. This does not make Box3D recording a durable save format, cross-version migration format, authenticated protocol payload, or compression decision.",
 };
 console.log("WORLD_V0_BOX3D_RAW_SEED_ROUNDTRIP", JSON.stringify(result, null, 2));
 console.log(result.verdict);

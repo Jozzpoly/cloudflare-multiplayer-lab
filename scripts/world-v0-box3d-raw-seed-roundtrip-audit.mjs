@@ -44,6 +44,14 @@ function exactBody(a, c) {
   const x = flat(a), y = flat(c);
   return x.length === y.length && x.every((value, index) => f32bits(value) === f32bits(y[index]));
 }
+function hashBytes(bytes) {
+  let hash = 0x811c9dc5;
+  for (const value of bytes) {
+    hash ^= value;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
 function moveToward2(vx, vz, tx, tz, delta) {
   const dx = tx - vx, dz = tz - vz;
   const length = Math.hypot(dx, dz);
@@ -167,46 +175,50 @@ b3.b3World_StopRecording(authority.world);
 if (!(copiedBytes instanceof Uint8Array)) throw new Error(`copy binding returned ${copiedBytes?.constructor?.name}`);
 if (copiedBytes.byteLength !== nativeSize) throw new Error(`raw byte size mismatch ${copiedBytes.byteLength} != ${nativeSize}`);
 if (copiedBytes.byteLength < 1024) throw new Error(`raw seed unexpectedly small ${copiedBytes.byteLength}`);
+const copiedHash = hashBytes(copiedBytes);
 
-// Direct-from-recording player is the control arm for the wrapper's pre-existing path.
+// Validate the pre-existing wrapper path first, but do not leave its replay world
+// alive while constructing the raw player: recording snapshots restore world identity
+// and two simultaneous replay worlds from the same seed can collide in one module.
 const directPlayer = b3.b3RecPlayer_CreateFromRecording(recording, 1);
 if (!directPlayer) throw new Error("control CreateFromRecording failed");
 const direct = remapFromPlayer(directPlayer);
 const directSeedExact = exactWorld(authority, direct);
 if (!directSeedExact.exact) throw new Error(`control recording seed mismatch ${directSeedExact.id}`);
+b3.b3RecPlayer_Destroy(directPlayer);
 
-// Model a wire boundary explicitly. The transport copy survives destruction of the
-// native Recording. We then zero the first JS-owned copy to prove the clone does not
-// alias the wrapper's transient wasm view.
+// Model a real wire boundary. The transport copy must stay bit-identical after the
+// native Recording has been destroyed and the first JS-owned copy has been zeroed.
 const wireBytes = new Uint8Array(copiedBytes);
+const wireHashBeforeDestroy = hashBytes(wireBytes);
+if (wireHashBeforeDestroy !== copiedHash) throw new Error("wire copy differs before native Recording destruction");
 b3.b3DestroyRecording(recording);
+const wireHashAfterRecordingDestroy = hashBytes(wireBytes);
+if (wireHashAfterRecordingDestroy !== copiedHash) throw new Error("wire bytes changed when native Recording was destroyed");
 copiedBytes.fill(0);
+const wireHashAfterSourceZero = hashBytes(wireBytes);
+if (wireHashAfterSourceZero !== copiedHash) throw new Error("wire bytes alias source JS copy");
 
 const rawPlayer = b3.b3RecPlayer_CreateFromBytes(wireBytes, 1);
 if (!rawPlayer) throw new Error("CreateFromBytes failed after native Recording destruction");
 const raw = remapFromPlayer(rawPlayer);
 const rawSeedExact = exactWorld(authority, raw);
 if (!rawSeedExact.exact) throw new Error(`raw wire seed mismatch ${rawSeedExact.id}`);
-const rawEqualsControl = exactWorld(direct, raw);
-if (!rawEqualsControl.exact) throw new Error(`raw seed differs from direct control ${rawEqualsControl.id}`);
 
-// Box3D's RecPlayer copies input bytes internally. Zero the transport buffer now;
-// exact continuation must remain independent of JS lifetime/ownership.
+// Native RecPlayer owns its own copy. Destroy the JS transport contents and require
+// exact continuation against the still-live authority world.
 wireBytes.fill(0);
 let continuationExactTicks = 0;
 for (let tick = SEED_TICK; tick < SEED_TICK + CONTINUE_TICKS; tick += 1) {
   step(authority, tick);
-  step(direct, tick);
   step(raw, tick);
-  const a = exactWorld(authority, raw);
-  if (!a.exact) throw new Error(`raw post-wire continuation diverged at tick ${tick} entity ${a.id}`);
-  const c = exactWorld(direct, raw);
-  if (!c.exact) throw new Error(`raw/direct continuation diverged at tick ${tick} entity ${c.id}`);
+  const exact = exactWorld(authority, raw);
+  if (!exact.exact) throw new Error(`raw post-wire continuation diverged at tick ${tick} entity ${exact.id}`);
   continuationExactTicks += 1;
 }
 
 const result = {
-  revision: "world-v0-box3d-raw-seed-roundtrip-audit-v1",
+  revision: "world-v0-box3d-raw-seed-roundtrip-audit-v2-isolated-replay",
   upstream: {
     package: "box3d.js@0.1.1",
     commit: "5d5a3af049cccd9948b2b55bac4342414af0ef64",
@@ -214,15 +226,17 @@ const result = {
   seed: {
     nativeBytes: nativeSize,
     copiedBytes: nativeSize,
+    copiedHash,
     copiedAsJsOwnedUint8Array: true,
+    directControlDestroyedBeforeRawReplay: true,
     nativeRecordingDestroyedBeforeRawPlayerCreate: true,
-    sourceCopyZeroedBeforeRawPlayerCreate: true,
+    wireHashStableAfterRecordingDestroy: wireHashAfterRecordingDestroy === copiedHash,
+    wireHashStableAfterSourceCopyZero: wireHashAfterSourceZero === copiedHash,
     wireBufferZeroedAfterRawPlayerCreate: true,
   },
   exactness: {
     directSeedExact: directSeedExact.exact,
     rawSeedExact: rawSeedExact.exact,
-    rawEqualsDirectControlAtSeed: rawEqualsControl.exact,
     continuationExactTicks,
   },
   verdict: "WORLD_V0_BOX3D_RAW_SEED_WIRE_ROUNDTRIP_PASS",
@@ -232,5 +246,4 @@ console.log("WORLD_V0_BOX3D_RAW_SEED_ROUNDTRIP", JSON.stringify(result, null, 2)
 console.log(result.verdict);
 
 b3.b3RecPlayer_Destroy(rawPlayer);
-b3.b3RecPlayer_Destroy(directPlayer);
 b3.b3DestroyWorld(authority.world);

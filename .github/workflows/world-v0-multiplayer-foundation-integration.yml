@@ -27,6 +27,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # This step is intentionally idempotent. On the clean revalidation head it must
+      # report "already applied" and leave the committed runtime byte-for-byte unchanged.
       - name: Apply bounded I1 server/session patch
         run: |
           set -euo pipefail

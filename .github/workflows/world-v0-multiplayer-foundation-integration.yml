@@ -31,8 +31,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -q 'shared-yard-v0-contract-v4-logical-input-scheduler' src/world-v0-contract.ts; then
-            echo "I3 runtime already present; baseline qualification intentionally skipped on clean revalidation"
+          if grep -q 'shared-yard-v0-logical-input-scheduler-v1' public/world-v0/app.js; then
+            echo "I3 runtime already present; historical rAF-coupled baseline intentionally skipped on clean/newer-contract revalidation"
             exit 0
           fi
           npx wrangler dev --env staging --ip 127.0.0.1 --port 8793 --log-level warn > world-v0-i3-baseline-wrangler.log 2>&1 &

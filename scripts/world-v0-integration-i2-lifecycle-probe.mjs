@@ -104,8 +104,8 @@ const b = makeClient("i2-b");
 const bw = await welcome(b);
 if (aw.worldEpoch !== bw.worldEpoch) throw new Error("I2 peers did not share WorldEpoch");
 if (aw.simBuildId !== bw.simBuildId) throw new Error("I2 peers did not share SimBuildId");
-if (aw.protocolRevision !== "shared-yard-v0-scheduled-input-v3-supersession") {
-  throw new Error(`unexpected protocol revision ${aw.protocolRevision}`);
+if (aw.simulation?.protocolRevision !== "shared-yard-v0-scheduled-input-v3-supersession") {
+  throw new Error(`unexpected protocol revision ${aw.simulation?.protocolRevision}`);
 }
 
 sendReady(a, aw);
@@ -208,7 +208,7 @@ const result = {
   run: RUN,
   worldEpoch: aw.worldEpoch,
   simBuildId: aw.simBuildId,
-  protocolRevision: aw.protocolRevision,
+  protocolRevision: aw.simulation?.protocolRevision,
   targetTick,
   batches: { initialSeq, revisedSeq, duplicateSeq, lateSeq },
   authority: {

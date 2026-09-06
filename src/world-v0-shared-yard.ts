@@ -800,10 +800,11 @@ export class SharedYardV0 extends DurableObject<Env> {
     if (!player || player.socket !== ws) return;
     player.socket = null;
 
-    // Before canonical play starts there is no ticking lease to clean up an empty
-    // run, so an entirely abandoned waiting room may end immediately.
-    if (this.protocolStartTick === null && this.connectedPlayerCount() === 0) {
-      this.endEpoch("all_players_disconnected_before_start");
+    // Before canonical play starts there is no ticking input lease and no earned
+    // same-epoch run continuity yet. Preserve the old fail-closed waiting-room
+    // behavior so a vanished peer cannot strand an occupied ActorSession slot.
+    if (this.protocolStartTick === null) {
+      this.endEpoch("peer_disconnected_before_start");
     }
   }
 

@@ -27,19 +27,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # This step is intentionally idempotent. On the clean revalidation head it must
-      # report "already applied" and leave the committed runtime byte-for-byte unchanged.
-      - name: Apply bounded I1 server/session patch
+      - name: Apply bounded I1 server/session patches
         run: |
           set -euo pipefail
           node scripts/world-v0-integration-i1-apply.mjs
+          node scripts/world-v0-integration-i1-prestart-apply.mjs
           git diff --check
           git diff -- src/world-v0-shared-yard.ts | tee world-v0-i1-runtime.patch
 
       - name: Run full repository validation
         run: npm run check
 
-      - name: Run real local Durable Object/WebSocket I1 lifecycle proof
+      - name: Run real local Durable Object/WebSocket I1 lifecycle proofs
         shell: bash
         run: |
           set -euo pipefail
@@ -51,6 +50,7 @@ jobs:
           }
           trap cleanup EXIT
           node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-i1-lifecycle-probe.log
+          node scripts/world-v0-integration-i1-prestart-probe.mjs | tee world-v0-i1-prestart-probe.log
 
       - name: Commit runtime only after validation PASS
         shell: bash
@@ -63,7 +63,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/world-v0-shared-yard.ts
-          git commit -m "feat(world-v0): integrate I1 actor session continuity"
+          git commit -m "fix(world-v0): fail closed on pre-start peer loss"
           git push origin HEAD:world-v0-multiplayer-foundation-integration
 
       - name: Upload I1 evidence
@@ -74,6 +74,7 @@ jobs:
           path: |
             world-v0-i1-runtime.patch
             world-v0-i1-lifecycle-probe.log
+            world-v0-i1-prestart-probe.log
             world-v0-i1-wrangler.log
           if-no-files-found: warn
           retention-days: 14

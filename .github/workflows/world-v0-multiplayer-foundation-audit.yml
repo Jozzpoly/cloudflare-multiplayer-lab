@@ -27,6 +27,23 @@ jobs:
           path: world-v0-multiplayer-timing-envelope.log
           retention-days: 14
 
+  future-intent-supersession:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node --check scripts/world-v0-future-intent-supersession-audit.mjs
+      - run: node --experimental-strip-types scripts/world-v0-future-intent-supersession-audit.mjs | tee world-v0-future-intent-supersession.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-future-intent-supersession
+          path: world-v0-future-intent-supersession.log
+          retention-days: 14
+
   box3d-checkpoint:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

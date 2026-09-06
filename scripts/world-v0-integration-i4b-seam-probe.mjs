@@ -18,6 +18,10 @@ assert(server.includes("b3.b3World_StopRecording(this.world)"), "authority seed 
 assert(server.includes("b3.b3Recording_CopyData(recording)"), "authority seed copy missing");
 assert(server.includes("rebaseSeed,"), "resumed welcome seed missing");
 assert(browser.includes("world-v0-browser-actor-resume-v1"), "browser actor resume contract missing");
+assert(browser.includes("WORLD_V0_I4B_HALF_OPEN_LIVENESS_V1"), "browser half-open liveness contract missing");
+assert(browser.includes("AUTHORITY_SILENCE_RETAIN_MARGIN_TICKS = 4"), "browser retained-history liveness margin missing");
+assert(browser.includes("beginActorResume(\"authority_silence_history_guard\""), "browser authority-silence transition missing");
+assert(browser.includes("if (socket !== connection) return;"), "browser stale-socket event isolation missing");
 assert(browser.includes("b3.b3RecPlayer_CreateFromBytes(bytes, 1)"), "browser raw seed creation missing");
 assert(browser.includes("createHistoryAtBoundary(next, seed.boundaryTick, \"authority-rebase\")"), "browser arbitrary-boundary history reset missing");
 assert(browser.includes("batchSeq = Math.max(batchSeq, message.resumeLastBatchSeq)"), "browser batch-seq recovery missing");
@@ -27,13 +31,18 @@ assert(WORLD_V0_CLIENT_HISTORY.retainTicks === 24, "I4b unexpectedly widened his
 assert(WORLD_V0_TIMING.inputLeaseMissingTicks === 36, "I4b unexpectedly widened input lease");
 
 const result = {
-  revision: "world-v0-integration-i4b-seam-v1",
+  revision: "world-v0-integration-i4b-seam-v2-half-open-liveness",
   simBuildId: WORLD_V0_SIM_BUILD_ID,
   historyRetainTicks: WORLD_V0_CLIENT_HISTORY.retainTicks,
   inputLeaseMissingTicks: WORLD_V0_TIMING.inputLeaseMissingTicks,
   box3dBuild: WORLD_V0_BOX3D_RUNTIME.build,
+  halfOpenGuard: {
+    retainMarginTicks: 4,
+    supersedingResume: true,
+    staleSocketIsolation: true,
+  },
   verdict: "WORLD_V0_INTEGRATION_I4B_SEAM_PASS",
-  nonClaim: "This is a static/runtime-contract seam check. Wire exactness and automatic browser recovery require the authority and Chromium gates.",
+  nonClaim: "This is a static/runtime-contract seam check. Wire exactness and automatic half-open browser recovery require the authority and Chromium gates.",
 };
 console.log("WORLD_V0_INTEGRATION_I4B_SEAM", JSON.stringify(result, null, 2));
 console.log(result.verdict);

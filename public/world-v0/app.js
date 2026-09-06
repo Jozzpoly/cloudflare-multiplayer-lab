@@ -42,6 +42,16 @@ const LIFECYCLE_RETAIN = 32;
 const ROOM_RECOVERY_MAX_ATTEMPTS = 6;
 const ROOM_RECOVERY_BASE_DELAY_MS = 250;
 const ROOM_RECOVERY_MAX_DELAY_MS = 4000;
+const ACTOR_RESUME_MAX_ATTEMPTS = 8;
+const ACTOR_RESUME_BASE_DELAY_MS = 150;
+const ACTOR_RESUME_MAX_DELAY_MS = 2000;
+const ACTOR_RESUME_REVISION = "world-v0-browser-actor-resume-v1";
+const AUTHORITY_REBASE_SEED_REVISION = "world-v0-authority-rebase-seed-v1";
+// WORLD_V0_I4B_HALF_OPEN_LIVENESS_V1
+// Freeze before the client can outrun the retained rewind horizon. A tick-distance
+// guard is deliberately used instead of a wall-clock timeout so renderer stalls
+// cannot manufacture a false transport failure.
+const AUTHORITY_SILENCE_RETAIN_MARGIN_TICKS = 4;
 const EPS = 1e-9;
 
 const viewport = document.querySelector("#viewport");
@@ -512,10 +522,12 @@ let remoteSessionId = null;
 let selfNetEntityId = null;
 let remoteNetEntityId = null;
 let selfSlot = null;
+let resumeToken = null;
 let protocolStartTick = null;
 let simulation = null;
 let phaseAnchor = null;
 let localState = null;
+let lastAuthorityBoundaryTick = null;
 let batchSeq = 0;
 let pendingBatch = [];
 let logicalInputTimer = null;
@@ -533,6 +545,14 @@ let roomRecovery = {
   timer: null,
   sourceEpoch: null,
   lastRecoveredEpoch: null,
+};
+let actorResume = {
+  revision: ACTOR_RESUME_REVISION,
+  pending: false,
+  attempts: 0,
+  timer: null,
+  sourceBoundary: null,
+  lastRecoveredBoundary: null,
 };
 
 const pendingPings = new Map();
@@ -565,6 +585,14 @@ const metrics = {
   leaseExpiredSeen: 0,
   serverLate: 0,
   serverRejected: 0,
+  authoritySilenceResumes: 0,
+  latestAuthorityBoundary: null,
+  maxAuthoritySilenceTicks: 0,
+  rebases: 0,
+  latestRebaseBoundary: null,
+  latestRebaseGapTicks: 0,
+  latestRebaseBytes: 0,
+  latestRebaseHash: null,
   latestCorrection: { self: 0, remote: 0, prop: 0 },
   maxCorrection: { self: 0, remote: 0, prop: 0 },
   maxFrameMs: 0,
@@ -595,6 +623,92 @@ function updateSessionActions() {
   copyInviteButton.classList.toggle("hidden", !inviteVisible);
   restartRoundButton.classList.toggle("hidden", !restartVisible);
   sessionActions.classList.toggle("hidden", !inviteVisible && !restartVisible);
+}
+
+function clearActorResumeTimer() {
+  if (actorResume.timer) clearTimeout(actorResume.timer);
+  actorResume.timer = null;
+}
+
+function actorResumeSnapshot() {
+  return {
+    revision: actorResume.revision,
+    pending: actorResume.pending,
+    attempts: actorResume.attempts,
+    sourceBoundary: actorResume.sourceBoundary,
+    lastRecoveredBoundary: actorResume.lastRecoveredBoundary,
+  };
+}
+
+function reconnectActorSession() {
+  if (!actorResume.pending || runtimeFailed) return false;
+  if (socket && socket.readyState === WebSocket.CONNECTING) return false;
+  if (actorResume.attempts >= ACTOR_RESUME_MAX_ATTEMPTS) {
+    actorResume.pending = false;
+    candidateError(new Error("actor_session_resume_exhausted"));
+    return false;
+  }
+  actorResume.attempts += 1;
+  networkState = "resuming actor · attempt " + actorResume.attempts;
+  recordLifecycle("actor-resume-attempt", { attempt: actorResume.attempts, sourceBoundary: actorResume.sourceBoundary });
+  updateProductStatus();
+  try {
+    connect();
+  } catch (error) {
+    recordLifecycle("actor-resume-connect-throw", { reason: error instanceof Error ? error.message : String(error) });
+    scheduleActorResume();
+  }
+  return true;
+}
+
+function scheduleActorResume() {
+  if (!actorResume.pending || runtimeFailed) return false;
+  if (actorResume.timer || (socket && socket.readyState === WebSocket.CONNECTING)) return true;
+  if (actorResume.attempts >= ACTOR_RESUME_MAX_ATTEMPTS) return reconnectActorSession();
+  const delay = Math.min(ACTOR_RESUME_MAX_DELAY_MS, ACTOR_RESUME_BASE_DELAY_MS * (2 ** actorResume.attempts));
+  networkState = "resuming actor · attempt " + (actorResume.attempts + 1);
+  showNotice("Connection lost · restoring exact Shared Yard state…");
+  updateProductStatus();
+  actorResume.timer = setTimeout(() => {
+    actorResume.timer = null;
+    reconnectActorSession();
+  }, delay);
+  return true;
+}
+
+function beginActorResume(reason, details = {}) {
+  if (actorResume.pending || runtimeFailed || roomRecovery.pending || !localState || !identity || !resumeToken) return false;
+  actorResume.pending = true;
+  actorResume.attempts = 0;
+  actorResume.sourceBoundary = localState.boundaryTick;
+  metrics.authoritySilenceResumes += 1;
+  neutralizeTransientInputs();
+  playing = false;
+  stopLogicalInputScheduler();
+  if (pingTimer) clearInterval(pingTimer);
+  if (hudTimer) clearInterval(hudTimer);
+  pingTimer = null;
+  hudTimer = null;
+  pendingPings.clear();
+  networkState = "authority silence · actor resume pending";
+  recordLifecycle("actor-resume-pending", {
+    reason,
+    sourceBoundary: actorResume.sourceBoundary,
+    lastAuthorityBoundaryTick,
+    ...details,
+  });
+  showNotice("Connection stalled · restoring exact Shared Yard state…");
+  updateProductStatus();
+
+  // Do not wait for a half-open WebSocket to report CLOSED. The authority resume
+  // contract atomically supersedes the prior socket for the same ActorSession.
+  // Retire this browser connection immediately; its later events are ignored by
+  // per-connection identity guards installed in connect().
+  const staleSocket = socket;
+  socket = null;
+  try { staleSocket?.close(4000, "actor_resume_superseded"); } catch { /* half-open transport */ }
+  scheduleActorResume();
+  return true;
 }
 
 function recoverableRoomEpochReason(reason) {
@@ -913,6 +1027,75 @@ function remapSimulation(player, entityDefs, netEntityOrder) {
   return { world, actorBodies, propBodies, netBodies, entityDefs: [...entityDefs], netEntityOrder: [...netEntityOrder], ownerPlayer: player };
 }
 
+function decodeBase64Bytes(text) {
+  if (typeof text !== "string" || !text.length) throw new Error("authority rebase seed bytes missing");
+  const binary = atob(text);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function u32Hex(value) {
+  return (Number(value) >>> 0).toString(16).padStart(8, "0");
+}
+
+function applyAuthorityRebase(seed) {
+  if (!localState?.sim) throw new Error("authority rebase without local simulation");
+  if (!seed || seed.revision !== AUTHORITY_REBASE_SEED_REVISION) throw new Error("authority rebase seed revision mismatch");
+  if (!Number.isInteger(seed.boundaryTick) || seed.boundaryTick < 0) throw new Error("authority rebase boundary invalid");
+  if (!seed.stateGuard || seed.stateGuard.revision !== WORLD_V0_EXPECTED_STATE_GUARD_REVISION) throw new Error("authority rebase state guard invalid");
+  const bytes = decodeBase64Bytes(seed.bytesBase64);
+  if (!Number.isInteger(seed.byteLength) || bytes.byteLength !== seed.byteLength) throw new Error("authority rebase byte length mismatch");
+  const hash = u32Hex(b3.b3Bytes_Fnv1a32(bytes));
+  if (hash !== seed.fnv1a32) throw new Error("authority rebase checksum mismatch " + hash + " != " + seed.fnv1a32);
+
+  const oldEntityDefs = localState.sim.entityDefs;
+  const oldNetEntityOrder = localState.sim.netEntityOrder;
+  const player = b3.b3RecPlayer_CreateFromBytes(bytes, 1);
+  if (!player) throw new Error("authority rebase player create failed");
+  let next = null;
+  try {
+    next = remapSimulation(player, oldEntityDefs, oldNetEntityOrder);
+    const packed = capturePackedDiagnostic(next);
+    const difference = firstWorldV0StateDifference(
+      seed.stateGuard.packed,
+      packed,
+      simulation.netEntityOrder,
+      simulation.stateComponents,
+    );
+    if (difference) throw new Error("authority rebase exact-state mismatch " + (difference.netEntityId || difference.field) + "." + (difference.component || ""));
+  } catch (error) {
+    if (next) destroySimulation(next);
+    else b3.b3RecPlayer_Destroy(player);
+    throw error;
+  }
+
+  const sourceBoundary = actorResume.sourceBoundary;
+  destroyLocalState();
+  intendedSelf.clear();
+  peerRemote.clear();
+  consumedByTick.clear();
+  usedByTick.clear();
+  diagnosticSamples.clear();
+  pendingStateGuards.clear();
+  pendingBatch = [];
+  createHistoryAtBoundary(next, seed.boundaryTick, "authority-rebase");
+  compareStateGuard(seed.boundaryTick, seed.stateGuard);
+  phaseAnchor = { tick: seed.boundaryTick, at: performance.now() };
+  metrics.rebases += 1;
+  metrics.latestRebaseBoundary = seed.boundaryTick;
+  metrics.latestRebaseGapTicks = Number.isInteger(sourceBoundary) ? Math.max(0, seed.boundaryTick - sourceBoundary) : 0;
+  metrics.latestRebaseBytes = bytes.byteLength;
+  metrics.latestRebaseHash = hash;
+  recordLifecycle("authority-rebase", {
+    boundaryTick: seed.boundaryTick,
+    sourceBoundary,
+    gapTicks: metrics.latestRebaseGapTicks,
+    byteLength: bytes.byteLength,
+    fnv1a32: hash,
+  });
+}
+
 function destroySimulation(sim) {
   if (!sim) return;
   if (sim.ownerPlayer) {
@@ -1025,11 +1208,16 @@ function applyResolvedTick(sim, tick, allowGenerateSelf) {
   applyIntent(remoteBody, resolved.remote);
 }
 
-function createHistory(sim) {
+function createHistoryAtBoundary(sim, boundaryTick, reason) {
+  if (!Number.isInteger(boundaryTick) || boundaryTick < 0) throw new Error("invalid history boundary " + boundaryTick);
   const history = { segments: [], active: null, generation: 0, segmentRotations: 0 };
-  localState = { sim, history, boundaryTick: 0 };
-  startActiveRecording(0, "initial");
-  storeDiagnostic(0);
+  localState = { sim, history, boundaryTick };
+  startActiveRecording(boundaryTick, reason);
+  storeDiagnostic(boundaryTick);
+}
+
+function createHistory(sim) {
+  createHistoryAtBoundary(sim, 0, "initial");
 }
 
 function startActiveRecording(startTick, reason) {
@@ -1288,6 +1476,7 @@ function socketUrl() {
   const url = new URL(`${protocol}//${location.host}/world-v0/ws`);
   url.searchParams.set("player", callsign);
   url.searchParams.set("run", runKey);
+  if (actorResume.pending && resumeToken) url.searchParams.set("resume", resumeToken);
   return url.toString();
 }
 
@@ -1460,11 +1649,45 @@ function handleMessage(message) {
   if (message.type === "world_v0_welcome") {
     const recoveringRoom = roomRecovery.pending;
     const sourceEpoch = roomRecovery.sourceEpoch;
+    const resumingActor = actorResume.pending;
+    const priorSessionId = selfSessionId;
+    const priorResumeToken = resumeToken;
     adoptIdentity(message, "welcome");
     if (recoveringRoom && sourceEpoch && message.worldEpoch === sourceEpoch) {
       throw new Error(`room recovery reused ended epoch ${sourceEpoch}`);
     }
     simulation = assertSimulationContract(message.simulation, "welcome");
+    if (message.resumed) {
+      if (!resumingActor || !priorSessionId || !priorResumeToken || !localState) throw new Error("unexpected resumed welcome");
+      if (message.selfSessionId !== priorSessionId) throw new Error("resumed ActorSession identity drift");
+      if (message.resumeToken !== priorResumeToken) throw new Error("resumed private token drift");
+      if (!Number.isInteger(message.resumeLastBatchSeq) || message.resumeLastBatchSeq < 0) throw new Error("resumed batch sequence invalid");
+      batchSeq = Math.max(batchSeq, message.resumeLastBatchSeq);
+      applyAuthorityRebase(message.rebaseSeed);
+      selfSessionId = message.selfSessionId;
+      selfNetEntityId = message.selfNetEntityId;
+      selfSlot = message.slot;
+      resumeToken = message.resumeToken;
+      clearActorResumeTimer();
+      actorResume.pending = false;
+      actorResume.attempts = 0;
+      actorResume.sourceBoundary = null;
+      actorResume.lastRecoveredBoundary = localState.boundaryTick;
+      playing = true;
+      sessionEnd = null;
+      networkState = "live · exact state resumed";
+      jumpButton.classList.remove("hidden");
+      joystick.classList.add("active");
+      cameraGimbal.classList.add("active");
+      startLogicalInputScheduler();
+      recordLifecycle("actor-resume-complete", { boundaryTick: localState.boundaryTick, resumeCount: message.resumeCount });
+      clearNotice();
+      syncMeshes();
+      return;
+    }
+    if (resumingActor) throw new Error("actor resume was not accepted by authority");
+    if (typeof message.resumeToken !== "string" || !message.resumeToken) throw new Error("welcome missing resume token");
+    resumeToken = message.resumeToken;
     selfSessionId = message.selfSessionId;
     selfNetEntityId = message.selfNetEntityId;
     selfSlot = message.slot;
@@ -1561,22 +1784,35 @@ function candidateError(error) {
 
 function connect() {
   networkState = "connecting";
-  socket = new WebSocket(socketUrl());
-  socket.addEventListener("open", () => {
+  const connection = new WebSocket(socketUrl());
+  socket = connection;
+  connection.addEventListener("open", () => {
+    if (socket !== connection) return;
     networkState = "syncing";
     recordLifecycle("socket-open");
     sendPing();
     pingTimer = setInterval(sendPing, PING_INTERVAL_MS);
     hudTimer = setInterval(updateHud, HUD_INTERVAL_MS);
   });
-  socket.addEventListener("message", (event) => {
-    if (typeof event.data !== "string") return;
+  connection.addEventListener("message", (event) => {
+    if (socket !== connection || typeof event.data !== "string") return;
     try {
-      handleMessage(JSON.parse(event.data));
+      const message = JSON.parse(event.data);
+      const observedBoundary = Number.isInteger(message?.boundaryTick)
+        ? message.boundaryTick
+        : (Number.isInteger(message?.state?.boundaryTick) ? message.state.boundaryTick : null);
+      if (Number.isInteger(observedBoundary)) {
+        lastAuthorityBoundaryTick = lastAuthorityBoundaryTick === null
+          ? observedBoundary
+          : Math.max(lastAuthorityBoundaryTick, observedBoundary);
+        metrics.latestAuthorityBoundary = lastAuthorityBoundaryTick;
+      }
+      handleMessage(message);
       updateProductStatus();
     } catch (error) { candidateError(error); }
   });
-  socket.addEventListener("close", (event) => {
+  connection.addEventListener("close", (event) => {
+    if (socket !== connection) return;
     playing = false;
     stopLogicalInputScheduler();
     if (pingTimer) clearInterval(pingTimer);
@@ -1601,6 +1837,17 @@ function connect() {
     cameraGimbalInput = { x: 0, y: 0 };
     cameraGimbalKnob.style.transform = "translate(0, 0)";
     const closeReason = event.reason || sessionEnd?.reason || "";
+    const actorTransportRecoverable = !runtimeFailed && !expectedAfterEpochEnd && !roomRecovery.pending &&
+      Boolean(identity && resumeToken && localState && Number.isInteger(protocolStartTick)) && event.code === 1006;
+    if (actorResume.pending || actorTransportRecoverable) {
+      actorResume.pending = true;
+      if (!Number.isInteger(actorResume.sourceBoundary)) actorResume.sourceBoundary = localState?.boundaryTick ?? null;
+      neutralizeTransientInputs();
+      networkState = "connection lost · actor resume pending";
+      recordLifecycle("actor-resume-pending", { code: event.code, reason: event.reason || null, sourceBoundary: actorResume.sourceBoundary });
+      scheduleActorResume();
+      return;
+    }
     if (!roomRecovery.pending && recoverableRoomEpochReason(closeReason)) {
       roomRecovery.pending = true;
       roomRecovery.reason = closeReason;
@@ -1616,14 +1863,24 @@ function connect() {
     }
     if (!runtimeFailed) showNotice("Shared Yard round ended. Restart when ready; the next round uses a fresh world epoch.");
   });
-  socket.addEventListener("error", () => {
+  connection.addEventListener("error", () => {
+    if (socket !== connection) return;
     networkState = "network error";
     recordLifecycle("socket-error");
   });
 }
 
 function advancePrediction() {
-  if (!localState || !phaseAnchor || runtimeFailed) return;
+  if (!localState || !phaseAnchor || runtimeFailed || actorResume.pending) return;
+  if (Number.isInteger(lastAuthorityBoundaryTick) && Number.isInteger(simulation?.clientHistory?.retainTicks)) {
+    const silenceTicks = Math.max(0, localState.boundaryTick - lastAuthorityBoundaryTick);
+    metrics.maxAuthoritySilenceTicks = Math.max(metrics.maxAuthoritySilenceTicks, silenceTicks);
+    const safeBlindTicks = Math.max(1, simulation.clientHistory.retainTicks - AUTHORITY_SILENCE_RETAIN_MARGIN_TICKS);
+    if (silenceTicks >= safeBlindTicks) {
+      beginActorResume("authority_silence_history_guard", { silenceTicks, safeBlindTicks });
+      return;
+    }
+  }
   const estimate = authorityTickEstimate();
   if (!Number.isFinite(estimate)) return;
   const targetBoundary = Math.max(0, Math.floor(estimate + simulation.timing.predictionLeadTicks));
@@ -1771,6 +2028,9 @@ function buildEvidence() {
       restartAvailable: canRestartRound(),
       end: sessionEnd ? { ...sessionEnd } : null,
       roomRecovery: roomRecoverySnapshot(),
+      actorSessionId: selfSessionId,
+      selfNetEntityId,
+      actorResume: actorResumeSnapshot(),
     },
     metrics: JSON.parse(JSON.stringify(metrics)),
     rtt: {
@@ -1850,6 +2110,7 @@ function productStatusText() {
   if (networkState === "waiting for peer") return "Waiting for peer · use the same Run key";
   if (networkState === "peer joined" || networkState === "both connected · ready" || networkState === "ready · awaiting start") return "Peer found · synchronizing Shared Yard";
   if (networkState.startsWith("live")) return "Shared Yard live · move · jump · drag to look · interact";
+  if (actorResume.pending) return "Restoring exact Shared Yard state…";
   if (networkState === "connecting" || networkState === "syncing") return "Connecting to Shared Yard…";
   if (networkState.startsWith("closed")) return "Round ended · restart when ready";
   if (networkState.startsWith("epoch ended")) return "Round ending · preparing fresh epoch";
@@ -1903,6 +2164,17 @@ function resetProtocolState({ preserveRoomRecovery = false } = {}) {
   selfNetEntityId = null;
   remoteNetEntityId = null;
   selfSlot = null;
+  resumeToken = null;
+  lastAuthorityBoundaryTick = null;
+  clearActorResumeTimer();
+  actorResume = {
+    revision: ACTOR_RESUME_REVISION,
+    pending: false,
+    attempts: 0,
+    timer: null,
+    sourceBoundary: null,
+    lastRecoveredBoundary: actorResume.lastRecoveredBoundary,
+  };
   protocolStartTick = null;
   simulation = null;
   phaseAnchor = null;
@@ -1942,6 +2214,14 @@ function resetProtocolState({ preserveRoomRecovery = false } = {}) {
     leaseExpiredSeen: 0,
     serverLate: 0,
     serverRejected: 0,
+    authoritySilenceResumes: 0,
+    latestAuthorityBoundary: null,
+    maxAuthoritySilenceTicks: 0,
+    rebases: 0,
+    latestRebaseBoundary: null,
+    latestRebaseGapTicks: 0,
+    latestRebaseBytes: 0,
+    latestRebaseHash: null,
     latestCorrection: { self: 0, remote: 0, prop: 0 },
     maxCorrection: { self: 0, remote: 0, prop: 0 },
     maxFrameMs: 0,

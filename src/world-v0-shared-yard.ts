@@ -161,6 +161,19 @@ function flattenDynamicState(state: DynamicState): number[] {
   ];
 }
 
+function encodeBytesBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x4000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize)));
+  }
+  return btoa(binary);
+}
+
+function encodeU32Hex(value: number): string {
+  return (value >>> 0).toString(16).padStart(8, "0");
+}
+
 export class SharedYardV0 extends DurableObject<Env> {
   private world: WorldId | null = null;
   private worldId: string | null = null;
@@ -400,6 +413,9 @@ export class SharedYardV0 extends DurableObject<Env> {
     player.socket = server;
     if (resumed) player.resumeCount += 1;
     this.sessionBySocket.set(server, player.sessionId);
+    const rebaseSeed = resumed && this.protocolStartTick !== null
+      ? this.createAuthorityRebaseSeed()
+      : null;
 
     this.send(server, {
       type: "world_v0_welcome",
@@ -410,6 +426,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       resumed,
       resumeCount: player.resumeCount,
       resumeLastBatchSeq: player.input.stats().lastBatchSeq,
+      rebaseSeed,
       slot: player.slot,
       waitingForPeer: this.connectedPlayerCount() < MAX_PLAYERS,
       protocolStartTick: this.protocolStartTick,
@@ -731,6 +748,36 @@ export class SharedYardV0 extends DurableObject<Env> {
       for (const value of flattenDynamicState(state)) packed += encodeFloat32Bits(value);
     }
     return { revision: WORLD_V0_STATE_GUARD_REVISION, packed };
+  }
+
+  private createAuthorityRebaseSeed() {
+    if (!this.world) throw new Error("world_not_ready");
+    const boundaryTick = this.tick;
+    const recording = b3.b3CreateRecording(0);
+    try {
+      b3.b3World_StartRecording(this.world, recording);
+      b3.b3World_StopRecording(this.world);
+      const byteLength = b3.b3Recording_GetSize(recording);
+      const bytes = b3.b3Recording_CopyData(recording);
+      if (!(bytes instanceof Uint8Array)) throw new Error("authority_rebase_seed_copy_type");
+      if (bytes.byteLength !== byteLength || byteLength < 1024) {
+        throw new Error("authority_rebase_seed_size:" + bytes.byteLength + "/" + byteLength);
+      }
+      const state = this.snapshotState();
+      if (state.boundaryTick !== boundaryTick || !state.stateGuard) {
+        throw new Error("authority_rebase_seed_state_guard");
+      }
+      return {
+        revision: "world-v0-authority-rebase-seed-v1",
+        boundaryTick,
+        byteLength,
+        fnv1a32: encodeU32Hex(Number(b3.b3Bytes_Fnv1a32(bytes)) >>> 0),
+        bytesBase64: encodeBytesBase64(bytes),
+        stateGuard: state.stateGuard,
+      };
+    } finally {
+      b3.b3DestroyRecording(recording);
+    }
   }
 
   private snapshotState() {

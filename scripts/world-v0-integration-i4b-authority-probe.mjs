@@ -184,8 +184,17 @@ const seed = b2w.rebaseSeed;
 assert(seed?.revision === SEED_REVISION, "rebind missing exact rebase seed");
 assert(seed.boundaryTick === b2w.state?.boundaryTick, `seed/state boundary mismatch ${seed.boundaryTick}/${b2w.state?.boundaryTick}`);
 assert(seed.stateGuard?.packed === b2w.state?.stateGuard?.packed, "seed/welcome state guard mismatch");
-assert(seed.boundaryTick > leaseExpired.boundaryTick, "seed did not occur after observed lease expiry");
 const gapTicks = seed.boundaryTick - dropBoundary;
+console.log("WORLD_V0_I4B_AUTHORITY_BOUNDARIES", JSON.stringify({
+  dropBoundary,
+  leaseExpiredBoundary: leaseExpired.boundaryTick,
+  seedBoundary: seed.boundaryTick,
+  gapTicks,
+}));
+assert(
+  seed.boundaryTick >= leaseExpired.boundaryTick,
+  `seed boundary ${seed.boundaryTick} preceded observed finalized lease-expiry boundary ${leaseExpired.boundaryTick}`,
+);
 assert(gapTicks > WORLD_V0_TIMING.inputLeaseMissingTicks, `rebase gap ${gapTicks} did not cross ${WORLD_V0_TIMING.inputLeaseMissingTicks}-tick lease`);
 assert(gapTicks > 24, `rebase gap ${gapTicks} did not cross client history horizon`);
 

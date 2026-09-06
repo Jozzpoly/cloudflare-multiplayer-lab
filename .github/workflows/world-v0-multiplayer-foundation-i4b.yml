@@ -1,0 +1,126 @@
+name: World V0 Multiplayer Foundation I4b
+
+on:
+  push:
+    branches:
+      - world-v0-multiplayer-foundation-integration
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  i4b-exact-full-state-browser-rebase:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply bounded I4b exact-rebase candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/world-v0-integration-i4b-apply.py
+          NEW_SIM_BUILD_ID="$(node --experimental-strip-types -e 'import("./src/world-v0-contract.ts").then((m) => process.stdout.write(m.WORLD_V0_SIM_BUILD_ID))')"
+          node scripts/world-v0-integration-i4b-build-contract-apply.mjs "$NEW_SIM_BUILD_ID"
+          echo "I4b computed SimBuildId: $NEW_SIM_BUILD_ID" | tee world-v0-i4b-sim-build.log
+          git diff --check
+          git diff -- src/world-v0-contract.ts src/world-v0-shared-yard.ts public/world-v0/app.js public/world-v0/build-contract.js | tee world-v0-i4b-runtime.patch
+
+      - name: Run focused I4b seam falsifier
+        run: node --experimental-strip-types scripts/world-v0-integration-i4b-seam-probe.mjs | tee world-v0-i4b-seam-probe.log
+
+      - name: Run full repository validation
+        run: npm run check
+
+      - name: Prove authority wire seed and browser recovery beyond history and lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8796 --log-level warn > world-v0-i4b-candidate-wrangler.log 2>&1 &
+          WRANGLER_PID=$!
+          cleanup() {
+            kill "$WRANGLER_PID" 2>/dev/null || true
+            wait "$WRANGLER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 120); do
+            if ! kill -0 "$WRANGLER_PID" 2>/dev/null; then
+              echo "I4b candidate wrangler exited before readiness"
+              cat world-v0-i4b-candidate-wrangler.log
+              exit 1
+            fi
+            if curl -fsS http://127.0.0.1:8796/world-v0/ >/dev/null 2>&1; then break; fi
+            sleep 0.1
+          done
+          curl -fsS http://127.0.0.1:8796/world-v0/ >/dev/null
+
+          MW_WORLD_V0_I4B_BASE=http://127.0.0.1:8796 \
+            node --experimental-strip-types scripts/world-v0-integration-i4b-authority-probe.mjs | tee world-v0-i4b-authority-probe.log
+          MW_WORLD_V0_I4B_BASE=http://127.0.0.1:8796 \
+          MW_WORLD_V0_I4B_OUTPUT=world-v0-i4b-chromium-rebase.json \
+            node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-i4b-chromium-rebase.log
+
+          MW_WORLD_V0_I3_MODE=candidate \
+          MW_WORLD_V0_I3_BASE=http://127.0.0.1:8796 \
+          MW_WORLD_V0_I3_FREEZE_MS=1200 \
+          MW_WORLD_V0_CHROMIUM_OUTPUT=world-v0-i4b-i3-regression.json \
+            node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee world-v0-i4b-i3-regression.log
+          MW_WORLD_V0_I2_BASE=http://127.0.0.1:8796 \
+            node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-i4b-i2-regression.log
+          MW_WORLD_V0_I1_BASE=http://127.0.0.1:8796 \
+            node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-i4b-i1-regression.log
+          MW_WORLD_V0_I1_BASE=http://127.0.0.1:8796 \
+            node scripts/world-v0-integration-i1-prestart-probe.mjs | tee world-v0-i4b-i1-prestart-regression.log
+
+      - name: Commit I4b runtime only after every gate PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME_FILES=(
+            src/world-v0-contract.ts
+            src/world-v0-shared-yard.ts
+            public/world-v0/app.js
+            public/world-v0/build-contract.js
+          )
+          if test -z "$(git status --porcelain -- "${RUNTIME_FILES[@]}")"; then
+            echo "I4b exact rebase runtime already committed; nothing to push"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${RUNTIME_FILES[@]}"
+          git commit -m "feat(world-v0): integrate I4b exact full-state browser rebase"
+          git push origin HEAD:world-v0-multiplayer-foundation-integration
+
+      - name: Upload I4b evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-v0-integration-i4b
+          path: |
+            world-v0-i4b-sim-build.log
+            world-v0-i4b-runtime.patch
+            world-v0-i4b-seam-probe.log
+            world-v0-i4b-authority-probe.log
+            world-v0-i4b-chromium-rebase.json
+            world-v0-i4b-chromium-rebase.log
+            world-v0-i4b-i3-regression.json
+            world-v0-i4b-i3-regression.log
+            world-v0-i4b-i2-regression.log
+            world-v0-i4b-i1-regression.log
+            world-v0-i4b-i1-prestart-regression.log
+            world-v0-i4b-candidate-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,57 @@
+name: World V0 Architecture Readiness Probes
+
+on:
+  push:
+    branches:
+      - world-v0-multiplayer-foundation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  history-horizon:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --experimental-strip-types scripts/world-v0-history-horizon-audit.mjs | tee world-v0-history-horizon.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-history-horizon
+          path: world-v0-history-horizon.log
+          retention-days: 14
+
+  seed-scaling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node scripts/world-v0-box3d-seed-scaling-audit.mjs | tee world-v0-box3d-seed-scaling.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-box3d-seed-scaling
+          path: world-v0-box3d-seed-scaling.log
+          retention-days: 14
+
+  directory-locality-hazard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/world-v0-directory-locality-hazard-audit.mjs | tee world-v0-directory-locality-hazard.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-directory-locality-hazard
+          path: world-v0-directory-locality-hazard.log
+          retention-days: 14

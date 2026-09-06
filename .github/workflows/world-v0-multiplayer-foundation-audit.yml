@@ -43,3 +43,61 @@ jobs:
           name: world-v0-box3d-checkpoint-continuation
           path: world-v0-box3d-checkpoint-continuation.log
           retention-days: 14
+
+  real-chromium-latency:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        latency: [80, 160]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Run exact browser path with client-1 synthetic latency
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_AUDIT_LATENCY_MS: ${{ matrix.latency }}
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-chromium-latency-${{ matrix.latency }}.json
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+        run: node scripts/world-v0-chromium-latency-audit-runner.mjs | tee world-v0-chromium-latency-${{ matrix.latency }}.log
+      - name: Preserve measured browser evidence regardless of qualification verdict
+        env:
+          LATENCY: ${{ matrix.latency }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const latency = process.env.LATENCY;
+          const value = JSON.parse(readFileSync(`world-v0-chromium-latency-${latency}.json`, "utf8"));
+          const pages = value.pages || (value.clients || []).map((client) => client.evidence).filter(Boolean);
+          if (pages.length < 2) throw new Error(`missing two browser evidence records: ${JSON.stringify(value)}`);
+          const summary = pages.map((page, index) => ({
+            index,
+            runtimeFailed: page?.runtimeFailed,
+            networkState: page?.networkState,
+            boundary: page?.localBoundaryTick,
+            rttMedianMs: page?.rtt?.medianMs,
+            rttP95Ms: page?.rtt?.p95Ms,
+            serverLate: page?.metrics?.serverLate,
+            leaseExpiredSeen: page?.metrics?.leaseExpiredSeen,
+            guardMatches: page?.metrics?.guardMatches,
+            guardMismatches: page?.metrics?.guardMismatches,
+            maxRewind: page?.metrics?.maxRewind,
+            corrections: page?.metrics?.corrections,
+            frameP95Ms: page?.frame?.p95Ms,
+            frameMaxMs: page?.frame?.maxMs,
+            sessionEnd: page?.session?.end,
+          }));
+          console.log("WORLD_V0_REAL_CHROMIUM_LATENCY_AUDIT", JSON.stringify({ configuredLatencyMs: Number(latency), verdict: value.verdict, pages: summary }, null, 2));
+          if (!Number.isFinite(summary[1]?.rttMedianMs)) throw new Error("stressed client never produced RTT evidence");
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-real-chromium-latency-${{ matrix.latency }}
+          path: |
+            world-v0-chromium-latency-${{ matrix.latency }}.json
+            world-v0-chromium-latency-${{ matrix.latency }}.log
+          retention-days: 14

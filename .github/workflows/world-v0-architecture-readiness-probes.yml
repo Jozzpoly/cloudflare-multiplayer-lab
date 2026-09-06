@@ -55,3 +55,19 @@ jobs:
           name: world-v0-directory-locality-hazard
           path: world-v0-directory-locality-hazard.log
           retention-days: 14
+
+  stale-actor-containment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node --experimental-strip-types scripts/world-v0-stale-actor-containment-probe.mjs | tee world-v0-stale-actor-containment.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-stale-actor-containment
+          path: world-v0-stale-actor-containment.log
+          retention-days: 14

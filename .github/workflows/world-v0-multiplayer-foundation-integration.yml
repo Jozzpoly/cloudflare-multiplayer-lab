@@ -27,6 +27,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Clean revalidation after both I1 runtime changes were committed: both patchers
+      # must now be idempotent and leave src/world-v0-shared-yard.ts unchanged.
       - name: Apply bounded I1 server/session patches
         run: |
           set -euo pipefail

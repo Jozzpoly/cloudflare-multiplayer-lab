@@ -390,7 +390,11 @@ function pumpLogicalInputScheduler() {
   const estimate = authorityTickEstimate();
   if (!Number.isFinite(estimate)) return;
 
-  const startTick = Math.max(protocolStartTick, Math.floor(estimate));
+  // Canonical authorship starts strictly after the estimated current authority
+  // boundary. Targeting floor(estimate) is an arrival race: the authority may
+  // consume that boundary while the batch is in transport. Prediction horizon is
+  // intentionally unchanged; this only removes the unsafe front edge.
+  const startTick = Math.max(protocolStartTick, Math.floor(estimate) + 1);
   const authoredThrough = Math.floor(estimate + simulation.timing.predictionLeadTicks) - 1;
   if (authoredThrough < startTick) return;
 
@@ -1537,7 +1541,14 @@ function sendPing() {
 
 function authorityTickEstimate(now = performance.now()) {
   if (!phaseAnchor) return null;
-  return phaseAnchor.tick + (now - phaseAnchor.at) / STEP_MS;
+  const phaseEstimate = phaseAnchor.tick + (now - phaseAnchor.at) / STEP_MS;
+  // I3b authority-observed temporal floor. world_v0_consumed / ACK / snapshot
+  // traffic gives us a monotonic authority boundary far more frequently than the
+  // ping phase anchor. Never schedule from an estimate older than authority state
+  // the client has already actually observed.
+  return Number.isInteger(lastAuthorityBoundaryTick)
+    ? Math.max(phaseEstimate, lastAuthorityBoundaryTick)
+    : phaseEstimate;
 }
 
 function updatePhaseFromPong(message, receivedAt) {
@@ -1991,7 +2002,7 @@ function buildEvidence() {
     runtimeFailureReason,
     runtimeFailureAt,
     inputScheduler: {
-      revision: "shared-yard-v0-logical-input-scheduler-v1",
+      revision: "shared-yard-v0-logical-input-scheduler-v2-authority-floor",
       active: logicalInputTimer !== null,
       pumps: logicalInputPumps,
       authored: logicalInputAuthored,

@@ -1,6 +1,6 @@
-export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v6-i4-exact-full-state-rebase";
+export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v7-i3-authority-temporal-floor";
 export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v5-i4-exact-full-state-rebase";
-export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v6-i4-exact-full-state-rebase";
+export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v7-i3-authority-temporal-floor";
 export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
 export const WORLD_V0_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v3-supersession";

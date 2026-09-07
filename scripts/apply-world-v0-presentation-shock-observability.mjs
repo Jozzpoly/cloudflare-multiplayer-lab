@@ -248,4 +248,4 @@ replaceOnce(
 );
 
 writeFileSync(PATH, source);
-console.log(JSON.stringify({ verdict: "WORLD_V0_PRESENTATION_SHOCK_OBSERVABILITY_APPLIED", revision: PRESENTATION_SHOCK_REVISION }, null, 2));
+console.log(JSON.stringify({ verdict: "WORLD_V0_PRESENTATION_SHOCK_OBSERVABILITY_APPLIED", revision: "world-v0-presentation-shock-v1" }, null, 2));

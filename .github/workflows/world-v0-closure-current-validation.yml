@@ -37,6 +37,8 @@ jobs:
         run: |
           set -euo pipefail
           npm run check | tee world-v0-closure-current-check.log
+          grep -q 'const ACTOR_RESUME_MAX_ATTEMPTS = 12;' public/world-v0/app.js
+          grep -q 'shared-yard-v0-browser-ui-v11-resume-window' public/world-v0/build-contract.js
 
       - name: Start local reliability Workerd
         shell: bash
@@ -69,13 +71,13 @@ jobs:
       - name: Requalify bounded all-transport-loss window
         env:
           MW_WORLD_V0_ALL_DROP_BASE: http://127.0.0.1:8787
-          MW_WORLD_V0_ALL_DROP_DELAYS: 500,1500,5000,11000,16000
+          MW_WORLD_V0_ALL_DROP_DELAYS: 500,1500,5000,11000,14000,16000
         shell: bash
         run: |
           set -euo pipefail
           node scripts/world-v0-closure-all-drop-window-probe.mjs | tee world-v0-closure-current-all-drop.log
           grep -q 'WORLD_V0_CLOSURE_ALL_DROP_WINDOW_MAPPED' world-v0-closure-current-all-drop.log
-          for delay in 500 1500 5000 11000; do
+          for delay in 500 1500 5000 11000 14000; do
             grep -E "WORLD_V0_ALL_DROP_CASE .*\"delayMs\":${delay}.*\"classification\":\"preserved\"" world-v0-closure-current-all-drop.log >/dev/null
           done
           grep -E 'WORLD_V0_ALL_DROP_CASE .*"delayMs":16000.*"classification":"retired"' world-v0-closure-current-all-drop.log >/dev/null
@@ -84,6 +86,7 @@ jobs:
       - name: Requalify automatic ActorSession exact-rebase recovery
         env:
           MW_WORLD_V0_I4B_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_I4B_OFFLINE_MS: 14000
           MW_WORLD_V0_I4B_OUTPUT: world-v0-closure-current-i4b-chromium.json
         shell: bash
         run: |
@@ -92,6 +95,14 @@ jobs:
           node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-closure-current-i4b-chromium.log
           grep -q 'WORLD_V0_INTEGRATION_I4B_AUTHORITY_EXACT_REBASE_PASS' world-v0-closure-current-i4b-authority.log
           grep -q 'WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS' world-v0-closure-current-i4b-chromium.log
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const evidence = JSON.parse(readFileSync("world-v0-closure-current-i4b-chromium.json", "utf8"));
+          if (evidence.offlineMs !== 14000) throw new Error(`unexpected outage ${evidence.offlineMs}`);
+          if (evidence.actorSession?.preserved !== true || evidence.actorSession?.netEntityPreserved !== true) throw new Error("ActorSession identity regression");
+          if (evidence.exactness?.guardMismatches !== 0) throw new Error("exact-state guard regression");
+          console.log("WORLD_V0_CLOSURE_CURRENT_14S_ACTOR_RESUME_PASS", evidence.gap?.gapTicks);
+          NODE
 
       - name: Requalify real Chromium human-entry and fresh-reopen truth
         env:

@@ -23,10 +23,12 @@ jobs:
         include:
           - label: owner-smooth-b27
             ref: b27de8b04c27777250c47e7e936674e0f147fdfa
+          - label: pre-i2-v2-jump
+            ref: 4a1e3fd4d563e3473abe262916700a1c10b9e57d
+          - label: i2-v3-supersession
+            ref: 2588694bb80d27429e178bea03f5db77766ea217
           - label: pre-i3-v3
             ref: 924ce32f2d5c39e63afbb963d423763a36827f85
-          - label: i3-v4
-            ref: 09e88b2f8c87ed14ff8d9f77ae56c351c6ccd197
           - label: current-r0d-v7
             ref: 3e03e8228f665bef32a4ba97058d69c2e27a9e48
 
@@ -56,16 +58,15 @@ jobs:
         run: |
           set -euo pipefail
           base=3e03e8228f665bef32a4ba97058d69c2e27a9e48
-          git cat-file -e "$base^{commit}" || true
           changed="$(git diff --name-only "$base" HEAD || true)"
           printf '%s\n' "$changed"
-          bad="$(printf '%s\n' "$changed" | grep -Ev '^(scripts/world-v0-smoothness-regression-probe\.mjs|\.github/workflows/world-v0-r0d-smoothness-regression-audit\.yml)$' || true)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(scripts/world-v0-smoothness-regression-probe(-v2)?\.mjs|\.github/workflows/world-v0-r0d-smoothness-regression-audit\.yml)$' || true)"
           if [ -n "$bad" ]; then
             echo "Unexpected smoothness-audit diff:"
             echo "$bad"
             exit 1
           fi
-          node --check scripts/world-v0-smoothness-regression-probe.mjs
+          node --check scripts/world-v0-smoothness-regression-probe-v2.mjs
 
       - name: Install exact specimen dependencies
         working-directory: specimen
@@ -79,7 +80,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "$GITHUB_WORKSPACE/world-v0-smoothness-${{ matrix.label }}-wrangler.log" 2>&1 &
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "$GITHUB_WORKSPACE/world-v0-smoothness-v2-${{ matrix.label }}-wrangler.log" 2>&1 &
           echo $! > /tmp/world-v0-smoothness-wrangler.pid
           for i in {1..90}; do
             if curl -fsS http://127.0.0.1:8787/world-v0/ >/dev/null; then
@@ -88,18 +89,18 @@ jobs:
             fi
             sleep 1
           done
-          cat "$GITHUB_WORKSPACE/world-v0-smoothness-${{ matrix.label }}-wrangler.log"
+          cat "$GITHUB_WORKSPACE/world-v0-smoothness-v2-${{ matrix.label }}-wrangler.log"
           exit 1
 
-      - name: Run identical two-client analog movement
+      - name: Run low-observer-effect two-client movement
         working-directory: audit
         env:
           MW_WORLD_V0_SMOOTHNESS_BASE_URL: http://127.0.0.1:8787
           MW_WORLD_V0_SMOOTHNESS_LABEL: ${{ matrix.label }}
-          MW_WORLD_V0_SMOOTHNESS_OUTPUT: ${{ github.workspace }}/world-v0-smoothness-${{ matrix.label }}.json
-          MW_WORLD_V0_SMOOTHNESS_STEPS: "160"
-          MW_WORLD_V0_SMOOTHNESS_INTERVAL_MS: "50"
-        run: node scripts/world-v0-smoothness-regression-probe.mjs
+          MW_WORLD_V0_SMOOTHNESS_OUTPUT: ${{ github.workspace }}/world-v0-smoothness-v2-${{ matrix.label }}.json
+          MW_WORLD_V0_SMOOTHNESS_MOVEMENT_MS: "12000"
+          MW_WORLD_V0_SMOOTHNESS_PHASE_MS: "300"
+        run: node scripts/world-v0-smoothness-regression-probe-v2.mjs
 
       - name: Stop local Workerd
         if: always()
@@ -115,9 +116,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: world-v0-smoothness-${{ matrix.label }}
+          name: world-v0-smoothness-v2-${{ matrix.label }}
           path: |
-            world-v0-smoothness-${{ matrix.label }}.json
-            world-v0-smoothness-${{ matrix.label }}-wrangler.log
+            world-v0-smoothness-v2-${{ matrix.label }}.json
+            world-v0-smoothness-v2-${{ matrix.label }}-wrangler.log
           if-no-files-found: warn
           retention-days: 14

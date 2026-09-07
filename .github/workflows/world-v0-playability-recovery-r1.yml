@@ -1,0 +1,279 @@
+name: World V0 Playability Recovery R1
+
+on:
+  push:
+    branches: [world-v0-playability-recovery-r1]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-playability-recovery-r1
+  cancel-in-progress: false
+
+env:
+  BASE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
+  OLD_CONTRACT_REV: shared-yard-v0-contract-v7-i3-authority-temporal-floor
+  NEW_CONTRACT_REV: shared-yard-v0-contract-v8-playability-split-lead
+
+jobs:
+  causal-qualification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ground ancestry and apparatus
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$BASE_SHA^{commit}"
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          node --check scripts/apply-world-v0-playability-r1-split-lead.mjs
+          node --check scripts/world-v0-playability-pressure-probe.mjs
+          git diff --check "$BASE_SHA" HEAD
+          echo "WORLD_V0_PLAYABILITY_R1_GROUNDING_PASS"
+
+      - name: Detect materialization state
+        id: state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q "$NEW_CONTRACT_REV" src/world-v0-contract.ts; then
+            echo "materialized=1" >> "$GITHUB_OUTPUT"
+            echo "R1 runtime already materialized"
+          elif grep -q "$OLD_CONTRACT_REV" src/world-v0-contract.ts; then
+            echo "materialized=0" >> "$GITHUB_OUTPUT"
+            echo "R1 runtime not yet materialized"
+          else
+            echo "Unknown World V0 contract revision" >&2
+            exit 1
+          fi
+
+      - name: Prove pre-materialization branch is apparatus-only
+        if: steps.state.outputs.materialized == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "$BASE_SHA" HEAD)"
+          printf '%s\n' "$changed"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(scripts/(apply-world-v0-playability-r1-split-lead|world-v0-playability-pressure-probe)\.mjs|\.github/workflows/world-v0-playability-recovery-r1\.yml)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected pre-materialization diff:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+          echo "WORLD_V0_PLAYABILITY_R1_APPARATUS_ONLY_PASS"
+
+      - name: Start baseline local Workerd
+        if: steps.state.outputs.materialized == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playability-baseline-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-playability-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "baseline Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-playability-baseline-wrangler.log
+          exit 1
+
+      - name: Measure baseline two-client rollback pressure
+        if: steps.state.outputs.materialized == '0'
+        env:
+          MW_WORLD_V0_PLAYABILITY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABILITY_OUTPUT: world-v0-playability-baseline.json
+        run: node scripts/world-v0-playability-pressure-probe.mjs | tee world-v0-playability-baseline.log
+
+      - name: Stop baseline Workerd
+        if: steps.state.outputs.materialized == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/world-v0-playability-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-playability-wrangler.pid)" 2>/dev/null || true
+            rm -f /tmp/world-v0-playability-wrangler.pid
+          fi
+          sleep 1
+
+      - name: Apply bounded split-lead candidate
+        if: steps.state.outputs.materialized == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/apply-world-v0-playability-r1-split-lead.mjs | tee world-v0-playability-r1-apply.log
+          git diff --check
+          changed="$(git diff --name-only)"
+          printf '%s\n' "$changed"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(src/world-v0-contract\.ts|public/world-v0/(app\.js|build-contract\.js))$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected runtime diff:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+          test -z "$(git diff --name-only -- src/world-v0-shared-yard.ts src/world-v0-protocol.ts src/box3d-runtime.ts public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+          grep -q 'predictionLeadTicks: 8' src/world-v0-contract.ts
+          grep -q 'clientSimulationLeadTicks: 2' src/world-v0-contract.ts
+          echo "WORLD_V0_PLAYABILITY_R1_BOUNDED_RUNTIME_DIFF_PASS"
+
+      - name: Full repo regression on candidate
+        run: npm run check
+
+      - name: Start candidate local Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-playability-r1-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-playability-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "candidate Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-playability-r1-wrangler.log
+          exit 1
+
+      - name: Measure candidate two-client rollback pressure
+        env:
+          MW_WORLD_V0_PLAYABILITY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABILITY_OUTPUT: world-v0-playability-r1.json
+        run: node scripts/world-v0-playability-pressure-probe.mjs | tee world-v0-playability-r1.log
+
+      - name: Compare baseline and R1 causal pressure
+        if: steps.state.outputs.materialized == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' | tee world-v0-playability-r1-comparison.log
+          import { readFileSync, writeFileSync } from "node:fs";
+          const baseline = JSON.parse(readFileSync("world-v0-playability-baseline.json", "utf8"));
+          const candidate = JSON.parse(readFileSync("world-v0-playability-r1.json", "utf8"));
+          const b = baseline.aggregate?.meanCorrectionsPer1000Ticks;
+          const c = candidate.aggregate?.meanCorrectionsPer1000Ticks;
+          if (!(Number.isFinite(b) && b > 0)) throw new Error(`baseline did not reproduce rollback pressure: ${b}`);
+          if (!(Number.isFinite(c) && c >= 0)) throw new Error(`candidate correction density invalid: ${c}`);
+          for (const [index, client] of candidate.clients.entries()) {
+            if (client.inputLeadTicks !== 8 || client.simulationLeadTicks !== 2) {
+              throw new Error(`client ${index} split-lead evidence mismatch ${JSON.stringify(client)}`);
+            }
+            if (client.guardMismatches !== 0 || client.firstStateMismatch !== null) {
+              throw new Error(`client ${index} exact-state regression`);
+            }
+          }
+          const ratio = c / b;
+          const comparison = {
+            verdict: ratio <= 0.5 ? "WORLD_V0_PLAYABILITY_R1_CAUSAL_REDUCTION_PASS" : "WORLD_V0_PLAYABILITY_R1_CAUSAL_REDUCTION_INSUFFICIENT",
+            baselineMeanCorrectionsPer1000Ticks: b,
+            candidateMeanCorrectionsPer1000Ticks: c,
+            ratio,
+            reductionPercent: (1 - ratio) * 100,
+            baselineTotalCorrections: baseline.aggregate?.totalCorrections,
+            candidateTotalCorrections: candidate.aggregate?.totalCorrections,
+            baselineMaxSelfCorrection: baseline.aggregate?.maxSelfCorrection,
+            candidateMaxSelfCorrection: candidate.aggregate?.maxSelfCorrection,
+          };
+          writeFileSync("world-v0-playability-r1-comparison.json", JSON.stringify(comparison, null, 2));
+          console.log(JSON.stringify(comparison, null, 2));
+          if (ratio > 0.5) throw new Error(`split lead did not cut rollback pressure by at least half: ratio=${ratio}`);
+          NODE
+
+      - name: Prepare local exact-state Chromium regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          let source = readFileSync("scripts/world-v0-chromium-cloud-smoke.mjs", "utf8");
+          source = source.replace(
+            'const STAGING_PAGE = "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/";',
+            'const STAGING_PAGE = "http://127.0.0.1:8787/world-v0/";',
+          );
+          writeFileSync("scripts/.world-v0-playability-r1-exact.mjs", source);
+          NODE
+          node --check scripts/.world-v0-playability-r1-exact.mjs
+
+      - name: Preserve exact two-client state envelope
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playability-r1-exact.json
+        run: node scripts/.world-v0-playability-r1-exact.mjs | tee world-v0-playability-r1-exact.log
+
+      - name: Preserve I1 ActorSession lifecycle
+        env:
+          MW_WORLD_V0_I1_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_I1_RUN: pr1-i1-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-playability-r1-i1.log
+
+      - name: Stop candidate Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/world-v0-playability-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-playability-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Materialize qualified split-lead runtime
+        if: success() && steps.state.outputs.materialized == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Jozzpoly"
+          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
+          git add src/world-v0-contract.ts public/world-v0/app.js public/world-v0/build-contract.js
+          git diff --cached --check
+          git commit -m "fix(world-v0): split input and simulation lead for playability [runtime-qualify]"
+          git push origin HEAD:world-v0-playability-recovery-r1
+
+      - name: Verify materialized bounded diff
+        if: steps.state.outputs.materialized == '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "$BASE_SHA" HEAD)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(src/world-v0-contract\.ts|public/world-v0/(app\.js|build-contract\.js)|scripts/(apply-world-v0-playability-r1-split-lead|world-v0-playability-pressure-probe)\.mjs|\.github/workflows/world-v0-playability-recovery-r1\.yml)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected materialized diff:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- src/world-v0-shared-yard.ts src/world-v0-protocol.ts src/box3d-runtime.ts public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+          echo "WORLD_V0_PLAYABILITY_R1_MATERIALIZED_DIFF_PASS"
+
+      - name: Upload playability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playability-recovery-r1-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            world-v0-playability-baseline.json
+            world-v0-playability-baseline.log
+            world-v0-playability-baseline-wrangler.log
+            world-v0-playability-r1-apply.log
+            world-v0-playability-r1.json
+            world-v0-playability-r1.log
+            world-v0-playability-r1-comparison.json
+            world-v0-playability-r1-comparison.log
+            world-v0-playability-r1-exact.json
+            world-v0-playability-r1-exact.log
+            world-v0-playability-r1-i1.log
+            world-v0-playability-r1-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

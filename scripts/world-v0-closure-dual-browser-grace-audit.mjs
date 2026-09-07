@@ -1,3 +1,4 @@
+import net from "node:net";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -6,7 +7,9 @@ import { WORLD_V0_CLIENT_HISTORY, WORLD_V0_TIMING } from "../src/world-v0-contra
 import { WORLD_V0_EXPECTED_SIM_BUILD_ID } from "../public/world-v0/build-contract.js";
 
 const BASE = process.env.MW_WORLD_V0_DUAL_BROWSER_BASE ?? "http://127.0.0.1:8787";
-const PAGE = `${BASE}/world-v0/`;
+const TARGET = new URL(BASE);
+const PROXY_PORT = Number(process.env.MW_WORLD_V0_DUAL_BROWSER_PROXY_PORT || 8790);
+const PAGE = `http://127.0.0.1:${PROXY_PORT}/world-v0/`;
 const OUTPUT = process.env.MW_WORLD_V0_DUAL_BROWSER_OUTPUT || "world-v0-closure-dual-browser-grace.json";
 const OFFLINE_MS = Number(process.env.MW_WORLD_V0_DUAL_BROWSER_OFFLINE_MS || 14000);
 const PORTS = [9252, 9253];
@@ -14,6 +17,79 @@ const TIMEOUT_MS = 45_000;
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
+
+function hardClose(socket) {
+  if (!socket || socket.destroyed) return;
+  try {
+    if (typeof socket.resetAndDestroy === "function") socket.resetAndDestroy();
+    else socket.destroy();
+  } catch { try { socket.destroy(); } catch {} }
+}
+
+function createBlockingTcpProxy() {
+  let blocked = false;
+  let accepted = 0;
+  let blockedAccepts = 0;
+  let hardDrops = 0;
+  const pairs = new Set();
+  const server = net.createServer((client) => {
+    accepted += 1;
+    client.setNoDelay(true);
+    if (blocked) {
+      blockedAccepts += 1;
+      hardClose(client);
+      return;
+    }
+    const upstream = net.connect({
+      host: TARGET.hostname,
+      port: Number(TARGET.port || (TARGET.protocol === "https:" ? 443 : 80)),
+    });
+    upstream.setNoDelay(true);
+    const pair = { client, upstream };
+    pairs.add(pair);
+    const retire = () => {
+      pairs.delete(pair);
+      hardClose(client);
+      hardClose(upstream);
+    };
+    client.on("error", retire);
+    upstream.on("error", retire);
+    client.on("close", () => { pairs.delete(pair); hardClose(upstream); });
+    upstream.on("close", () => { pairs.delete(pair); hardClose(client); });
+    client.pipe(upstream);
+    upstream.pipe(client);
+  });
+  return {
+    async listen() {
+      await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(PROXY_PORT, "127.0.0.1", resolve);
+      });
+    },
+    blockAndDropAll() {
+      blocked = true;
+      const activeBeforeDrop = pairs.size;
+      for (const pair of [...pairs]) {
+        hardDrops += 1;
+        hardClose(pair.client);
+        hardClose(pair.upstream);
+        pairs.delete(pair);
+      }
+      return { activeBeforeDrop, hardDrops };
+    },
+    unblock() { blocked = false; },
+    snapshot() { return { blocked, activePairs: pairs.size, accepted, blockedAccepts, hardDrops }; },
+    async close() {
+      blocked = true;
+      for (const pair of [...pairs]) {
+        hardClose(pair.client);
+        hardClose(pair.upstream);
+      }
+      pairs.clear();
+      await new Promise((resolve) => server.close(() => resolve()));
+    },
+  };
+}
 
 function findChrome() {
   const override = process.env.CHROME_BIN?.trim();
@@ -100,7 +176,6 @@ async function startClient(binary, index, url) {
   const { sessionId } = await cdp.call("Target.attachToTarget", { targetId, flatten: true });
   await cdp.call("Runtime.enable", {}, sessionId);
   await cdp.call("Page.enable", {}, sessionId);
-  await cdp.call("Network.enable", {}, sessionId);
   return { index, port, profile, stderr, child, cdp, sessionId, targetId };
 }
 
@@ -129,16 +204,6 @@ async function waitFor(client, expression, label, timeoutMs = TIMEOUT_MS) {
   throw new Error(`${label} timeout · last=${JSON.stringify(last)}`);
 }
 
-async function setOffline(client, offline) {
-  await client.cdp.call("Network.emulateNetworkConditions", {
-    offline,
-    latency: 0,
-    downloadThroughput: offline ? 0 : -1,
-    uploadThroughput: offline ? 0 : -1,
-    connectionType: offline ? "none" : "wifi",
-  }, client.sessionId);
-}
-
 function targetedRebase(e, sourceBoundary) {
   return (e?.lifecycleEvents || []).find((event) =>
     event.type === "authority-rebase" &&
@@ -149,8 +214,11 @@ function targetedRebase(e, sourceBoundary) {
 const chrome = findChrome();
 const version = chromeVersion(chrome);
 const clients = [];
+const proxy = createBlockingTcpProxy();
 let runKey = null;
+let dropEvidence = null;
 try {
+  await proxy.listen();
   const suffix = Date.now().toString(36).slice(-7);
   runKey = `dual-${suffix}`;
   clients.push(await startClient(chrome, 0, `${PAGE}?player=DualA-${suffix}&run=${runKey}`));
@@ -170,7 +238,8 @@ try {
   assert(before[0].session.actorSessionId && before[1].session.actorSessionId, "baseline ActorSession identity missing");
   assert(before[0].session.actorSessionId !== before[1].session.actorSessionId, "distinct actors share ActorSession");
 
-  await Promise.all(clients.map((client) => setOffline(client, true)));
+  dropEvidence = proxy.blockAndDropAll();
+  assert(dropEvidence.activeBeforeDrop >= 2, `proxy did not own both live transports: ${JSON.stringify(dropEvidence)}`);
   await Promise.all(clients.map((client, index) => waitFor(client,
     '(() => window.__sharedYardV0Evidence?.().session?.actorResume?.pending === true)()',
     `client ${index} actor resume pending`, 12_000)));
@@ -185,11 +254,14 @@ try {
   await sleep(OFFLINE_MS);
   const beforeRestore = await Promise.all(clients.map(evidence));
   for (let i = 0; i < beforeRestore.length; i += 1) {
-    assert(beforeRestore[i].runtimeFailed === false, `client ${i} failed before network restoration`);
+    assert(beforeRestore[i].runtimeFailed === false, `client ${i} failed before transport restoration`);
     assert(beforeRestore[i].session.actorResume.pending === true, `client ${i} stopped recovery before restoration`);
   }
+  const blockedProxy = proxy.snapshot();
+  assert(blockedProxy.blocked === true, "proxy unexpectedly unblocked during outage");
+  assert(blockedProxy.blockedAccepts > 0, "browser did not attempt any reconnect while proxy was blocked");
 
-  await Promise.all(clients.map((client) => setOffline(client, false)));
+  proxy.unblock();
 
   await Promise.all(clients.map((client, index) => waitFor(client, `(() => {
     const e=window.__sharedYardV0Evidence?.();
@@ -203,7 +275,7 @@ try {
 
   const after = await Promise.all(clients.map(evidence));
   const oldEpoch = before[0].identity.worldEpoch;
-  assert(after[0].identity.worldEpoch === oldEpoch && after[1].identity.worldEpoch === oldEpoch, "WorldEpoch rotated across dual outage");
+  assert(after[0].identity.worldEpoch === oldEpoch && after[1].identity.worldEpoch === oldEpoch, "WorldEpoch rotated across dual hard drop");
   assert(after[0].identity.worldEpoch === after[1].identity.worldEpoch, "recovered clients disagree on WorldEpoch");
 
   const clientResults = after.map((item, index) => {
@@ -227,15 +299,16 @@ try {
   });
 
   const result = {
-    revision: "world-v0-closure-dual-browser-grace-v1",
+    revision: "world-v0-closure-dual-browser-grace-v2-hard-drop-proxy",
     runKey,
     chromeVersion: version,
     offlineMs: OFFLINE_MS,
     simBuildId: after[0].identity.simBuildId,
     worldEpoch: after[0].identity.worldEpoch,
+    proxy: { drop: dropEvidence, beforeRestore: blockedProxy, afterRestore: proxy.snapshot() },
     clients: clientResults,
     verdict: "WORLD_V0_CLOSURE_DUAL_BROWSER_GRACE_PASS",
-    nonClaim: "This proves same-WorldEpoch/same-ActorSession exact recovery for two real Chromium clients after a controlled simultaneous local network outage of the stated duration. It does not prove mobile radio handover, browser process loss, cross-tab resume-token persistence, Durable Object process-loss reconstruction, remote Cloudflare placement, or persistence beyond the bounded WorldEpoch grace.",
+    nonClaim: "This proves same-WorldEpoch/same-ActorSession exact recovery for two real Chromium clients after a controlled TCP proxy hard-drop that severs both browser and upstream Worker transports, blocks all reconnect attempts for the stated duration, and then restores transport. It remains local Workerd/Chromium evidence and does not prove mobile radio handover, browser process loss, cross-tab resume-token persistence, Durable Object process-loss reconstruction, remote Cloudflare placement, or persistence after the bounded WorldEpoch grace has actually expired.",
   };
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
   console.log("WORLD_V0_CLOSURE_DUAL_BROWSER_GRACE", JSON.stringify(result, null, 2));
@@ -247,6 +320,7 @@ try {
     runKey,
     chromeVersion: version,
     offlineMs: OFFLINE_MS,
+    proxy: { drop: dropEvidence, current: proxy.snapshot() },
     pages: [],
   };
   for (const client of clients) {
@@ -257,8 +331,7 @@ try {
   console.error(diagnostic.error);
   process.exitCode = 1;
 } finally {
-  for (const client of clients) {
-    try { await setOffline(client, false); } catch {}
-  }
+  proxy.unblock();
   await Promise.all(clients.map(stopClient));
+  try { await proxy.close(); } catch {}
 }

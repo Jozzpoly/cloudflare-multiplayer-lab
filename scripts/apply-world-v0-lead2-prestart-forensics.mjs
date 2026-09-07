@@ -42,9 +42,11 @@ function replaceOnce(text, before, after, label) {
     requests: 0,
     seedAttempts: 0,
     seedSuccesses: 0,
+    sendFailures: 0,
     lastRequestTick: null as number | null,
     lastSeedSuccessTick: null as number | null,
     lastFailure: null as null | { at: string; tick: number; message: string },
+    lastSendFailure: null as null | { at: string; tick: number; payloadType: string | null; message: string },
   };
   private supportContacts:`,
     "resume forensic state",
@@ -91,6 +93,21 @@ function replaceOnce(text, before, after, label) {
       }
     }`,
     "resume seed diagnostic wrapper",
+  );
+  source = replaceOnce(
+    source,
+    "    try { socket.send(JSON.stringify(payload)); } catch { /* close race */ }",
+    `    try {
+      socket.send(JSON.stringify(payload));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const payloadType = payload && typeof payload === "object" && "type" in payload
+        ? String((payload as { type?: unknown }).type ?? "") || null
+        : null;
+      this.resumeForensics.sendFailures += 1;
+      this.resumeForensics.lastSendFailure = { at: new Date().toISOString(), tick: this.tick, payloadType, message };
+    }`,
+    "websocket send failure diagnostics",
   );
   writeFileSync(path, source);
 }

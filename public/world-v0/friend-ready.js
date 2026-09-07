@@ -7,6 +7,11 @@ import {
   validWorldV0RoomKey,
 } from "./friend-entry.js";
 import {
+  WORLD_V0_HUMAN_ENTRY_REVISION,
+  normalizeWorldV0HumanName,
+  worldV0HumanNameMessage,
+} from "./human-entry-core.js";
+import {
   WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION,
   WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION,
   WORLD_V0_PUBLIC_ROOM_IDS,
@@ -32,6 +37,7 @@ const boot = document.querySelector("#boot");
 const bootTitle = boot?.querySelector("h1");
 const bootStatus = document.querySelector("#boot-status");
 const callsignInput = document.querySelector("#callsign");
+const callsignHelp = document.querySelector("#callsign-help");
 const runInput = document.querySelector("#run");
 const enterButton = document.querySelector("#enter");
 const entryActions = document.querySelector("#boot .entry-actions");
@@ -42,7 +48,7 @@ const publicRoomEntry = document.querySelector("#public-room-entry");
 const publicRoomList = document.querySelector("#public-room-list");
 const publicRoomStatus = document.querySelector("#public-room-status");
 
-if (!boot || !bootTitle || !bootStatus || !callsignInput || !runInput || !enterButton || !entryActions || !entryAdvanced || !copyInviteButton || !inspectButton || !publicRoomEntry || !publicRoomList || !publicRoomStatus) {
+if (!boot || !bootTitle || !bootStatus || !callsignInput || !callsignHelp || !runInput || !enterButton || !entryActions || !entryAdvanced || !copyInviteButton || !inspectButton || !publicRoomEntry || !publicRoomList || !publicRoomStatus) {
   throw new Error("Friend-Ready / Public Room R0c entry shell incomplete");
 }
 
@@ -58,6 +64,51 @@ if (entryMode === "invalid-invite") {
   enterButton.disabled = true;
   entryAdvanced.open = true;
 }
+
+function humanNameSnapshot() {
+  return normalizeWorldV0HumanName(callsignInput.value);
+}
+
+function renderHumanNameHelp(result = humanNameSnapshot(), committed = false) {
+  callsignHelp.textContent = worldV0HumanNameMessage(result);
+  callsignHelp.dataset.tone = !result.valid && result.source
+    ? "invalid"
+    : result.changed || committed
+      ? "adjusted"
+      : "normal";
+  if (!result.valid && result.source) callsignInput.setAttribute("aria-invalid", "true");
+  else callsignInput.removeAttribute("aria-invalid");
+  return result;
+}
+
+renderHumanNameHelp();
+
+callsignInput.addEventListener("input", () => renderHumanNameHelp());
+callsignInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.isComposing || enterButton.disabled) return;
+  event.preventDefault();
+  enterButton.click();
+});
+
+// app.js owns the actual Enter click handler and still sends the original strict
+// server-side playerId contract. This capture-phase adapter runs first so normal
+// human names do not bounce off a hidden wire-identity regex.
+enterButton.addEventListener("click", (event) => {
+  const result = humanNameSnapshot();
+  if (!result.valid) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    callsignInput.setAttribute("aria-invalid", "true");
+    callsignHelp.dataset.tone = "invalid";
+    callsignHelp.textContent = worldV0HumanNameMessage(result);
+    callsignInput.focus();
+    return;
+  }
+  if (result.changed) {
+    callsignInput.value = result.wireName;
+    renderHumanNameHelp({ ...result, source: result.wireName, changed: false }, true);
+  }
+}, { capture: true });
 
 const publicRoomState = {
   loading: entryMode === "host",
@@ -218,12 +269,20 @@ if (typeof baseEvidence !== "function" || typeof baseSession !== "function") {
 
 function entrySnapshot() {
   const roomKey = runInput.value.trim();
+  const humanName = humanNameSnapshot();
   return {
     revision: WORLD_V0_FRIEND_ENTRY_REVISION,
+    humanEntryRevision: WORLD_V0_HUMAN_ENTRY_REVISION,
     mode: entryMode,
     invited: entryMode === "invite",
     roomKeyValid: validWorldV0RoomKey(roomKey),
     roomKey,
+    humanName: {
+      source: humanName.source,
+      wireName: humanName.wireName,
+      valid: humanName.valid,
+      changed: humanName.changed,
+    },
     advancedOpen: Boolean(entryAdvanced.open),
     enterLabel: enterButton.textContent,
     inviteLabel: copyInviteButton.textContent,

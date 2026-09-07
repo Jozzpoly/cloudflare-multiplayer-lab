@@ -17,8 +17,8 @@ env:
   BASELINE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
   EXPECTED_SIM_BUILD: shared-yard-v0-sim-85ac7ad492b61610
   EXPECTED_CLIENT_SIM: shared-yard-v0-browser-sim-v8-playability-split-lead
-  OWNER_WORKER: cloudflare-multiplayer-lab-playability-owner-l2-85ac7ad4
-  OWNER_BASE_URL: https://cloudflare-multiplayer-lab-playability-owner-l2-85ac7ad4.jozzpoly.workers.dev
+  OWNER_WORKER: cloudflare-multiplayer-lab-owner-l2-85ac7ad4
+  OWNER_BASE_URL: https://cloudflare-multiplayer-lab-owner-l2-85ac7ad4.jozzpoly.workers.dev
   CLOUDFLARE_ACCOUNT_ID: 566456b8f2f4d9f85b3fa8173e190c1a
 
 jobs:

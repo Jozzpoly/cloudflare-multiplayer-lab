@@ -5,6 +5,16 @@ on:
     branches: [world-v0-closure-stabilization]
     paths:
       - .github/workflows/world-v0-closure-current-validation.yml
+      - public/world-v0/app.js
+      - public/world-v0/build-contract.js
+      - src/world-v0-contract.ts
+      - src/world-v0-shared-yard.ts
+      - scripts/world-v0-integration-i1-lifecycle-probe.mjs
+      - scripts/world-v0-closure-all-drop-window-probe.mjs
+      - scripts/world-v0-integration-i4b-authority-probe.mjs
+      - scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs
+      - scripts/world-v0-closure-dual-browser-grace-audit.mjs
+      - scripts/world-v0-human-entry-browser-smoke.mjs
   workflow_dispatch:
 
 permissions:
@@ -112,7 +122,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --experimental-strip-types scripts/world-v0-closure-dual-browser-grace-audit.mjs | tee world-v0-closure-current-dual-browser.log
+          timeout 90s node --experimental-strip-types scripts/world-v0-closure-dual-browser-grace-audit.mjs | tee world-v0-closure-current-dual-browser.log
           grep -q 'WORLD_V0_CLOSURE_DUAL_BROWSER_GRACE_PASS' world-v0-closure-current-dual-browser.log
           node --input-type=module <<'NODE'
           import { readFileSync } from "node:fs";

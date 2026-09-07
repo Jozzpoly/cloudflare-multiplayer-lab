@@ -246,8 +246,8 @@ try { b3.ws.close(1000, "i1_drop_all_b"); } catch {}
 await sleep(1_800);
 
 // Old I1 cleanup retired the epoch by ~0.75 s. The closure contract now keeps
-// a fully disconnected but neutralized epoch boundedly alive so the already-
-// implemented browser ActorSession retry envelope can actually operate.
+// a fully disconnected but neutralized epoch boundedly alive so the current
+// browser ActorSession retry envelope can actually operate.
 const aAfterAllDrop = makeClient("owner-a", aw.resumeToken);
 const aAfterAllDropWelcome = await welcome(aAfterAllDrop);
 if (!aAfterAllDropWelcome.resumed) throw new Error("A did not resume after bounded all-transport loss");
@@ -255,7 +255,7 @@ if (aAfterAllDropWelcome.worldEpoch !== oldEpoch) throw new Error("bounded all-t
 if (aAfterAllDropWelcome.selfSessionId !== aw.selfSessionId) throw new Error("A ActorSession identity changed after all-transport loss");
 try { aAfterAllDrop.ws.close(1000, "i1_all_drop_grace_cleanup"); } catch {}
 
-await sleep(16_000);
+await sleep(21_000);
 const c = makeClient("owner-c");
 const cw = await welcome(c);
 if (cw.resumed) throw new Error("fresh C unexpectedly resumed dead session");
@@ -263,7 +263,7 @@ if (cw.worldEpoch === oldEpoch) throw new Error("all-disconnected bounded grace 
 if (cw.selfSessionId === aw.selfSessionId || cw.selfSessionId === bw.selfSessionId) throw new Error("fresh epoch reused old ActorSession identity");
 
 const result = {
-  revision: "world-v0-integration-i1-lifecycle-probe-v4-all-disconnected-grace",
+  revision: "world-v0-integration-i1-lifecycle-probe-v5-retry-aligned-grace",
   run: RUN,
   oldEpoch,
   replacementEpoch: cw.worldEpoch,

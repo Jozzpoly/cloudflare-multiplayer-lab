@@ -1,0 +1,152 @@
+name: World V0 Playability Remote A-B Cadence Reverse
+
+on:
+  push:
+    branches: [world-v0-playability-remote-ab-cadence-reverse]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-playability-remote-ab-cadence-reverse
+  cancel-in-progress: false
+
+env:
+  BASELINE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
+  CANDIDATE_SHA: eb26d060904bebd9acc1b8e1c8fc446f20a60599
+  APPARATUS_SHA: 2021d5648c265b17395608e3cc8588edbac79d2f
+  REMOTE_SEMANTIC_SHA: 7be8fb76737dd6e10e21e1cd2ed2bf3d0c45ed80
+  BASELINE_SIM_BUILD: shared-yard-v0-sim-888e471bc211091e
+  CANDIDATE_SIM_BUILD: shared-yard-v0-sim-85ac7ad492b61610
+  BASELINE_WORKER: cloudflare-multiplayer-lab-pabr-l8-888e471b
+  CANDIDATE_WORKER: cloudflare-multiplayer-lab-pabr-l2-85ac7ad4
+  BASELINE_URL: https://cloudflare-multiplayer-lab-pabr-l8-888e471b.jozzpoly.workers.dev
+  CANDIDATE_URL: https://cloudflare-multiplayer-lab-pabr-l2-85ac7ad4.jozzpoly.workers.dev
+
+jobs:
+  reverse-paired-ab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Ground exact reverse A-B boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$BASELINE_SHA^{commit}"
+          git cat-file -e "$CANDIDATE_SHA^{commit}"
+          git cat-file -e "$APPARATUS_SHA^{commit}"
+          git cat-file -e "$REMOTE_SEMANTIC_SHA^{commit}"
+          git merge-base --is-ancestor "$CANDIDATE_SHA" HEAD
+          changed="$(git diff --name-only "$CANDIDATE_SHA" HEAD)"
+          printf '%s\n' "$changed"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(scripts/(prepare-world-v0-playability-no-render-cadence\.mjs|run-world-v0-playability-remote-ab-variant\.sh)|\.github/workflows/world-v0-playability-remote-ab-cadence(-reverse)?\.yml)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected reverse A/B branch diff:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+          test -z "$(git diff --name-only "$CANDIDATE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          bash -n scripts/run-world-v0-playability-remote-ab-variant.sh
+          node --check scripts/prepare-world-v0-playability-no-render-cadence.mjs
+          git diff --check "$CANDIDATE_SHA" HEAD
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_REVERSE_GROUNDING_PASS"
+
+      - name: Recover exact qualified apparatus into workspace only
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            scripts/world-v0-playability-pressure-probe.mjs
+            scripts/prepare-world-v0-playability-input-shape-probe.mjs
+            scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs
+            scripts/apply-world-v0-playability-observability.mjs
+            scripts/apply-world-v0-presentation-shock-observability.mjs
+            scripts/prepare-world-v0-presentation-shock-probe.mjs
+          )
+          for file in "${files[@]}"; do
+            git show "$APPARATUS_SHA:$file" > "$file"
+            node --check "$file"
+          done
+          git show "$REMOTE_SEMANTIC_SHA:scripts/prepare-world-v0-remote-playability-probe.mjs" > scripts/prepare-world-v0-remote-playability-probe.mjs
+          node --check scripts/prepare-world-v0-remote-playability-probe.mjs
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_REVERSE_APPARATUS_RECOVERY_PASS"
+
+      - name: Run clean lead2 candidate first
+        shell: bash
+        env:
+          VARIANT: lead2
+          RUNTIME_SHA: ${{ env.CANDIDATE_SHA }}
+          SIM_LEAD_EXPECTED: "2"
+          SIM_BUILD_EXPECTED: ${{ env.CANDIDATE_SIM_BUILD }}
+          WORKER: ${{ env.CANDIDATE_WORKER }}
+          BASE_URL: ${{ env.CANDIDATE_URL }}
+        run: bash scripts/run-world-v0-playability-remote-ab-variant.sh
+
+      - name: Reset transient browser state between variants
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          pkill -f 'chromium|chrome' || true
+          rm -f scripts/.prepare-world-v0-playability-input-shape-probe-fixed.mjs scripts/.world-v0-playability-input-shape-probe.mjs
+          sleep 2
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_REVERSE_INTERVARIANT_RESET_PASS"
+
+      - name: Run baseline lead8 second on same runner
+        if: always()
+        shell: bash
+        env:
+          VARIANT: lead8
+          RUNTIME_SHA: ${{ env.BASELINE_SHA }}
+          SIM_LEAD_EXPECTED: "8"
+          SIM_BUILD_EXPECTED: ${{ env.BASELINE_SIM_BUILD }}
+          WORKER: ${{ env.BASELINE_WORKER }}
+          BASE_URL: ${{ env.BASELINE_URL }}
+        run: bash scripts/run-world-v0-playability-remote-ab-variant.sh
+
+      - name: Prove experiment did not mutate canonical candidate
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git reset --hard HEAD
+          rm -f \
+            scripts/world-v0-playability-pressure-probe.mjs \
+            scripts/prepare-world-v0-playability-input-shape-probe.mjs \
+            scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs \
+            scripts/apply-world-v0-playability-observability.mjs \
+            scripts/apply-world-v0-presentation-shock-observability.mjs \
+            scripts/prepare-world-v0-presentation-shock-probe.mjs \
+            scripts/prepare-world-v0-remote-playability-probe.mjs \
+            scripts/.prepare-world-v0-playability-input-shape-probe-fixed.mjs \
+            scripts/.world-v0-playability-input-shape-probe.mjs \
+            wrangler.ab-lead8.jsonc wrangler.ab-lead2.jsonc \
+            public/world-v0/playability-ab-provenance.json
+          test -z "$(git diff --name-only "$CANDIDATE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_REVERSE_NO_RUNTIME_MATERIALIZATION_PASS"
+
+      - name: Upload reverse paired A-B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playability-remote-ab-cadence-reverse-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            ab-lead8-*.json
+            ab-lead8-*.log
+            ab-lead2-*.json
+            ab-lead2-*.log
+          if-no-files-found: warn
+          retention-days: 14

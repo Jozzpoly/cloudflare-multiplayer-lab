@@ -1,0 +1,123 @@
+name: World V0 R0d Smoothness Regression Audit
+
+on:
+  push:
+    branches: [world-v0-r0d-smoothness-regression-audit]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-r0d-smoothness-regression-audit
+  cancel-in-progress: true
+
+jobs:
+  specimen:
+    name: smoothness-${{ matrix.label }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: owner-smooth-b27
+            ref: b27de8b04c27777250c47e7e936674e0f147fdfa
+          - label: pre-i3-v3
+            ref: 924ce32f2d5c39e63afbb963d423763a36827f85
+          - label: i3-v4
+            ref: 09e88b2f8c87ed14ff8d9f77ae56c351c6ccd197
+          - label: current-r0d-v7
+            ref: 3e03e8228f665bef32a4ba97058d69c2e27a9e48
+
+    steps:
+      - name: Checkout audit apparatus
+        uses: actions/checkout@v4
+        with:
+          ref: world-v0-r0d-smoothness-regression-audit
+          path: audit
+          fetch-depth: 1
+
+      - name: Checkout exact historical specimen
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+          path: specimen
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prove audit branch is apparatus-only
+        working-directory: audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=3e03e8228f665bef32a4ba97058d69c2e27a9e48
+          git cat-file -e "$base^{commit}" || true
+          changed="$(git diff --name-only "$base" HEAD || true)"
+          printf '%s\n' "$changed"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(scripts/world-v0-smoothness-regression-probe\.mjs|\.github/workflows/world-v0-r0d-smoothness-regression-audit\.yml)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected smoothness-audit diff:"
+            echo "$bad"
+            exit 1
+          fi
+          node --check scripts/world-v0-smoothness-regression-probe.mjs
+
+      - name: Install exact specimen dependencies
+        working-directory: specimen
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Start exact specimen in local Workerd
+        working-directory: specimen
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "$GITHUB_WORKSPACE/world-v0-smoothness-${{ matrix.label }}-wrangler.log" 2>&1 &
+          echo $! > /tmp/world-v0-smoothness-wrangler.pid
+          for i in {1..90}; do
+            if curl -fsS http://127.0.0.1:8787/world-v0/ >/dev/null; then
+              echo "local specimen ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$GITHUB_WORKSPACE/world-v0-smoothness-${{ matrix.label }}-wrangler.log"
+          exit 1
+
+      - name: Run identical two-client analog movement
+        working-directory: audit
+        env:
+          MW_WORLD_V0_SMOOTHNESS_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_SMOOTHNESS_LABEL: ${{ matrix.label }}
+          MW_WORLD_V0_SMOOTHNESS_OUTPUT: ${{ github.workspace }}/world-v0-smoothness-${{ matrix.label }}.json
+          MW_WORLD_V0_SMOOTHNESS_STEPS: "160"
+          MW_WORLD_V0_SMOOTHNESS_INTERVAL_MS: "50"
+        run: node scripts/world-v0-smoothness-regression-probe.mjs
+
+      - name: Stop local Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/world-v0-smoothness-wrangler.pid ]; then
+            pid="$(cat /tmp/world-v0-smoothness-wrangler.pid)"
+            kill "$pid" 2>/dev/null || true
+            pkill -P "$pid" 2>/dev/null || true
+          fi
+
+      - name: Upload exact specimen evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-smoothness-${{ matrix.label }}
+          path: |
+            world-v0-smoothness-${{ matrix.label }}.json
+            world-v0-smoothness-${{ matrix.label }}-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

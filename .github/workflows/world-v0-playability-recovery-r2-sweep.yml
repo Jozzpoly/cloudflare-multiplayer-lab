@@ -1,0 +1,152 @@
+name: World V0 Playability Recovery R2 Sweep
+
+on:
+  push:
+    branches: [world-v0-playability-recovery-r2-sweep]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-playability-recovery-r2-sweep
+  cancel-in-progress: false
+
+env:
+  BASE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
+
+jobs:
+  lead-sweep:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+
+      - name: Ground evidence-only sweep
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- src public/world-v0/app.js public/world-v0/build-contract.js public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+          node --check scripts/apply-world-v0-playability-lead-experiment.mjs
+          node --check scripts/prepare-world-v0-playability-pressure-v2.mjs
+          node scripts/prepare-world-v0-playability-pressure-v2.mjs
+          node --check scripts/.world-v0-playability-pressure-v2.mjs
+          echo "WORLD_V0_PLAYABILITY_R2_SWEEP_GROUNDING_PASS"
+
+      - name: Sweep simulation lead
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'if [ -n "${PID:-}" ]; then kill "$PID" 2>/dev/null || true; fi' EXIT
+          for LEAD in 0 1 2 3 4 6 8; do
+            echo "===== SIMULATION LEAD $LEAD ====="
+            git restore --source=HEAD --worktree -- src/world-v0-contract.ts public/world-v0/app.js public/world-v0/build-contract.js
+            MW_WORLD_V0_SIM_LEAD="$LEAD" node --experimental-strip-types scripts/apply-world-v0-playability-lead-experiment.mjs | tee "lead-${LEAD}-apply.log"
+            git diff --check
+            test -z "$(git diff --name-only -- src/world-v0-shared-yard.ts src/world-v0-protocol.ts src/box3d-runtime.ts public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+            grep -q "clientSimulationLeadTicks: $LEAD" src/world-v0-contract.ts
+
+            npm run check > "lead-${LEAD}-check.log" 2>&1
+
+            npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "lead-${LEAD}-wrangler.log" 2>&1 &
+            PID=$!
+            READY=0
+            for i in {1..60}; do
+              if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then READY=1; break; fi
+              sleep 1
+            done
+            if [ "$READY" != 1 ]; then
+              cat "lead-${LEAD}-wrangler.log"
+              exit 1
+            fi
+
+            MW_WORLD_V0_PLAYABILITY_BASE_URL=http://127.0.0.1:8787 \
+            MW_WORLD_V0_PLAYABILITY_OUTPUT="lead-${LEAD}.json" \
+            MW_WORLD_V0_PLAYABILITY_CHANGE_COUNT=32 \
+            node scripts/.world-v0-playability-pressure-v2.mjs | tee "lead-${LEAD}.log"
+
+            kill "$PID" 2>/dev/null || true
+            wait "$PID" 2>/dev/null || true
+            PID=""
+            sleep 1
+
+            LEAD_EXPECTED="$LEAD" node --input-type=module <<'NODE'
+            import { readFileSync } from "node:fs";
+            const lead = Number(process.env.LEAD_EXPECTED);
+            const v = JSON.parse(readFileSync(`lead-${lead}.json`, "utf8"));
+            if (v.verdict !== "WORLD_V0_PLAYABILITY_PRESSURE_PASS") throw new Error(`lead ${lead}: ${v.verdict}`);
+            for (const [i, c] of v.clients.entries()) {
+              if (c.inputLeadTicks !== 8 || c.simulationLeadTicks !== lead) throw new Error(`lead ${lead} client ${i}: timing evidence mismatch`);
+              if (c.guardMismatches !== 0 || c.firstStateMismatch !== null) throw new Error(`lead ${lead} client ${i}: exact mismatch`);
+            }
+            console.log(`WORLD_V0_PLAYABILITY_R2_LEAD_${lead}_PASS`, JSON.stringify(v.aggregate));
+            NODE
+          done
+
+          git restore --source=HEAD --worktree -- src/world-v0-contract.ts public/world-v0/app.js public/world-v0/build-contract.js
+          test -z "$(git diff --name-only -- src public/world-v0/app.js public/world-v0/build-contract.js)"
+
+      - name: Summarize sweep
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' | tee sweep-summary.log
+          import { readFileSync, writeFileSync } from "node:fs";
+          const rows = [];
+          for (const lead of [0,1,2,3,4,6,8]) {
+            const v = JSON.parse(readFileSync(`lead-${lead}.json`, "utf8"));
+            const clients = v.clients;
+            rows.push({
+              simulationLeadTicks: lead,
+              meanCorrectionsPer1000Ticks: v.aggregate.meanCorrectionsPer1000Ticks,
+              maxCorrectionsPer1000Ticks: v.aggregate.maxCorrectionsPer1000Ticks,
+              totalCorrections: v.aggregate.totalCorrections,
+              maxSelfCorrection: v.aggregate.maxSelfCorrection,
+              maxRemoteCorrection: v.aggregate.maxRemoteCorrection,
+              maxPropCorrection: v.aggregate.maxPropCorrection,
+              maxRewind: Math.max(...clients.map((c) => c.maxRewind || 0)),
+              maxReplaySteps: Math.max(...clients.map((c) => c.maxReplaySteps || 0)),
+              meanServerLate: clients.reduce((s,c) => s + (c.serverLate || 0), 0) / clients.length,
+              backlogClients: clients.filter((c) => c.finalNetworkState === "prediction backlog").length,
+              maxGuardMismatches: Math.max(...clients.map((c) => c.guardMismatches || 0)),
+              frameP95Ms: clients.map((c) => c.frameP95Ms),
+            });
+          }
+          const byCorrections = [...rows].sort((a,b) => a.meanCorrectionsPer1000Ticks - b.meanCorrectionsPer1000Ticks);
+          const out = {
+            verdict: "WORLD_V0_PLAYABILITY_R2_SWEEP_COMPLETE",
+            rows,
+            lowestCorrectionLead: byCorrections[0].simulationLeadTicks,
+            nonClaim: "CI SwiftShader frame cadence is not human feel evidence. This sweep ranks correction pressure under a fixed hostile two-client workload; it does not select final playability timing or replace Owner judgement.",
+          };
+          writeFileSync("sweep-summary.json", JSON.stringify(out, null, 2));
+          console.log(JSON.stringify(out, null, 2));
+          NODE
+
+      - name: Prove no runtime materialization
+        if: always()
+        shell: bash
+        run: |
+          git restore --source=HEAD --worktree -- src/world-v0-contract.ts public/world-v0/app.js public/world-v0/build-contract.js || true
+          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- src public/world-v0/app.js public/world-v0/build-contract.js public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+          echo "WORLD_V0_PLAYABILITY_R2_NO_MATERIALIZATION_PASS"
+
+      - name: Upload sweep evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playability-r2-sweep-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            lead-*.json
+            lead-*.log
+            sweep-summary.json
+            sweep-summary.log
+          if-no-files-found: warn
+          retention-days: 14

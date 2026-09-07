@@ -1,0 +1,47 @@
+name: World V0 Playability R2 Applier Debug
+
+on:
+  push:
+    branches: [world-v0-playability-recovery-r2-sweep]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug-applier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run lead-0 applier with complete diagnostics
+        shell: bash
+        run: |
+          set +e
+          {
+            echo "node=$(node --version)"
+            echo "head=$(git rev-parse HEAD)"
+            echo "--- anchors ---"
+            grep -n 'shared-yard-v0-contract-v7-i3-authority-temporal-floor\|shared-yard-v0-browser-sim-v7-i3-authority-temporal-floor\|predictionLeadTicks\|ownsCanonicalAuthorship' src/world-v0-contract.ts public/world-v0/app.js public/world-v0/build-contract.js || true
+            echo "--- applier ---"
+            MW_WORLD_V0_SIM_LEAD=0 node --experimental-strip-types scripts/apply-world-v0-playability-lead-experiment.mjs
+            STATUS=$?
+            echo "status=$STATUS"
+            echo "--- diff ---"
+            git diff -- src/world-v0-contract.ts public/world-v0/app.js public/world-v0/build-contract.js
+            exit "$STATUS"
+          } 2>&1 | tee r2-applier-debug.log
+          exit ${PIPESTATUS[0]}
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-r2-applier-debug-${{ github.run_number }}-${{ github.run_attempt }}
+          path: r2-applier-debug.log
+          if-no-files-found: error
+          retention-days: 7

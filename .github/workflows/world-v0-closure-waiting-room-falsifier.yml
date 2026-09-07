@@ -1,0 +1,66 @@
+name: World V0 Closure Waiting Room Falsifier
+
+on:
+  push:
+    branches: [world-v0-closure-stabilization]
+    paths:
+      - .github/workflows/world-v0-closure-waiting-room-falsifier.yml
+      - scripts/world-v0-closure-waiting-room-drop-audit.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-closure-waiting-room-falsifier
+  cancel-in-progress: true
+
+jobs:
+  falsify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Static checks
+        run: |
+          node --check scripts/world-v0-closure-waiting-room-drop-audit.mjs
+          npm run check
+      - name: Start local reliability Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-waiting-room-falsifier-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-waiting-room-falsifier.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-waiting-room-falsifier-wrangler.log
+          exit 1
+      - name: Reproduce waiting-room recovery regression
+        env:
+          MW_WORLD_V0_WAITING_DROP_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_WAITING_DROP_OUTPUT: world-v0-waiting-room-falsifier.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 60s node scripts/world-v0-closure-waiting-room-drop-audit.mjs | tee world-v0-waiting-room-falsifier.log
+          grep -q 'WORLD_V0_CLOSURE_WAITING_ROOM_RECOVERY_REGRESSION_REPRODUCED' world-v0-waiting-room-falsifier.log
+      - name: Stop Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-waiting-room-falsifier.pid ]; then kill "$(cat /tmp/world-v0-waiting-room-falsifier.pid)" 2>/dev/null || true; fi
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-waiting-room-falsifier-${{ github.run_attempt }}
+          path: |
+            world-v0-waiting-room-falsifier.log
+            world-v0-waiting-room-falsifier.json
+            world-v0-waiting-room-falsifier-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

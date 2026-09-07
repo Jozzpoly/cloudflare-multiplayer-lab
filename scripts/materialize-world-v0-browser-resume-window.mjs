@@ -4,7 +4,10 @@ const files = [
   {
     path: "public/world-v0/app.js",
     from: "const ACTOR_RESUME_MAX_ATTEMPTS = 8;",
-    to: "const ACTOR_RESUME_MAX_ATTEMPTS = 11;",
+    // Capped backoff reaches attempts at ~0.15, 0.45, 1.05, 2.25, then every 2 s.
+    // Twelve attempts keep the client retry horizon beyond the 15 s all-disconnected
+    // WorldEpoch grace instead of allowing the browser to fail itself first.
+    to: "const ACTOR_RESUME_MAX_ATTEMPTS = 12;",
   },
   {
     path: "public/world-v0/build-contract.js",

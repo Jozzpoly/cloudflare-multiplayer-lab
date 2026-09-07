@@ -4,6 +4,15 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { WORLD_V0_BROWSER_UI_REVISION } from "../public/world-v0/build-contract.js";
 
+// WORLD_V0_HISTORICAL_APPARATUS_ONLY_PRE_I1
+// This smoke intentionally encodes the pre-I1 contract: one peer leaving ends the
+// global WorldEpoch and exposes Restart. Current I1 semantics intentionally reject
+// that contract; use world-v0-integration-i1-lifecycle-probe.mjs and the current
+// human-entry browser smoke for current lifecycle evidence.
+if (process.env.MW_ALLOW_HISTORICAL_WORLD_V0_APPARATUS !== "1") {
+  throw new Error("HISTORICAL APPARATUS ONLY: world-v0-session-friction-smoke encodes pre-I1 peer-loss => global epoch-end semantics; current I1 keeps the healthy world alive. Set MW_ALLOW_HISTORICAL_WORLD_V0_APPARATUS=1 only for intentional historical replay.");
+}
+
 const BASE = (process.env.MW_WORLD_V0_SESSION_BASE_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
 const PAGE_URL = `${BASE}/world-v0/`;
 const DEBUG_PORT = 9560;

@@ -9,6 +9,14 @@ import {
 } from "../public/world-v0/build-contract.js";
 import { deriveWorldV0AuthorityProbe } from "./world-v0-authority-stimulus.mjs";
 
+// WORLD_V0_HISTORICAL_APPARATUS_ONLY_PRE_I1
+// This smoke intentionally expects input-lease expiry to terminate the global
+// WorldEpoch. I1 changed that failure boundary to actor-local neutralization /
+// transport detachment, so this is provenance apparatus rather than a current gate.
+if (process.env.MW_ALLOW_HISTORICAL_WORLD_V0_APPARATUS !== "1") {
+  throw new Error("HISTORICAL APPARATUS ONLY: world-v0-authority-runtime-smoke encodes pre-I1 lease-expiry => global epoch-end semantics; current I1 makes lease expiry actor-local. Set MW_ALLOW_HISTORICAL_WORLD_V0_APPARATUS=1 only for intentional historical replay.");
+}
+
 const BASE = (process.env.MW_WORLD_V0_BASE_URL || "https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev").replace(/\/$/, "");
 const wsBase = new URL(BASE);
 wsBase.protocol = wsBase.protocol === "https:" ? "wss:" : "ws:";

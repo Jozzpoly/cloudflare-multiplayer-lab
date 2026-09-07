@@ -48,32 +48,32 @@ jobs:
           cat world-v0-closure-browser-resume-window-wrangler.log
           exit 1
 
-      - name: Classify 11 second browser outage against 15 second world grace
+      - name: Classify 14 second browser outage against 15 second world grace
         env:
           MW_WORLD_V0_I4B_BASE: http://127.0.0.1:8787
-          MW_WORLD_V0_I4B_OFFLINE_MS: 11000
-          MW_WORLD_V0_I4B_OUTPUT: world-v0-closure-browser-resume-11s.json
+          MW_WORLD_V0_I4B_OFFLINE_MS: 14000
+          MW_WORLD_V0_I4B_OUTPUT: world-v0-closure-browser-resume-14s.json
         shell: bash
         run: |
           set -uo pipefail
           set +e
-          node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs 2>&1 | tee world-v0-closure-browser-resume-11s.log
+          node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs 2>&1 | tee world-v0-closure-browser-resume-14s.log
           probe_rc=${PIPESTATUS[0]}
           set -e
           PROBE_RC="$probe_rc" node --input-type=module <<'NODE'
           import { readFileSync } from "node:fs";
-          const evidence = JSON.parse(readFileSync("world-v0-closure-browser-resume-11s.json", "utf8"));
+          const evidence = JSON.parse(readFileSync("world-v0-closure-browser-resume-14s.json", "utf8"));
           const text = JSON.stringify(evidence);
           const rc = Number(process.env.PROBE_RC || "0");
           if (evidence.verdict === "WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS" && rc === 0) {
-            console.log("WORLD_V0_CLOSURE_BROWSER_RESUME_11S_PRESERVED");
+            console.log("WORLD_V0_CLOSURE_BROWSER_RESUME_14S_PRESERVED");
             process.exit(0);
           }
           if (evidence.verdict === "WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_REBASE_FAIL" && text.includes("actor_session_resume_exhausted")) {
-            console.log("WORLD_V0_CLOSURE_BROWSER_RESUME_11S_EXHAUSTED_BEFORE_WORLD_GRACE");
+            console.log("WORLD_V0_CLOSURE_BROWSER_RESUME_14S_EXHAUSTED_BEFORE_WORLD_GRACE");
             process.exit(0);
           }
-          console.error("WORLD_V0_CLOSURE_BROWSER_RESUME_11S_APPARATUS_OR_UNKNOWN_FAIL", { rc, verdict: evidence.verdict, error: evidence.error });
+          console.error("WORLD_V0_CLOSURE_BROWSER_RESUME_14S_APPARATUS_OR_UNKNOWN_FAIL", { rc, verdict: evidence.verdict, error: evidence.error });
           process.exit(1);
           NODE
 
@@ -92,7 +92,7 @@ jobs:
           name: world-v0-closure-browser-resume-window-${{ github.run_attempt }}
           path: |
             world-v0-closure-browser-resume-window-wrangler.log
-            world-v0-closure-browser-resume-11s.log
-            world-v0-closure-browser-resume-11s.json
+            world-v0-closure-browser-resume-14s.log
+            world-v0-closure-browser-resume-14s.json
           if-no-files-found: warn
           retention-days: 14

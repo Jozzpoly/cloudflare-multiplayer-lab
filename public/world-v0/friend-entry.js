@@ -1,4 +1,4 @@
-export const WORLD_V0_FRIEND_ENTRY_REVISION = "shared-yard-v0-friend-entry-v1";
+export const WORLD_V0_FRIEND_ENTRY_REVISION = "shared-yard-v0-friend-entry-v2";
 export const WORLD_V0_ROOM_KEY_PATTERN = /^[A-Za-z0-9_-]{1,20}$/;
 
 const ROOM_PREFIX = "yard-";
@@ -59,16 +59,16 @@ export function friendEntryMode(rawUrlRun) {
 export function friendEntryCopy(mode) {
   if (mode === "invite") {
     return {
-      title: "Join your friend",
-      status: "Enter your name to join this shared world.",
-      enterLabel: "Join world",
+      title: "Enter shared world",
+      status: "Enter your name. This link connects both players to the same shared world.",
+      enterLabel: "Enter world",
     };
   }
   if (mode === "invalid-invite") {
     return {
       title: "Invite link problem",
-      status: "This invite has an invalid room ID. Ask your friend for a fresh link.",
-      enterLabel: "Join unavailable",
+      status: "This invite has an invalid room ID. Ask for a fresh link.",
+      enterLabel: "Entry unavailable",
     };
   }
   return {

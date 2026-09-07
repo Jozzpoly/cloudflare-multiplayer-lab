@@ -954,6 +954,28 @@ function createActorBody(world, locator, player) {
   return body;
 }
 
+function authorityEntityDefsFromState(state) {
+  const players = [...(state?.players || [])].sort((a, c) => (a.slot ?? 0) - (c.slot ?? 0));
+  const props = [...(state?.props || [])];
+  if (players.length !== 2) throw new Error(`authority resume requires exactly two players, got ${players.length}`);
+  const self = players.find((player) => player.sessionId === selfSessionId);
+  const remote = players.find((player) => player.sessionId !== selfSessionId);
+  if (!self || !remote) throw new Error("authority resume state missing actor");
+  remoteSessionId = remote.sessionId;
+  remoteNetEntityId = remote.netEntityId;
+
+  const entityDefs = [];
+  for (const prop of props) {
+    const netEntityId = prop.netEntityId || prop.id;
+    entityDefs.push({ netEntityId, locator: `prop:${netEntityId}`, kind: "prop", propId: prop.id });
+  }
+  for (const player of players) {
+    const netEntityId = player.netEntityId || `actor:${player.slot}`;
+    entityDefs.push({ netEntityId, locator: netEntityId, kind: "actor", slot: player.slot, sessionId: player.sessionId });
+  }
+  return entityDefs;
+}
+
 function createSimulationFromState(state) {
   const players = [...(state?.players || [])].sort((a, c) => (a.slot ?? 0) - (c.slot ?? 0));
   const props = [...(state?.props || [])];
@@ -1044,8 +1066,8 @@ function u32Hex(value) {
   return (Number(value) >>> 0).toString(16).padStart(8, "0");
 }
 
-function applyAuthorityRebase(seed) {
-  if (!localState?.sim) throw new Error("authority rebase without local simulation");
+function applyAuthorityRebase(seed, bootstrapState = null) {
+  if (!localState?.sim && !bootstrapState) throw new Error("authority rebase without local simulation or bootstrap state");
   if (!seed || seed.revision !== AUTHORITY_REBASE_SEED_REVISION) throw new Error("authority rebase seed revision mismatch");
   if (!Number.isInteger(seed.boundaryTick) || seed.boundaryTick < 0) throw new Error("authority rebase boundary invalid");
   if (!seed.stateGuard || seed.stateGuard.revision !== WORLD_V0_EXPECTED_STATE_GUARD_REVISION) throw new Error("authority rebase state guard invalid");
@@ -1054,13 +1076,13 @@ function applyAuthorityRebase(seed) {
   const hash = u32Hex(b3.b3Bytes_Fnv1a32(bytes));
   if (hash !== seed.fnv1a32) throw new Error("authority rebase checksum mismatch " + hash + " != " + seed.fnv1a32);
 
-  const oldEntityDefs = localState.sim.entityDefs;
-  const oldNetEntityOrder = localState.sim.netEntityOrder;
+  const entityDefs = localState?.sim?.entityDefs ?? authorityEntityDefsFromState(bootstrapState);
+  const netEntityOrder = localState?.sim?.netEntityOrder ?? simulation.netEntityOrder;
   const player = b3.b3RecPlayer_CreateFromBytes(bytes, 1);
   if (!player) throw new Error("authority rebase player create failed");
   let next = null;
   try {
-    next = remapSimulation(player, oldEntityDefs, oldNetEntityOrder);
+    next = remapSimulation(player, entityDefs, netEntityOrder);
     const packed = capturePackedDiagnostic(next);
     const difference = firstWorldV0StateDifference(
       seed.stateGuard.packed,
@@ -1670,12 +1692,31 @@ function handleMessage(message) {
     }
     simulation = assertSimulationContract(message.simulation, "welcome");
     if (message.resumed) {
-      if (!resumingActor || !priorSessionId || !priorResumeToken || !localState) throw new Error("unexpected resumed welcome");
+      if (!resumingActor || !priorSessionId || !priorResumeToken) throw new Error("unexpected resumed welcome");
       if (message.selfSessionId !== priorSessionId) throw new Error("resumed ActorSession identity drift");
       if (message.resumeToken !== priorResumeToken) throw new Error("resumed private token drift");
       if (!Number.isInteger(message.resumeLastBatchSeq) || message.resumeLastBatchSeq < 0) throw new Error("resumed batch sequence invalid");
+
+      const hadLocalState = Boolean(localState?.sim);
+      const resumedIntoActiveRun = Number.isInteger(message.protocolStartTick);
+      if (hadLocalState && !resumedIntoActiveRun) throw new Error("active ActorSession resumed into unscheduled protocol");
       batchSeq = Math.max(batchSeq, message.resumeLastBatchSeq);
-      applyAuthorityRebase(message.rebaseSeed);
+
+      if (resumedIntoActiveRun) {
+        if (!message.rebaseSeed || !Number.isInteger(message.rebaseSeed.boundaryTick)) throw new Error("active ActorSession resume missing authority rebase seed");
+        if (message.state?.boundaryTick !== message.rebaseSeed.boundaryTick) throw new Error("active ActorSession resume state/rebase boundary mismatch");
+        if (Number.isInteger(protocolStartTick) && protocolStartTick !== message.protocolStartTick) throw new Error("resumed protocolStartTick drift");
+        protocolStartTick = message.protocolStartTick;
+        if (!hadLocalState) {
+          buildArenaVisual(simulation);
+          buildSpatialCues(message.state);
+        }
+        applyAuthorityRebase(message.rebaseSeed, hadLocalState ? null : message.state);
+      } else {
+        if (message.rebaseSeed) throw new Error("pre-start ActorSession resume unexpectedly carried rebase seed");
+        protocolStartTick = null;
+      }
+
       selfSessionId = message.selfSessionId;
       selfNetEntityId = message.selfNetEntityId;
       selfSlot = message.slot;
@@ -1684,17 +1725,31 @@ function handleMessage(message) {
       actorResume.pending = false;
       actorResume.attempts = 0;
       actorResume.sourceBoundary = null;
-      actorResume.lastRecoveredBoundary = localState.boundaryTick;
+      actorResume.lastRecoveredBoundary = localState?.boundaryTick ?? null;
       playing = true;
       sessionEnd = null;
-      networkState = "live · exact state resumed";
-      jumpButton.classList.remove("hidden");
-      joystick.classList.add("active");
-      cameraGimbal.classList.add("active");
-      startLogicalInputScheduler();
-      recordLifecycle("actor-resume-complete", { boundaryTick: localState.boundaryTick, resumeCount: message.resumeCount });
-      clearNotice();
-      syncMeshes();
+
+      if (resumedIntoActiveRun) {
+        networkState = "live · exact state resumed";
+        jumpButton.classList.remove("hidden");
+        joystick.classList.add("active");
+        cameraGimbal.classList.add("active");
+        startLogicalInputScheduler();
+        recordLifecycle("actor-resume-complete", {
+          boundaryTick: localState.boundaryTick,
+          resumeCount: message.resumeCount,
+          bootstrapFromAuthority: !hadLocalState,
+        });
+        clearNotice();
+        syncMeshes();
+      } else {
+        networkState = message.waitingForPeer ? "waiting for peer" : "peer joined";
+        jumpButton.classList.add("hidden");
+        joystick.classList.remove("active");
+        cameraGimbal.classList.remove("active");
+        recordLifecycle("actor-resume-prestart-complete", { resumeCount: message.resumeCount });
+        clearNotice();
+      }
       return;
     }
     if (resumingActor) throw new Error("actor resume was not accepted by authority");
@@ -1724,7 +1779,7 @@ function handleMessage(message) {
       remoteSessionId = remote.sessionId;
       remoteNetEntityId = remote.netEntityId;
     }
-    if (players.length === 2 && socket?.readyState === WebSocket.OPEN) {
+    if (players.length === 2 && socket?.readyState === WebSocket.OPEN && !Number.isInteger(protocolStartTick)) {
       networkState = "both connected · ready";
       socket.send(JSON.stringify({ type: "world_v0_ready", ...identityFields() }));
     }
@@ -1851,7 +1906,7 @@ function connect() {
     cameraGimbalKnob.style.transform = "translate(0, 0)";
     const closeReason = event.reason || sessionEnd?.reason || "";
     const actorTransportRecoverable = !runtimeFailed && !expectedAfterEpochEnd && !roomRecovery.pending &&
-      Boolean(identity && resumeToken && localState && Number.isInteger(protocolStartTick)) && event.code === 1006;
+      Boolean(identity && resumeToken && selfSessionId) && event.code === 1006;
     if (actorResume.pending || actorTransportRecoverable) {
       actorResume.pending = true;
       if (!Number.isInteger(actorResume.sourceBoundary)) actorResume.sourceBoundary = localState?.boundaryTick ?? null;

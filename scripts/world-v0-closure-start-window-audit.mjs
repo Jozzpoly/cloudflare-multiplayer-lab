@@ -255,32 +255,6 @@ async function waitFor(client, expression, label, timeoutMs = TIMEOUT_MS) {
   throw new Error(`${label} timeout · last=${JSON.stringify(last)}`);
 }
 
-async function directResume(runKey, playerId, welcome) {
-  const wsBase = BASE.replace(/^http/, "ws");
-  const params = new URLSearchParams({ run: runKey, player: playerId, resume: welcome.resumeToken });
-  const ws = new WebSocket(`${wsBase}/world-v0/ws?${params}`);
-  const messages = [];
-  let closed = null;
-  ws.addEventListener("message", async (event) => {
-    try {
-      const raw = typeof event.data === "string" ? event.data : await event.data.text();
-      messages.push(JSON.parse(raw));
-    } catch {}
-  });
-  ws.addEventListener("close", (event) => { closed = { code: event.code, reason: event.reason }; });
-  const deadline = Date.now() + 8_000;
-  while (Date.now() < deadline) {
-    const resumed = messages.find((message) => message?.type === "world_v0_welcome");
-    if (resumed) {
-      try { ws.close(1000, "start_window_probe_done"); } catch {}
-      return { resumed, closed };
-    }
-    await sleep(25);
-  }
-  try { ws.close(1000, "start_window_probe_timeout"); } catch {}
-  throw new Error(`direct ActorSession resume timed out · messages=${JSON.stringify(messages)} closed=${JSON.stringify(closed)}`);
-}
-
 const chrome = findChrome();
 const version = chromeVersion(chrome);
 const proxy = createDirectionalProxy();
@@ -339,33 +313,33 @@ try {
   proxy.unblockDownstream();
   assert(drop.activeBeforeDrop >= 1, `no B transport existed at hard drop: ${JSON.stringify(drop)}`);
 
-  await waitFor(b,
-    '(() => { const e=window.__sharedYardV0Evidence?.(); return e && !e.runtimeFailed && String(e.networkState || "").startsWith("closed"); })()',
-    "B close after pre-start hard drop", 12_000);
-  await sleep(1_000);
-  const failedB = await evidence(b);
-  assert(failedB.protocolStartTick === null && failedB.localBoundaryTick === null, "B somehow acquired start state after severed downstream");
-  assert(failedB.session?.actorResume?.pending === false, "B unexpectedly entered ActorSession recovery without start state");
-  assert(Number(failedB.session?.actorResume?.attempts || 0) === 0, "B unexpectedly attempted ActorSession recovery");
-  assert(!(failedB.lifecycleEvents || []).some((event) => event.type === "actor-resume-pending"), "B lifecycle claims ActorSession recovery was armed");
+  await waitFor(b, `(() => {
+    const e=window.__sharedYardV0Evidence?.();
+    if (!e || e.runtimeFailed || e.session?.actorResume?.pending) return false;
+    const pending=(e.lifecycleEvents || []).find((event) => event.type === "actor-resume-pending" && event.sourceBoundary === null);
+    const attempt=(e.lifecycleEvents || []).find((event) => event.type === "actor-resume-attempt");
+    const complete=(e.lifecycleEvents || []).find((event) => event.type === "actor-resume-complete" && event.bootstrapFromAuthority === true);
+    return Boolean(pending && attempt && complete && Number.isInteger(e.protocolStartTick) && Number.isInteger(e.localBoundaryTick) && e.metrics?.guardMismatches === 0 && e.metrics?.rebases >= 1);
+  })()`, "B automatic exact recovery from committed-start window", 25_000);
 
+  const recoveredB = await evidence(b);
   const liveA = await evidence(a);
+  const pendingEvent = (recoveredB.lifecycleEvents || []).find((event) => event.type === "actor-resume-pending" && event.sourceBoundary === null);
+  const attemptEvent = (recoveredB.lifecycleEvents || []).find((event) => event.type === "actor-resume-attempt");
+  const completeEvent = (recoveredB.lifecycleEvents || []).find((event) => event.type === "actor-resume-complete" && event.bootstrapFromAuthority === true);
+  assert(pendingEvent && attemptEvent && completeEvent, "B recovery lifecycle evidence incomplete");
+  assert(recoveredB.identity.worldEpoch === startedA.identity.worldEpoch, "B recovery rotated WorldEpoch");
+  assert(recoveredB.session.actorSessionId === capturedWelcome.selfSessionId, "B recovery changed ActorSession identity");
+  assert(recoveredB.session.selfNetEntityId === capturedWelcome.selfNetEntityId, "B recovery changed NetEntity identity");
+  assert(recoveredB.protocolStartTick === startedA.protocolStartTick, "B recovered a different protocolStartTick");
+  assert(recoveredB.metrics.guardMismatches === 0 && recoveredB.metrics.firstStateMismatch === null, "B exact-state guard failed after bootstrap resume");
+  assert(recoveredB.metrics.rebases >= 1, "B did not apply authority rebase during bootstrap resume");
   assert(liveA.runtimeFailed === false, "healthy A failed during targeted B pre-start loss");
   assert(liveA.identity.worldEpoch === startedA.identity.worldEpoch, "healthy A WorldEpoch rotated after B drop");
   assert(Number.isInteger(liveA.protocolStartTick), "healthy A lost committed protocol start");
 
-  const authorityResume = await directResume(runKey, playerB, capturedWelcome);
-  const resumed = authorityResume.resumed;
-  assert(resumed.resumed === true, `authority did not preserve B ActorSession: ${JSON.stringify(resumed)}`);
-  assert(resumed.worldEpoch === startedA.identity.worldEpoch, "direct resume rotated WorldEpoch");
-  assert(resumed.selfSessionId === capturedWelcome.selfSessionId, "direct resume changed ActorSession identity");
-  assert(resumed.selfNetEntityId === capturedWelcome.selfNetEntityId, "direct resume changed NetEntity identity");
-  assert(resumed.resumeToken === capturedWelcome.resumeToken, "direct resume changed private token");
-  assert(Number.isInteger(resumed.protocolStartTick), "authority resume did not report active protocolStartTick");
-  assert(resumed.rebaseSeed && Number.isInteger(resumed.rebaseSeed.boundaryTick), "authority resume missing active-world rebase seed");
-
   result = {
-    revision: "world-v0-closure-start-window-v1",
+    revision: "world-v0-closure-start-window-v2-recovered",
     runKey,
     chromeVersion: version,
     worldEpoch: startedA.identity.worldEpoch,
@@ -374,26 +348,29 @@ try {
       netEntityId: capturedWelcome.selfNetEntityId,
       beforeRelease: { networkState: beforeB.networkState, protocolStartTick: beforeB.protocolStartTick, localBoundaryTick: beforeB.localBoundaryTick },
       afterAuthorityStartWhileDownstreamBlocked: { networkState: isolatedB.networkState, protocolStartTick: isolatedB.protocolStartTick, localBoundaryTick: isolatedB.localBoundaryTick },
-      afterHardDrop: {
-        networkState: failedB.networkState,
-        protocolStartTick: failedB.protocolStartTick,
-        localBoundaryTick: failedB.localBoundaryTick,
-        actorResumePending: failedB.session.actorResume.pending,
-        actorResumeAttempts: failedB.session.actorResume.attempts,
+      recovered: {
+        networkState: recoveredB.networkState,
+        protocolStartTick: recoveredB.protocolStartTick,
+        localBoundaryTick: recoveredB.localBoundaryTick,
+        sameActorSession: recoveredB.session.actorSessionId === capturedWelcome.selfSessionId,
+        sameNetEntity: recoveredB.session.selfNetEntityId === capturedWelcome.selfNetEntityId,
+        sameWorldEpoch: recoveredB.identity.worldEpoch === startedA.identity.worldEpoch,
+        rebaseBoundary: completeEvent.boundaryTick,
+        guardMismatches: recoveredB.metrics.guardMismatches,
+        rebases: recoveredB.metrics.rebases,
       },
     },
     healthyA: { protocolStartTick: liveA.protocolStartTick, localBoundaryTick: liveA.localBoundaryTick, runtimeFailed: liveA.runtimeFailed },
     proxy: { blocked: blockedProxy, drop },
-    authorityControl: {
-      resumed: resumed.resumed,
-      sameActorSession: resumed.selfSessionId === capturedWelcome.selfSessionId,
-      sameNetEntity: resumed.selfNetEntityId === capturedWelcome.selfNetEntityId,
-      sameWorldEpoch: resumed.worldEpoch === startedA.identity.worldEpoch,
-      rebaseBoundary: resumed.rebaseSeed.boundaryTick,
+    recoveryLifecycle: {
+      pendingSourceBoundary: pendingEvent.sourceBoundary,
+      firstAttempt: attemptEvent.attempt,
+      bootstrapFromAuthority: completeEvent.bootstrapFromAuthority,
+      recoveredBoundary: completeEvent.boundaryTick,
     },
-    verdict: "WORLD_V0_CLOSURE_START_WINDOW_BROWSER_GAP_REPRODUCED",
-    interpretation: "Authority committed the run and retained the disconnected ActorSession, but a browser that lost transport after sending ready and before receiving world_v0_start did not arm automatic ActorSession recovery because it had no protocolStartTick/local simulation yet.",
-    nonClaim: "This is a deliberately isolated local Chromium/Workerd handshake-window falsifier using directional proxy suppression. It does not estimate real-world incidence, mobile radio behavior, process loss, persistence, or tab-destruction continuity.",
+    verdict: "WORLD_V0_CLOSURE_START_WINDOW_BROWSER_RECOVERY_PASS",
+    interpretation: "Authority committed the run while world_v0_start was suppressed from one admitted browser; after an abnormal transport loss, that browser automatically rebound the same ActorSession and bootstrapped exact active-world state from the authority recording seed without ever having received the original start state.",
+    nonClaim: "This is a deliberately isolated local Chromium/Workerd handshake-window proof using directional proxy suppression. It does not estimate real-world incidence, mobile radio behavior, process loss, persistence, or tab-destruction continuity.",
   };
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
   console.log("WORLD_V0_CLOSURE_START_WINDOW", JSON.stringify(result, null, 2));

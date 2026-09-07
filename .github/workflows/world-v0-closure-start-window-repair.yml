@@ -43,8 +43,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const path = "scripts/materialize-world-v0-start-window-recovery.mjs";
+          let text = readFileSync(path, "utf8");
+          const before = 'audit = replaceBetween(audit, directResumeStart, directResumeEnd, directResumeEnd, "remove direct-resume control helper");';
+          const after = 'audit = replaceBetween(audit, directResumeStart, directResumeEnd, "", "remove direct-resume control helper");';
+          if (!text.includes(before) || text.indexOf(before) !== text.lastIndexOf(before)) throw new Error("materializer hotfix marker mismatch");
+          text = text.replace(before, after);
+          writeFileSync(path, text);
+          NODE
           node --check scripts/materialize-world-v0-start-window-recovery.mjs
           node scripts/materialize-world-v0-start-window-recovery.mjs
+          git checkout -- scripts/materialize-world-v0-start-window-recovery.mjs
           node --check public/world-v0/app.js
           node --check public/world-v0/build-contract.js
           node --check scripts/world-v0-closure-start-window-audit.mjs

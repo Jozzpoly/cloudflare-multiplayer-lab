@@ -1,0 +1,98 @@
+name: World V0 Closure Browser Resume Window
+
+on:
+  push:
+    branches: [world-v0-closure-stabilization]
+    paths:
+      - .github/workflows/world-v0-closure-browser-resume-window.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-closure-browser-resume-window
+  cancel-in-progress: false
+
+jobs:
+  classify-browser-resume-window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Start local reliability Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-closure-browser-resume-window-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-closure-browser-resume-window-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "browser resume window Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-closure-browser-resume-window-wrangler.log
+          exit 1
+
+      - name: Classify 11 second browser outage against 15 second world grace
+        env:
+          MW_WORLD_V0_I4B_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_I4B_OFFLINE_MS: 11000
+          MW_WORLD_V0_I4B_OUTPUT: world-v0-closure-browser-resume-11s.json
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs 2>&1 | tee world-v0-closure-browser-resume-11s.log
+          probe_rc=${PIPESTATUS[0]}
+          set -e
+          PROBE_RC="$probe_rc" node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const evidence = JSON.parse(readFileSync("world-v0-closure-browser-resume-11s.json", "utf8"));
+          const text = JSON.stringify(evidence);
+          const rc = Number(process.env.PROBE_RC || "0");
+          if (evidence.verdict === "WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS" && rc === 0) {
+            console.log("WORLD_V0_CLOSURE_BROWSER_RESUME_11S_PRESERVED");
+            process.exit(0);
+          }
+          if (evidence.verdict === "WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_REBASE_FAIL" && text.includes("actor_session_resume_exhausted")) {
+            console.log("WORLD_V0_CLOSURE_BROWSER_RESUME_11S_EXHAUSTED_BEFORE_WORLD_GRACE");
+            process.exit(0);
+          }
+          console.error("WORLD_V0_CLOSURE_BROWSER_RESUME_11S_APPARATUS_OR_UNKNOWN_FAIL", { rc, verdict: evidence.verdict, error: evidence.error });
+          process.exit(1);
+          NODE
+
+      - name: Stop local Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/world-v0-closure-browser-resume-window-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-closure-browser-resume-window-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload browser resume window evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-closure-browser-resume-window-${{ github.run_attempt }}
+          path: |
+            world-v0-closure-browser-resume-window-wrangler.log
+            world-v0-closure-browser-resume-11s.log
+            world-v0-closure-browser-resume-11s.json
+          if-no-files-found: warn
+          retention-days: 14

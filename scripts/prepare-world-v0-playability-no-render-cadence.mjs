@@ -11,6 +11,14 @@ function replaceUnique(text, before, after, label) {
 }
 
 let app = readFileSync(APP, "utf8");
+if (!app.includes("inputLeadTicks: simulation?.timing?.predictionLeadTicks")) {
+  app = replaceUnique(
+    app,
+    "      cadenceMs: STEP_MS,\n      ownsCanonicalAuthorship: true,",
+    "      cadenceMs: STEP_MS,\n      inputLeadTicks: simulation?.timing?.predictionLeadTicks ?? null,\n      simulationLeadTicks: simulation?.timing?.clientSimulationLeadTicks ?? simulation?.timing?.predictionLeadTicks ?? null,\n      ownsCanonicalAuthorship: true,",
+    "normalized split-lead evidence",
+  );
+}
 app = replaceUnique(
   app,
   "  renderer.render(scene, camera);",
@@ -31,6 +39,16 @@ probe = replaceUnique(
   '  verdict: "WORLD_V0_PLAYABILITY_INPUT_SHAPE_FAIL",',
   '  verdict: "WORLD_V0_PLAYABILITY_INPUT_SHAPE_FAIL",\n  apparatusMode: "no-webgl-draw-rAF-v1",',
   "apparatus marker",
+);
+probe = replaceUnique(
+  probe,
+  `    frameP95Ms: end.frame?.p95Ms ?? null,
+    frameMaxMs: end.frame?.maxMs ?? null,`,
+  `    frameP95Ms: end.frame?.p95Ms ?? null,
+    frameMaxMs: end.frame?.maxMs ?? null,
+    rttMedianMs: end.rtt?.medianMs ?? null,
+    rttP95Ms: end.rtt?.p95Ms ?? null,`,
+  "network timing evidence",
 );
 writeFileSync(PROBE, probe);
 

@@ -1,5 +1,9 @@
 #boot .inputs{grid-template-columns:minmax(0,1fr) auto;align-items:end}
 #boot .inputs>.primary-name{min-width:0}
+.callsign-help{grid-column:1/-1;margin-top:-2px;color:#8fa5ad;font-size:8.5px;line-height:1.35}
+.callsign-help[data-tone="adjusted"]{color:#d8bd7c}
+.callsign-help[data-tone="invalid"]{color:#ffb4b4}
+#callsign[aria-invalid="true"]{border-color:rgba(255,135,135,.62)}
 #boot .entry-actions{align-self:end}
 #boot .entry-actions #enter{min-width:118px}
 #boot .entry-actions.public-room-legacy-hidden{display:none}

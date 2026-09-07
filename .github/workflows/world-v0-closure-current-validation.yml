@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: world-v0-closure-current-validation
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate-current-head:

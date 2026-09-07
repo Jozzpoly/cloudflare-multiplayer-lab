@@ -14,6 +14,7 @@ concurrency:
 
 env:
   BASELINE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
+  CANDIDATE_SHA: eb26d060904bebd9acc1b8e1c8fc446f20a60599
   APPARATUS_SHA: 2021d5648c265b17395608e3cc8588edbac79d2f
   REMOTE_SEMANTIC_SHA: 7be8fb76737dd6e10e21e1cd2ed2bf3d0c45ed80
   BASELINE_SIM_BUILD: shared-yard-v0-sim-888e471bc211091e
@@ -41,8 +42,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for sha in "$BASELINE_SHA" "$APPARATUS_SHA" "$REMOTE_SEMANTIC_SHA"; do git cat-file -e "$sha^{commit}"; done
-          test -z "$(git diff --name-only "$BASELINE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          for sha in "$BASELINE_SHA" "$CANDIDATE_SHA" "$APPARATUS_SHA" "$REMOTE_SEMANTIC_SHA"; do git cat-file -e "$sha^{commit}"; done
+          git merge-base --is-ancestor "$CANDIDATE_SHA" HEAD
+          test -z "$(git diff --name-only "$CANDIDATE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
           node --check scripts/prepare-world-v0-playability-resume-forensics.mjs
           node --check scripts/prepare-world-v0-playability-no-render-cadence.mjs
           bash -n scripts/run-world-v0-playability-remote-ab-variant.sh
@@ -111,7 +113,7 @@ jobs:
             const clients = value.clients.map((client, index) => {
               const events = Array.isArray(client.lifecycleEvents) ? client.lifecycleEvents : [];
               const pending = events.filter((e) => e.type === "actor-resume-pending");
-              const attempts = events.filter((e) => e.type === "actor-resume-attempt");
+              const resumeAttempts = events.filter((e) => e.type === "actor-resume-attempt");
               const complete = events.filter((e) => e.type === "actor-resume-complete");
               const reasons = pending.map((e) => e.reason ?? `socket:${e.code ?? "unknown"}`);
               allReasons.push(...reasons);
@@ -127,7 +129,7 @@ jobs:
                 maxAuthoritySilenceTicks: client.maxAuthoritySilenceTicks,
                 actorResume: client.actorResume,
                 pendingReasons: reasons,
-                resumeAttemptCount: attempts.length,
+                resumeAttemptCount: resumeAttempts.length,
                 resumeCompleteCount: complete.length,
                 lifecycleTail: events.slice(-16),
                 guardMismatches: client.guardMismatches,
@@ -173,7 +175,7 @@ jobs:
             scripts/.world-v0-playability-input-shape-probe.mjs \
             wrangler.ab-lead8-forensic.jsonc \
             public/world-v0/playability-ab-provenance.json
-          test -z "$(git diff --name-only "$BASELINE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          test -z "$(git diff --name-only "$CANDIDATE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
           echo "WORLD_V0_PLAYABILITY_LEAD8_RESUME_FORENSICS_NO_RUNTIME_MATERIALIZATION_PASS"
 
       - name: Upload forensic evidence

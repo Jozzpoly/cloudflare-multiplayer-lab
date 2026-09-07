@@ -1,0 +1,170 @@
+name: World V0 Playability Recovery R1c
+
+on:
+  push:
+    branches: [world-v0-playability-recovery-r1c]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-playability-recovery-r1c
+  cancel-in-progress: false
+
+env:
+  BASE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
+
+jobs:
+  evidence-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+
+      - name: Ground evidence-only branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- src public/world-v0/app.js public/world-v0/build-contract.js public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+          node --check scripts/apply-world-v0-playability-r1-split-lead.mjs
+          node --check scripts/prepare-world-v0-playability-pressure-v2.mjs
+          node --check scripts/prepare-world-v0-exact-pending-semantics.mjs
+          echo "WORLD_V0_PLAYABILITY_R1C_EVIDENCE_ONLY_GROUNDING_PASS"
+
+      - name: Prepare probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/prepare-world-v0-playability-pressure-v2.mjs
+          node scripts/prepare-world-v0-exact-pending-semantics.mjs
+          node --check scripts/.world-v0-playability-pressure-v2.mjs
+          node --check scripts/.world-v0-playability-exact-v2.mjs
+
+      - name: Apply split-lead candidate in workspace only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/apply-world-v0-playability-r1-split-lead.mjs | tee candidate-apply.log
+          git diff --check
+          runtime="$(git diff --name-only)"
+          bad="$(printf '%s\n' "$runtime" | grep -Ev '^(src/world-v0-contract\.ts|public/world-v0/(app\.js|build-contract\.js))$' || true)"
+          if [ -n "$bad" ]; then
+            echo "unexpected candidate runtime diff:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+          test -z "$(git diff --name-only -- src/world-v0-shared-yard.ts src/world-v0-protocol.ts src/box3d-runtime.ts public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+          grep -q 'predictionLeadTicks: 8' src/world-v0-contract.ts
+          grep -q 'clientSimulationLeadTicks: 2' src/world-v0-contract.ts
+
+      - name: Full repo regression
+        run: npm run check
+
+      - name: Start candidate Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > candidate-wrangler.log 2>&1 &
+          echo $! > /tmp/playability-r1c-wrangler.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8787/api/ping >/dev/null && exit 0
+            sleep 1
+          done
+          cat candidate-wrangler.log
+          exit 1
+
+      - name: Reconfirm rollback-pressure reduction specimen
+        shell: bash
+        env:
+          MW_WORLD_V0_PLAYABILITY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABILITY_OUTPUT: pressure.json
+        run: |
+          set -euo pipefail
+          node scripts/.world-v0-playability-pressure-v2.mjs | tee pressure.log
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const v = JSON.parse(readFileSync("pressure.json", "utf8"));
+          if (v.verdict !== "WORLD_V0_PLAYABILITY_PRESSURE_PASS") throw new Error(`pressure verdict ${v.verdict}`);
+          for (const [i, c] of v.clients.entries()) {
+            if (c.inputLeadTicks !== 8 || c.simulationLeadTicks !== 2) throw new Error(`client ${i} split lead missing`);
+            if (c.guardMismatches !== 0 || c.firstStateMismatch !== null) throw new Error(`client ${i} exact mismatch`);
+          }
+          console.log("WORLD_V0_PLAYABILITY_R1C_PRESSURE_SPECIMEN_PASS", JSON.stringify(v.aggregate));
+          NODE
+
+      - name: Semantic exact-state guard qualification
+        shell: bash
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: exact-v2.json
+        run: |
+          set -euo pipefail
+          node scripts/.world-v0-playability-exact-v2.mjs | tee exact-v2.log
+
+      - name: Audit pending guards are future-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const v = JSON.parse(readFileSync("exact-v2.json", "utf8"));
+          if (v.verdict !== "WORLD_V0_PASS_REAL_CHROMIUM_EXACT_STATE_ENVELOPE") throw new Error(`exact verdict ${v.verdict}`);
+          for (const c of v.clients || []) {
+            const e = c.evidence;
+            if (!e || e.runtimeFailed) throw new Error(`client ${c.index} runtime failed`);
+            if (e.metrics.guardMismatches !== 0 || e.metrics.firstStateMismatch !== null) throw new Error(`client ${c.index} exact mismatch`);
+            const pending = e.pendingStateGuardBoundaries || [];
+            const stale = pending.filter((tick) => tick <= e.localBoundaryTick);
+            if (stale.length) throw new Error(`client ${c.index} stale pending guards ${JSON.stringify(stale)} at B(${e.localBoundaryTick})`);
+          }
+          console.log("WORLD_V0_PLAYABILITY_R1C_PENDING_GUARD_SEMANTICS_PASS");
+          NODE
+
+      - name: Preserve ActorSession continuity contract
+        shell: bash
+        env:
+          MW_WORLD_V0_I1_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_I1_RUN: r1c-i1-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee i1.log
+
+      - name: Stop Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/playability-r1c-wrangler.pid ]; then
+            kill "$(cat /tmp/playability-r1c-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Prove no runtime materialization occurred
+        if: always()
+        shell: bash
+        run: |
+          git reset --hard HEAD
+          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- src public/world-v0/app.js public/world-v0/build-contract.js public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+          echo "WORLD_V0_PLAYABILITY_R1C_NO_MATERIALIZATION_PASS"
+
+      - name: Upload R1c evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playability-r1c-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            candidate-apply.log
+            candidate-wrangler.log
+            pressure.json
+            pressure.log
+            exact-v2.json
+            exact-v2.log
+            i1.log
+          if-no-files-found: warn
+          retention-days: 14

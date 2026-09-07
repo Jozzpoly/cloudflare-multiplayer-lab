@@ -1,0 +1,229 @@
+name: World V0 Playability Remote A-B Cadence
+
+on:
+  push:
+    branches: [world-v0-playability-remote-ab-cadence]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-playability-remote-ab-cadence
+  cancel-in-progress: false
+
+env:
+  BASELINE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
+  CANDIDATE_SHA: eb26d060904bebd9acc1b8e1c8fc446f20a60599
+  APPARATUS_SHA: 2021d5648c265b17395608e3cc8588edbac79d2f
+  REMOTE_SEMANTIC_SHA: 7be8fb76737dd6e10e21e1cd2ed2bf3d0c45ed80
+  BASELINE_SIM_BUILD: shared-yard-v0-sim-888e471bc211091e
+  CANDIDATE_SIM_BUILD: shared-yard-v0-sim-85ac7ad492b61610
+  BASELINE_WORKER: cloudflare-multiplayer-lab-pab-l8-888e471b
+  CANDIDATE_WORKER: cloudflare-multiplayer-lab-pab-l2-85ac7ad4
+  BASELINE_URL: https://cloudflare-multiplayer-lab-pab-l8-888e471b.jozzpoly.workers.dev
+  CANDIDATE_URL: https://cloudflare-multiplayer-lab-pab-l2-85ac7ad4.jozzpoly.workers.dev
+
+jobs:
+  paired-ab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Ground exact A-B boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$BASELINE_SHA^{commit}"
+          git cat-file -e "$CANDIDATE_SHA^{commit}"
+          git cat-file -e "$APPARATUS_SHA^{commit}"
+          git cat-file -e "$REMOTE_SEMANTIC_SHA^{commit}"
+          git merge-base --is-ancestor "$CANDIDATE_SHA" HEAD
+          changed="$(git diff --name-only "$CANDIDATE_SHA" HEAD)"
+          printf '%s\n' "$changed"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(scripts/(prepare-world-v0-playability-no-render-cadence\.mjs|run-world-v0-playability-remote-ab-variant\.sh)|\.github/workflows/world-v0-playability-remote-ab-cadence\.yml)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected A/B branch diff:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+          test -z "$(git diff --name-only "$CANDIDATE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          bash -n scripts/run-world-v0-playability-remote-ab-variant.sh
+          node --check scripts/prepare-world-v0-playability-no-render-cadence.mjs
+          git diff --check "$CANDIDATE_SHA" HEAD
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_GROUNDING_PASS"
+
+      - name: Recover exact qualified apparatus into workspace only
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            scripts/world-v0-playability-pressure-probe.mjs
+            scripts/prepare-world-v0-playability-input-shape-probe.mjs
+            scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs
+            scripts/apply-world-v0-playability-observability.mjs
+            scripts/apply-world-v0-presentation-shock-observability.mjs
+            scripts/prepare-world-v0-presentation-shock-probe.mjs
+          )
+          for file in "${files[@]}"; do
+            git show "$APPARATUS_SHA:$file" > "$file"
+            node --check "$file"
+          done
+          git show "$REMOTE_SEMANTIC_SHA:scripts/prepare-world-v0-remote-playability-probe.mjs" > scripts/prepare-world-v0-remote-playability-probe.mjs
+          node --check scripts/prepare-world-v0-remote-playability-probe.mjs
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_APPARATUS_RECOVERY_PASS"
+
+      - name: Run baseline lead8 on same runner
+        shell: bash
+        env:
+          VARIANT: lead8
+          RUNTIME_SHA: ${{ env.BASELINE_SHA }}
+          SIM_LEAD_EXPECTED: "8"
+          SIM_BUILD_EXPECTED: ${{ env.BASELINE_SIM_BUILD }}
+          WORKER: ${{ env.BASELINE_WORKER }}
+          BASE_URL: ${{ env.BASELINE_URL }}
+        run: bash scripts/run-world-v0-playability-remote-ab-variant.sh
+
+      - name: Run clean lead2 candidate on same runner
+        shell: bash
+        env:
+          VARIANT: lead2
+          RUNTIME_SHA: ${{ env.CANDIDATE_SHA }}
+          SIM_LEAD_EXPECTED: "2"
+          SIM_BUILD_EXPECTED: ${{ env.CANDIDATE_SIM_BUILD }}
+          WORKER: ${{ env.CANDIDATE_WORKER }}
+          BASE_URL: ${{ env.CANDIDATE_URL }}
+        run: bash scripts/run-world-v0-playability-remote-ab-variant.sh
+
+      - name: Compare paired evidence without laundering a negative result
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' | tee remote-ab-comparison.log
+          import { readFileSync, writeFileSync } from "node:fs";
+
+          const baseline = JSON.parse(readFileSync("ab-lead8-summary.json", "utf8"));
+          const candidate = JSON.parse(readFileSync("ab-lead2-summary.json", "utf8"));
+          if (baseline.verdict !== "WORLD_V0_PLAYABILITY_REMOTE_AB_VARIANT_COMPLETE") throw new Error("baseline summary invalid");
+          if (candidate.verdict !== "WORLD_V0_PLAYABILITY_REMOTE_AB_VARIANT_COMPLETE") throw new Error("candidate summary invalid");
+          if (baseline.runtimeSha !== process.env.BASELINE_SHA || baseline.simulationLeadTicks !== 8) throw new Error("baseline identity drift");
+          if (candidate.runtimeSha !== process.env.CANDIDATE_SHA || candidate.simulationLeadTicks !== 2) throw new Error("candidate identity drift");
+
+          function median(values) {
+            const v = values.filter(Number.isFinite).sort((a,b) => a-b);
+            if (!v.length) return null;
+            const m = Math.floor(v.length / 2);
+            return v.length % 2 ? v[m] : (v[m-1] + v[m]) / 2;
+          }
+          function reduceVariant(value) {
+            const clients = value.attempts.flatMap((a) => a.clients);
+            const responses = value.attempts.flatMap((a) => a.localResponse || []);
+            const sum = (field) => clients.reduce((s,c) => s + (Number(c[field]) || 0), 0);
+            const mean = (field) => clients.reduce((s,c) => s + (Number(c[field]) || 0), 0) / clients.length;
+            return {
+              samples: clients.length,
+              attempts: value.attempts.length,
+              meanCorrectionsPer1000Ticks: mean("correctionsPer1000Ticks"),
+              totalCorrections: sum("corrections"),
+              totalSupersededInputs: sum("supersededDelta"),
+              totalServerLate: sum("serverLate"),
+              totalNetSelfCorrection: sum("netSelfTotal"),
+              totalNetRemoteCorrection: sum("netRemoteTotal"),
+              largeShockCountOver005: sum("netSelfOver005") + sum("netRemoteOver005"),
+              veryLargeShockCountOver010: sum("netSelfOver010") + sum("netRemoteOver010"),
+              maxNetShock: Math.max(...clients.flatMap((c) => [c.maxNetSelfShock || 0, c.maxNetRemoteShock || 0])),
+              medianFrameP95Ms: median(clients.map((c) => c.frameP95Ms)),
+              maxFrameP95Ms: Math.max(...clients.map((c) => c.frameP95Ms || 0)),
+              medianRttMedianMs: median(clients.map((c) => c.rttMedianMs)),
+              medianRttP95Ms: median(clients.map((c) => c.rttP95Ms)),
+              medianResponseBoundaryTicks: median(responses.map((r) => r.boundaryTickDelay)),
+              medianResponseWallClockMs: median(responses.map((r) => r.wallClockMs)),
+              responseBoundaryTicks: responses.map((r) => r.boundaryTickDelay),
+              responseWallClockMs: responses.map((r) => r.wallClockMs),
+              backlogClientSamples: clients.filter((c) => c.finalNetworkState === "prediction backlog").length,
+              finalNetworkStates: clients.map((c) => c.finalNetworkState),
+              meanTickSpan: mean("tickSpan"),
+            };
+          }
+
+          const b = reduceVariant(baseline);
+          const c = reduceVariant(candidate);
+          if (b.samples !== 4 || c.samples !== 4) throw new Error(`expected four client samples per variant, got ${b.samples}/${c.samples}`);
+          if (b.maxFrameP95Ms > 40 || c.maxFrameP95Ms > 40) throw new Error("APPARATUS_INVALID: paired no-draw cadence exceeded 40 ms p95");
+
+          const ratios = {
+            correctionDensity: c.meanCorrectionsPer1000Ticks / b.meanCorrectionsPer1000Ticks,
+            totalNetCorrection: (c.totalNetSelfCorrection + c.totalNetRemoteCorrection) / (b.totalNetSelfCorrection + b.totalNetRemoteCorrection),
+            largeShockCount: b.largeShockCountOver005 ? c.largeShockCountOver005 / b.largeShockCountOver005 : null,
+            supersededInputActivity: b.totalSupersededInputs ? c.totalSupersededInputs / b.totalSupersededInputs : null,
+          };
+          const correctionBenefit = Number.isFinite(ratios.correctionDensity) && ratios.correctionDensity < 0.75;
+          const presentationBenefit = Number.isFinite(ratios.totalNetCorrection) && ratios.totalNetCorrection < 0.75;
+          const verdict = correctionBenefit && presentationBenefit
+            ? "WORLD_V0_PLAYABILITY_REMOTE_AB_SUPPORTS_LEAD2"
+            : correctionBenefit
+              ? "WORLD_V0_PLAYABILITY_REMOTE_AB_CORRECTION_ONLY_MIXED_PRESENTATION"
+              : "WORLD_V0_PLAYABILITY_REMOTE_AB_MIXED_OR_REFUTES_LEAD2";
+
+          const out = {
+            verdict,
+            baseline: b,
+            candidate: c,
+            ratios,
+            responseFrontierContext: {
+              provenFirstImmediateSimulationLeadTicks: 2,
+              proofRun: 34149810721,
+              interpretation: "Response measurements are evidence only when cadence is healthy and must not be relabeled as Owner Poland latency/feel.",
+            },
+            nonClaim: "Same GitHub runner + no-WebGL-draw rAF reduces renderer/cross-run confounding. This is still a GitHub-runner-to-Cloudflare machine A/B, not human playability proof and not Poland RTT.",
+          };
+          writeFileSync("remote-ab-comparison.json", JSON.stringify(out, null, 2));
+          console.log(JSON.stringify(out, null, 2));
+          NODE
+
+      - name: Prove experiment did not mutate canonical candidate
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git reset --hard HEAD
+          rm -f \
+            scripts/world-v0-playability-pressure-probe.mjs \
+            scripts/prepare-world-v0-playability-input-shape-probe.mjs \
+            scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs \
+            scripts/apply-world-v0-playability-observability.mjs \
+            scripts/apply-world-v0-presentation-shock-observability.mjs \
+            scripts/prepare-world-v0-presentation-shock-probe.mjs \
+            scripts/prepare-world-v0-remote-playability-probe.mjs \
+            scripts/.prepare-world-v0-playability-input-shape-probe-fixed.mjs \
+            scripts/.world-v0-playability-input-shape-probe.mjs \
+            wrangler.ab-lead8.jsonc wrangler.ab-lead2.jsonc \
+            public/world-v0/playability-ab-provenance.json
+          test -z "$(git diff --name-only "$CANDIDATE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_NO_RUNTIME_MATERIALIZATION_PASS"
+
+      - name: Upload paired A-B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playability-remote-ab-cadence-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            ab-lead8-*.json
+            ab-lead8-*.log
+            ab-lead2-*.json
+            ab-lead2-*.log
+            remote-ab-comparison.json
+            remote-ab-comparison.log
+          if-no-files-found: warn
+          retention-days: 14

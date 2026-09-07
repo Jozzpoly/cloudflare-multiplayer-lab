@@ -15,7 +15,8 @@
     <h1>Enter Multi_World</h1>
     <p id="boot-status" aria-live="polite">Loading…</p>
     <div class="inputs">
-      <label class="primary-name">Your name <input id="callsign" maxlength="24" autocomplete="nickname" placeholder="Jozz"></label>
+      <label class="primary-name">Your name <input id="callsign" maxlength="24" autocomplete="nickname" placeholder="Jozz" aria-describedby="callsign-help"></label>
+      <div id="callsign-help" class="callsign-help" aria-live="polite">Use the name you want; spaces and Polish letters are adapted automatically.</div>
 
       <section id="public-room-entry" class="public-room-entry" aria-label="Shared Yards">
         <div class="public-room-heading">

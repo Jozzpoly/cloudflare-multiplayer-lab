@@ -1,0 +1,84 @@
+name: World V0 Closure All-Drop Window
+
+on:
+  push:
+    branches: [world-v0-closure-stabilization]
+    paths:
+      - scripts/world-v0-closure-all-drop-window-probe.mjs
+      - .github/workflows/world-v0-closure-all-drop-window.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-closure-all-drop-window
+  cancel-in-progress: false
+
+jobs:
+  map-window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Current repository checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check | tee world-v0-all-drop-check.log
+
+      - name: Start local reliability Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-all-drop-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-all-drop-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "all-drop Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-all-drop-wrangler.log
+          exit 1
+
+      - name: Map explicit all-transport-loss resume window
+        env:
+          MW_WORLD_V0_ALL_DROP_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_ALL_DROP_DELAYS: 250,500,750,1000,1500
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-closure-all-drop-window-probe.mjs | tee world-v0-all-drop-window.log
+          grep -q 'WORLD_V0_CLOSURE_ALL_DROP_WINDOW_MAPPED' world-v0-all-drop-window.log
+
+      - name: Stop local Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/world-v0-all-drop-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-all-drop-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-closure-all-drop-window-${{ github.run_attempt }}
+          path: |
+            world-v0-all-drop-window.log
+            world-v0-all-drop-check.log
+            world-v0-all-drop-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

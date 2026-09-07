@@ -18,16 +18,19 @@ The handoff branch is documentation/reference only. Runtime authority remains th
 2. **`WORLD_V0_R0D_RELIABILITY_RETEST_HANDOFF.md`**  
    Detailed execution/evidence handoff for the exact next R0d human reliability re-test.
 
-3. **GitHub issue #8, comment `5558411044`**  
+3. **`WORLD_V0_R0D_RELIABILITY_EVIDENCE_MANIFEST.md`**  
+   Long-lived digest of the final remote workflow artifact: ZIP/file SHA-256 hashes and exact compact I1/I2/I3/I4b outputs. Read when validating provenance or after the temporary GitHub artifact expires.
+
+4. **GitHub issue #8, comment `5558411044`**  
    Original R0d human continuity FAIL that falsified the old lifecycle model.
 
-4. **GitHub issue #8, comment `5562283164`**  
+5. **GitHub issue #8, comment `5562283164`**  
    Final isolated remote machine gate GREEN after I1–I4.
 
-5. **`MULTI_WORLD_FRESH_TAKEOVER_V2.md`**  
+6. **`MULTI_WORLD_FRESH_TAKEOVER_V2.md`**  
    Startup mandate for the next Browser ChatGPT conversation.
 
-6. **`MULTI_WORLD_PROJECT_SOUL.md`**  
+7. **`MULTI_WORLD_PROJECT_SOUL.md`**  
    Stable broader project intent when the new conversation needs to recover why the technical work matters.
 
 This is enough to begin the next conversation if live heads match.
@@ -87,6 +90,20 @@ Remote final machine evidence includes:
 **Machine-addressable work is closed at this boundary.**
 
 The Owner deliberately postponed the real human reliability re-test to the next conversation.
+
+---
+
+## Preserved artifact identity
+
+Final GitHub Actions artifact:
+
+- workflow run: `34060903778`;
+- artifact ID: `9997448698`;
+- artifact name: `world-v0-r0d-reliability-retest-1`;
+- ZIP size: `54,384 bytes`;
+- ZIP SHA-256: `2a2a740d9fe3e9f87602a1704814ef824f0fb716ec8e8c79d1194e441d3942b4`.
+
+The original artifact had 14-day retention. `WORLD_V0_R0D_RELIABILITY_EVIDENCE_MANIFEST.md` preserves each contained file's size/hash and the compact exact verdict payloads so the handoff does not depend on that temporary retention window.
 
 ---
 

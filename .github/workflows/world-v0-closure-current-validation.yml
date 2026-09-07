@@ -104,6 +104,27 @@ jobs:
           console.log("WORLD_V0_CLOSURE_CURRENT_14S_ACTOR_RESUME_PASS", evidence.gap?.gapTicks);
           NODE
 
+      - name: Requalify dual-browser hard-drop recovery inside grace
+        env:
+          MW_WORLD_V0_DUAL_BROWSER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_DUAL_BROWSER_OFFLINE_MS: 14000
+          MW_WORLD_V0_DUAL_BROWSER_OUTPUT: world-v0-closure-current-dual-browser.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/world-v0-closure-dual-browser-grace-audit.mjs | tee world-v0-closure-current-dual-browser.log
+          grep -q 'WORLD_V0_CLOSURE_DUAL_BROWSER_GRACE_PASS' world-v0-closure-current-dual-browser.log
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const evidence = JSON.parse(readFileSync("world-v0-closure-current-dual-browser.json", "utf8"));
+          if (evidence.offlineMs !== 14000) throw new Error(`unexpected dual outage ${evidence.offlineMs}`);
+          if (evidence.proxy?.drop?.activeBeforeDrop < 2 || evidence.proxy?.drop?.hardDrops < 2) throw new Error("dual hard-drop apparatus did not sever both live transports");
+          if (evidence.proxy?.beforeRestore?.blockedAccepts < 1) throw new Error("dual hard-drop apparatus did not block reconnect attempts");
+          if (!Array.isArray(evidence.clients) || evidence.clients.length !== 2) throw new Error("dual recovery missing clients");
+          if (evidence.clients.some((client) => client.guardMismatches !== 0)) throw new Error("dual recovery exact-state guard regression");
+          console.log("WORLD_V0_CLOSURE_CURRENT_DUAL_BROWSER_14S_PASS", evidence.clients.map((client) => client.gapTicks).join(","));
+          NODE
+
       - name: Requalify real Chromium human-entry and fresh-reopen truth
         env:
           MW_WORLD_V0_HUMAN_ENTRY_BASE_URL: http://127.0.0.1:8787
@@ -142,6 +163,8 @@ jobs:
             world-v0-closure-current-i4b-authority.log
             world-v0-closure-current-i4b-chromium.log
             world-v0-closure-current-i4b-chromium.json
+            world-v0-closure-current-dual-browser.log
+            world-v0-closure-current-dual-browser.json
             world-v0-closure-current-human-entry.log
             world-v0-closure-current-human-entry.json
           if-no-files-found: warn

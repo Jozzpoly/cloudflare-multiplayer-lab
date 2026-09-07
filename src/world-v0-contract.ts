@@ -1,5 +1,5 @@
-export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v9-all-disconnected-grace";
-export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v6-all-disconnected-grace";
+export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v10-retry-aligned-grace";
+export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v7-retry-aligned-grace";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v8-playability-split-lead";
 export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
@@ -33,11 +33,11 @@ export const WORLD_V0_CLIENT_HISTORY = {
   recordingCapacityBytes: 2 * 1024 * 1024,
 } as const;
 
-// Actor input still fails neutral after the 36-tick lease. The WorldEpoch itself
-// gets a separate bounded grace when every transport is gone so the browser's
-// existing actor-resume backoff has a meaningful recovery window.
+// Actor input still fails neutral after the 36-tick lease. WorldEpoch lifetime is
+// separate and must outlive the browser's current 12-attempt (~18.25 s nominal)
+// ActorSession resume schedule with bounded handshake/detection margin.
 export const WORLD_V0_LIFECYCLE = {
-  allDisconnectedGraceTicks: 15 * 60,
+  allDisconnectedGraceTicks: 20 * 60,
 } as const;
 
 export const WORLD_V0_MOVEMENT = {

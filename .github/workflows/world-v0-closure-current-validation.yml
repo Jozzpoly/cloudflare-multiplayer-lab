@@ -1,0 +1,137 @@
+name: World V0 Closure Current Validation
+
+on:
+  push:
+    branches: [world-v0-closure-stabilization]
+    paths:
+      - .github/workflows/world-v0-closure-current-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-closure-current-validation
+  cancel-in-progress: false
+
+jobs:
+  validate-current-head:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Current repository checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check | tee world-v0-closure-current-check.log
+
+      - name: Start local reliability Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-closure-current-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-closure-current-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "current closure Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-closure-current-wrangler.log
+          exit 1
+
+      - name: Requalify current I1 lifecycle contract
+        env:
+          MW_WORLD_V0_I1_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_I1_RUN: closure-current-i1-${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-closure-current-i1.log
+          grep -q 'WORLD_V0_INTEGRATION_I1_SERVER_SESSION_PASS' world-v0-closure-current-i1.log
+          grep -q '"oldEpochPreservedAt1800msAllDisconnected": true' world-v0-closure-current-i1.log
+          grep -q '"oldEpochRetiredAfterGrace": true' world-v0-closure-current-i1.log
+
+      - name: Requalify bounded all-transport-loss window
+        env:
+          MW_WORLD_V0_ALL_DROP_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_ALL_DROP_DELAYS: 500,1500,5000,11000,16000
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-closure-all-drop-window-probe.mjs | tee world-v0-closure-current-all-drop.log
+          grep -q 'WORLD_V0_CLOSURE_ALL_DROP_WINDOW_MAPPED' world-v0-closure-current-all-drop.log
+          for delay in 500 1500 5000 11000; do
+            grep -E "WORLD_V0_ALL_DROP_CASE .*\"delayMs\":${delay}.*\"classification\":\"preserved\"" world-v0-closure-current-all-drop.log >/dev/null
+          done
+          grep -E 'WORLD_V0_ALL_DROP_CASE .*"delayMs":16000.*"classification":"retired"' world-v0-closure-current-all-drop.log >/dev/null
+          echo WORLD_V0_CLOSURE_CURRENT_ALL_DISCONNECTED_PASS
+
+      - name: Requalify automatic ActorSession exact-rebase recovery
+        env:
+          MW_WORLD_V0_I4B_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_I4B_OUTPUT: world-v0-closure-current-i4b-chromium.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/world-v0-integration-i4b-authority-probe.mjs | tee world-v0-closure-current-i4b-authority.log
+          node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-closure-current-i4b-chromium.log
+          grep -q 'WORLD_V0_INTEGRATION_I4B_AUTHORITY_PASS' world-v0-closure-current-i4b-authority.log
+          grep -q 'WORLD_V0_INTEGRATION_I4B_CHROMIUM_REBASE_PASS' world-v0-closure-current-i4b-chromium.log
+
+      - name: Requalify real Chromium human-entry and fresh-reopen truth
+        env:
+          MW_WORLD_V0_HUMAN_ENTRY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_HUMAN_ENTRY_OUTPUT: world-v0-closure-current-human-entry.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-human-entry-browser-smoke.mjs | tee world-v0-closure-current-human-entry.log
+          grep -q 'WORLD_V0_HUMAN_ENTRY_PASS' world-v0-closure-current-human-entry.log
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const evidence = JSON.parse(readFileSync("world-v0-closure-current-human-entry.json", "utf8"));
+          if (evidence.peerTabCloseFreshReopenRejectedTruthfully !== true) throw new Error("fresh reopen truth regression");
+          if (evidence.healthyOwnerWorldEpochPreservedAcrossPeerReopen !== true) throw new Error("healthy owner continuity regression");
+          console.log("WORLD_V0_CLOSURE_CURRENT_HUMAN_ENTRY_PASS", evidence.worldEpoch);
+          NODE
+
+      - name: Stop local Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/world-v0-closure-current-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-closure-current-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload current-head validation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-closure-current-validation-${{ github.run_attempt }}
+          path: |
+            world-v0-closure-current-check.log
+            world-v0-closure-current-wrangler.log
+            world-v0-closure-current-i1.log
+            world-v0-closure-current-all-drop.log
+            world-v0-closure-current-i4b-authority.log
+            world-v0-closure-current-i4b-chromium.log
+            world-v0-closure-current-i4b-chromium.json
+            world-v0-closure-current-human-entry.log
+            world-v0-closure-current-human-entry.json
+          if-no-files-found: warn
+          retention-days: 14

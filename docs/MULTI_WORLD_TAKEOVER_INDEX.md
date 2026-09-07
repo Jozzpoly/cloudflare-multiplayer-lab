@@ -1,275 +1,154 @@
 # Multi_World — Takeover package index
 
-Status: **HANDOFF READY / PRE-OWNER FALSIFICATION PASS 2 CLOSED / R0d HUMAN GATE NEXT**  
+Status: **HUMAN ENTRY REPAIR QUALIFIED + PUBLICLY DEPLOYED / R0d OWNER HUMAN RELIABILITY RETEST NEXT**  
 Updated: **2026-09-07**  
 Handoff branch: `multi-world-r0d-reliability-handoff`
 
-This index supersedes the old A2R-era takeover order and the earlier V2/V3 startup orders.
-
-The handoff branch is documentation/reference only. Runtime authority remains the frozen source and delivery specimens below.
+This branch is documentation/reference only. Runtime authority remains the explicitly qualified/deployed specimens below.
 
 ---
 
 ## Canonical reading order now
 
-1. **`MULTI_WORLD_CURRENT_STATE.md`**  
-   Baseline current-state authority from machine-qualification closure. Keep its runtime/delivery anchors, but apply the later audit layers below.
+1. **`WORLD_V0_R0D_HUMAN_ENTRY_REPAIR_2026-09-07.md`**  
+   Current frontier. Records the failed first Owner entry attempt, the hidden callsign-contract defect, the bounded repair, the new cold-direct-link real-human browser gate, qualification evidence, public isolated deployment and exact provenance.
 
-2. **`WORLD_V0_R0D_PRE_OWNER_FALSIFICATION_AUDIT_PASS2_2026-09-07.md`**  
-   Current highest-priority pre-human evidence layer. It rereads the original Owner FAIL, corrects the causal target of the human gate, directly reproduces live-socket input starvation, adds a full renderer-main-thread stall falsifier, records the CI `tee`/`pipefail` apparatus bug, and closes Pass 2 without changing runtime.
+2. **`MULTI_WORLD_CURRENT_STATE.md`**  
+   Baseline machine-qualification state. Preserve its I1–I4/runtime conclusions, but apply the later audit and human-entry layers below.
 
-3. **`WORLD_V0_R0D_PRE_OWNER_FALSIFICATION_AUDIT_2026-09-07.md`**  
-   First pre-Owner audit. Retains the run-ID correction, same-page resume boundary, mobile lifecycle boundary, DO/process persistence nonclaim and other implementation red-team findings.
+3. **`WORLD_V0_R0D_PRE_OWNER_FALSIFICATION_AUDIT_PASS2_2026-09-07.md`**  
+   Final broad pre-human reliability falsification layer: live-socket input starvation, full renderer-main-thread stall and apparatus corrections.
 
-4. **`MULTI_WORLD_FRESH_TAKEOVER_V4.md`**  
-   Current startup mandate for a fresh Browser ChatGPT continuation. V4 supersedes V3/V2.
+4. **`WORLD_V0_R0D_PRE_OWNER_FALSIFICATION_AUDIT_2026-09-07.md`**  
+   First pre-Owner red-team layer: run-ID correction, mobile/process lifecycle boundaries and other nonclaims.
 
-5. **`WORLD_V0_R0D_RELIABILITY_RETEST_HANDOFF.md`**  
-   Detailed machine/handoff history. Useful as provenance; broad older wording is subject to both audit layers.
+5. **`MULTI_WORLD_FRESH_TAKEOVER_V4.md`**  
+   Pre-human-entry-repair takeover mandate. Still authoritative for I1–I4 and the two-phase human reliability contract, but **superseded on current deployment/entry readiness by item 1 and newest issue #8 checkpoint**.
 
-6. **`WORLD_V0_R0D_RELIABILITY_EVIDENCE_MANIFEST.md`**  
-   Exact digest of the original final remote I1–I4 artifact.
+6. **`WORLD_V0_R0D_RELIABILITY_RETEST_HANDOFF.md`** and **`WORLD_V0_R0D_RELIABILITY_EVIDENCE_MANIFEST.md`**  
+   Detailed original R0d machine evidence/provenance.
 
-7. **GitHub issue #8, comment `5558411044`**  
-   Original R0d human continuity FAIL. Important causal fact: lease-expiry/global failure happened during ordinary visible play, roughly 23.3 seconds before the later `visibility:hidden` event.
+7. **GitHub issue #8**  
+   - original human continuity FAIL: comment `5558411044`;
+   - Pass-2 checkpoint: comment `5568444757`;
+   - **current human-entry repair/deployment checkpoint: comment `5573318721`**.
 
-8. **GitHub issue #8, comment `5562283164`**  
-   Original isolated remote machine gate GREEN after I1–I4.
+8. **`MULTI_WORLD_PROJECT_SOUL.md`**  
+   Stable project intent when broader grounding is needed.
 
-9. **Newest issue #8 Pass-2 checkpoint**  
-   Current compact continuation checkpoint after the additional starvation/main-thread falsifiers.
-
-10. **`MULTI_WORLD_PROJECT_SOUL.md`**  
-    Stable broader project intent when needed.
-
-Older `MULTI_WORLD_FRESH_TAKEOVER_V3.md`, V2, V1 and A2R-era grounding are provenance, not current startup authority.
+Older V3/V2/V1 and A2R-era takeover material are provenance, not current startup authority.
 
 ---
 
-## Exact frozen runtime/delivery anchors
+## Current exact runtime and delivery anchors
 
-### Qualified product + reliability source
+### Frozen qualified multiplayer runtime
 
 `world-v0-multiplayer-foundation-integration@a2e821afbbc88371b033af311cc6882d46aa6916`
 
-Role: frozen R0c product + Multiplayer Reliability Foundation I1–I4 runtime control.
+This remains the I1–I4 authority/runtime source.
 
-### Isolated R0d delivery specimen
+### Previous R0d delivery baseline
 
 `world-v0-r0d-reliability-retest@7da9ddd4ad37221f63a3cd418a140824783480ec`
 
-Role: delivery-only descendant of `a2e821...`.
+Original remote qualification workflow `34060903778`: **PASS**.
 
-Expected isolated Worker:
+### Qualified human-entry repair
 
-`cloudflare-multiplayer-lab-reliability-play`
+`world-v0-r0d-human-entry-readiness@3e03e8228f665bef32a4ba97058d69c2e27a9e48`
 
-Original final remote workflow:
+Readiness workflow `34142054891`: **PASS**.
 
-`34060903778` — **PASS**
+Artifact `10026264308`, SHA-256:
 
-Delivery diff from `a2e821...` remains limited to:
+`457ff8b75e25c4096440d186bad04eb38a53abe9aea78e2676dcb3a46bf52f0b`
 
-- `.github/workflows/world-v0-r0d-reliability-retest.yml`;
-- `wrangler.jsonc` isolated `reliability_play` environment.
+### Current isolated public R0d delivery
 
-No qualified World V0 product/runtime bytes differ.
+`world-v0-r0d-human-entry-delivery@6f4abd4dd17c59078ab99530e64ef6cf752ab5ce`
 
-### Handoff/documentation branch
+Delivery workflow `34142273602`: **PASS**.
 
-`multi-world-r0d-reliability-handoff`
+Worker:
 
-Its head may move only for documentation/evidence continuity. It is not a runtime candidate.
+`https://cloudflare-multiplayer-lab-reliability-play.jozzpoly.workers.dev`
 
----
+Public artifact `10026356500`, SHA-256:
 
-## Pass-2 focused evidence branches
+`86ec8ac5c6451b404c8945eda2228e5fcc0b2cadf32e55d00c9d6084443886fa`
 
-These are evidence-only descendants of the frozen delivery and are **not runtime candidates**.
+Exact deployed provenance:
 
-### Live-transport starvation
+- runtime: `a2e821afbbc88371b033af311cc6882d46aa6916`;
+- prior R0d delivery: `7da9ddd4ad37221f63a3cd418a140824783480ec`;
+- human-entry qualification: `3e03e8228f665bef32a4ba97058d69c2e27a9e48`;
+- deployed delivery: `6f4abd4dd17c59078ab99530e64ef6cf752ab5ce`;
+- sim build: `shared-yard-v0-sim-888e471bc211091e`.
 
-Branch:
-
-`world-v0-r0d-preowner-starvation-falsifier`
-
-Run:
-
-`34104024218` — **PASS**
-
-Artifact ID:
-
-`10011623838`
-
-Verdict:
-
-`WORLD_V0_R0D_PREOWNER_LIVE_TRANSPORT_STARVATION_PASS`
-
-It stops B input while keeping B WebSocket open. B lease expires exactly after 36 ticks; A remains fresh; same WorldEpoch survives; B resumes fresh input on the same socket.
-
-### Full renderer main-thread stall
-
-Branch:
-
-`world-v0-r0d-preowner-mainthread-falsifier`
-
-Final evidence head:
-
-`4459eddac322cdee057aa8ec6732d01d2b9b4ce6`
-
-Final trustworthy workflow run:
-
-`34105021689` — **PASS**
-
-Artifact ID:
-
-`10012014250`
-
-Artifact ZIP SHA-256:
-
-`cb4c1e67f5f5a5755030ebdfe48da7c798b1dfd3b5fbf0393c2d4edf3eee9384`
-
-Verdict:
-
-`WORLD_V0_R0D_PREOWNER_MAINTHREAD_STALL_PASS`
-
-It blocks B's whole renderer main thread for measured 1400 ms while A runs independently. A sees B actor-local lease and remains alive; same epoch and ActorSession survive; B returns to exact state. Final repeat used direct catch-up; preceding corrected run `34104997239` exercised one bounded same-ActorSession exact rebase.
-
-### Apparatus warning
-
-Run `34104624070` must **not** be interpreted as PASS from its GitHub status.
-
-The original workflow used `node ... | tee ...` without `pipefail`, masking the underlying Node failure. The test also initially demanded recovery without rebase, which was an incorrect semantic assumption. Both apparatus defects were corrected before the final trustworthy run above.
+The repair does **not** change `src/`, `public/world-v0/app.js`, `public/world-v0/build-contract.js`, `public/world-v0/state-guard.js` or `package-lock.json` relative to `7da9ddd...`.
 
 ---
 
-## Current evidence boundary after Pass 2
+## What the human-entry repair proved
 
-The original global lifecycle defect is now attacked at multiple distinct layers:
+The first attempted Owner retest was blocked before network play because the UI hid a strict callsign wire regex. That invalidated the prior UX-readiness claim, not the multiplayer reliability evidence.
 
-- actor starvation with transport loss — I1;
-- future-intent causality — I2;
-- rAF-only starvation while event loop stays runnable — I3/I3b;
-- long transport/authority gap with exact ActorSession rebase — I4b;
-- **input starvation while WebSocket stays open** — Pass 2 live-transport falsifier;
-- **full renderer main-thread stall beyond the 36-tick lease** — Pass 2 Chromium falsifier.
+The repaired human boundary now:
 
-Current machine-supported conclusions:
+- explains/adapts ordinary names instead of bouncing them after Enter;
+- handles spaces and Polish diacritics (`Józz :D -> Jozz-D`, `Ktoś testowy -> Ktos-testowy`);
+- blocks unusable names before any network touch;
+- supports Enter-key submission;
+- uses neutral deep-link copy because the first entrant may open a fresh externally generated run;
+- is covered by standard checks plus a dedicated two-browser cold `?run=` first-entrant gate.
 
-- ActorSession lifetime is independent from current WebSocket lifetime after canonical start;
-- one actor lease expiry is actor-local containment rather than global epoch death;
-- healthy peer/world survives live-socket actor starvation;
-- a full browser-main-thread stall can recover either by direct exact catch-up or the bounded same-ActorSession exact-rebase path;
-- both bounded browser recovery classes have been observed with zero state-guard mismatch;
-- the frozen Worker provenance remained exact during Pass-2 tests.
+Public gate result:
 
-Important nonclaims remain:
+`WORLD_V0_HUMAN_ENTRY_PASS`
 
-- same-page resume is not persistent player identity across reload/process destruction;
-- hosted Linux Chromium is not full Android/mobile lifecycle evidence;
-- arbitrary WebSocket close codes remain broader than the currently explicit client close-code resume path;
-- Durable Object/Worker process-loss world persistence is not implemented;
-- pre-start waiting-peer loss intentionally remains fail-closed.
+with same `WorldId`/`WorldEpoch`, exact guard matches `12 / 12`, mismatches `0`.
 
-The Owner human test remains the highest-information next evidence.
+Public I1 control:
+
+`WORLD_V0_INTEGRATION_I1_SERVER_SESSION_PASS`
+
+with healthy-peer survival and preserved WorldEpoch across one actor transport drop.
+
+An initial repair workflow failure caused by the historical pre-I1 `world-v0-session-friction-smoke.mjs` was classified as an obsolete test-contract failure; the product was not regressed to satisfy it.
 
 ---
 
-## Correct next human action — two phases
+## Current human gate
 
-Do **not** reuse any run ID already written in an older conversation or CI log.
+Do **not** reuse any old human run ID or old test link.
 
 At actual test time:
 
-1. generate a new high-entropy run ID matching `^[A-Za-z0-9_-]{1,20}$`;
-2. do not pre-touch that exact run remotely or through CI;
-3. use the isolated Worker deep link;
-4. Owner in Poland opens it and clicks **Enter first**;
-5. wait until Owner reaches `waiting for peer`;
-6. only then share the exact same URL with the second real device/person;
-7. wait until two-person play is visibly live.
+1. generate a fresh high-entropy run ID matching `^[A-Za-z0-9_-]{1,20}$`;
+2. do not pre-touch that exact run;
+3. Owner opens the isolated Worker direct link first;
+4. type an ordinary name and Enter;
+5. wait for `Waiting for friend`;
+6. only then send the exact same URL to the second real person/device;
+7. wait until both are live.
 
 ### Phase A — primary old-failure falsifier
 
-Both devices remain foreground.
-
-Play naturally for several minutes with ordinary concurrent movement/camera/shared-prop interaction.
-
-Do **not** background either device during this phase.
-
-Primary question:
-
-> Can ordinary visible play still produce the old global `live -> blank/recovery/waiting -> live` collapse, or does the healthy peer/shared WorldEpoch remain alive even if one browser briefly starves internally?
-
-This phase directly matches the original human failure chronology.
+Both devices remain foreground and play naturally for several minutes. Primary question: does ordinary visible play still produce the old global `live -> blank/recovery/waiting -> live` collapse, or does the healthy peer/shared WorldEpoch remain alive?
 
 ### Phase B — secondary mobile lifecycle falsifier
 
-Only after Phase A is stable:
+Only after stable Phase A, one second device performs a normal background -> foreground cycle while Owner remains foreground. Do not deliberately kill/reload the tab.
 
-- Owner remains foreground and observing/playing;
-- second device performs one normal background -> foreground cycle;
-- do not deliberately kill/reload the tab.
+A stable Phase A closes the old global-coupling question even if Phase B later exposes a smaller returning-actor/mobile lifecycle gap.
 
-Observe whether the Owner/world remains continuous and how the returning actor recovers.
-
-If the OS naturally discards/destroys the page, preserve that as meaningful product evidence rather than declaring the run invalid.
-
----
-
-## Result classification
-
-### Old global failure PASS
-
-Phase A remains continuously live without the prior global recovery/new-epoch cycle.
-
-### Strong combined PASS
-
-Phase A is stable and Phase B also returns the same-page actor into the existing world without an equally serious new defect.
-
-### Partial PASS / bounded new client gap
-
-Phase A proves the old global defect is gone, but Phase B reveals a smaller returning-actor/mobile lifecycle issue while the healthy peer/world survives.
-
-### FAIL — old class persists
-
-Ordinary foreground play or a bounded actor disturbance still globally kills/rotates the shared WorldEpoch and drives both clients through the old recovery cycle.
-
-### INVALID
-
-Reserve for actual apparatus/specimen problems such as wrong deployment, provenance mismatch, different run IDs, invalid invite or incompatible/stale client fail-closed before the intended experiment.
+Human reliability remains **unproven** until this real session is observed.
 
 ---
 
 ## Scope freeze
 
-Do not add I5, persistent ActorSession, Durable Object persistence, broader reconciliation, content/jump work, 3-player expansion, lobby redesign, broad runtime refactoring or another generic reliability matrix before the Owner verdict merely for reassurance.
+Do not add I5, persistence, broader reconciliation, 3-player expansion, lobby redesign or generic reliability matrices before the Owner verdict merely for reassurance.
 
-Pass 2 directly covered the most obvious remaining starvation/stall gaps.
-
-Further pre-Owner work is justified only if a **materially different residual uncertainty** can be named and falsified without mutating the frozen candidate.
-
-If not, the correct next answer is:
-
-> teraz najważniejszy jest Twój test
-
----
-
-## Preserved original artifact identity
-
-Original final GitHub Actions artifact from workflow `34060903778`:
-
-- artifact ID `9997448698`;
-- artifact name `world-v0-r0d-reliability-retest-1`;
-- ZIP size `54,384 bytes`;
-- ZIP SHA-256 `2a2a740d9fe3e9f87602a1704814ef824f0fb716ec8e8c79d1194e441d3942b4`.
-
-`WORLD_V0_R0D_RELIABILITY_EVIDENCE_MANIFEST.md` preserves exact original file-level hashes and compact verdict payloads.
-
----
-
-## Historical/non-frontier warning
-
-`world-v0-friend-ready-foundation-integration@5dd28a899c4f60c9227f1eb93026f571ced733e3`
-
-remains an abandoned inert branch from a rejected ancestry hypothesis. It is not a frontier.
+The correct next frontier is the fresh real-human R0d retest.

@@ -1,0 +1,190 @@
+name: World V0 Playability Lead8 Resume Forensics
+
+on:
+  push:
+    branches: [world-v0-playability-lead8-resume-forensics]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-playability-lead8-resume-forensics
+  cancel-in-progress: false
+
+env:
+  BASELINE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
+  APPARATUS_SHA: 2021d5648c265b17395608e3cc8588edbac79d2f
+  REMOTE_SEMANTIC_SHA: 7be8fb76737dd6e10e21e1cd2ed2bf3d0c45ed80
+  BASELINE_SIM_BUILD: shared-yard-v0-sim-888e471bc211091e
+  WORKER: cloudflare-multiplayer-lab-paf-l8-888e471b
+  BASE_URL: https://cloudflare-multiplayer-lab-paf-l8-888e471b.jozzpoly.workers.dev
+
+jobs:
+  forensic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Ground apparatus-only forensic boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          for sha in "$BASELINE_SHA" "$APPARATUS_SHA" "$REMOTE_SEMANTIC_SHA"; do git cat-file -e "$sha^{commit}"; done
+          test -z "$(git diff --name-only "$BASELINE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          node --check scripts/prepare-world-v0-playability-resume-forensics.mjs
+          node --check scripts/prepare-world-v0-playability-no-render-cadence.mjs
+          bash -n scripts/run-world-v0-playability-remote-ab-variant.sh
+          echo "WORLD_V0_PLAYABILITY_LEAD8_RESUME_FORENSICS_GROUNDING_PASS"
+
+      - name: Recover exact qualified apparatus into workspace only
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            scripts/world-v0-playability-pressure-probe.mjs
+            scripts/prepare-world-v0-playability-input-shape-probe.mjs
+            scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs
+            scripts/apply-world-v0-playability-observability.mjs
+            scripts/apply-world-v0-presentation-shock-observability.mjs
+            scripts/prepare-world-v0-presentation-shock-probe.mjs
+          )
+          for file in "${files[@]}"; do
+            git show "$APPARATUS_SHA:$file" > "$file"
+            node --check "$file"
+          done
+          git show "$REMOTE_SEMANTIC_SHA:scripts/prepare-world-v0-remote-playability-probe.mjs" > scripts/prepare-world-v0-remote-playability-probe.mjs
+          node --check scripts/prepare-world-v0-remote-playability-probe.mjs
+          echo "WORLD_V0_PLAYABILITY_LEAD8_RESUME_FORENSICS_APPARATUS_RECOVERY_PASS"
+
+      - name: Inject forensic reducer after no-render preparation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const path = "scripts/run-world-v0-playability-remote-ab-variant.sh";
+          let source = readFileSync(path, "utf8");
+          const before = 'node scripts/prepare-world-v0-playability-no-render-cadence.mjs | tee "${prefix}-prepare-cadence.log"\nnode --check scripts/.world-v0-playability-input-shape-probe.mjs';
+          const after = 'node scripts/prepare-world-v0-playability-no-render-cadence.mjs | tee "${prefix}-prepare-cadence.log"\nnode scripts/prepare-world-v0-playability-resume-forensics.mjs | tee "${prefix}-prepare-resume.log"\nnode --check scripts/.world-v0-playability-input-shape-probe.mjs';
+          const first = source.indexOf(before);
+          if (first < 0 || source.indexOf(before, first + before.length) >= 0) throw new Error("forensic runner anchor invalid");
+          source = source.slice(0, first) + after + source.slice(first + before.length);
+          writeFileSync(path, source);
+          NODE
+          bash -n scripts/run-world-v0-playability-remote-ab-variant.sh
+          echo "WORLD_V0_PLAYABILITY_LEAD8_RESUME_FORENSICS_RUNNER_PREPARED"
+
+      - name: Run two isolated lead8 forensic specimens
+        shell: bash
+        env:
+          VARIANT: lead8-forensic
+          RUNTIME_SHA: ${{ env.BASELINE_SHA }}
+          SIM_LEAD_EXPECTED: "8"
+          SIM_BUILD_EXPECTED: ${{ env.BASELINE_SIM_BUILD }}
+          WORKER: ${{ env.WORKER }}
+          BASE_URL: ${{ env.BASE_URL }}
+        run: bash scripts/run-world-v0-playability-remote-ab-variant.sh
+
+      - name: Reduce resume cause evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' | tee lead8-resume-forensics-summary.log
+          import { readFileSync, writeFileSync } from "node:fs";
+          const attempts = [];
+          const allReasons = [];
+          for (let attempt = 1; attempt <= 2; attempt += 1) {
+            const value = JSON.parse(readFileSync(`ab-lead8-forensic-${attempt}.json`, "utf8"));
+            if (value.verdict !== "WORLD_V0_PLAYABILITY_INPUT_SHAPE_PASS") throw new Error(`attempt ${attempt} probe verdict ${value.verdict}`);
+            const clients = value.clients.map((client, index) => {
+              const events = Array.isArray(client.lifecycleEvents) ? client.lifecycleEvents : [];
+              const pending = events.filter((e) => e.type === "actor-resume-pending");
+              const attempts = events.filter((e) => e.type === "actor-resume-attempt");
+              const complete = events.filter((e) => e.type === "actor-resume-complete");
+              const reasons = pending.map((e) => e.reason ?? `socket:${e.code ?? "unknown"}`);
+              allReasons.push(...reasons);
+              return {
+                index,
+                startNetworkState: client.startNetworkState,
+                finalNetworkState: client.finalNetworkState,
+                startWorldEpoch: client.startWorldEpoch,
+                finalWorldEpoch: client.finalWorldEpoch,
+                sameWorldEpoch: client.startWorldEpoch === client.finalWorldEpoch,
+                finalProtocolStartTick: client.finalProtocolStartTick,
+                tickSpan: client.tickSpan,
+                maxAuthoritySilenceTicks: client.maxAuthoritySilenceTicks,
+                actorResume: client.actorResume,
+                pendingReasons: reasons,
+                resumeAttemptCount: attempts.length,
+                resumeCompleteCount: complete.length,
+                lifecycleTail: events.slice(-16),
+                guardMismatches: client.guardMismatches,
+                guardPending: client.guardPending,
+              };
+            });
+            attempts.push({ attempt, clients });
+          }
+          const authoritySilenceCount = allReasons.filter((reason) => reason === "authority_silence_history_guard").length;
+          const out = {
+            verdict: authoritySilenceCount > 0
+              ? "WORLD_V0_PLAYABILITY_LEAD8_AUTHORITY_SILENCE_RESUME_CONFIRMED"
+              : allReasons.length > 0
+                ? "WORLD_V0_PLAYABILITY_LEAD8_NON_SILENCE_RESUME_OBSERVED"
+                : "WORLD_V0_PLAYABILITY_LEAD8_NO_RESUME_REPRODUCED",
+            baselineSha: process.env.BASELINE_SHA,
+            simBuildId: process.env.BASELINE_SIM_BUILD,
+            worker: process.env.BASE_URL,
+            authoritySilenceCount,
+            observedReasons: allReasons,
+            attempts,
+            nonClaim: "Two GitHub-runner no-WebGL-draw specimens. This identifies client recovery cause on this apparatus path; it does not establish Owner feel or Poland RTT.",
+          };
+          writeFileSync("lead8-resume-forensics-summary.json", JSON.stringify(out, null, 2));
+          console.log(JSON.stringify(out, null, 2));
+          NODE
+
+      - name: Prove no canonical runtime materialization
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git reset --hard HEAD
+          rm -f \
+            scripts/world-v0-playability-pressure-probe.mjs \
+            scripts/prepare-world-v0-playability-input-shape-probe.mjs \
+            scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs \
+            scripts/apply-world-v0-playability-observability.mjs \
+            scripts/apply-world-v0-presentation-shock-observability.mjs \
+            scripts/prepare-world-v0-presentation-shock-probe.mjs \
+            scripts/prepare-world-v0-remote-playability-probe.mjs \
+            scripts/.prepare-world-v0-playability-input-shape-probe-fixed.mjs \
+            scripts/.world-v0-playability-input-shape-probe.mjs \
+            wrangler.ab-lead8-forensic.jsonc \
+            public/world-v0/playability-ab-provenance.json
+          test -z "$(git diff --name-only "$BASELINE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          echo "WORLD_V0_PLAYABILITY_LEAD8_RESUME_FORENSICS_NO_RUNTIME_MATERIALIZATION_PASS"
+
+      - name: Upload forensic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playability-lead8-resume-forensics-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            ab-lead8-forensic-*.json
+            ab-lead8-forensic-*.log
+            lead8-resume-forensics-summary.json
+            lead8-resume-forensics-summary.log
+          if-no-files-found: warn
+          retention-days: 14

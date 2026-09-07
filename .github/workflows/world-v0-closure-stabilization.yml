@@ -1,0 +1,151 @@
+name: World V0 Closure Stabilization
+
+on:
+  push:
+    branches: [world-v0-closure-stabilization]
+    paths:
+      - scripts/materialize-world-v0-closure-stabilization.mjs
+      - .github/workflows/world-v0-closure-stabilization.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-closure-stabilization
+  cancel-in-progress: false
+
+env:
+  BASE_SHA: 2250e45c53aaf2f9107ac718e2ac5dba6ab02d2e
+
+jobs:
+  materialize-and-falsify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact stabilization branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: world-v0-closure-stabilization
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Prove bounded pre-materialization surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          pre="$(git diff --name-only "$BASE_SHA" HEAD)"
+          printf '%s\n' "$pre"
+          bad="$(printf '%s\n' "$pre" | grep -Ev '^(scripts/materialize-world-v0-closure-stabilization\.mjs|\.github/workflows/world-v0-closure-stabilization\.yml)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected pre-stabilization diff:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+          node --check scripts/materialize-world-v0-closure-stabilization.mjs
+
+      - name: Materialize bounded stabilization repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/materialize-world-v0-closure-stabilization.mjs | tee world-v0-closure-materialize.log
+          grep -q 'WORLD_V0_CLOSURE_STABILIZATION_MATERIALIZED' world-v0-closure-materialize.log
+          git diff --check
+          changed="$(git diff --name-only)"
+          printf '%s\n' "$changed"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(public/world-v0/app\.js|scripts/world-v0-human-entry-browser-smoke\.mjs)$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected stabilization materialized file:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+          for expected in public/world-v0/app.js scripts/world-v0-human-entry-browser-smoke.mjs; do
+            printf '%s\n' "$changed" | grep -qx "$expected" || { echo "Missing expected materialized file $expected" >&2; exit 1; }
+          done
+
+      - name: Standard repository check
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check | tee world-v0-closure-check.log
+
+      - name: Start local reliability Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-closure-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-closure-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "closure Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-closure-wrangler.log
+          exit 1
+
+      - name: Real Chromium close-tab fresh-reopen falsifier
+        env:
+          MW_WORLD_V0_HUMAN_ENTRY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_HUMAN_ENTRY_OUTPUT: world-v0-closure-human-entry.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-human-entry-browser-smoke.mjs | tee world-v0-closure-human-entry.log
+          grep -q 'WORLD_V0_HUMAN_ENTRY_PASS' world-v0-closure-human-entry.log
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const evidence = JSON.parse(readFileSync("world-v0-closure-human-entry.json", "utf8"));
+          if (evidence.verdict !== "WORLD_V0_HUMAN_ENTRY_PASS") throw new Error(`verdict ${evidence.verdict}`);
+          if (evidence.peerTabCloseFreshReopenRejectedTruthfully !== true) throw new Error("fresh reopen truth gate missing");
+          if (evidence.healthyOwnerWorldEpochPreservedAcrossPeerReopen !== true) throw new Error("healthy owner continuity gate missing");
+          if (!(evidence.ownerBoundaryAfterPeerReopen > evidence.ownerBoundaryBeforePeerClose)) throw new Error("healthy owner did not progress");
+          console.log("WORLD_V0_CLOSURE_FRESH_REOPEN_PASS", JSON.stringify({
+            worldEpoch: evidence.worldEpoch,
+            before: evidence.ownerBoundaryBeforePeerClose,
+            after: evidence.ownerBoundaryAfterPeerReopen,
+          }));
+          NODE
+
+      - name: Stop local Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/world-v0-closure-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-closure-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload stabilization evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-closure-stabilization-${{ github.run_attempt }}
+          path: |
+            world-v0-closure-materialize.log
+            world-v0-closure-check.log
+            world-v0-closure-wrangler.log
+            world-v0-closure-human-entry.log
+            world-v0-closure-human-entry.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Commit exact qualified stabilization bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/world-v0/app.js scripts/world-v0-human-entry-browser-smoke.mjs
+          git diff --cached --check
+          git diff --cached --quiet && { echo "No stabilization bytes to commit"; exit 0; }
+          git commit -m "fix(world-v0): make fresh reopen failure truthful"
+          git push origin HEAD:world-v0-closure-stabilization

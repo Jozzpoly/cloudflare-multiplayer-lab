@@ -1,0 +1,200 @@
+name: World V0 Playability Input Shape Audit
+
+on:
+  push:
+    branches: [world-v0-playability-input-shape-audit]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-playability-input-shape-audit
+  cancel-in-progress: false
+
+env:
+  BASE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
+
+jobs:
+  specimen:
+    strategy:
+      fail-fast: false
+      matrix:
+        lead: [0, 2, 4, 8]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+
+      - name: Ground apparatus-only specimen
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- src public/world-v0/app.js public/world-v0/build-contract.js public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+          node --check scripts/apply-world-v0-playability-lead-experiment.mjs
+          node --check scripts/apply-world-v0-playability-observability.mjs
+          node --check scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs
+
+      - name: Apply isolated timing and observability
+        shell: bash
+        env:
+          MW_WORLD_V0_SIM_LEAD: ${{ matrix.lead }}
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/apply-world-v0-playability-lead-experiment.mjs | tee "lead-${{ matrix.lead }}-apply.log"
+          node scripts/apply-world-v0-playability-observability.mjs | tee "lead-${{ matrix.lead }}-observability.log"
+          node scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs | tee "lead-${{ matrix.lead }}-prepare.log"
+          node --check scripts/.world-v0-playability-input-shape-probe.mjs
+          git diff --check
+          changed="$(git diff --name-only)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(src/world-v0-contract\.ts|public/world-v0/(app\.js|build-contract\.js))$' || true)"
+          if [ -n "$bad" ]; then
+            echo "unexpected runtime diff:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+          test -z "$(git diff --name-only -- src/world-v0-shared-yard.ts src/world-v0-protocol.ts src/box3d-runtime.ts public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+
+      - name: Full repository regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check | tee "lead-${{ matrix.lead }}-check.log"
+
+      - name: Start isolated Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "lead-${{ matrix.lead }}-wrangler.log" 2>&1 &
+          echo $! > /tmp/input-shape-wrangler.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8787/api/ping >/dev/null && exit 0
+            sleep 1
+          done
+          cat "lead-${{ matrix.lead }}-wrangler.log"
+          exit 1
+
+      - name: Run continuous camera-relative input specimen
+        shell: bash
+        env:
+          MW_WORLD_V0_PLAYABILITY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABILITY_OUTPUT: lead-${{ matrix.lead }}-input-shape.json
+          MW_WORLD_V0_INPUT_SHAPE_DRIVE_MS: 6000
+          MW_WORLD_V0_INPUT_SHAPE_INTERVAL_MS: 16
+        run: |
+          set -euo pipefail
+          node scripts/.world-v0-playability-input-shape-probe.mjs | tee "lead-${{ matrix.lead }}-input-shape.log"
+
+      - name: Validate and reduce specimen
+        shell: bash
+        env:
+          LEAD_EXPECTED: ${{ matrix.lead }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const lead = Number(process.env.LEAD_EXPECTED);
+          const v = JSON.parse(readFileSync(`lead-${lead}-input-shape.json`, "utf8"));
+          if (v.verdict !== "WORLD_V0_PLAYABILITY_INPUT_SHAPE_PASS") throw new Error(`lead ${lead}: ${v.verdict}`);
+          if (!Array.isArray(v.localResponse) || v.localResponse.length !== 2) throw new Error(`lead ${lead}: response evidence missing`);
+          for (const [i,c] of v.clients.entries()) {
+            if (c.inputLeadTicks !== 8 || c.simulationLeadTicks !== lead) throw new Error(`lead ${lead} client ${i}: timing mismatch`);
+            if (c.guardMismatches !== 0 || c.firstStateMismatch !== null) throw new Error(`lead ${lead} client ${i}: exact mismatch`);
+            if (!c.observability || c.observability.correctionCount !== c.corrections) throw new Error(`lead ${lead} client ${i}: severity accounting mismatch`);
+          }
+          const obs = v.clients.map((c) => c.observability);
+          const row = {
+            simulationLeadTicks: lead,
+            meanCorrectionsPer1000Ticks: v.aggregate.meanCorrectionsPer1000Ticks,
+            totalCorrections: v.aggregate.totalCorrections,
+            maxSelfCorrection: v.aggregate.maxSelfCorrection,
+            maxRemoteCorrection: v.aggregate.maxRemoteCorrection,
+            maxPropCorrection: v.aggregate.maxPropCorrection,
+            totalSelfCorrectionDistance: obs.reduce((s,o) => s + o.distance.self.total, 0),
+            totalRemoteCorrectionDistance: obs.reduce((s,o) => s + o.distance.remote.total, 0),
+            totalPropCorrectionDistance: obs.reduce((s,o) => s + o.distance.prop.total, 0),
+            visibleSelfCorrectionsOver005: obs.reduce((s,o) => s + o.distance.self.over005, 0),
+            visibleSelfCorrectionsOver010: obs.reduce((s,o) => s + o.distance.self.over010, 0),
+            visibleRemoteCorrectionsOver005: obs.reduce((s,o) => s + o.distance.remote.over005, 0),
+            visibleRemoteCorrectionsOver010: obs.reduce((s,o) => s + o.distance.remote.over010, 0),
+            peerRecordCorrections: obs.reduce((s,o) => s + o.byReason["peer-record"], 0),
+            authorityConsumedCorrections: obs.reduce((s,o) => s + o.byReason["authority-consumed"], 0),
+            supersededInputs: v.clients.reduce((s,c) => s + (c.supersededDelta || 0), 0),
+            responseBoundaryTickDelay: v.localResponse.map((r) => r.boundaryTickDelay),
+            responseWallClockMs: v.localResponse.map((r) => r.wallClockMs),
+          };
+          writeFileSync(`lead-${lead}-input-shape-row.json`, JSON.stringify(row, null, 2));
+          console.log(`WORLD_V0_PLAYABILITY_INPUT_SHAPE_LEAD_${lead}_PASS`, JSON.stringify(row));
+          NODE
+
+      - name: Stop Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/input-shape-wrangler.pid ]; then kill "$(cat /tmp/input-shape-wrangler.pid)" 2>/dev/null || true; fi
+
+      - name: Prove no materialization
+        if: always()
+        shell: bash
+        run: |
+          git reset --hard HEAD
+          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- src public/world-v0/app.js public/world-v0/build-contract.js public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+
+      - name: Upload specimen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-input-shape-lead-${{ matrix.lead }}
+          path: |
+            lead-${{ matrix.lead }}-input-shape.json
+            lead-${{ matrix.lead }}-input-shape-row.json
+            lead-${{ matrix.lead }}-input-shape.log
+            lead-${{ matrix.lead }}-*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  summarize:
+    needs: specimen
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: world-v0-input-shape-lead-*
+          path: specimens
+          merge-multiple: true
+      - name: Require and summarize four independent specimens
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' | tee input-shape-summary.log
+          import { existsSync, readFileSync, writeFileSync } from "node:fs";
+          const rows = [];
+          for (const lead of [0,2,4,8]) {
+            const p = `specimens/lead-${lead}-input-shape-row.json`;
+            if (!existsSync(p)) throw new Error(`missing input-shape specimen lead ${lead}`);
+            rows.push(JSON.parse(readFileSync(p, "utf8")));
+          }
+          const out = {
+            verdict: "WORLD_V0_PLAYABILITY_INPUT_SHAPE_AUDIT_COMPLETE",
+            rows,
+            nonClaim: "CI wall-clock response and SwiftShader rendering are not Owner feel evidence. Boundary-tick response, correction severity, correction source and supersession counts are the intended causal observables.",
+          };
+          writeFileSync("input-shape-summary.json", JSON.stringify(out, null, 2));
+          console.log(JSON.stringify(out, null, 2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-input-shape-summary
+          path: |
+            input-shape-summary.json
+            input-shape-summary.log
+          retention-days: 14

@@ -50,6 +50,36 @@ probe = replaceUnique(
     rttP95Ms: end.rtt?.p95Ms ?? null,`,
   "network timing evidence",
 );
+
+const waitThrowBefore = '  throw new Error(`${label} timeout · last=${JSON.stringify(last)}`);';
+const waitThrowAfter = [
+  '  let debug = null;',
+  '  try {',
+  '    debug = await evaluate(client, `(() => {',
+  '      const e = window.__sharedYardV0Evidence?.();',
+  '      if (!e) return { href: location.href, documentReady: document.readyState, bootStatus: document.querySelector("#boot-status")?.textContent || null };',
+  '      return {',
+  '        networkState: e.networkState,',
+  '        runtimeFailed: e.runtimeFailed,',
+  '        runtimeFailureReason: e.runtimeFailureReason,',
+  '        identity: e.identity,',
+  '        protocolStartTick: e.protocolStartTick,',
+  '        localBoundaryTick: e.localBoundaryTick,',
+  '        latestAuthorityBoundary: e.metrics?.latestAuthorityBoundary ?? null,',
+  '        guardMatches: e.metrics?.guardMatches ?? null,',
+  '        guardMismatches: e.metrics?.guardMismatches ?? null,',
+  '        guardPending: e.metrics?.guardPending ?? null,',
+  '        frame: e.frame,',
+  '        actorResume: e.session?.actorResume ?? null,',
+  '        sessionEnd: e.session?.end ?? null,',
+  '        lifecycleTail: e.lifecycleEvents?.slice(-10) || [],',
+  '      };',
+  '    })()`);',
+  '  } catch (error) { debug = { debugReadError: error instanceof Error ? error.message : String(error) }; }',
+  '  throw new Error(`${label} timeout · last=${JSON.stringify(last)} · debug=${JSON.stringify(debug)}`);',
+].join("\n");
+probe = replaceUnique(probe, waitThrowBefore, waitThrowAfter, "timeout diagnostic capture");
+
 writeFileSync(PROBE, probe);
 
 console.log("WORLD_V0_PLAYABILITY_NO_RENDER_CADENCE_PREPARED");

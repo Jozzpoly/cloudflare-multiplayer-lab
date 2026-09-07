@@ -15,6 +15,7 @@ on:
       - scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs
       - scripts/world-v0-closure-dual-browser-grace-audit.mjs
       - scripts/world-v0-closure-start-window-audit.mjs
+      - scripts/world-v0-closure-waiting-room-drop-audit.mjs
       - scripts/world-v0-human-entry-browser-smoke.mjs
   workflow_dispatch:
 
@@ -49,10 +50,12 @@ jobs:
           set -euo pipefail
           npm run check | tee world-v0-closure-current-check.log
           grep -q 'const ACTOR_RESUME_MAX_ATTEMPTS = 12;' public/world-v0/app.js
-          grep -q 'shared-yard-v0-browser-ui-v12-start-window-resume' public/world-v0/build-contract.js
+          grep -q 'shared-yard-v0-browser-ui-v13-bounded-start-window-resume' public/world-v0/build-contract.js
           grep -q 'allDisconnectedGraceTicks: 20 \* 60' src/world-v0-contract.ts
           grep -q 'shared-yard-v0-authority-v7-retry-aligned-grace' public/world-v0/build-contract.js
           grep -q 'shared-yard-v0-sim-9c308539ccf305cc' public/world-v0/build-contract.js
+          grep -q 'activeActorTransportRecoverable' public/world-v0/app.js
+          grep -q 'committedStartWindowRecoverable' public/world-v0/app.js
 
       - name: Start local reliability Workerd
         shell: bash
@@ -81,6 +84,16 @@ jobs:
           grep -q 'WORLD_V0_INTEGRATION_I1_SERVER_SESSION_PASS' world-v0-closure-current-i1.log
           grep -q '"oldEpochPreservedAt1800msAllDisconnected": true' world-v0-closure-current-i1.log
           grep -q '"oldEpochRetiredAfterGrace": true' world-v0-closure-current-i1.log
+
+      - name: Requalify waiting-room fail-closed boundary
+        env:
+          MW_WORLD_V0_WAITING_DROP_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_WAITING_DROP_OUTPUT: world-v0-closure-current-waiting-room.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 60s node scripts/world-v0-closure-waiting-room-drop-audit.mjs | tee world-v0-closure-current-waiting-room.log
+          grep -q 'WORLD_V0_CLOSURE_WAITING_ROOM_FAIL_CLOSED_PASS' world-v0-closure-current-waiting-room.log
 
       - name: Requalify committed-start ActorSession recovery window
         env:
@@ -183,6 +196,8 @@ jobs:
             world-v0-closure-current-check.log
             world-v0-closure-current-wrangler.log
             world-v0-closure-current-i1.log
+            world-v0-closure-current-waiting-room.log
+            world-v0-closure-current-waiting-room.json
             world-v0-closure-current-start-window.log
             world-v0-closure-current-start-window.json
             world-v0-closure-current-all-drop.log

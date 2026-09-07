@@ -90,8 +90,8 @@ jobs:
           set -euo pipefail
           node --experimental-strip-types scripts/world-v0-integration-i4b-authority-probe.mjs | tee world-v0-closure-current-i4b-authority.log
           node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-closure-current-i4b-chromium.log
-          grep -q 'WORLD_V0_INTEGRATION_I4B_AUTHORITY_PASS' world-v0-closure-current-i4b-authority.log
-          grep -q 'WORLD_V0_INTEGRATION_I4B_CHROMIUM_REBASE_PASS' world-v0-closure-current-i4b-chromium.log
+          grep -q 'WORLD_V0_INTEGRATION_I4B_AUTHORITY_EXACT_REBASE_PASS' world-v0-closure-current-i4b-authority.log
+          grep -q 'WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS' world-v0-closure-current-i4b-chromium.log
 
       - name: Requalify real Chromium human-entry and fresh-reopen truth
         env:

@@ -1,0 +1,209 @@
+name: World V0 Playability Remote A-B Clean Forward
+
+on:
+  push:
+    branches: [world-v0-playability-remote-ab-clean-forward]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-playability-remote-ab-clean-forward
+  cancel-in-progress: false
+
+env:
+  BASELINE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
+  CANDIDATE_SHA: eb26d060904bebd9acc1b8e1c8fc446f20a60599
+  APPARATUS_SHA: 2021d5648c265b17395608e3cc8588edbac79d2f
+  REMOTE_SEMANTIC_SHA: 7be8fb76737dd6e10e21e1cd2ed2bf3d0c45ed80
+  BASELINE_SIM_BUILD: shared-yard-v0-sim-888e471bc211091e
+  CANDIDATE_SIM_BUILD: shared-yard-v0-sim-85ac7ad492b61610
+  BASELINE_WORKER: cloudflare-multiplayer-lab-pabf-l8-888e471b
+  CANDIDATE_WORKER: cloudflare-multiplayer-lab-pabf-l2-85ac7ad4
+  BASELINE_URL: https://cloudflare-multiplayer-lab-pabf-l8-888e471b.jozzpoly.workers.dev
+  CANDIDATE_URL: https://cloudflare-multiplayer-lab-pabf-l2-85ac7ad4.jozzpoly.workers.dev
+
+jobs:
+  clean-forward-ab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Ground exact clean-forward A-B boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          for sha in "$BASELINE_SHA" "$CANDIDATE_SHA" "$APPARATUS_SHA" "$REMOTE_SEMANTIC_SHA"; do git cat-file -e "$sha^{commit}"; done
+          git merge-base --is-ancestor "$CANDIDATE_SHA" HEAD
+          test -z "$(git diff --name-only "$CANDIDATE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          bash -n scripts/run-world-v0-playability-remote-ab-variant.sh
+          node --check scripts/prepare-world-v0-playability-no-render-cadence.mjs
+          node --check scripts/validate-world-v0-playability-ab-variant.mjs
+          git diff --check "$CANDIDATE_SHA" HEAD
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_CLEAN_FORWARD_GROUNDING_PASS"
+
+      - name: Recover exact qualified apparatus into workspace only
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            scripts/world-v0-playability-pressure-probe.mjs
+            scripts/prepare-world-v0-playability-input-shape-probe.mjs
+            scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs
+            scripts/apply-world-v0-playability-observability.mjs
+            scripts/apply-world-v0-presentation-shock-observability.mjs
+            scripts/prepare-world-v0-presentation-shock-probe.mjs
+          )
+          for file in "${files[@]}"; do
+            git show "$APPARATUS_SHA:$file" > "$file"
+            node --check "$file"
+          done
+          git show "$REMOTE_SEMANTIC_SHA:scripts/prepare-world-v0-remote-playability-probe.mjs" > scripts/prepare-world-v0-remote-playability-probe.mjs
+          node --check scripts/prepare-world-v0-remote-playability-probe.mjs
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_CLEAN_FORWARD_APPARATUS_RECOVERY_PASS"
+
+      - name: Run baseline lead8 first
+        shell: bash
+        env:
+          VARIANT: lead8
+          RUNTIME_SHA: ${{ env.BASELINE_SHA }}
+          SIM_LEAD_EXPECTED: "8"
+          SIM_BUILD_EXPECTED: ${{ env.BASELINE_SIM_BUILD }}
+          WORKER: ${{ env.BASELINE_WORKER }}
+          BASE_URL: ${{ env.BASELINE_URL }}
+        run: bash scripts/run-world-v0-playability-remote-ab-variant.sh
+
+      - name: Intervariant teardown barrier
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          pkill -f 'chromium|chrome' || true
+          for i in {1..20}; do
+            if ! pgrep -f 'chromium|chrome' >/dev/null; then break; fi
+            sleep 0.1
+          done
+          if pgrep -f 'chromium|chrome' >/dev/null; then
+            echo "APPARATUS_INVALID: Chrome survived teardown barrier" >&2
+            exit 1
+          fi
+          rm -f scripts/.prepare-world-v0-playability-input-shape-probe-fixed.mjs scripts/.world-v0-playability-input-shape-probe.mjs
+          sleep 1
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_INTERVARIANT_TEARDOWN_PASS"
+
+      - name: Run clean lead2 candidate second
+        if: always()
+        shell: bash
+        env:
+          VARIANT: lead2
+          RUNTIME_SHA: ${{ env.CANDIDATE_SHA }}
+          SIM_LEAD_EXPECTED: "2"
+          SIM_BUILD_EXPECTED: ${{ env.CANDIDATE_SIM_BUILD }}
+          WORKER: ${{ env.CANDIDATE_WORKER }}
+          BASE_URL: ${{ env.CANDIDATE_URL }}
+        run: bash scripts/run-world-v0-playability-remote-ab-variant.sh
+
+      - name: Require complete live specimens
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/validate-world-v0-playability-ab-variant.mjs ab-lead8-summary.json
+          node scripts/validate-world-v0-playability-ab-variant.mjs ab-lead2-summary.json
+
+      - name: Compare complete paired evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' | tee remote-ab-clean-forward-comparison.log
+          import { readFileSync, writeFileSync } from "node:fs";
+          const baseline = JSON.parse(readFileSync("ab-lead8-summary.json", "utf8"));
+          const candidate = JSON.parse(readFileSync("ab-lead2-summary.json", "utf8"));
+          const flatten = (v) => v.attempts.flatMap((a) => a.clients);
+          const responses = (v) => v.attempts.flatMap((a) => a.localResponse);
+          const median = (xs) => { const v = xs.filter(Number.isFinite).sort((a,b)=>a-b); const m=Math.floor(v.length/2); return v.length%2?v[m]:(v[m-1]+v[m])/2; };
+          const reduce = (v) => {
+            const c = flatten(v);
+            const r = responses(v);
+            const sum = (f) => c.reduce((s,x)=>s+(Number(x[f])||0),0);
+            const mean = (f) => sum(f)/c.length;
+            return {
+              clientSamples: c.length,
+              meanCorrectionsPer1000Ticks: mean("correctionsPer1000Ticks"),
+              totalNetCorrection: sum("netSelfTotal") + sum("netRemoteTotal"),
+              shockOver005: sum("netSelfOver005") + sum("netRemoteOver005"),
+              shockOver010: sum("netSelfOver010") + sum("netRemoteOver010"),
+              maxNetShock: Math.max(...c.flatMap((x)=>[x.maxNetSelfShock||0,x.maxNetRemoteShock||0])),
+              totalSuperseded: sum("supersededDelta"),
+              totalServerLate: sum("serverLate"),
+              medianRttMs: median(c.map((x)=>x.rttMedianMs)),
+              medianFrameP95Ms: median(c.map((x)=>x.frameP95Ms)),
+              medianResponseTicks: median(r.map((x)=>x.boundaryTickDelay)),
+              medianResponseMs: median(r.map((x)=>x.wallClockMs)),
+              tickSpans: c.map((x)=>x.tickSpan),
+            };
+          };
+          const b = reduce(baseline);
+          const c = reduce(candidate);
+          const ratios = {
+            correctionDensity: c.meanCorrectionsPer1000Ticks / b.meanCorrectionsPer1000Ticks,
+            totalNetCorrection: c.totalNetCorrection / b.totalNetCorrection,
+            superseded: c.totalSuperseded / b.totalSuperseded,
+          };
+          const verdict = ratios.correctionDensity < 0.5 && ratios.totalNetCorrection < 0.5
+            ? "WORLD_V0_PLAYABILITY_CLEAN_FORWARD_STRONGLY_SUPPORTS_LEAD2"
+            : ratios.correctionDensity < 0.75
+              ? "WORLD_V0_PLAYABILITY_CLEAN_FORWARD_PARTIAL_SUPPORT_LEAD2"
+              : "WORLD_V0_PLAYABILITY_CLEAN_FORWARD_MIXED_OR_REFUTES_LEAD2";
+          const out = { verdict, baseline: b, candidate: c, ratios, nonClaim: "Machine A/B on one GitHub runner with WebGL draw disabled and an explicit intervariant teardown barrier. This does not establish Owner feel or Poland RTT." };
+          writeFileSync("remote-ab-clean-forward-comparison.json", JSON.stringify(out, null, 2));
+          console.log(JSON.stringify(out, null, 2));
+          NODE
+
+      - name: Prove no canonical runtime materialization
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git reset --hard HEAD
+          rm -f \
+            scripts/world-v0-playability-pressure-probe.mjs \
+            scripts/prepare-world-v0-playability-input-shape-probe.mjs \
+            scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs \
+            scripts/apply-world-v0-playability-observability.mjs \
+            scripts/apply-world-v0-presentation-shock-observability.mjs \
+            scripts/prepare-world-v0-presentation-shock-probe.mjs \
+            scripts/prepare-world-v0-remote-playability-probe.mjs \
+            scripts/.prepare-world-v0-playability-input-shape-probe-fixed.mjs \
+            scripts/.world-v0-playability-input-shape-probe.mjs \
+            wrangler.ab-lead8.jsonc wrangler.ab-lead2.jsonc \
+            public/world-v0/playability-ab-provenance.json
+          test -z "$(git diff --name-only "$CANDIDATE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          echo "WORLD_V0_PLAYABILITY_REMOTE_AB_CLEAN_FORWARD_NO_RUNTIME_MATERIALIZATION_PASS"
+
+      - name: Upload strict clean-forward evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playability-remote-ab-clean-forward-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            ab-lead8-*.json
+            ab-lead8-*.log
+            ab-lead2-*.json
+            ab-lead2-*.log
+            remote-ab-clean-forward-comparison.json
+            remote-ab-clean-forward-comparison.log
+          if-no-files-found: warn
+          retention-days: 14

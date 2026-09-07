@@ -1,86 +1,133 @@
 # Multi_World — Takeover package index
 
-Status: **HANDOFF READY / FRESH PROJECT MUST VERIFY LIVE BEFORE IMPLEMENTATION**  
-Branch: `multi-world-takeover-grounding`  
-Base specimen: A2R human-reference `2c9116267a0c8bba93061f759cefdb709e966e43`
+Status: **HANDOFF READY / R0d OWNER HUMAN RELIABILITY GATE NEXT**  
+Updated: **2026-09-07**  
+Handoff branch: `multi-world-r0d-reliability-handoff`
 
-This branch exists only to prepare a fresh ChatGPT project takeover. It intentionally does not modify runtime, physics or deployment configuration.
+This index supersedes the old A2R-era takeover reading order for the next conversation. Older takeover/grounding documents remain preserved as provenance.
 
-## Canonical reading order for the fresh project
+The handoff branch is documentation/reference only. Runtime authority remains the frozen integration and delivery specimens listed below.
 
-1. **`MULTI_WORLD_PROJECT_SOUL.md`**  
-   Canonical purpose, product values, shared-world continuity pressure, boundaries and working method. Read this first so current substrates are not confused with project identity.
+---
 
-2. **`MULTI_WORLD_GROUNDING_V1.md`**  
-   Canonical consolidated grounding: exact controls, evidence classification, A2/A2R mechanical envelope, current unknowns, donor boundary and human/device validation pressure. Verify it live.
+## Canonical reading order now
 
-3. **`MULTI_WORLD_HUMAN_TEST_CONTEXT.md`**  
-   Canonical supporting context on desktop/mobile, camera/touch controls and real human test capacity: 2 players as the normal human multiplayer crucible, 3 as a realistic early stress test, 4 as an opportunistic stronger test rather than a current scale requirement.
+1. **`MULTI_WORLD_CURRENT_STATE.md`**  
+   Short current-state authority: exact branches/SHAs, evidence classification, closed machine work, pending human gate and scope freeze.
 
-4. **`MULTI_WORLD_FRESH_TAKEOVER_V1.md`**  
-   Final startup mandate for the new ChatGPT project. It requires live regrounding and an explicit challenge to the handoff before implementation.
+2. **`WORLD_V0_R0D_RELIABILITY_RETEST_HANDOFF.md`**  
+   Detailed execution/evidence handoff for the exact next R0d human reliability re-test.
 
-## Audit/provenance material — not required startup reading
+3. **GitHub issue #8, comment `5558411044`**  
+   Original R0d human continuity FAIL that falsified the old lifecycle model.
 
-- `MULTI_WORLD_GROUNDING_LEDGER.md` — original broad v0 ledger;
-- `MULTI_WORLD_GROUNDING_REDTEAM.md` — critique that produced the accepted v1 corrections;
-- `MULTI_WORLD_FRESH_TAKEOVER.md` — older, heavier takeover draft.
+4. **GitHub issue #8, comment `5562283164`**  
+   Final isolated remote machine gate GREEN after I1–I4.
 
-Use these only if you need to understand why Grounding v1 or Takeover v1 is phrased cautiously.
+5. **`MULTI_WORLD_FRESH_TAKEOVER_V2.md`**  
+   Startup mandate for the next Browser ChatGPT conversation.
 
-## Exact anchors at latest preparation audit
+6. **`MULTI_WORLD_PROJECT_SOUL.md`**  
+   Stable broader project intent when the new conversation needs to recover why the technical work matters.
 
-### Multi_World
+This is enough to begin the next conversation if live heads match.
 
-- infrastructure control: `main@d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de`;
-- A2 preserved failed baseline: `world-slice-0-embodied-3d-place@ef26fce6f5f21e219a4d8f57943449f4d2a2abca`;
-- A2R human-reference: `world-slice-0-a2r-timeline-rebuild@2c9116267a0c8bba93061f759cefdb709e966e43`.
+---
 
-All three matched live GitHub state during the final preparation audit.
+## Exact current runtime/delivery anchors
 
-### Character Controller donor
+### Qualified product + reliability source
 
-Repository: `Jozzpoly/Box3d-Character-Controler`
+`world-v0-multiplayer-foundation-integration@a2e821afbbc88371b033af311cc6882d46aa6916`
 
-Latest audit found:
+Role: frozen R0c-product + Multiplayer Reliability Foundation I1–I4 runtime control.
 
-- live `main@5891fbf0b2a2a0f2cf5c41578d95b1aa72ac68ad`;
-- this head is a documentation/current-state grounding commit;
-- canonical implementation/behavior baseline recorded by that project: `f4877a46618a347c3be32edf7ddb39ab66a091bd`;
-- exact Owner-qualified Donor v1 mechanics specimen: `bc06ca98e94314af0ba888b74e1c4029429422e5`.
+### Isolated R0d delivery specimen
 
-Do not collapse live head, behavior baseline and mechanics specimen into one authority fact.
+`world-v0-r0d-reliability-retest@7da9ddd4ad37221f63a3cd418a140824783480ec`
 
-## Deployment freshness audit
+Role: delivery-only descendant of `a2e821...`.
 
-The final A2R staging/browser/cloud evidence remains recorded repo-natively in GitHub issue #8, including the Owner PLAY candidate checkpoint and the later smooth Owner judgement.
+Expected isolated Worker:
 
-During the final takeover preparation session, direct public HTTP re-probing of `workers.dev` could **not** be completed because the execution environment could not resolve those hosts. This is an environment limitation, not deployment evidence either way.
+`cloudflare-multiplayer-lab-reliability-play`
 
-Therefore the fresh project's first grounding must independently verify:
+Final remote workflow:
 
-- current production fingerprint/isolation;
-- current staging Worker/branch deployment;
-- A2R client revision on staging;
-- current CI/check state relevant to the selected base.
+`34060903778` — **PASS**
 
-Do not inherit deployment state merely from this package.
+Delivery diff from `a2e821...` is limited to:
 
-## What this package deliberately does not do
+- `.github/workflows/world-v0-r0d-reliability-retest.yml`;
+- `wrangler.jsonc` isolated `reliability_play` environment.
 
-- no A3 implementation;
-- no new product repository;
-- no merge into `main`;
-- no mutation of A2/A2R controls;
-- no automatic Character Controller import;
-- no declaration that Forecast, rollback, ownership or interaction islands are required;
-- no claim that the current backend/transport/render stack is final;
-- no claim that four-player support is the current milestone merely because four human testers may sometimes be available;
-- no mobile-specific simulation fork;
-- no persistence/storage implementation merely because shared continuity is part of the long-term product soul.
+No qualified World V0 product/runtime bytes differ.
 
-## Expected first action in the new project
+### Handoff/documentation branch
 
-Use `MULTI_WORLD_FRESH_TAKEOVER_V1.md`, then produce the requested live grounding report before any implementation.
+`multi-world-r0d-reliability-handoff`
 
-The new project should be free to reject the provisional **remote causality / shared physical truth** framing if newer evidence identifies a more valuable unknown.
+Its head is allowed to move only while documentation is finalized. It is not a runtime candidate.
+
+---
+
+## Current evidence boundary
+
+The first real R0d two-person/mobile-facing test failed because one actor input starvation / socket loss could kill the whole WorldEpoch and force both clients through recovery/new-epoch cycles.
+
+I1–I4 then addressed that lifecycle model and passed local/integration qualification plus isolated remote Cloudflare qualification.
+
+Remote final machine evidence includes:
+
+- I1 ActorSession continuity / same-actor resume — PASS;
+- I2 future-intent supersession — PASS;
+- I3b clean real-Chromium 1200 ms rAF freeze — PASS;
+- I4b exact full-state rebase after a 1500 ms outage / 170-tick gap with healthy peer continuity and `guardMismatches=0` — PASS.
+
+**Machine-addressable work is closed at this boundary.**
+
+The Owner deliberately postponed the real human reliability re-test to the next conversation.
+
+---
+
+## Exact next action
+
+The new conversation should:
+
+1. compactly verify the frozen heads, delivery diff, final workflow and newest issue #8 checkpoint;
+2. generate a brand-new human-only run ID that has never appeared in CI or an older test;
+3. build a deep link on `cloudflare-multiplayer-lab-reliability-play`;
+4. have the Owner enter that run first from Poland;
+5. only then share the same URL with the second real device/person;
+6. perform a small natural R0d reliability re-test.
+
+Primary human question:
+
+> Is the previous `live -> blank/recovery/waiting -> live` global continuity failure gone, with the healthy peer/world remaining continuous while the interrupted actor resumes?
+
+Do not add I5, persistence, jump/content work, 3-player expansion or another generic synthetic campaign before that verdict unless live verification invalidates the specimen.
+
+---
+
+## Historical takeover material
+
+The following remain useful for project archaeology but are no longer startup authorities:
+
+- `MULTI_WORLD_GROUNDING_V1.md`;
+- `MULTI_WORLD_HUMAN_TEST_CONTEXT.md`;
+- `MULTI_WORLD_FRESH_TAKEOVER_V1.md`;
+- `MULTI_WORLD_GROUNDING_LEDGER.md`;
+- `MULTI_WORLD_GROUNDING_REDTEAM.md`;
+- `MULTI_WORLD_FRESH_TAKEOVER.md`.
+
+They mainly describe the A2/A2R-era frontier and earlier remote-causality questions. Do not let them overwrite the newer World V0 / Public Room R0 / reliability evidence.
+
+---
+
+## Non-frontier branch warning
+
+`world-v0-friend-ready-foundation-integration@5dd28a899c4f60c9227f1eb93026f571ced733e3`
+
+was accidentally created while checking an ancestry hypothesis. No new commit was made. The hypothesis was rejected after live verification showed the real integration already descends from the later R0c public-room lineage.
+
+Treat it as inert historical noise, not an active candidate.

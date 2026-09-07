@@ -1,6 +1,6 @@
-export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v7-i3-authority-temporal-floor";
+export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v8-playability-split-lead";
 export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v5-i4-exact-full-state-rebase";
-export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v7-i3-authority-temporal-floor";
+export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v8-playability-split-lead";
 export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
 export const WORLD_V0_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v3-supersession";
@@ -16,7 +16,12 @@ export const WORLD_V0_TIMING = {
   snapshotHz: 10,
   protocolStartDelayTicks: 90,
   maxCatchupSteps: 4,
+  // Canonical input is authored far enough ahead to survive ordinary transport latency.
   predictionLeadTicks: 8,
+  // Playability: simulation speculation is separated from canonical input authorship.
+  // Two ticks is the first horizon that can consume the earliest newly-authored
+  // floor(authority)+1 input in the same prediction pass without speculating farther.
+  clientSimulationLeadTicks: 2,
   inputBatchSize: 2,
   maxFutureTicks: 32,
   inputLeaseMissingTicks: 36,

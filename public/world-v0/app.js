@@ -1894,7 +1894,7 @@ function advancePrediction() {
   }
   const estimate = authorityTickEstimate();
   if (!Number.isFinite(estimate)) return;
-  const targetBoundary = Math.max(0, Math.floor(estimate + simulation.timing.predictionLeadTicks));
+  const targetBoundary = Math.max(0, Math.floor(estimate + simulation.timing.clientSimulationLeadTicks));
   let steps = 0;
   while (localState.boundaryTick < targetBoundary && steps < MAX_PREDICTION_STEPS_PER_FRAME) {
     managedPhysicsStep(localState.boundaryTick, true);
@@ -2008,6 +2008,8 @@ function buildEvidence() {
       authored: logicalInputAuthored,
       superseded: logicalInputSuperseded,
       cadenceMs: STEP_MS,
+      inputLeadTicks: simulation?.timing?.predictionLeadTicks ?? null,
+      simulationLeadTicks: simulation?.timing?.clientSimulationLeadTicks ?? null,
       ownsCanonicalAuthorship: true,
     },
     localBoundaryTick: localState?.boundaryTick ?? null,

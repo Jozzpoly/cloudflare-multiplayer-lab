@@ -56,7 +56,10 @@ jobs:
           MW_WORLD_V0_EXPECTED_SOURCE: ${{ env.QUALIFIED_SOURCE_SHA }}
           MW_WORLD_V0_EXPECTED_DELIVERY: ${{ env.DELIVERY_SHA }}
           MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-r0d-preowner-mainthread-chromium.json
-        run: node scripts/world-v0-r0d-preowner-mainthread-stall-falsifier.mjs | tee world-v0-r0d-preowner-mainthread.log
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/world-v0-r0d-preowner-mainthread-stall-falsifier.mjs | tee world-v0-r0d-preowner-mainthread.log
 
       - name: Upload focused evidence
         if: always()

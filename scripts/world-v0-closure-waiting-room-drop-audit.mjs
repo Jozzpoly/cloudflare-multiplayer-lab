@@ -226,11 +226,14 @@ try {
   assert(drop.activeBeforeDrop >= 1, `proxy did not own browser transport: ${JSON.stringify(drop)}`);
 
   await waitFor(client,
-    '(() => { const e=window.__sharedYardV0Evidence?.(); return e?.session?.actorResume?.pending === true && e?.session?.actorResume?.attempts >= 1; })()',
-    "unexpected waiting-room actor resume", 8000);
+    '(() => { const e=window.__sharedYardV0Evidence?.(); return String(e?.networkState || "").startsWith("closed") && e?.session?.actorResume?.pending === false; })()',
+    "waiting-room fail-closed transport state", 8000);
+  await sleep(500);
   const after = await evidence(client);
   assert(after.protocolStartTick === null && after.localBoundaryTick === null, "waiting-room browser unexpectedly entered active simulation");
-  assert(after.runtimeFailed === false, "browser exhausted before falsifier captured erroneous recovery");
+  assert(after.session.actorResume.pending === false, "waiting-room browser incorrectly armed ActorSession resume");
+  assert(after.session.actorResume.attempts === 0, `waiting-room browser spent ActorSession retry budget: ${after.session.actorResume.attempts}`);
+  assert(after.runtimeFailed === false, "waiting-room fail-closed path became runtime failure");
 
   await sleep(200);
   const replacement = await freshWelcome(runKey, `Fresh-${suffix}`);
@@ -239,7 +242,7 @@ try {
   assert(replacement.selfSessionId !== oldSession, "replacement reused retired ActorSession identity");
 
   result = {
-    revision: "world-v0-closure-waiting-room-drop-v1-falsifier",
+    revision: "world-v0-closure-waiting-room-drop-v2-fail-closed",
     chromeVersion: version,
     runKey,
     before: {
@@ -264,8 +267,8 @@ try {
       oldSessionRetired: replacement.selfSessionId !== oldSession,
     },
     proxy: { drop, current: proxy.snapshot() },
-    verdict: "WORLD_V0_CLOSURE_WAITING_ROOM_RECOVERY_REGRESSION_REPRODUCED",
-    interpretation: "The authority correctly retires a pre-start waiting-room epoch on transport loss, but the repaired browser incorrectly arms ActorSession resume and spends retry budget against an ActorSession that no longer exists.",
+    verdict: "WORLD_V0_CLOSURE_WAITING_ROOM_FAIL_CLOSED_PASS",
+    interpretation: "A pure pre-start waiting-room transport loss remains fail-closed: the browser does not arm ActorSession recovery, while authority retires the old WorldEpoch/ActorSession and a fresh actor receives a new epoch.",
     nonClaim: "This is a local Chromium/Workerd lifecycle falsifier. It does not estimate production incidence or network quality.",
   };
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));

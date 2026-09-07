@@ -1887,6 +1887,7 @@ function connect() {
     pingTimer = null;
     hudTimer = null;
     pendingPings.clear();
+    const networkStateBeforeClose = networkState;
     const admittedActor = Boolean(identity && selfSessionId);
     const expectedAfterEpochEnd = sessionEnd?.kind === "epoch-ended";
     if (!sessionEnd) {
@@ -1905,8 +1906,12 @@ function connect() {
     cameraGimbalInput = { x: 0, y: 0 };
     cameraGimbalKnob.style.transform = "translate(0, 0)";
     const closeReason = event.reason || sessionEnd?.reason || "";
+    const activeActorTransportRecoverable = Boolean(localState && Number.isInteger(protocolStartTick));
+    const committedStartWindowRecoverable = !localState && !Number.isInteger(protocolStartTick) &&
+      (networkStateBeforeClose === "both connected · ready" || networkStateBeforeClose === "ready · awaiting start");
     const actorTransportRecoverable = !runtimeFailed && !expectedAfterEpochEnd && !roomRecovery.pending &&
-      Boolean(identity && resumeToken && selfSessionId) && event.code === 1006;
+      Boolean(identity && resumeToken && selfSessionId) && event.code === 1006 &&
+      (activeActorTransportRecoverable || committedStartWindowRecoverable);
     if (actorResume.pending || actorTransportRecoverable) {
       actorResume.pending = true;
       if (!Number.isInteger(actorResume.sourceBoundary)) actorResume.sourceBoundary = localState?.boundaryTick ?? null;

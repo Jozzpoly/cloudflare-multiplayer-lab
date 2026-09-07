@@ -1,0 +1,70 @@
+name: World V0 R0d Pre-Owner Main-Thread Stall
+
+on:
+  push:
+    branches: [world-v0-r0d-preowner-mainthread-falsifier]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-r0d-preowner-mainthread-falsifier
+  cancel-in-progress: false
+
+env:
+  QUALIFIED_SOURCE_SHA: a2e821afbbc88371b033af311cc6882d46aa6916
+  DELIVERY_SHA: 7da9ddd4ad37221f63a3cd418a140824783480ec
+  RELIABILITY_BASE_URL: https://cloudflare-multiplayer-lab-reliability-play.jozzpoly.workers.dev
+
+jobs:
+  one-renderer-full-main-thread-stall:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove evidence-only descendant of frozen delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$DELIVERY_SHA" HEAD
+          mapfile -t changed < <(git diff --name-only "$DELIVERY_SHA" HEAD | sort)
+          printf '%s\n' "${changed[@]}"
+          expected=(
+            .github/workflows/world-v0-r0d-preowner-mainthread-falsifier.yml
+            scripts/world-v0-r0d-preowner-mainthread-stall-falsifier.mjs
+          )
+          mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | sort)
+          test "$(printf '%s\n' "${changed[@]}")" = "$(printf '%s\n' "${expected_sorted[@]}")"
+          git diff --quiet "$DELIVERY_SHA" HEAD -- public/world-v0 src/box3d-runtime.ts src/world-v0-contract.ts src/world-v0-protocol.ts src/world-v0-shared-yard.ts src/world-slice-entry.ts package.json package-lock.json wrangler.jsonc
+          echo "R0D_PREOWNER_MAINTHREAD_EVIDENCE_ONLY_BRANCH_PASS"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify repository dependencies without modifying lock state
+        run: npm ci
+
+      - name: Falsify full renderer main-thread stall against exact deployed specimen
+        env:
+          MW_WORLD_V0_MAINTHREAD_BASE: ${{ env.RELIABILITY_BASE_URL }}
+          MW_WORLD_V0_MAINTHREAD_STALL_MS: "1400"
+          MW_WORLD_V0_EXPECTED_SOURCE: ${{ env.QUALIFIED_SOURCE_SHA }}
+          MW_WORLD_V0_EXPECTED_DELIVERY: ${{ env.DELIVERY_SHA }}
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-r0d-preowner-mainthread-chromium.json
+        run: node scripts/world-v0-r0d-preowner-mainthread-stall-falsifier.mjs | tee world-v0-r0d-preowner-mainthread.log
+
+      - name: Upload focused evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-r0d-preowner-mainthread-${{ github.run_attempt }}
+          path: |
+            world-v0-r0d-preowner-mainthread.log
+            world-v0-r0d-preowner-mainthread-chromium.json
+          if-no-files-found: warn
+          retention-days: 14

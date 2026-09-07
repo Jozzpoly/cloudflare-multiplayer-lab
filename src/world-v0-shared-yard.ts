@@ -4,6 +4,7 @@ import {
   WORLD_V0_ARENA,
   WORLD_V0_BOX3D_RUNTIME,
   WORLD_V0_CLIENT_SIM_REVISION,
+  WORLD_V0_LIFECYCLE,
   WORLD_V0_MOVEMENT,
   WORLD_V0_NET_ENTITY_ORDER,
   WORLD_V0_PLAYER_PHYSICS,
@@ -194,6 +195,7 @@ export class SharedYardV0 extends DurableObject<Env> {
   private catchupSteps = 0;
   private failure: string | null = null;
   private resetting = false;
+  private allDisconnectedSinceTick: number | null = null;
   private supportContacts: ReturnType<typeof b3.createContactsBuffer> | null = null;
   private readonly supportContact = b3.createContact();
   private readonly supportManifold = b3.createManifold();
@@ -656,15 +658,25 @@ export class SharedYardV0 extends DurableObject<Env> {
       });
     }
 
-    // Lease expiry is actor-local containment, not WorldEpoch death. Once no
-    // transport survives, however, allow the run to die after every session has
-    // crossed the same bounded lease rather than creating an always-on zombie DO.
-    if (active && this.players.size > 0 && this.connectedPlayerCount() === 0 &&
-        [...this.players.values()].every((player) =>
+    // Lease expiry remains actor-local containment. WorldEpoch lifetime is a
+    // separate concern: when every transport disappears, keep the neutralized
+    // world alive for a bounded grace long enough for the client's existing
+    // ActorSession resume backoff to operate. This is not persistence; an
+    // unclaimed world still retires automatically after the grace.
+    if (active && this.players.size > 0) {
+      if (this.connectedPlayerCount() === 0) {
+        if (this.allDisconnectedSinceTick === null) this.allDisconnectedSinceTick = this.tick;
+        const disconnectedTicks = this.tick - this.allDisconnectedSinceTick;
+        const allLeasesExpired = [...this.players.values()].every((player) =>
           player.input.stats().currentMissingStreak >= WORLD_V0_TIMING.inputLeaseMissingTicks
-        )) {
-      this.endEpoch("all_players_disconnected_lease_expired");
-      return;
+        );
+        if (allLeasesExpired && disconnectedTicks >= WORLD_V0_LIFECYCLE.allDisconnectedGraceTicks) {
+          this.endEpoch("all_players_disconnected_grace_expired");
+          return;
+        }
+      } else {
+        this.allDisconnectedSinceTick = null;
+      }
     }
 
     if (this.tick % SNAPSHOT_EVERY_TICKS === 0) this.broadcastSnapshot();
@@ -883,6 +895,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       this.destroyWorld();
       this.protocolStartTick = null;
       this.tick = 0;
+      this.allDisconnectedSinceTick = null;
     } finally {
       this.resetting = false;
     }

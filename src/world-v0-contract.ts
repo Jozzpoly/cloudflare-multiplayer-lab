@@ -1,5 +1,5 @@
-export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v8-playability-split-lead";
-export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v5-i4-exact-full-state-rebase";
+export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v9-all-disconnected-grace";
+export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v6-all-disconnected-grace";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v8-playability-split-lead";
 export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
@@ -31,6 +31,13 @@ export const WORLD_V0_CLIENT_HISTORY = {
   segmentTicks: 8,
   retainTicks: 24,
   recordingCapacityBytes: 2 * 1024 * 1024,
+} as const;
+
+// Actor input still fails neutral after the 36-tick lease. The WorldEpoch itself
+// gets a separate bounded grace when every transport is gone so the browser's
+// existing actor-resume backoff has a meaningful recovery window.
+export const WORLD_V0_LIFECYCLE = {
+  allDisconnectedGraceTicks: 15 * 60,
 } as const;
 
 export const WORLD_V0_MOVEMENT = {
@@ -134,6 +141,7 @@ export const WORLD_V0_SIM_BUILD_SPEC = {
   box3dRuntime: WORLD_V0_BOX3D_RUNTIME,
   timing: WORLD_V0_TIMING,
   clientHistory: WORLD_V0_CLIENT_HISTORY,
+  lifecycle: WORLD_V0_LIFECYCLE,
   movement: WORLD_V0_MOVEMENT,
   arena: WORLD_V0_ARENA,
   propPhysics: WORLD_V0_PROP_PHYSICS,
@@ -157,6 +165,7 @@ export function worldV0SimulationContract() {
     box3dRuntime: { ...WORLD_V0_BOX3D_RUNTIME },
     timing: { ...WORLD_V0_TIMING },
     clientHistory: { ...WORLD_V0_CLIENT_HISTORY },
+    lifecycle: { ...WORLD_V0_LIFECYCLE },
     movement: { ...WORLD_V0_MOVEMENT },
     arena: {
       gravity: [...WORLD_V0_ARENA.gravity],

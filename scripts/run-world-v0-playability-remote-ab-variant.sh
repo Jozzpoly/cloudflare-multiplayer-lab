@@ -14,7 +14,26 @@ config="wrangler.${prefix}.jsonc"
 
 # Restore exactly one clean runtime specimen before adding test-only observability.
 git checkout "$RUNTIME_SHA" -- src/world-v0-contract.ts public/world-v0/app.js public/world-v0/build-contract.js
-rm -f scripts/.prepare-world-v0-playability-input-shape-probe-fixed.mjs scripts/.world-v0-playability-input-shape-probe.mjs
+rm -f \
+  scripts/.prepare-world-v0-playability-input-shape-probe-fixed.mjs \
+  scripts/.world-v0-playability-input-shape-probe.mjs \
+  "$config" \
+  public/world-v0/playability-ab-provenance.json
+
+# Never allow the provenance envelope to describe a different runtime than the
+# bytes actually restored above. Baseline predates clientSimulationLeadTicks, so
+# its effective simulation lead is predictionLeadTicks.
+SIM_LEAD_EXPECTED="$SIM_LEAD_EXPECTED" SIM_BUILD_EXPECTED="$SIM_BUILD_EXPECTED" node --experimental-strip-types --input-type=module <<'NODE'
+const c = await import(`./src/world-v0-contract.ts?ab=${Date.now()}`);
+const b = await import(`./public/world-v0/build-contract.js?ab=${Date.now()}`);
+const inputLead = c.WORLD_V0_TIMING?.predictionLeadTicks;
+const simulationLead = c.WORLD_V0_TIMING?.clientSimulationLeadTicks ?? inputLead;
+if (inputLead !== 8) throw new Error(`runtime input lead drift ${inputLead}`);
+if (simulationLead !== Number(process.env.SIM_LEAD_EXPECTED)) throw new Error(`runtime simulation lead drift ${simulationLead}`);
+if (c.WORLD_V0_SIM_BUILD_ID !== process.env.SIM_BUILD_EXPECTED) throw new Error(`runtime SimBuild drift ${c.WORLD_V0_SIM_BUILD_ID}`);
+if (b.WORLD_V0_EXPECTED_SIM_BUILD_ID !== process.env.SIM_BUILD_EXPECTED) throw new Error(`browser SimBuild drift ${b.WORLD_V0_EXPECTED_SIM_BUILD_ID}`);
+console.log("WORLD_V0_PLAYABILITY_AB_RUNTIME_IDENTITY_PASS", JSON.stringify({ inputLead, simulationLead, simBuildId: c.WORLD_V0_SIM_BUILD_ID }));
+NODE
 
 node scripts/apply-world-v0-playability-observability.mjs | tee "${prefix}-observability.log"
 node scripts/apply-world-v0-presentation-shock-observability.mjs | tee "${prefix}-shock-observability.log"
@@ -70,7 +89,8 @@ while (Date.now() < deadline) {
       p?.simBuildId === process.env.SIM_BUILD_EXPECTED &&
       p?.inputLeadTicks === 8 &&
       p?.simulationLeadTicks === Number(process.env.SIM_LEAD_EXPECTED) &&
-      p?.apparatusMode === "no-webgl-draw-rAF-v1"
+      p?.apparatusMode === "no-webgl-draw-rAF-v1" &&
+      p?.instrumentedPresentationShock === true
     ) {
       console.log("WORLD_V0_PLAYABILITY_AB_PROVENANCE_PASS", JSON.stringify(p));
       process.exit(0);
@@ -99,6 +119,7 @@ for (let attempt = 1; attempt <= 2; attempt += 1) {
   const v = JSON.parse(readFileSync(`ab-${variant}-${attempt}.json`, "utf8"));
   if (v.verdict !== "WORLD_V0_PLAYABILITY_INPUT_SHAPE_PASS") throw new Error(`${variant} attempt ${attempt}: ${v.verdict}`);
   if (v.apparatusMode !== "no-webgl-draw-rAF-v1") throw new Error(`${variant} attempt ${attempt}: apparatus marker drift`);
+  if (!Array.isArray(v.localResponse) || v.localResponse.length !== 2) throw new Error(`${variant} attempt ${attempt}: response evidence missing`);
   const clients = [];
   for (const [index,c] of v.clients.entries()) {
     if (c.inputLeadTicks !== 8 || c.simulationLeadTicks !== expectedLead) throw new Error(`${variant} attempt ${attempt} client ${index}: timing drift`);
@@ -109,7 +130,12 @@ for (let attempt = 1; attempt <= 2; attempt += 1) {
     if (!c.presentationShock || c.presentationShock.revision !== "world-v0-presentation-shock-v1") throw new Error(`${variant} attempt ${attempt} client ${index}: shock evidence missing`);
     if (!Number.isFinite(c.frameP95Ms) || c.frameP95Ms > 40) throw new Error(`APPARATUS_INVALID ${variant} attempt ${attempt} client ${index}: frame p95 ${c.frameP95Ms} ms`);
     const s = c.presentationShock;
+    if (s.renderedFrames !== s.correctedFrames + s.uncorrectedFrames) throw new Error(`${variant} attempt ${attempt} client ${index}: frame accounting drift`);
+    if (s.correctionEventsObserved !== c.corrections) throw new Error(`${variant} attempt ${attempt} client ${index}: correction accounting drift`);
     clients.push({
+      localBoundaryTick: c.localBoundaryTick,
+      tickSpan: c.tickSpan,
+      finalNetworkState: c.finalNetworkState,
       corrections: c.corrections,
       correctionsPer1000Ticks: c.correctionsPer1000Ticks,
       supersededDelta: c.supersededDelta,
@@ -133,7 +159,7 @@ for (let attempt = 1; attempt <= 2; attempt += 1) {
       maxNetRemoteShock: s.netCorrection.remote.max,
     });
   }
-  attempts.push({ attempt, clients, aggregate: v.aggregate });
+  attempts.push({ attempt, localResponse: v.localResponse, clients, aggregate: v.aggregate });
 }
 const out = {
   verdict: "WORLD_V0_PLAYABILITY_REMOTE_AB_VARIANT_COMPLETE",

@@ -1,0 +1,38 @@
+name: World V0 Playability Response Frontier Proof
+
+on:
+  push:
+    branches: [world-v0-playability-response-frontier-audit]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prove apparatus-only branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_SHA=2021d5648c265b17395608e3cc8588edbac79d2f
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- src public/world-v0 wrangler.jsonc package.json package-lock.json)"
+          node --check scripts/world-v0-playability-response-frontier-proof.mjs
+      - name: Execute response frontier proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-playability-response-frontier-proof.mjs | tee world-v0-playability-response-frontier-proof.log
+          grep -q 'WORLD_V0_PLAYABILITY_RESPONSE_FRONTIER_PROOF_PASS' world-v0-playability-response-frontier-proof.log
+          grep -q '"firstImmediateSimulationLeadTicks": 2' world-v0-playability-response-frontier-proof.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playability-response-frontier-proof
+          path: world-v0-playability-response-frontier-proof.log
+          retention-days: 14

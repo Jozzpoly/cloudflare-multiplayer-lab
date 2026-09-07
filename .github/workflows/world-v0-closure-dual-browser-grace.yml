@@ -5,6 +5,7 @@ on:
     branches: [world-v0-closure-stabilization]
     paths:
       - .github/workflows/world-v0-closure-dual-browser-grace.yml
+      - scripts/world-v0-closure-dual-browser-grace-audit.mjs
   workflow_dispatch:
 
 permissions:
@@ -52,7 +53,7 @@ jobs:
           cat world-v0-closure-dual-browser-${{ matrix.offline_ms }}-wrangler.log
           exit 1
 
-      - name: Require dual-browser same-world recovery
+      - name: Require dual-browser same-world recovery after bidirectional hard drop
         env:
           MW_WORLD_V0_DUAL_BROWSER_BASE: http://127.0.0.1:8787
           MW_WORLD_V0_DUAL_BROWSER_OFFLINE_MS: ${{ matrix.offline_ms }}

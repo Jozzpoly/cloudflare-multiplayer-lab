@@ -56,7 +56,7 @@ jobs:
           for i in "${!expected[@]}"; do
             test "${changed[$i]}" = "${expected[$i]}"
           done
-          grep -q 'const ACTOR_RESUME_MAX_ATTEMPTS = 11;' public/world-v0/app.js
+          grep -q 'const ACTOR_RESUME_MAX_ATTEMPTS = 12;' public/world-v0/app.js
           grep -q 'shared-yard-v0-browser-ui-v11-resume-window' public/world-v0/build-contract.js
 
       - name: Full repository checks on materialized candidate

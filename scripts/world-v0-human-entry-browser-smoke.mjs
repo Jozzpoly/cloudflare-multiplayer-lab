@@ -8,7 +8,7 @@ import { WORLD_V0_HUMAN_ENTRY_REVISION } from "../public/world-v0/human-entry-co
 
 const BASE = (process.env.MW_WORLD_V0_HUMAN_ENTRY_BASE_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
 const PAGE_URL = `${BASE}/world-v0/`;
-const DEBUG_PORTS = [9572, 9573];
+const DEBUG_PORTS = [9572, 9573, 9574];
 const TIMEOUT_MS = 45_000;
 const OUTPUT = process.env.MW_WORLD_V0_HUMAN_ENTRY_OUTPUT || "world-v0-human-entry-evidence.json";
 
@@ -194,6 +194,7 @@ const directUrl = `${PAGE_URL}?run=${encodeURIComponent(roomKey)}`;
 const chrome = findChrome();
 let owner = null;
 let peer = null;
+let reopenedPeer = null;
 const result = {
   verdict: "WORLD_V0_HUMAN_ENTRY_FAIL",
   generatedAt: new Date().toISOString(),
@@ -308,6 +309,46 @@ try {
   assert(ownerLive.identity.worldId === peerLive.identity.worldId, "owner/peer worldId mismatch");
   assert(ownerLive.identity.worldEpoch === peerLive.identity.worldEpoch, "owner/peer WorldEpoch mismatch");
 
+  const ownerEpochBeforePeerClose = ownerLive.identity.worldEpoch;
+  const ownerBoundaryBeforePeerClose = ownerLive.localBoundaryTick;
+  await stopBrowser(peer);
+  peer = null;
+
+  await waitFor(owner, `(() => {
+    const e = window.__sharedYardV0Evidence?.();
+    return e && !e.runtimeFailed &&
+      e.identity?.worldEpoch === ${JSON.stringify(ownerEpochBeforePeerClose)} &&
+      Number.isInteger(e.localBoundaryTick) && e.localBoundaryTick >= ${ownerBoundaryBeforePeerClose + 12} &&
+      !String(e.networkState || "").startsWith("closed");
+  })()`, "owner remains live after peer tab close");
+
+  reopenedPeer = await startBrowser(chrome, 2, directUrl);
+  await waitFor(reopenedPeer, `document.readyState === "complete" && document.querySelector("#enter")?.disabled === false && typeof window.__sharedYardV0FriendEntry === "function"`, "fresh reopen boot");
+  await evaluate(reopenedPeer, `(() => {
+    const input = document.querySelector("#callsign");
+    input.value = "Ktoś wraca";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector("#enter").click();
+    return true;
+  })()`);
+  await waitFor(reopenedPeer, `String(window.__sharedYardV0Session?.().networkState || "").startsWith("join failed")`, "fresh reopen rejected truthfully");
+
+  const reopen = await evaluate(reopenedPeer, `({
+    session: window.__sharedYardV0Session?.(),
+    evidence: window.__sharedYardV0Evidence?.(),
+    notice: document.querySelector("#notice")?.textContent || "",
+  })`);
+  assert(reopen.session?.restartAvailable === false, "fresh reopen incorrectly offers Restart");
+  assert(reopen.evidence?.identity == null, "fresh reopen unexpectedly acquired world identity");
+  assert(reopen.evidence?.session?.end?.kind === "join-failed", `fresh reopen end kind ${reopen.evidence?.session?.end?.kind}`);
+  assert(reopen.notice.includes("Couldn’t join this Yard"), `fresh reopen notice ${reopen.notice}`);
+
+  const ownerAfterReopen = await evaluate(owner, `window.__sharedYardV0Evidence()`);
+  assert(ownerAfterReopen.runtimeFailed === false, `owner failed after peer reopen ${ownerAfterReopen.runtimeFailureReason}`);
+  assert(ownerAfterReopen.identity?.worldEpoch === ownerEpochBeforePeerClose, "healthy owner WorldEpoch rotated during peer close/reopen");
+  assert(ownerAfterReopen.localBoundaryTick > ownerBoundaryBeforePeerClose, "healthy owner stopped progressing during peer close/reopen");
+  assert(!String(ownerAfterReopen.networkState || "").startsWith("closed"), `healthy owner closed during peer reopen ${ownerAfterReopen.networkState}`);
+
   Object.assign(result, {
     verdict: "WORLD_V0_HUMAN_ENTRY_PASS",
     friendEntryRevision: WORLD_V0_FRIEND_ENTRY_REVISION,
@@ -323,6 +364,10 @@ try {
     worldEpoch: ownerLive.identity.worldEpoch,
     ownerGuardMatches: ownerLive.metrics.guardMatches,
     peerGuardMatches: peerLive.metrics.guardMatches,
+    peerTabCloseFreshReopenRejectedTruthfully: true,
+    healthyOwnerWorldEpochPreservedAcrossPeerReopen: true,
+    ownerBoundaryBeforePeerClose,
+    ownerBoundaryAfterPeerReopen: ownerAfterReopen.localBoundaryTick,
   });
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
   console.log("WORLD_V0_HUMAN_ENTRY_PASS", JSON.stringify({ roomKey, worldEpoch: ownerLive.identity.worldEpoch }));
@@ -330,11 +375,14 @@ try {
   result.error = error instanceof Error ? error.stack || error.message : String(error);
   result.ownerDiagnostic = await diagnostic(owner);
   result.peerDiagnostic = await diagnostic(peer);
+  result.reopenedPeerDiagnostic = await diagnostic(reopenedPeer);
   result.ownerChromeStderr = owner ? Buffer.concat(owner.stderr).toString("utf8").slice(-5000) : null;
   result.peerChromeStderr = peer ? Buffer.concat(peer.stderr).toString("utf8").slice(-5000) : null;
+  result.reopenedPeerChromeStderr = reopenedPeer ? Buffer.concat(reopenedPeer.stderr).toString("utf8").slice(-5000) : null;
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
   throw error;
 } finally {
+  await stopBrowser(reopenedPeer);
   await stopBrowser(peer);
   await stopBrowser(owner);
 }

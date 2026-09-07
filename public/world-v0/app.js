@@ -617,7 +617,8 @@ function buildInviteUrl() {
 }
 
 function canRestartRound() {
-  return !runtimeFailed && !roomRecovery.pending && networkState.startsWith("closed") && (!socket || socket.readyState === WebSocket.CLOSED);
+  const admittedActor = Boolean(identity && selfSessionId);
+  return admittedActor && !runtimeFailed && !roomRecovery.pending && networkState.startsWith("closed") && (!socket || socket.readyState === WebSocket.CLOSED);
 }
 
 function updateSessionActions() {
@@ -1831,17 +1832,18 @@ function connect() {
     pingTimer = null;
     hudTimer = null;
     pendingPings.clear();
+    const admittedActor = Boolean(identity && selfSessionId);
     const expectedAfterEpochEnd = sessionEnd?.kind === "epoch-ended";
     if (!sessionEnd) {
       sessionEnd = {
-        kind: "transport-close",
+        kind: admittedActor ? "transport-close" : "join-failed",
         reason: event.reason || `close-${event.code}`,
         code: event.code,
         at: new Date().toISOString(),
         boundaryTick: localState?.boundaryTick ?? null,
       };
     }
-    networkState = `closed ${event.code}`;
+    networkState = admittedActor ? `closed ${event.code}` : `join failed ${event.code}`;
     jumpButton.classList.add("hidden");
     joystick.classList.remove("active");
     cameraGimbal.classList.remove("active");
@@ -1872,7 +1874,10 @@ function connect() {
       scheduleRoomRecovery(roomRecovery.reason);
       return;
     }
-    if (!runtimeFailed) showNotice("Shared Yard round ended. Restart when ready; the next round uses a fresh world epoch.");
+    if (!runtimeFailed) {
+      if (admittedActor) showNotice("Shared Yard round ended. Restart when ready; the next round uses a fresh world epoch.");
+      else showNotice("Couldn’t join this Yard. It may already be active, full, or temporarily unreachable.");
+    }
   });
   connection.addEventListener("error", () => {
     if (socket !== connection) return;

@@ -1,0 +1,227 @@
+name: World V0 Playability Presentation Shock Audit
+
+on:
+  push:
+    branches: [world-v0-playability-presentation-shock-audit]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-playability-presentation-shock-audit
+  cancel-in-progress: false
+
+env:
+  BASE_SHA: 6f4abd4dd17c59078ab99530e64ef6cf752ab5ce
+
+jobs:
+  specimen:
+    strategy:
+      fail-fast: false
+      matrix:
+        lead: [0, 2, 4, 8]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+
+      - name: Ground apparatus-only specimen
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- src public/world-v0/app.js public/world-v0/build-contract.js public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+          node --check scripts/apply-world-v0-playability-lead-experiment.mjs
+          node --check scripts/apply-world-v0-playability-observability.mjs
+          node --check scripts/apply-world-v0-presentation-shock-observability.mjs
+          node --check scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs
+          node --check scripts/prepare-world-v0-presentation-shock-probe.mjs
+
+      - name: Apply isolated timing and observability
+        shell: bash
+        env:
+          MW_WORLD_V0_SIM_LEAD: ${{ matrix.lead }}
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/apply-world-v0-playability-lead-experiment.mjs | tee "lead-${{ matrix.lead }}-apply.log"
+          node scripts/apply-world-v0-playability-observability.mjs | tee "lead-${{ matrix.lead }}-observability.log"
+          node scripts/apply-world-v0-presentation-shock-observability.mjs | tee "lead-${{ matrix.lead }}-shock-observability.log"
+          node scripts/prepare-world-v0-playability-input-shape-probe-v2.mjs | tee "lead-${{ matrix.lead }}-prepare-input.log"
+          node scripts/prepare-world-v0-presentation-shock-probe.mjs | tee "lead-${{ matrix.lead }}-prepare-shock.log"
+          node --check scripts/.world-v0-playability-input-shape-probe.mjs
+          git diff --check
+          changed="$(git diff --name-only)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev '^(src/world-v0-contract\.ts|public/world-v0/(app\.js|build-contract\.js))$' || true)"
+          if [ -n "$bad" ]; then
+            echo "unexpected runtime diff:" >&2
+            echo "$bad" >&2
+            exit 1
+          fi
+          test -z "$(git diff --name-only -- src/world-v0-shared-yard.ts src/world-v0-protocol.ts src/box3d-runtime.ts public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+
+      - name: Full repository regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check | tee "lead-${{ matrix.lead }}-check.log"
+
+      - name: Start isolated Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > "lead-${{ matrix.lead }}-wrangler.log" 2>&1 &
+          echo $! > /tmp/presentation-shock-wrangler.pid
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:8787/api/ping >/dev/null && exit 0
+            sleep 1
+          done
+          cat "lead-${{ matrix.lead }}-wrangler.log"
+          exit 1
+
+      - name: Run continuous input presentation specimen
+        shell: bash
+        env:
+          MW_WORLD_V0_PLAYABILITY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_PLAYABILITY_OUTPUT: lead-${{ matrix.lead }}-presentation-shock.json
+          MW_WORLD_V0_INPUT_SHAPE_DRIVE_MS: 6000
+          MW_WORLD_V0_INPUT_SHAPE_INTERVAL_MS: 16
+        run: |
+          set -euo pipefail
+          node scripts/.world-v0-playability-input-shape-probe.mjs | tee "lead-${{ matrix.lead }}-presentation-shock.log"
+
+      - name: Validate and reduce presentation specimen
+        shell: bash
+        env:
+          LEAD_EXPECTED: ${{ matrix.lead }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const lead = Number(process.env.LEAD_EXPECTED);
+          const v = JSON.parse(readFileSync(`lead-${lead}-presentation-shock.json`, "utf8"));
+          if (v.verdict !== "WORLD_V0_PLAYABILITY_INPUT_SHAPE_PASS") throw new Error(`lead ${lead}: ${v.verdict}`);
+          for (const [i,c] of v.clients.entries()) {
+            if (c.inputLeadTicks !== 8 || c.simulationLeadTicks !== lead) throw new Error(`lead ${lead} client ${i}: timing mismatch`);
+            if (c.guardMismatches !== 0 || c.firstStateMismatch !== null) throw new Error(`lead ${lead} client ${i}: exact mismatch`);
+            const s = c.presentationShock;
+            if (!s || s.revision !== "world-v0-presentation-shock-v1") throw new Error(`lead ${lead} client ${i}: shock evidence missing`);
+            if (s.renderedFrames !== s.correctedFrames + s.uncorrectedFrames) throw new Error(`lead ${lead} client ${i}: frame accounting mismatch`);
+            if (s.correctionEventsObserved !== c.corrections) throw new Error(`lead ${lead} client ${i}: correction event accounting ${s.correctionEventsObserved} != ${c.corrections}`);
+            for (const key of ["self", "remote", "prop"]) {
+              if (s.netCorrection[key].samples !== s.correctedFrames) throw new Error(`lead ${lead} client ${i}: net ${key} samples mismatch`);
+              if (s.renderDisplacementCorrected[key].samples !== s.correctedFrames) throw new Error(`lead ${lead} client ${i}: corrected render ${key} samples mismatch`);
+              if (s.renderDisplacementUncorrected[key].samples !== s.uncorrectedFrames) throw new Error(`lead ${lead} client ${i}: uncorrected render ${key} samples mismatch`);
+            }
+          }
+          const shocks = v.clients.map((c) => c.presentationShock);
+          const obs = v.clients.map((c) => c.observability);
+          const sum = (fn) => shocks.reduce((s,x) => s + fn(x), 0);
+          const rawSelf = obs.reduce((s,o) => s + (o?.distance?.self?.total || 0), 0);
+          const rawRemote = obs.reduce((s,o) => s + (o?.distance?.remote?.total || 0), 0);
+          const netSelf = sum((x) => x.netCorrection.self.total);
+          const netRemote = sum((x) => x.netCorrection.remote.total);
+          const correctedFrames = sum((x) => x.correctedFrames);
+          const correctionEvents = sum((x) => x.correctionEventsObserved);
+          const row = {
+            simulationLeadTicks: lead,
+            totalCorrections: v.aggregate.totalCorrections,
+            meanCorrectionsPer1000Ticks: v.aggregate.meanCorrectionsPer1000Ticks,
+            correctedFrames,
+            uncorrectedFrames: sum((x) => x.uncorrectedFrames),
+            correctionEvents,
+            meanCorrectionsPerCorrectedFrame: correctedFrames ? correctionEvents / correctedFrames : 0,
+            maxCorrectionsInOneFrame: Math.max(...shocks.map((x) => x.maxCorrectionsInFrame || 0)),
+            rawSelfCorrectionDistance: rawSelf,
+            rawRemoteCorrectionDistance: rawRemote,
+            netSelfCorrectionPerFrameDistance: netSelf,
+            netRemoteCorrectionPerFrameDistance: netRemote,
+            selfCancellationRatio: rawSelf ? netSelf / rawSelf : 0,
+            remoteCancellationRatio: rawRemote ? netRemote / rawRemote : 0,
+            netSelfOver005: sum((x) => x.netCorrection.self.over005),
+            netSelfOver010: sum((x) => x.netCorrection.self.over010),
+            netRemoteOver005: sum((x) => x.netCorrection.remote.over005),
+            netRemoteOver010: sum((x) => x.netCorrection.remote.over010),
+            maxNetSelfShock: Math.max(...shocks.map((x) => x.netCorrection.self.max || 0)),
+            maxNetRemoteShock: Math.max(...shocks.map((x) => x.netCorrection.remote.max || 0)),
+            correctedRenderSelfOver005: sum((x) => x.renderDisplacementCorrected.self.over005),
+            correctedRenderRemoteOver005: sum((x) => x.renderDisplacementCorrected.remote.over005),
+            maxCorrectedRenderSelfDisplacement: Math.max(...shocks.map((x) => x.renderDisplacementCorrected.self.max || 0)),
+            maxCorrectedRenderRemoteDisplacement: Math.max(...shocks.map((x) => x.renderDisplacementCorrected.remote.max || 0)),
+            maxUncorrectedRenderSelfDisplacement: Math.max(...shocks.map((x) => x.renderDisplacementUncorrected.self.max || 0)),
+            maxUncorrectedRenderRemoteDisplacement: Math.max(...shocks.map((x) => x.renderDisplacementUncorrected.remote.max || 0)),
+          };
+          writeFileSync(`lead-${lead}-presentation-shock-row.json`, JSON.stringify(row, null, 2));
+          console.log(`WORLD_V0_PRESENTATION_SHOCK_LEAD_${lead}_PASS`, JSON.stringify(row));
+          NODE
+
+      - name: Stop Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/presentation-shock-wrangler.pid ]; then kill "$(cat /tmp/presentation-shock-wrangler.pid)" 2>/dev/null || true; fi
+
+      - name: Prove no runtime materialization
+        if: always()
+        shell: bash
+        run: |
+          git reset --hard HEAD
+          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- src public/world-v0/app.js public/world-v0/build-contract.js public/world-v0/friend-ready.js public/world-v0/friend-entry.js)"
+          echo "WORLD_V0_PRESENTATION_SHOCK_NO_MATERIALIZATION_PASS"
+
+      - name: Upload isolated specimen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-presentation-shock-lead-${{ matrix.lead }}
+          path: |
+            lead-${{ matrix.lead }}-presentation-shock.json
+            lead-${{ matrix.lead }}-presentation-shock-row.json
+            lead-${{ matrix.lead }}-*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  summarize:
+    needs: specimen
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: world-v0-presentation-shock-lead-*
+          path: specimens
+          merge-multiple: true
+      - name: Require and summarize four independent specimens
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' | tee presentation-shock-summary.log
+          import { existsSync, readFileSync, writeFileSync } from "node:fs";
+          const rows = [];
+          for (const lead of [0,2,4,8]) {
+            const path = `specimens/lead-${lead}-presentation-shock-row.json`;
+            if (!existsSync(path)) throw new Error(`missing presentation shock specimen lead ${lead}`);
+            rows.push(JSON.parse(readFileSync(path, "utf8")));
+          }
+          const out = {
+            verdict: "WORLD_V0_PRESENTATION_SHOCK_AUDIT_COMPLETE",
+            rows,
+            nonClaim: "World-space mesh displacement in SwiftShader is not Owner perceptual evidence. netCorrection measures correction vectors coalesced between actual syncMeshes calls; renderDisplacement measures world-space mesh movement on corrected versus uncorrected frames. Neither is a screen-space pixel metric or a final feel verdict.",
+          };
+          writeFileSync("presentation-shock-summary.json", JSON.stringify(out, null, 2));
+          console.log(JSON.stringify(out, null, 2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-presentation-shock-summary
+          path: |
+            presentation-shock-summary.json
+            presentation-shock-summary.log
+          retention-days: 14

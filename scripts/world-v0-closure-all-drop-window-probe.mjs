@@ -1,6 +1,6 @@
 const BASE = (process.env.MW_WORLD_V0_ALL_DROP_BASE || "http://127.0.0.1:8787").replace(/\/$/, "");
 const WS_BASE = BASE.replace(/^http/, "ws");
-const DELAYS_MS = (process.env.MW_WORLD_V0_ALL_DROP_DELAYS || "250,500,750,1000,1500")
+const DELAYS_MS = (process.env.MW_WORLD_V0_ALL_DROP_DELAYS || "500,1500,5000,11000,14500,19000,21000")
   .split(",").map((value) => Number(value.trim())).filter(Number.isFinite);
 const TIMEOUT_MS = 15_000;
 
@@ -155,7 +155,7 @@ const retired = cases.filter((item) => item.classification === "retired").map((i
 assert(preserved.length > 0, "probe did not observe any recoverable all-transport-loss window");
 assert(retired.length > 0, "probe did not observe bounded all-disconnected retirement");
 const summary = {
-  revision: "world-v0-closure-all-drop-window-v1",
+  revision: "world-v0-closure-all-drop-window-v2-retry-aligned-grace",
   cases,
   preservedDelaysMs: preserved,
   retiredDelaysMs: retired,

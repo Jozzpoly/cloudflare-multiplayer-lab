@@ -49,6 +49,9 @@ jobs:
           npm run check | tee world-v0-closure-current-check.log
           grep -q 'const ACTOR_RESUME_MAX_ATTEMPTS = 12;' public/world-v0/app.js
           grep -q 'shared-yard-v0-browser-ui-v11-resume-window' public/world-v0/build-contract.js
+          grep -q 'allDisconnectedGraceTicks: 20 \* 60' src/world-v0-contract.ts
+          grep -q 'shared-yard-v0-authority-v7-retry-aligned-grace' public/world-v0/build-contract.js
+          grep -q 'shared-yard-v0-sim-9c308539ccf305cc' public/world-v0/build-contract.js
 
       - name: Start local reliability Workerd
         shell: bash
@@ -81,16 +84,16 @@ jobs:
       - name: Requalify bounded all-transport-loss window
         env:
           MW_WORLD_V0_ALL_DROP_BASE: http://127.0.0.1:8787
-          MW_WORLD_V0_ALL_DROP_DELAYS: 500,1500,5000,11000,14000,16000
+          MW_WORLD_V0_ALL_DROP_DELAYS: 500,1500,5000,11000,14500,19000,21000
         shell: bash
         run: |
           set -euo pipefail
           node scripts/world-v0-closure-all-drop-window-probe.mjs | tee world-v0-closure-current-all-drop.log
           grep -q 'WORLD_V0_CLOSURE_ALL_DROP_WINDOW_MAPPED' world-v0-closure-current-all-drop.log
-          for delay in 500 1500 5000 11000 14000; do
+          for delay in 500 1500 5000 11000 14500 19000; do
             grep -E "WORLD_V0_ALL_DROP_CASE .*\"delayMs\":${delay}.*\"classification\":\"preserved\"" world-v0-closure-current-all-drop.log >/dev/null
           done
-          grep -E 'WORLD_V0_ALL_DROP_CASE .*"delayMs":16000.*"classification":"retired"' world-v0-closure-current-all-drop.log >/dev/null
+          grep -E 'WORLD_V0_ALL_DROP_CASE .*"delayMs":21000.*"classification":"retired"' world-v0-closure-current-all-drop.log >/dev/null
           echo WORLD_V0_CLOSURE_CURRENT_ALL_DISCONNECTED_PASS
 
       - name: Requalify automatic ActorSession exact-rebase recovery
@@ -114,10 +117,10 @@ jobs:
           console.log("WORLD_V0_CLOSURE_CURRENT_14S_ACTOR_RESUME_PASS", evidence.gap?.gapTicks);
           NODE
 
-      - name: Requalify dual-browser hard-drop recovery inside grace
+      - name: Requalify dual-browser hard-drop recovery at prior failing edge
         env:
           MW_WORLD_V0_DUAL_BROWSER_BASE: http://127.0.0.1:8787
-          MW_WORLD_V0_DUAL_BROWSER_OFFLINE_MS: 14000
+          MW_WORLD_V0_DUAL_BROWSER_OFFLINE_MS: 14500
           MW_WORLD_V0_DUAL_BROWSER_OUTPUT: world-v0-closure-current-dual-browser.json
         shell: bash
         run: |
@@ -127,12 +130,12 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from "node:fs";
           const evidence = JSON.parse(readFileSync("world-v0-closure-current-dual-browser.json", "utf8"));
-          if (evidence.offlineMs !== 14000) throw new Error(`unexpected dual outage ${evidence.offlineMs}`);
+          if (evidence.offlineMs !== 14500) throw new Error(`unexpected dual outage ${evidence.offlineMs}`);
           if (evidence.proxy?.drop?.activeBeforeDrop < 2 || evidence.proxy?.drop?.hardDrops < 2) throw new Error("dual hard-drop apparatus did not sever both live transports");
           if (evidence.proxy?.beforeRestore?.blockedAccepts < 1) throw new Error("dual hard-drop apparatus did not block reconnect attempts");
           if (!Array.isArray(evidence.clients) || evidence.clients.length !== 2) throw new Error("dual recovery missing clients");
           if (evidence.clients.some((client) => client.guardMismatches !== 0)) throw new Error("dual recovery exact-state guard regression");
-          console.log("WORLD_V0_CLOSURE_CURRENT_DUAL_BROWSER_14S_PASS", evidence.clients.map((client) => client.gapTicks).join(","));
+          console.log("WORLD_V0_CLOSURE_CURRENT_DUAL_BROWSER_14500MS_PASS", evidence.clients.map((client) => client.gapTicks).join(","));
           NODE
 
       - name: Requalify real Chromium human-entry and fresh-reopen truth

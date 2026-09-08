@@ -1,0 +1,96 @@
+name: world-v0-session-continuity-r1-qualification
+
+on:
+  push:
+    branches: [world-v0-session-continuity-r1-exec]
+    paths:
+      - .github/workflows/world-v0-session-continuity-r1-qualification.yml
+      - public/world-v0/app.js
+      - public/world-v0/build-contract.js
+      - public/world-v0/session-continuity.js
+      - public/world-v0/public-room-entry.js
+      - public/world-v0/friend-ready.js
+      - src/world-slice-entry.ts
+      - scripts/world-v0-session-continuity-smoke.mjs
+      - scripts/world-v0-cross-page-resume-browser-audit.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-session-continuity-r1-qualification
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Static and repository gates
+        run: |
+          set -euo pipefail
+          node --check public/world-v0/session-continuity.js
+          node --check scripts/world-v0-session-continuity-smoke.mjs
+          node --check scripts/world-v0-cross-page-resume-browser-audit.mjs
+          node scripts/world-v0-session-continuity-smoke.mjs
+          npm run check
+          git diff --check
+      - name: Start local reliability Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-session-continuity-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-session-continuity-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-session-continuity-wrangler.log
+          exit 1
+      - name: Real Chromium close-tab / reopen same ActorSession
+        env:
+          MW_WORLD_V0_CROSS_PAGE_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_CROSS_PAGE_ROOM: yard-3
+          MW_WORLD_V0_CROSS_PAGE_OUTPUT: world-v0-cross-page-resume.json
+        run: |
+          set -euo pipefail
+          timeout 90s node scripts/world-v0-cross-page-resume-browser-audit.mjs | tee world-v0-cross-page-resume.log
+          grep -q 'WORLD_V0_CROSS_PAGE_RESUME_PASS' world-v0-cross-page-resume.log
+      - name: Existing fresh-profile reopen remains truthfully rejected
+        env:
+          MW_WORLD_V0_HUMAN_ENTRY_BASE_URL: http://127.0.0.1:8787
+          MW_WORLD_V0_HUMAN_ENTRY_OUTPUT: world-v0-session-continuity-human-entry.json
+        run: |
+          set -euo pipefail
+          timeout 90s node scripts/world-v0-human-entry-browser-smoke.mjs | tee world-v0-session-continuity-human-entry.log
+          grep -q 'WORLD_V0_HUMAN_ENTRY_PASS' world-v0-session-continuity-human-entry.log
+      - name: Server ActorSession lifecycle remains intact
+        env:
+          MW_WORLD_V0_I1_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_I1_RUN: session-continuity-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-session-continuity-i1.log
+          grep -q 'WORLD_V0_INTEGRATION_I1_SERVER_SESSION_PASS' world-v0-session-continuity-i1.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-session-continuity-r1-${{ github.run_attempt }}
+          path: |
+            world-v0-cross-page-resume.json
+            world-v0-cross-page-resume.log
+            world-v0-session-continuity-human-entry.json
+            world-v0-session-continuity-human-entry.log
+            world-v0-session-continuity-i1.log
+            world-v0-session-continuity-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

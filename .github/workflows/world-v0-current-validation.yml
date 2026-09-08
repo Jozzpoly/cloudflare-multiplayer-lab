@@ -2,7 +2,7 @@ name: World V0 Current Validation
 
 on:
   push:
-    branches: [main, world-v0-session-continuity-r1-exec]
+    branches: [main, world-v0-session-continuity-r1-exec, world-v0-jump-reliability-r1]
     paths:
       - .github/workflows/world-v0-current-validation.yml
       - .github/workflows/world-v0-closure-current-validation.yml

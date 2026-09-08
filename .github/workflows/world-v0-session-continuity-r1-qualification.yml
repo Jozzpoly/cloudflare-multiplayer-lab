@@ -2,7 +2,7 @@ name: World V0 Session Continuity Validation
 
 on:
   push:
-    branches: [main, world-v0-session-continuity-r1-exec]
+    branches: [main, world-v0-session-continuity-r1-exec, world-v0-jump-reliability-r1]
     paths:
       - .github/workflows/world-v0-session-continuity-r1-qualification.yml
       - package.json

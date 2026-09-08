@@ -18,6 +18,12 @@ import {
   normalizeWorldV0PublicRoomDirectory,
   worldV0PublicRoomPresentation,
 } from "./public-room-entry.js";
+import {
+  WORLD_V0_SESSION_CONTINUITY_REVISION,
+  readWorldV0StoredSession,
+  worldV0StoredSessionMatchesRoom,
+  writeWorldV0ResumeIntent,
+} from "./session-continuity.js";
 
 const bootstrapUrl = new URL(location.href);
 const rawInviteRun = bootstrapUrl.searchParams.get("run");
@@ -125,10 +131,16 @@ function isCanonicalPublicYard(value) {
   return WORLD_V0_PUBLIC_ROOM_IDS.includes(String(value || "").trim());
 }
 
+function resumableSessionForRoom(room) {
+  const stored = readWorldV0StoredSession(room?.id);
+  return worldV0StoredSessionMatchesRoom(stored, room) ? stored : null;
+}
+
 function publicRoomSnapshot() {
   return {
     revision: WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION,
     directoryRevision: WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION,
+    sessionContinuityRevision: WORLD_V0_SESSION_CONTINUITY_REVISION,
     mode: entryMode === "host" ? "directory" : "deep-link",
     visible: !publicRoomEntry.classList.contains("hidden"),
     loading: publicRoomState.loading,
@@ -140,9 +152,12 @@ function publicRoomSnapshot() {
       id: room.id,
       name: room.name,
       occupancy: room.occupancy,
+      connected: room.connected,
+      reserved: room.reserved,
       capacity: room.capacity,
       state: room.state,
       joinable: room.joinable,
+      resumableHere: Boolean(resumableSessionForRoom(room)),
     })),
     advancedFallbackAvailable: entryAdvanced.contains(runInput) && entryAdvanced.contains(inspectButton),
   };
@@ -152,7 +167,8 @@ function renderPublicRooms() {
   if (entryMode !== "host") return;
   publicRoomList.replaceChildren();
   for (const room of publicRoomState.rooms) {
-    const presentation = worldV0PublicRoomPresentation(room);
+    const resumableSession = resumableSessionForRoom(room);
+    const presentation = worldV0PublicRoomPresentation(room, { resumable: Boolean(resumableSession) });
     const button = document.createElement("button");
     button.type = "button";
     button.className = "public-room-card";
@@ -174,6 +190,14 @@ function renderPublicRooms() {
 
     button.addEventListener("click", () => {
       if (button.disabled) return;
+      if (resumableSession) {
+        callsignInput.value = resumableSession.playerId;
+        renderHumanNameHelp();
+        if (!writeWorldV0ResumeIntent(resumableSession)) {
+          publicRoomStatus.textContent = "Could not prepare session resume";
+          return;
+        }
+      }
       publicRoomState.selectedRoom = room.id;
       runInput.value = room.id;
       renderPublicRooms();
@@ -184,7 +208,7 @@ function renderPublicRooms() {
 
   if (publicRoomState.error) publicRoomStatus.textContent = "Room list unavailable · retrying";
   else if (publicRoomState.loading) publicRoomStatus.textContent = "Loading rooms…";
-  else publicRoomStatus.textContent = "Live shared occupancy";
+  else publicRoomStatus.textContent = "Live connected / reserved presence";
 }
 
 async function refreshPublicRooms() {
@@ -273,6 +297,7 @@ function entrySnapshot() {
   return {
     revision: WORLD_V0_FRIEND_ENTRY_REVISION,
     humanEntryRevision: WORLD_V0_HUMAN_ENTRY_REVISION,
+    sessionContinuityRevision: WORLD_V0_SESSION_CONTINUITY_REVISION,
     mode: entryMode,
     invited: entryMode === "invite",
     roomKeyValid: validWorldV0RoomKey(roomKey),

@@ -71,6 +71,9 @@ type SharedYardPlayer = {
   input: WorldV0ScheduledInputBuffer;
   socket: WebSocket | null;
   resumeCount: number;
+  // Raw canonical jump intent from the previous authority tick. Physical jump is
+  // edge-triggered so a multi-tick transport-durable intent window yields one impulse.
+  previousJumpIntent: boolean;
 };
 
 type SharedYardSceneSample = {
@@ -399,6 +402,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         input: new WorldV0ScheduledInputBuffer(),
         socket: null,
         resumeCount: 0,
+        previousJumpIntent: false,
       };
       this.players.set(player.sessionId, player);
     }
@@ -640,19 +644,23 @@ export class SharedYardV0 extends DurableObject<Env> {
       playerId: string;
       netEntityId: string;
       slot: number;
-    } & WorldV0ConsumedInput> = [];
+    } & WorldV0ConsumedInput & { jumpApplied: boolean }> = [];
 
     for (const player of this.sortedPlayers()) {
       const input = active
         ? player.input.consume(targetTick)
-        : { targetTick, x: 0, z: 0, fresh: false, source: "held" as const, missingStreak: 0 };
-      this.applyIntent(player.body, input.x, input.z, Boolean(input.jump));
+        : { targetTick, x: 0, z: 0, jump: false, fresh: false, source: "held" as const, missingStreak: 0 };
+      const jumpIntent = Boolean(input.jump);
+      const jumpTrigger = active && jumpIntent && !player.previousJumpIntent;
+      player.previousJumpIntent = active ? jumpIntent : false;
+      const jumpApplied = this.applyIntent(player.body, input.x, input.z, jumpTrigger);
       consumed.push({
         sessionId: player.sessionId,
         playerId: player.playerId,
         netEntityId: player.netEntityId,
         slot: player.slot,
         ...input,
+        jumpApplied,
       });
     }
 
@@ -717,7 +725,7 @@ export class SharedYardV0 extends DurableObject<Env> {
     return false;
   }
 
-  private applyIntent(body: BodyId, inputX: number, inputZ: number, jump: boolean): void {
+  private applyIntent(body: BodyId, inputX: number, inputZ: number, jump: boolean): boolean {
     const velocity = bodyLinearVelocity(body);
     const hasInput = Math.hypot(inputX, inputZ) > 0.01;
     const [nextX, nextZ] = moveToward2(
@@ -728,10 +736,12 @@ export class SharedYardV0 extends DurableObject<Env> {
       (hasInput ? WORLD_V0_MOVEMENT.playerAcceleration : WORLD_V0_MOVEMENT.playerDeceleration) /
         WORLD_V0_TIMING.simulationHz,
     );
-    const nextY = jump && this.hasJumpSupport(body)
+    const jumpApplied = jump && this.hasJumpSupport(body);
+    const nextY = jumpApplied
       ? Math.max(velocity[1], WORLD_V0_MOVEMENT.jumpSpeed)
       : velocity[1];
     b3.b3Body_SetLinearVelocity(body, [nextX, nextY, nextZ]);
+    return jumpApplied;
   }
 
   private sampleScene(): SharedYardSceneSample {

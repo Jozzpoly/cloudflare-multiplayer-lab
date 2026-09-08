@@ -1,6 +1,6 @@
-export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v12-prestart-live-start-gate";
-export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v9-prestart-live-start-gate";
-export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v8-playability-split-lead";
+export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v13-jump-intent-window";
+export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v10-jump-intent-window";
+export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v9-jump-intent-window";
 export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
 export const WORLD_V0_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v3-supersession";
@@ -18,6 +18,11 @@ export const WORLD_V0_TIMING = {
   maxCatchupSteps: 4,
   // Canonical input is authored far enough ahead to survive ordinary transport latency.
   predictionLeadTicks: 8,
+  // A discrete jump press is authored as a short contiguous intent window. The
+  // authority/client simulation applies the physical impulse only on a rising edge,
+  // so losing one near-frontier tick does not erase the action and later true ticks
+  // cannot repeatedly boost the same jump. This is transport durability, not coyote time.
+  jumpIntentWindowTicks: 6,
   // Playability: simulation speculation is separated from canonical input authorship.
   // Two ticks is the first horizon that can consume the earliest newly-authored
   // floor(authority)+1 input in the same prediction pass without speculating farther.

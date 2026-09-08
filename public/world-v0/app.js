@@ -406,14 +406,16 @@ function pumpLogicalInputScheduler() {
 
   logicalInputPumps += 1;
   const movement = currentInput();
-  const jumpTarget = jumpQueued ? startTick : null;
-  if (jumpTarget !== null) jumpQueued = false;
+  const jumpWindowThrough = jumpQueued
+    ? Math.min(authoredThrough, startTick + simulation.timing.jumpIntentWindowTicks - 1)
+    : null;
+  if (jumpWindowThrough !== null) jumpQueued = false;
   const revisions = [];
 
   for (let tick = startTick; tick <= authoredThrough; tick += 1) {
     const existing = intendedSelf.get(tick);
     if (!existing) {
-      const next = { x: movement.x, z: movement.z, jump: tick === jumpTarget };
+      const next = { x: movement.x, z: movement.z, jump: jumpWindowThrough !== null && tick <= jumpWindowThrough };
       intendedSelf.set(tick, next);
       queueInputRecord(tick, next);
       logicalInputAuthored += 1;
@@ -423,8 +425,8 @@ function pumpLogicalInputScheduler() {
     const next = {
       x: movement.x,
       z: movement.z,
-      // Movement/camera revisions must not erase an already-authored one-shot jump.
-      jump: Boolean(existing.jump || tick === jumpTarget),
+      // Movement/camera revisions must not erase an already-authored jump-intent window.
+      jump: Boolean(existing.jump || (jumpWindowThrough !== null && tick <= jumpWindowThrough)),
     };
     if (sameInput(existing, next)) continue;
     intendedSelf.set(tick, next);
@@ -1252,12 +1254,16 @@ function applyResolvedTick(sim, tick, allowGenerateSelf) {
   void allowGenerateSelf;
   const previous = previousUsedInput(tick);
   const resolved = resolveInputsForTick(tick, previous);
+  // Keep the raw multi-tick jump intent in usedByTick, but turn it into one physical
+  // impulse at simulation time. Replay/correction reconstructs the same rising edge.
+  const selfJumpTrigger = Boolean(resolved.self.jump) && !Boolean(previous.self.jump);
+  const remoteJumpTrigger = Boolean(resolved.remote.jump) && !Boolean(previous.remote.jump);
   usedByTick.set(tick, { self: { ...resolved.self }, remote: { ...resolved.remote } });
   const selfBody = sim.actorBodies.get(selfSessionId);
   const remoteBody = sim.actorBodies.get(remoteSessionId);
   if (!selfBody || !remoteBody) throw new Error("predicted actor mapping incomplete");
-  applyIntent(selfBody, resolved.self);
-  applyIntent(remoteBody, resolved.remote);
+  applyIntent(selfBody, { ...resolved.self, jump: selfJumpTrigger });
+  applyIntent(remoteBody, { ...resolved.remote, jump: remoteJumpTrigger });
 }
 
 function createHistoryAtBoundary(sim, boundaryTick, reason) {

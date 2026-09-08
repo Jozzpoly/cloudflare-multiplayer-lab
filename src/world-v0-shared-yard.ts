@@ -457,6 +457,7 @@ export class SharedYardV0 extends DurableObject<Env> {
 
   private maybeStartProtocol(): void {
     if (this.protocolStartTick !== null || this.players.size !== MAX_PLAYERS) return;
+    if (this.connectedPlayerCount() !== MAX_PLAYERS) return;
     if ([...this.players.values()].some((player) => !player.ready)) return;
 
     this.clearPreStartAmbiguityTimer();

@@ -1,9 +1,9 @@
-export const WORLD_V0_BROWSER_UI_REVISION = "shared-yard-v0-browser-ui-v14-prestart-ambiguity-grace";
+export const WORLD_V0_BROWSER_UI_REVISION = "shared-yard-v0-browser-ui-v15-prestart-live-start-gate";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v8-playability-split-lead";
-export const WORLD_V0_EXPECTED_SERVER_REVISION = "shared-yard-v0-authority-v8-prestart-ambiguity-grace";
+export const WORLD_V0_EXPECTED_SERVER_REVISION = "shared-yard-v0-authority-v9-prestart-live-start-gate";
 export const WORLD_V0_EXPECTED_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v3-supersession";
 export const WORLD_V0_EXPECTED_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
-export const WORLD_V0_EXPECTED_SIM_BUILD_ID = "shared-yard-v0-sim-76352637009935db";
+export const WORLD_V0_EXPECTED_SIM_BUILD_ID = "shared-yard-v0-sim-69ad9c7d0430a929";
 export const WORLD_V0_BOX3D_PACKAGE = "box3d.js@0.1.1";
 export const WORLD_V0_BOX3D_BUILD = "i4-raw-seed-bindings-box3djs-5d5a3af-emsdk-6.0.2";
 export const WORLD_V0_BOX3D_URL = "./box3d-i4/box3d.inline.mjs";

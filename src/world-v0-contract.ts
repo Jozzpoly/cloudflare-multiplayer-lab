@@ -1,5 +1,5 @@
-export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v11-prestart-ambiguity-grace";
-export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v8-prestart-ambiguity-grace";
+export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v12-prestart-live-start-gate";
+export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v9-prestart-live-start-gate";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v8-playability-split-lead";
 export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";

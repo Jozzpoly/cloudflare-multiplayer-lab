@@ -1,0 +1,51 @@
+name: World V0 Jump Qualification Bridge Materialize
+
+on:
+  push:
+    branches: [world-v0-jump-reliability-r1]
+    paths:
+      - .github/workflows/world-v0-jump-qualification-bridge-materialize.yml
+      - scripts/materialize-world-v0-jump-qualification-bridge.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-jump-qualification-bridge-materialize
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: world-v0-jump-reliability-r1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Enable retained validators on repair branch
+        run: node scripts/materialize-world-v0-jump-qualification-bridge.mjs
+      - name: Prove bridge-only diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --name-only | sort > /tmp/actual
+          printf '%s\n' \
+            .github/workflows/world-v0-current-validation.yml \
+            .github/workflows/world-v0-session-continuity-r1-qualification.yml | sort > /tmp/expected
+          diff -u /tmp/expected /tmp/actual
+      - name: Commit bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Jozzpoly"
+          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
+          git add .github/workflows/world-v0-current-validation.yml .github/workflows/world-v0-session-continuity-r1-qualification.yml
+          git commit -m "ci(world-v0): qualify jump repair with retained gates"
+          git push origin HEAD:world-v0-jump-reliability-r1

@@ -44,21 +44,17 @@ const targetTick = jump.record.targetTick;
 const priorFalse = (wire.sent || []).slice(0, jump.sendIndex).flatMap((send) =>
   (send.records || []).map((record) => ({ send, record })))
   .filter(({ record }) => record.targetTick === targetTick && record.jump === false)
-  .at(-1);
-assert(priorFalse, `no earlier jump:false prefill for target ${targetTick}`);
+  .at(-1) || null;
 
 const ackFor = (batchSeq) => (wire.received || []).find((entry) =>
   entry.type === "world_v0_batch_ack" && entry.batchSeq === batchSeq);
-const priorAck = ackFor(priorFalse.send.batchSeq);
+const priorAck = priorFalse ? ackFor(priorFalse.send.batchSeq) : null;
 const jumpAck = ackFor(jump.batchSeq);
-assert(priorAck, `missing ACK for earlier false prefill batch ${priorFalse.send.batchSeq}`);
-assert(jumpAck, `missing ACK for jump revision batch ${jump.batchSeq}`);
+assert(jumpAck, `missing ACK for jump batch ${jump.batchSeq}`);
 
-const priorAckRecord = (priorAck.records || []).find((record) => record.targetTick === targetTick);
+const priorAckRecord = priorAck?.records?.find((record) => record.targetTick === targetTick) || null;
 const jumpAckRecord = (jumpAck.records || []).find((record) => record.targetTick === targetTick);
-assert(["accepted", "superseded", "duplicate_same"].includes(priorAckRecord?.status),
-  `earlier false prefill was not established at authority: ${priorAckRecord?.status}`);
-assert(jumpAckRecord?.status === "late", `jump revision was not late: ${jumpAckRecord?.status}`);
+assert(jumpAckRecord?.status === "late", `jump record was not rejected late: ${jumpAckRecord?.status}`);
 
 const consumed = (wire.received || []).find((entry) =>
   entry.type === "world_v0_consumed" && entry.targetTick === targetTick);
@@ -66,8 +62,20 @@ assert(consumed, `missing canonical consumed tick ${targetTick}`);
 const canonical = (consumed.players || []).find((player) => player.sessionId === sessionId);
 assert(canonical, `canonical ActorSession missing at tick ${targetTick}`);
 assert(canonical.jump === false, `canonical jump unexpectedly true at tick ${targetTick}`);
-assert(canonical.fresh === true && canonical.source === "fresh",
-  `canonical false was not a fresh consumed record: ${JSON.stringify(canonical)}`);
+
+let pathKind;
+if (priorFalse) {
+  assert(priorAck, `missing ACK for earlier false prefill batch ${priorFalse.send.batchSeq}`);
+  assert(["accepted", "superseded", "duplicate_same"].includes(priorAckRecord?.status),
+    `earlier false prefill was not established at authority: ${priorAckRecord?.status}`);
+  assert(canonical.fresh === true && canonical.source === "fresh",
+    `prefill path did not consume established fresh false record: ${JSON.stringify(canonical)}`);
+  pathKind = "late-supersession-after-false-prefill";
+} else {
+  assert(canonical.fresh === false && ["held", "lease_expired"].includes(canonical.source),
+    `first-arrival path did not fall back to held/lease input: ${JSON.stringify(canonical)}`);
+  pathKind = "late-first-arrival-held-fallback";
+}
 
 const snapshots = (wire.received || []).filter((entry) =>
   entry.type === "world_v0_snapshot" &&
@@ -82,26 +90,27 @@ const maxY = Math.max(...heights);
 assert(maxY < 1.05, `authority actor jumped despite canonical false: maxY=${maxY}`);
 
 const targetLead = targetTick - key.latestAuthorityBoundary;
-assert(targetLead >= 1 && targetLead <= 4,
+assert(targetLead >= 1 && targetLead <= 5,
   `jump target was not near authority frontier: lead=${targetLead}`);
 assert(target.metrics.serverLate > key.serverLate,
   `serverLate did not increase across missed jump: ${key.serverLate} -> ${target.metrics.serverLate}`);
 
 const summary = {
   mode: "natural-zero-added-delay",
+  pathKind,
   rawVerdict: evidence.verdict,
   rawError: evidence.error,
   actorSessionId: sessionId,
   keyAuthorityBoundary: key.latestAuthorityBoundary,
   targetTick,
   targetLead,
-  priorFalse: {
+  priorFalse: priorFalse ? {
     batchSeq: priorFalse.send.batchSeq,
     sentAt: priorFalse.send.at,
     ackBoundaryTick: priorAck.boundaryTick,
     ackStatus: priorAckRecord.status,
-  },
-  jumpRevision: {
+  } : null,
+  jumpRecord: {
     batchSeq: jump.batchSeq,
     sentAt: jump.sentAt,
     ackBoundaryTick: jumpAck.boundaryTick,

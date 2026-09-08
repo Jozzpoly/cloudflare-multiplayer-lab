@@ -1,0 +1,98 @@
+name: World V0 Jump R1 Final Qualification
+
+on:
+  push:
+    branches: [world-v0-jump-r1-final-qualification]
+    paths:
+      - .github/workflows/world-v0-jump-r1-final-qualification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-final-cleanup-head:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact cleanup head
+        uses: actions/checkout@v7
+        with:
+          ref: 8f56b8b02c63ca760bca8a0e7c4da93bbce9ad28
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Prove exact qualified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "8f56b8b02c63ca760bca8a0e7c4da93bbce9ad28"
+          git diff --exit-code 803cae3dce75a97739ba4ede31d3e08a4a5c55b8..HEAD -- \
+            public/world-v0/app.js \
+            public/world-v0/build-contract.js \
+            src/world-v0-contract.ts \
+            src/world-v0-shared-yard.ts
+          test -f scripts/world-v0-jump-window-repair-audit.mjs
+          test ! -e scripts/world-v0-jump-one-shot-late-audit.mjs
+          test ! -e scripts/world-v0-jump-causal-classify.mjs
+          test ! -e scripts/materialize-world-v0-jump-reliability-r1.mjs
+          test ! -e .github/workflows/world-v0-jump-reliability-r1-materialize.yml
+          test ! -e .github/workflows/world-v0-jump-causal-audit.yml
+          echo WORLD_V0_JUMP_R1_FINAL_SOURCE_PIN_PASS
+
+      - name: Full repository checks
+        run: npm run check
+
+      - name: Start local reliability Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-jump-r1-final-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-jump-r1-final-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "World V0 final jump Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-jump-r1-final-wrangler.log
+          exit 1
+
+      - name: Requalify repaired jump transport boundary
+        env:
+          MW_WORLD_V0_JUMP_REPAIR_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_JUMP_REPAIR_DELAY_MS: 45
+          MW_WORLD_V0_JUMP_REPAIR_OUTPUT: world-v0-jump-r1-final.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 90s node scripts/world-v0-jump-window-repair-audit.mjs | tee world-v0-jump-r1-final.log
+          grep -q 'WORLD_V0_JUMP_WINDOW_REPAIR_PASS' world-v0-jump-r1-final.log
+
+      - name: Stop local Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/world-v0-jump-r1-final-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-jump-r1-final-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload final qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-jump-r1-final-qualification-${{ github.run_attempt }}
+          path: |
+            world-v0-jump-r1-final.log
+            world-v0-jump-r1-final.json
+            world-v0-jump-r1-final-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

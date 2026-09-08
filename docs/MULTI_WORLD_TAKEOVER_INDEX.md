@@ -10,14 +10,14 @@ This index is intentionally short. A fresh continuation should not reconstruct t
 ## Canonical reading order
 
 1. [`MULTI_WORLD_PROJECT_SOUL.md`](MULTI_WORLD_PROJECT_SOUL.md) — durable answer to **what Multi_World is trying to become**.
-2. [`MULTI_WORLD_CURRENT_STATE.md`](MULTI_WORLD_CURRENT_STATE.md) — current qualified technical truth, lifecycle boundaries and nonclaims.
+2. [`MULTI_WORLD_CURRENT_STATE.md`](MULTI_WORLD_CURRENT_STATE.md) — current qualified technical truth, lifecycle/input boundaries and nonclaims.
 3. GitHub issue #8 — newest checkpoints when exact evidence/provenance matters.
 
-Newest R1 integration checkpoint:
+Newest technical checkpoint:
 
-`5590133257`
+`5592166219`
 
-It records PR #39, exact integrated `main`, post-merge validation and remaining nonclaims.
+It records R2 Jump Reliability, exact `main` integration, qualification evidence and remaining nonclaims.
 
 Older grounding/takeover documents are provenance, not startup requirements.
 
@@ -33,39 +33,39 @@ Use live:
 
 Always verify its head before acting. Documentation-only consolidation after the qualified product anchor may move `main` without creating a new runtime qualification.
 
-### Qualified integrated product/evidence anchor
+### Qualified integrated runtime/evidence anchor
 
-Exact post-merge product checkpoint:
+`main@692ac8524c0bd056458658408f7d78d82237aab9`
 
-`main@72f971cff84f991f994df1b821f656941c0cd8eb`
+Clean qualified R2 source:
 
-Qualified R1 parent:
+`world-v0-jump-reliability-r2@1afe2428518c7c97fb96fef46f8a010eaaba3999`
 
-`world-v0-session-continuity-r1-exec@c5b071fa15dff403ba82891e21f36fd36c4ac791`
+Qualified tree shared by both:
 
-PR #39 merged the exact qualified R1 tree. The merge tree is:
+`b5f1608d2c090c984545be027cbe05a3dd8de69f`
 
-`c57ab4a7c90aebd5101ae09e973481fb80e8243b`
+The merge changed ancestry/provenance only; there is zero file diff between clean R2 and the integrated runtime anchor.
 
-and is identical to the qualified R1 tree.
+### Post-integration validation
 
-### Post-merge validation
+All exact `main@692ac852...` gates passed:
 
-All exact `main@72f971c...` gates passed:
-
-- normal CI `34264320221` — **SUCCESS**;
-- Session Continuity Validation `34264320224` — **SUCCESS**;
-  - artifact `10071208496`;
-  - SHA-256 `218cc61c43d6b6eb34ddbc71824651cde975a91b090c881dfc963bb388b1032b`;
-- World V0 Current Validation `34264320312` — **SUCCESS**;
-  - artifact `10071385727`;
-  - SHA-256 `014c4467103a4baf71756d2bcd2d8c086ba4ad032faa638d258d9c02873cbf28`.
+- normal CI `34280426970` — **SUCCESS**;
+- Session Continuity `34280426973` — **SUCCESS**;
+  - artifact `10077414930`;
+  - SHA-256 `eeea5b5a39f162372a6b61437a44465351ea8756a807dca9267e5f7794d190b2`;
+- World V0 Current Validation `34280427073` — **SUCCESS**;
+  - artifact `10077571450`;
+  - SHA-256 `7d1389b9f391be5d02ac9a94853399e41568c6473c44638cb80d9c1b97e85463`.
 
 Runtime identity at that anchor:
 
-- authority `shared-yard-v0-authority-v9-prestart-live-start-gate`;
-- browser UI `shared-yard-v0-browser-ui-v17-slot-bound-session-continuity`;
-- simulation `shared-yard-v0-sim-69ad9c7d0430a929`;
+- contract `shared-yard-v0-contract-v14-jump-delivery-persistence`;
+- authority `shared-yard-v0-authority-v11-jump-delivery-persistence`;
+- browser sim `shared-yard-v0-browser-sim-v10-jump-delivery-persistence`;
+- browser UI `shared-yard-v0-browser-ui-v19-jump-delivery-persistence`;
+- simulation `shared-yard-v0-sim-cd8edc169f791a64`;
 - session continuity `world-v0-session-continuity-r2-slot-bound`;
 - directory `world-v0-public-room-directory-r2-slot-presence`.
 
@@ -73,10 +73,11 @@ Runtime identity at that anchor:
 
 `world-v0-playability-lead2-owner-feel@2250e45c53aaf2f9107ac718e2ac5dba6ab02d2e`
 
-Preserve this as the relevant Owner-feel ancestor. Later reliability/R1 work did not reopen feel/content tuning.
+Preserve this as the relevant Owner-feel ancestor. Later closure/R1/R2 work did not reopen broad feel/content tuning.
 
-### Earlier reliability controls
+### Earlier controls
 
+- R1 integrated runtime `main@72f971cff84f991f994df1b821f656941c0cd8eb`;
 - `world-v0-multiplayer-foundation-integration@a2e821afbbc88371b033af311cc6882d46aa6916`;
 - `world-v0-r0d-reliability-retest@7da9ddd4ad37221f63a3cd418a140824783480ec`;
 - R0d workflow `34060903778` — SUCCESS.
@@ -85,16 +86,43 @@ These are provenance controls, not current working branches.
 
 ---
 
-## What changed in R1
+## What changed in R2
 
-The old takeover docs said that closing a page and opening a new tab could not preserve ActorSession identity. That statement is now stale.
+R1 had repaired the original one-tick jump arrival race by representing a press over a fixed **six-tick future window**. That was better, but it still encoded an arbitrary transport-time budget.
 
-Within a still-recoverable live WorldEpoch, the **same browser profile** can now recover the same ActorSession / NetEntity after close-tab/reopen through:
+R2 replaces that fixed window with **canonical-delivery persistence**:
+
+- a press stays pending while the future-input horizon advances;
+- late/rejected early ticks do not erase it;
+- `world_v0_consumed` with canonical `jump=true` proves delivery and clears pending;
+- authority still applies a physical jump only on a grounded rising edge;
+- canonical `jump=true` while unsupported clears pending with `jumpApplied=false`, so it does not become a landing buffer.
+
+The causal browser falsifier forced ordered outbound delay `180 ms -> 45 ms`:
+
+- first authored tick `196`;
+- canonical delivered tick `239`;
+- **43-tick delivery span**, far beyond the former six-tick window;
+- exactly one grounded impulse;
+- second airborne press delivered but not applied;
+- no delayed landing impulse;
+- exact guard mismatches `0`;
+- server late count `2 -> 75`, confirming the intended temporal-loss class was exercised.
+
+Retained causal specimen:
+
+`scripts/world-v0-jump-delivery-persistence-audit.mjs`
+
+---
+
+## R1 continuity remains earned
+
+Within a still-recoverable live WorldEpoch, the **same browser profile** can recover the same ActorSession / NetEntity after close-tab/reopen through:
 
 - the room list;
 - the exact public `?run=yard-N` link.
 
-The resume offer is authority-backed and slot-bound:
+Resume remains authority-backed and slot-bound:
 
 - your own slot must be reserved;
 - an already connected own slot cannot be silently stolen by a second tab;
@@ -107,38 +135,40 @@ The room directory exposes only anonymous reserved slot numbers. Private resume 
 
 ## Immediate continuation state
 
-R1 Session Continuity is **integrated and post-merge qualified**. The previous reliability/consolidation work and R1 are strong enough that the agent should **not** keep inventing outage variants by momentum.
+**R2 Jump Reliability is integrated and post-merge qualified.** The demonstrated temporal transport-loss jump failure is closed without adding coyote time or landing buffering.
+
+The broader reliability campaign should now **stop unless new evidence falsifies the integrated contract**. Do not invent another outage variant, retry sweep or qualification loop by momentum.
 
 The next substantial work should begin with **product-frontier re-grounding**:
 
-1. verify live `main` and classify any movement after `72f971c...` as docs-only or runtime-relevant;
+1. verify live `main` and classify any movement after `692ac852...` as docs-only or runtime-relevant;
 2. read Project Soul and Current State;
-3. inspect the newest issue #8 checkpoint if exact provenance matters;
+3. inspect issue #8 checkpoint `5592166219` if exact provenance matters;
 4. recover the latest relevant Owner play/product evidence;
 5. identify the highest-value current friction or desired capability;
-6. challenge old candidates rather than inheriting them;
+6. challenge old candidates rather than inherit them;
 7. choose the smallest discriminating experiment/product slice;
-8. use remote/device evidence only when the chosen question requires it.
+8. use remote/device evidence only when the selected question requires it.
 
 Do not automatically build persistence, lobby/membership architecture, 3-player support, broad refactors or arbitrary content.
-
-Jump/content behavior was not part of R1. Treat any jump issue as a separate causal/product question, not an inherited next phase.
 
 ---
 
 ## Evidence boundaries to remember
 
-The qualified envelope **does** include same-profile close-tab/new-tab ActorSession continuity, but it still does **not** establish:
+The qualified envelope does **not** establish:
 
 - account/cloud or cross-device session persistence;
 - Durable Object process-loss reconstruction of the same Box3D WorldEpoch;
 - persistent/continuously open room semantics;
 - arbitrary player churn or 3+ player scalability;
 - mobile OS suspension / radio handover behavior;
-- new remote Cloudflare placement qualification for the R1 head;
-- a guarantee that every browser outage shorter than the 20 s authority grace recovers end-to-end.
+- new remote Cloudflare placement qualification for the R2 head;
+- a guarantee that every browser outage shorter than the 20 s authority grace recovers end-to-end;
+- guaranteed discrete-input delivery through arbitrary permanent network loss;
+- coyote time, landing buffering or broader support/contact forgiveness.
 
-See `MULTI_WORLD_CURRENT_STATE.md` for the exact lifecycle distinctions.
+See `MULTI_WORLD_CURRENT_STATE.md` for the exact lifecycle and input distinctions.
 
 ---
 
@@ -150,9 +180,9 @@ Useful historical classes include:
 
 - `MULTI_WORLD_GROUNDING_V1.md`, grounding ledger/red-team and older fresh-takeover files;
 - `MULTI_WORLD_HUMAN_TEST_CONTEXT.md`;
-- dated 2026-09-05 Friend-Ready / post-Owner / two-phone documents;
+- dated Friend-Ready / post-Owner / two-phone documents;
 - experiment-specific `WORLD_V0_*` / `WS0_*` documents;
-- repository history for the intentionally retired `WORLD_V0_OPERATING_MAP.md`.
+- repository history for intentionally retired operating maps.
 
 Historical branch warning:
 
@@ -165,10 +195,10 @@ Historical branch warning:
 A fresh browser orchestrator should:
 
 1. verify live `main`;
-2. compare/classify any commits after qualified product anchor `72f971cff84f991f994df1b821f656941c0cd8eb`;
+2. compare/classify any commits after qualified runtime anchor `692ac8524c0bd056458658408f7d78d82237aab9`;
 3. read Project Soul;
 4. read Current State;
-5. read newest issue #8 checkpoint, currently `5590133257`, when technical provenance matters;
+5. read newest issue #8 checkpoint, currently `5592166219`, when technical provenance matters;
 6. recover the latest relevant Owner product/play evidence;
 7. propose the smallest justified next product/research move rather than reopening historical infrastructure work by default.
 

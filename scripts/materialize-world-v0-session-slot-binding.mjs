@@ -117,8 +117,8 @@ edit("scripts/world-v0-session-continuity-smoke.mjs", [
   },
   {
     label: "slot binding assertions",
-    from: `assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a" }), true);\nassert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-b" }), false);`,
-    to: `assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reservedSlots: [1] }), true);\nassert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reservedSlots: [0] }), false, "other reserved slot must not authorize takeover");\nassert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-b", reservedSlots: [1] }), false);`,
+    from: `assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reserved: 1 }), true);\nassert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reserved: 0 }), false, "connected ActorSession must not be offered as resumable");\nassert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-b", reserved: 1 }), false);`,
+    to: `assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reservedSlots: [1] }), true);\nassert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reservedSlots: [0] }), false, "other reserved slot must not authorize takeover");\nassert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reservedSlots: [] }), false, "connected ActorSession must not be offered as resumable");\nassert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-b", reservedSlots: [1] }), false);`,
   },
 ]);
 

@@ -59,6 +59,12 @@ jobs:
           grep -q 'committedStartWindowRecoverable' public/world-v0/app.js
           grep -q 'schedulePreStartAmbiguityRetirement' src/world-v0-shared-yard.ts
           grep -q 'connectedPlayerCount() !== MAX_PLAYERS' src/world-v0-shared-yard.ts
+          test ! -e .github/workflows/world-v0-closure-prestart-ambiguity-repair.yml
+          test ! -e .github/workflows/world-v0-closure-prestart-live-start-repair.yml
+          test ! -e .github/workflows/world-v0-closure-prestart-partial-resume-falsifier.yml
+          test ! -e scripts/materialize-world-v0-prestart-ambiguity-repair.py
+          test ! -e scripts/materialize-world-v0-prestart-live-start-gate.py
+          echo WORLD_V0_CLOSURE_CONSUMED_APPARATUS_CLEAN_PASS
           node --experimental-strip-types --input-type=module <<'NODE'
           import { readFileSync } from "node:fs";
           import { WORLD_V0_SERVER_REVISION, WORLD_V0_SIM_BUILD_ID } from "./src/world-v0-contract.ts";

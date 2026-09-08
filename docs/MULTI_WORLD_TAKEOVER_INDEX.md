@@ -21,7 +21,7 @@ It is product/research direction, not live architecture.
 
 Read second for:
 
-> **What is actually qualified now, what remains unproven, and what is the current branch/consolidation state?**
+> **What is actually qualified now, what remains unproven, and what is the current repository/project state?**
 
 This is the canonical live-state summary.
 
@@ -29,29 +29,41 @@ This is the canonical live-state summary.
 
 Use issue #8 when exact evidence/provenance matters.
 
-Current closure checkpoint at this update:
+Technical closure checkpoint:
 
 `5577741764`
 
-It records the four defects found during closure, their repairs, final clean-head validation and explicit non-claims.
-
-### 4. This index
-
-Use the rest of this file only to locate historical material or the next operational step.
+It records the four defects found during closure, their repairs, final clean-head validation and explicit non-claims. Read newer issue comments too if they exist; consolidation or later project work may have advanced after that technical checkpoint.
 
 ---
 
 ## Current exact anchors
 
-### Qualified technical authority
+### Canonical repository branch
 
-Branch:
+Use live:
 
-`world-v0-closure-stabilization`
+`main`
 
-Qualified clean runtime/evidence head:
+The closure/main consolidation merge checkpoint is:
 
-`1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
+`66f40bb86a066658b15bbd45c7baea86d1bb2a44`
+
+PR #38 reconciled the formerly diverged histories without changing runtime relative to the qualified technical checkpoint.
+
+Validation around that promotion:
+
+- PR CI `34177475444` — SUCCESS;
+- F5 preflight `34177475333` — SUCCESS;
+- post-merge `main` push CI `34177544920` — SUCCESS on exact merge head `66f40bb...`.
+
+Subsequent documentation-only commits may move `main`; verify live head before acting.
+
+### Qualified runtime/evidence authority
+
+Exact checkpoint:
+
+`world-v0-closure-stabilization@1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
 
 Final retained validator:
 
@@ -66,13 +78,13 @@ Runtime identity at that checkpoint:
 - authority `shared-yard-v0-authority-v9-prestart-live-start-gate`;
 - sim build `shared-yard-v0-sim-69ad9c7d0430a929`.
 
-The live branch may be ahead of `1a759...` by **documentation-only consolidation commits**. Verify the diff before treating a newer SHA as a new runtime specimen.
+Do not call a later docs-only `main` SHA a new runtime qualification.
 
 ### Human-qualified playability ancestor
 
 `world-v0-playability-lead2-owner-feel@2250e45c53aaf2f9107ac718e2ac5dba6ab02d2e`
 
-Preserve this as the relevant Owner-feel ancestor. Do not mutate or rewrite it as part of takeover cleanup.
+Preserve this as the relevant Owner-feel ancestor.
 
 ### Earlier reliability anchors
 
@@ -82,31 +94,25 @@ Preserve this as the relevant Owner-feel ancestor. Do not mutate or rewrite it a
 
 These are provenance controls, not current working branches.
 
-### `main`
-
-Live at the consolidation audit:
-
-`main@401be09ccd09decf493e4fcf4bea784e841e6163`
-
-`main` and closure diverged from `d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de`.
-
-Do **not** blindly merge or force-update `main`. Its independent side must be audited first.
-
 ---
 
 ## Immediate continuation state
 
-The ordinary feature freeze is still in force during consolidation.
+The temporary feature freeze that existed specifically to complete reliability closure and repository consolidation is no longer the active blocker.
 
-Technical lifecycle/recovery closure is strong enough to stop inventing additional outage variants. The next work is:
+Technical lifecycle/recovery closure is strong enough to stop inventing additional outage variants, and the former `main` divergence has been reconciled.
 
-1. finish canonical documentation consolidation;
-2. classify the independent `main`-side commits since the divergence point;
-3. choose the safest consolidation path;
-4. validate that consolidation without accidentally changing the qualified runtime;
-5. only then select the next product/research frontier.
+The next work is **product-frontier re-grounding**, not automatic execution of an old phase plan:
 
-Do not use this transition as permission to add persistence, lobby/membership architecture, new content, 3-player support or broad refactors.
+1. verify live `main` and classify any commits after the consolidation checkpoint;
+2. read Project Soul and Current State;
+3. recover the latest relevant Owner play/product evidence;
+4. identify the highest-value current friction or desired capability;
+5. challenge old candidates such as jump, room continuity, richer interaction, persistence or player-count work rather than inheriting them by momentum;
+6. choose the smallest discriminating next experiment or product slice;
+7. use remote/device evidence only when the selected question actually requires it.
+
+Do not use the end of consolidation as permission to build persistence, lobby/membership architecture, arbitrary content, 3-player support or broad refactors without a concrete product question.
 
 ---
 
@@ -127,7 +133,7 @@ See `MULTI_WORLD_CURRENT_STATE.md` for the exact lifecycle distinctions.
 
 ## Historical documents — useful only when needed
 
-The following are preserved because they contain reasoning history, negative evidence or older takeover context. They are **not required startup reading** and must not override newer live evidence:
+The following are preserved because they contain reasoning history, negative evidence, Owner feedback or older takeover context. They are **not required startup reading** and must not override newer live evidence:
 
 - `MULTI_WORLD_GROUNDING_V1.md` — 2026-09-02 consolidated grounding around the earlier A2/A2R frontier;
 - `MULTI_WORLD_HUMAN_TEST_CONTEXT.md` — human/device test context;
@@ -135,9 +141,10 @@ The following are preserved because they contain reasoning history, negative evi
 - `MULTI_WORLD_FRESH_TAKEOVER.md` — older heavier takeover draft;
 - `MULTI_WORLD_GROUNDING_LEDGER.md` — broad historical ledger;
 - `MULTI_WORLD_GROUNDING_REDTEAM.md` — red-team critique that shaped the older grounding;
+- dated 2026-09-05 Friend-Ready / post-Owner / post-R1 / two-phone documents — preserved product and sequencing provenance from the former independent `main` side;
 - experiment-specific `WORLD_V0_*` and `WS0_*` documents — local evidence/contract history.
 
-Do not delete historical docs merely because they are stale. Their status is provenance, not current authority.
+The old `WORLD_V0_OPERATING_MAP.md` was intentionally not restored as a live file during consolidation because its 2026-09-05 snapshot described itself as current. It remains reachable through repository history.
 
 ---
 
@@ -147,7 +154,7 @@ Do not delete historical docs merely because they are stale. Their status is pro
 
 **Do not merge it wholesale.**
 
-If some historical statement is still useful, re-derive it against live closure evidence rather than importing the branch as authority.
+If some historical statement is still useful, re-derive it against live canonical evidence rather than importing the branch as authority.
 
 ---
 
@@ -155,11 +162,12 @@ If some historical statement is still useful, re-derive it against live closure 
 
 A fresh browser orchestrator should:
 
-1. verify live `world-v0-closure-stabilization` head;
-2. compare it with qualified technical checkpoint `1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b` and classify any later commits;
+1. verify live `main`;
+2. compare it with the consolidation merge checkpoint `66f40bb86a066658b15bbd45c7baea86d1bb2a44` and classify any later commits;
 3. read Project Soul;
 4. read Current State;
-5. verify the newest issue #8 checkpoint and current CI if the task depends on technical qualification;
-6. continue the explicit consolidation frontier rather than reopening historical research by default.
+5. verify the newest issue #8 checkpoint and current CI when technical qualification matters;
+6. recover the latest relevant Owner product/play evidence;
+7. propose the smallest justified next product/research move rather than reopening historical infrastructure work by default.
 
-Only if those checks reveal conflicting evidence should the older grounding/handoff material be reopened in depth.
+Only if those checks reveal conflicting evidence should older grounding/handoff material be reopened in depth.

@@ -2,8 +2,9 @@
 
 Status: **CANONICAL LIVE-STATE SUMMARY**  
 Grounded: **2026-09-08**  
-Canonical technical branch at this checkpoint: `world-v0-closure-stabilization`  
-Qualified clean head: `1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
+Canonical repository branch: `main`  
+Consolidation merge checkpoint: `66f40bb86a066658b15bbd45c7baea86d1bb2a44`  
+Qualified runtime/evidence checkpoint: `1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
 
 This document answers **what is true now**. It does not replace [`MULTI_WORLD_PROJECT_SOUL.md`](MULTI_WORLD_PROJECT_SOUL.md), which answers **what the project is trying to become**.
 
@@ -17,7 +18,7 @@ Multi_World is working toward a **small shared physical living world** in which 
 
 The current Cloudflare / Durable Object / WebSocket / Box3D / Three.js stack is a research substrate, not the identity of the project.
 
-The product pressure remains:
+The durable product pressure remains:
 
 > **PLAYER INTENT ↔ PHYSICAL CONSEQUENCE ↔ SHARED TRUTH**
 
@@ -29,7 +30,7 @@ See [`MULTI_WORLD_PROJECT_SOUL.md`](MULTI_WORLD_PROJECT_SOUL.md) for the durable
 
 Use this order when taking over the project:
 
-1. live repository state, exact SHAs and current CI/runtime evidence;
+1. live `main`, exact SHAs and current CI/runtime evidence;
 2. GitHub issue #8, especially its newest checkpoints;
 3. this current-state document;
 4. Project Soul for durable product intent;
@@ -40,76 +41,81 @@ Historical handoffs are not merge authorities.
 
 ---
 
-## 3. Current qualified specimen
+## 3. Canonical repository state vs qualified runtime state
 
-### Technical closure head
+These are intentionally distinguished.
 
-Branch:
+### Canonical repository lineage
 
-`world-v0-closure-stabilization`
+The repository is now consolidated on:
 
-Qualified clean head:
+`main`
 
-`1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
+The closure/main ancestry reconciliation was merged through PR #38 at:
 
-Current runtime identity:
+`66f40bb86a066658b15bbd45c7baea86d1bb2a44`
+
+The merge preserved the qualified closure lineage and the useful dated 2026-09-05 documentation from the independent `main` side, while intentionally not restoring the stale `WORLD_V0_OPERATING_MAP.md` as a live authority document.
+
+The integration was **docs-only relative to the qualified technical checkpoint**.
+
+### Qualified runtime/evidence checkpoint
+
+The exact runtime specimen remains:
+
+`world-v0-closure-stabilization@1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
+
+Runtime identity:
 
 - contract: `shared-yard-v0-contract-v12-prestart-live-start-gate`;
 - authority: `shared-yard-v0-authority-v9-prestart-live-start-gate`;
 - browser UI: `shared-yard-v0-browser-ui-v15-prestart-live-start-gate`;
 - simulation build: `shared-yard-v0-sim-69ad9c7d0430a929`.
 
-The current user-facing research specimen is **World V0 / Shared Yard**: a deliberately small two-player shared Box3D world with scheduled input, local client simulation, exact state guards and authority rebase/recovery machinery.
+Later repository/documentation commits must not be described as new runtime qualification unless runtime bytes actually change and are revalidated.
 
 ### Human-qualified playability ancestor
 
-The closure line descends from the Owner-qualified playability specimen:
+The closure line descends from:
 
 `world-v0-playability-lead2-owner-feel@2250e45c53aaf2f9107ac718e2ac5dba6ab02d2e`
 
-Owner judgement on that specimen: local play felt substantially smoother / probably acceptable. The later closure campaign did not open a new feel or content front; it focused on reliability, lifecycle boundaries, handshake ambiguity and evidence integrity.
+Owner judgement on that specimen: local play felt substantially smoother / probably acceptable. The later closure campaign did not open a new feel/content front; it focused on reliability, lifecycle boundaries, handshake ambiguity and evidence integrity.
 
-### Frozen reliability ancestry
+### Earlier reliability anchors
 
-Important earlier preserved anchors remain:
+Preserved provenance controls:
 
-- qualified product/reliability source: `world-v0-multiplayer-foundation-integration@a2e821afbbc88371b033af311cc6882d46aa6916`;
-- isolated R0d retest: `world-v0-r0d-reliability-retest@7da9ddd4ad37221f63a3cd418a140824783480ec`;
-- R0d final workflow `34060903778` = `completed / success`.
+- `world-v0-multiplayer-foundation-integration@a2e821afbbc88371b033af311cc6882d46aa6916`;
+- `world-v0-r0d-reliability-retest@7da9ddd4ad37221f63a3cd418a140824783480ec`;
+- R0d workflow `34060903778` = `completed / success`.
 
-These are provenance anchors, not instructions to reset current work back to those branches.
+These are controls, not current working branches.
 
 ---
 
-## 4. What the current substrate has earned
+## 4. What World V0 has earned
 
-### Shared physical simulation
-
-Strongly established in the qualified World V0 envelope:
+Within the qualified two-player envelope, the project has strongly established:
 
 - one server-authoritative Box3D world;
-- fixed `60 Hz` simulation with `4` substeps;
+- fixed `60 Hz / 4 substeps` simulation;
 - two embodied dynamic player actors and shared dynamic props;
 - canonical scheduled input rather than arrival-time mutation;
 - exact simulation/build identity carried through the protocol;
 - local browser Box3D simulation for responsive embodiment;
 - exact f32 state guards for authority/client comparison;
-- authority recording seed capable of exact browser state bootstrap/rebase;
-- same ActorSession/NetEntity can survive bounded transport loss without rotating the WorldEpoch.
+- authority recording seeds for exact browser state bootstrap/rebase;
+- bounded same-WorldEpoch / same-ActorSession transport recovery;
+- a real two-player browser entry path rather than only synthetic protocol probes.
 
-This is substantially beyond the repository's old Gate 4A README description. The old statement that Gate 4B had not started is obsolete.
+This is substantially beyond the repository's historical Gate 4A description.
 
-### Human entry / two-player product shell
-
-The project has a real two-player browser entry path rather than only a synthetic protocol probe. Current retained evidence covers human-entry behavior and truthful fresh-reopen failure semantics.
-
-This does **not** mean persistence, lobby architecture or arbitrary room membership has been built.
+It does **not** imply persistence, lobby architecture, arbitrary room membership or large-player-count multiplayer.
 
 ---
 
 ## 5. Current lifecycle / reliability contract
-
-These boundaries are intentional and separately modeled.
 
 ### Actor input lease
 
@@ -117,13 +123,13 @@ Canonical actor input fails neutral after a **36-tick** missing-input lease.
 
 Lease expiry is actor-local containment. It does not automatically mean the global WorldEpoch must die.
 
-### Active WorldEpoch transport-loss grace
+### Active WorldEpoch all-transport grace
 
 When an active two-player world loses all transports, authority keeps the neutralized in-memory WorldEpoch alive for:
 
 `20 * 60` authority ticks, approximately 20 seconds.
 
-Final raw local close/rebind cartography on the clean head showed:
+Final raw local close/rebind cartography showed:
 
 - `0.5 s` — preserved;
 - `1.5 s` — preserved;
@@ -137,14 +143,13 @@ This is an **authority-observed lifecycle window**, not a promise that every bro
 
 ### Browser ActorSession retry horizon
 
-Client ActorSession recovery uses 12 bounded attempts. This was increased from 8 after a real Chromium 14 s targeted outage exhausted the old retry budget while a healthy peer kept the WorldEpoch alive.
+Client ActorSession recovery uses **12 bounded attempts**. This was increased from 8 after a real Chromium 14 s targeted outage exhausted the old retry budget while a healthy peer kept the WorldEpoch alive.
 
 ### One-player waiting room
 
 A pure one-player pre-start waiting room remains **fail-closed** on transport loss:
 
 - no ActorSession recovery is armed;
-- retry budget remains unused;
 - old pre-start WorldEpoch/ActorSession retires;
 - a later fresh entrant receives a new epoch/session.
 
@@ -152,9 +157,7 @@ A pure one-player pre-start waiting room remains **fail-closed** on transport lo
 
 Once two ActorSessions are assembled, authority grants a bounded ~20 s pre-start ambiguity grace. This exists because a browser cannot know whether its final WebSocket `ready` frame was actually received by authority before transport failure.
 
-Inside that grace the same pre-start ActorSession/WorldEpoch may resume.
-
-If abandoned, authority retires it with:
+Inside that grace the same pre-start ActorSession/WorldEpoch may resume. If abandoned, authority retires it with:
 
 `peer_disconnected_before_start_grace_expired`
 
@@ -178,9 +181,9 @@ The recovery path validates WorldEpoch, ActorSession, NetEntity, protocol start 
 
 ---
 
-## 6. Final closure evidence
+## 6. Final technical closure evidence
 
-Canonical final current-head validator:
+Canonical retained validator:
 
 `.github/workflows/world-v0-closure-current-validation.yml`
 
@@ -196,7 +199,7 @@ Final clean-head run:
 The retained validator simultaneously covers:
 
 - full repository checks and build-provenance consistency;
-- explicit absence of consumed one-shot closure materializers/workflows;
+- absence of consumed one-shot closure materializers/workflows;
 - I1 ActorSession/WorldEpoch lifecycle semantics;
 - one-player waiting-room fail-closed behavior;
 - lost-final-ready ambiguity recovery;
@@ -208,14 +211,12 @@ The retained validator simultaneously covers:
 - two-real-Chromium 14.5 s bidirectional hard TCP drop/recovery;
 - human-entry and truthful fresh-reopen behavior.
 
-### Strong end-to-end browser evidence
-
-Final clean-head local evidence includes:
+Strong end-to-end local browser evidence includes:
 
 - **14 s single-target real Chromium outage:** same ActorSession + NetEntity, 1020-tick gap, one exact authority rebase, zero state-guard mismatches;
 - **14.5 s dual-browser hard TCP loss:** both upstream/browser transports severed and reconnects blocked, then both ActorSessions recovered in the same WorldEpoch with 904 / 1020 tick rebase gaps and zero guard mismatches.
 
-These are stronger claims than simple CDP offline simulation because the dual-browser apparatus severs the proxy's upstream Worker TCP transports as well.
+Canonical technical closure ledger checkpoint: GitHub issue #8 comment `5577741764`.
 
 ---
 
@@ -228,20 +229,53 @@ The stabilization campaign found four real defects rather than merely polishing 
 3. unrepresented ambiguity between browser `ready` send intent and authority receipt;
 4. protocol could start after partial pre-start resume with only one live peer.
 
-Each defect was:
-
-- causally reproduced or isolated;
-- repaired narrowly;
-- requalified against neighboring boundaries;
-- retained as a current regression where useful.
+Each defect was causally reproduced or isolated, narrowly repaired, requalified against neighboring boundaries and retained as a regression where useful.
 
 Fresh one-shot repair/falsifier workflows and materializers were then removed. Historical pre-I1 smokes remain only as explicitly opt-in provenance apparatus and are not current gates.
 
-Canonical ledger checkpoint: GitHub issue #8 comment `5577741764`.
+---
+
+## 8. Repository consolidation evidence
+
+The independent pre-merge `main` side was audited from merge base:
+
+`d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de`
+
+Its net effect was documentation-only. No competing runtime implementation existed there.
+
+A controlled ancestry integration commit was built as:
+
+`a5481efc8644140d3bd87d37b29144c1eedb75a4`
+
+with parents:
+
+- closure/docs lineage `8ce4770a1e70b05ef71fcf654d6c8d65fb4d5420`;
+- pre-integration `main@401be09ccd09decf493e4fcf4bea784e841e6163`.
+
+PR #38 validated and merged that integration.
+
+Pre-merge PR evidence:
+
+- standard CI `34177475444` — **SUCCESS**;
+- F5 preflight `34177475333` — **SUCCESS**;
+- exact integration diff from qualified technical checkpoint contained only documentation files.
+
+Merge commit:
+
+`66f40bb86a066658b15bbd45c7baea86d1bb2a44`
+
+Post-merge `main` push CI:
+
+- run `34177544920`;
+- event `push`;
+- exact head `66f40bb86a066658b15bbd45c7baea86d1bb2a44`;
+- result **completed / success**.
+
+Therefore the former `main`/closure divergence is no longer an open project-management problem.
 
 ---
 
-## 8. Explicit non-claims and known debt
+## 9. Explicit non-claims and known debt
 
 Do **not** silently upgrade the following into capabilities:
 
@@ -265,62 +299,37 @@ Local Chromium/Workerd hard-drop evidence does not prove real mobile OS suspensi
 
 ### No remote-placement claim from the final closure validator
 
-The final closure validator is local Workerd/Chromium evidence. Earlier project stages contain real Cloudflare/staging and Owner-device evidence, but the v9 closure head itself has not been promoted merely by this local PASS.
+The final closure validator is local Workerd/Chromium evidence. Earlier project stages contain real Cloudflare/staging and Owner-device evidence, but the v9 closure head itself has not been remotely re-promoted merely by this local PASS.
 
 ### Dormant browser `roomRecovery` compatibility path
 
 The browser still contains an older `roomRecovery` compatibility path for pre-I1 reasons that current authority no longer emits. It is classified as dormant compatibility debt. Removing it would create large cosmetic churn in a high-value runtime file and is not justified without evidence of harm.
 
----
+### Old handoff branch remains non-authoritative
 
-## 9. Branch / deployment truth
-
-### Closure branch is the current technical authority
-
-Use:
-
-`world-v0-closure-stabilization@1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
-
-for the current qualified technical state.
-
-### `main` is not yet that authority
-
-Live `main` at this grounding:
-
-`401be09ccd09decf493e4fcf4bea784e841e6163`
-
-`main` and the closure branch **diverged** from merge base:
-
-`d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de`
-
-At the 2026-09-08 audit, closure was 493 commits ahead of the merge base while `main` contained 20 commits on its own side.
-
-Therefore do not fast-forward mentally, do not force-push and do not blindly merge closure into `main`. The 20 main-side commits must be classified before consolidation.
-
-### Old handoff branch is not merge authority
-
-`multi-world-r0d-reliability-handoff` contains stale independent documentation/provenance commits. Do not merge it wholesale into the closure line.
+`multi-world-r0d-reliability-handoff` contains stale independent documentation/provenance commits. Do not merge it wholesale into the canonical line.
 
 ---
 
 ## 10. Current stage decision
 
-The closure campaign is technically complete enough to stop inventing arbitrary additional outage variants.
+The technical closure **and** repository consolidation are complete enough to close the temporary consolidation freeze.
 
-That does **not** mean Multi_World itself is finished.
+That does **not** mean the next old roadmap item should automatically begin.
 
 The immediate project state is:
 
-> **World V0's current two-player foundation has a strong locally qualified lifecycle/recovery closure; the next work is repository/canonical-state consolidation, not a new gameplay/network feature front.**
+> **World V0's two-player physical foundation is technically closed and canonically consolidated on `main`; the next task is to re-ground the product-facing frontier from current Owner evidence and Project Soul, then choose the smallest discriminating next move.**
 
-Before ordinary feature development resumes:
+Do not continue inventing arbitrary outage variants. Do not reopen persistence, lobby/membership, 3-player scale, content expansion or broad refactors by momentum.
 
-1. consolidate the canonical docs around this state;
-2. audit `main`'s independent 20-commit side of the divergence;
-3. decide and validate the safest branch/main consolidation path;
-4. verify any remote/staging promotion separately if promotion is desired.
+Before the next substantial implementation:
 
-Only after that should the project select its next product-facing unknown from current evidence and Project Soul.
+1. re-read the latest relevant Owner product/play evidence;
+2. identify the highest-value current friction or desired capability;
+3. challenge old candidate priorities rather than inheriting them;
+4. design the smallest falsifier / product slice that can answer that question;
+5. separately re-qualify remote/staging behavior if the chosen next step requires public/device evidence.
 
 ---
 

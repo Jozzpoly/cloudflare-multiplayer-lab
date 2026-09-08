@@ -70,10 +70,26 @@ assert(rw.waitingForPeer === true, "apparatus invalid: authority did not observe
 
 resumedB.ws.send(JSON.stringify({ type: "world_v0_ready", ...identity(rw) }));
 await waitMessage(resumedB, (m) => m?.type === "world_v0_ready_ack", "B resumed ready ack");
-const start = await waitMessage(resumedB, (m) => m?.type === "world_v0_start", "unexpected start with A disconnected", 3000);
+await sleep(600);
+assert(!resumedB.messages.some((m) => m?.type === "world_v0_start"), "authority started while A remained disconnected");
+
+const resumedA = connect(run, aPlayer, aw.resumeToken);
+const arw = await waitMessage(resumedA, (m) => m?.type === "world_v0_welcome", "A resume");
+assert(arw.resumed === true, "A resume rejected inside ambiguity grace");
+assert(arw.worldEpoch === aw.worldEpoch, "A resume rotated epoch");
+assert(arw.selfSessionId === aw.selfSessionId, "A resume changed ActorSession");
+assert(arw.protocolStartTick === null, "run started before A re-ready");
+assert(arw.waitingForPeer === false, "authority did not observe both transports after A resume");
+
+resumedA.ws.send(JSON.stringify({ type: "world_v0_ready", ...identity(arw) }));
+await waitMessage(resumedA, (m) => m?.type === "world_v0_ready_ack", "A resumed ready ack");
+const startA = await waitMessage(resumedA, (m) => m?.type === "world_v0_start", "start after both live", 3000);
+const startB = await waitMessage(resumedB, (m) => m?.type === "world_v0_start", "B observes start after both live", 3000);
+assert(startA.worldEpoch === aw.worldEpoch && startB.worldEpoch === aw.worldEpoch, "start rotated epoch");
+assert(startA.protocolStartTick === startB.protocolStartTick, "start tick mismatch across resumed peers");
 
 const result = {
-  revision: "world-v0-closure-prestart-partial-resume-v1-falsifier",
+  revision: "world-v0-closure-prestart-partial-resume-v2-live-gated",
   run,
   worldEpoch: bw.worldEpoch,
   beforeDisconnect: {
@@ -81,25 +97,29 @@ const result = {
     bReadySent: false,
     protocolStartTick: null,
   },
-  resumedB: {
-    resumed: rw.resumed,
-    sameWorldEpoch: rw.worldEpoch === bw.worldEpoch,
-    sameActorSession: rw.selfSessionId === bw.selfSessionId,
-    waitingForPeer: rw.waitingForPeer,
+  partialResume: {
+    bResumed: rw.resumed,
+    bSameWorldEpoch: rw.worldEpoch === bw.worldEpoch,
+    bSameActorSession: rw.selfSessionId === bw.selfSessionId,
+    bWaitingForPeer: rw.waitingForPeer,
+    startWhileAOffline: false,
   },
-  startWithPeerOffline: {
-    observed: Boolean(start),
-    protocolStartTick: start.protocolStartTick,
-    worldEpoch: start.worldEpoch,
+  fullResume: {
+    aResumed: arw.resumed,
+    aSameWorldEpoch: arw.worldEpoch === aw.worldEpoch,
+    aSameActorSession: arw.selfSessionId === aw.selfSessionId,
+    bothLive: arw.waitingForPeer === false,
+    protocolStartTick: startA.protocolStartTick,
+    bothObservedSameStart: startA.protocolStartTick === startB.protocolStartTick,
   },
-  verdict: "WORLD_V0_CLOSURE_PRESTART_PARTIAL_RESUME_START_REPRODUCED",
-  interpretation: "Authority started the two-player protocol after only B had reconnected because A's pre-disconnect ready flag remained true. The preserved pre-start ActorSession is valid, but protocol start must additionally require both live transports.",
-  nonClaim: "This is a local raw-WebSocket lifecycle falsifier. It tests authority start eligibility only, not browser presentation or production network incidence.",
+  verdict: "WORLD_V0_CLOSURE_PRESTART_PARTIAL_RESUME_GATE_PASS",
+  interpretation: "Pre-start ActorSession grace preserves the epoch while only one peer has returned, but protocol start remains blocked until both live transports are present. Once A also resumes and reaffirms ready, the original WorldEpoch starts normally.",
+  nonClaim: "This is a local raw-WebSocket lifecycle proof. It does not test browser presentation, persistence, process loss, or production network incidence.",
 };
 writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
 console.log("WORLD_V0_CLOSURE_PRESTART_PARTIAL_RESUME", JSON.stringify(result, null, 2));
 console.log(result.verdict);
 
-for (const client of [a, b, resumedB]) {
+for (const client of [a, b, resumedB, resumedA]) {
   try { client.ws.close(1000, "partial-resume-audit-done"); } catch {}
 }

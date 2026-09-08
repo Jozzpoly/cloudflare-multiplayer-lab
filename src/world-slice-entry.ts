@@ -92,19 +92,31 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
       if (!response.ok) throw new Error(`status_${response.status}`);
       const status = await response.json() as {
         players?: number;
+        connectedPlayers?: number;
         protocolStartTick?: number | null;
         worldEpoch?: string | null;
         simBuildId?: string | null;
         failure?: string | null;
       };
       const occupancy = Number.isFinite(status.players) ? Number(status.players) : 0;
+      const connected = Number.isFinite(status.connectedPlayers)
+        ? Math.max(0, Math.min(occupancy, Number(status.connectedPlayers)))
+        : occupancy;
+      const reserved = Math.max(0, occupancy - connected);
       const active = status.protocolStartTick !== null && status.protocolStartTick !== undefined;
+      const state = active
+        ? reserved > 0 ? "live-reserved" : "live"
+        : occupancy > 0
+          ? reserved > 0 ? "waiting-reserved" : "waiting"
+          : "empty";
       return {
         id: room.id,
         name: room.name,
         occupancy,
+        connected,
+        reserved,
         capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
-        state: active ? "live" : occupancy > 0 ? "waiting" : "empty",
+        state,
         joinable: !active && occupancy < WORLD_V0_PUBLIC_ROOM_CAPACITY && !status.failure,
         joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}`,
         worldEpoch: status.worldEpoch ?? null,
@@ -116,6 +128,8 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         id: room.id,
         name: room.name,
         occupancy: null,
+        connected: null,
+        reserved: null,
         capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
         state: "unavailable",
         joinable: false,
@@ -128,7 +142,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
   }));
 
   return new Response(JSON.stringify({
-    revision: "world-v0-public-room-directory-r0",
+    revision: "world-v0-public-room-directory-r1",
     generatedAt: new Date().toISOString(),
     rooms,
   }), {

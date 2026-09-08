@@ -3,37 +3,23 @@
 Status: **CANONICAL OPERATIONAL ENTRYPOINT — VERIFY LIVE**  
 Updated: **2026-09-08**
 
-This index is intentionally short. A fresh continuation should not need to reconstruct the whole project by reading every historical experiment.
+This index is intentionally short. A fresh continuation should not reconstruct the whole project by reading every historical experiment.
 
 ---
 
 ## Canonical reading order
 
-### 1. `MULTI_WORLD_PROJECT_SOUL.md`
+1. [`MULTI_WORLD_PROJECT_SOUL.md`](MULTI_WORLD_PROJECT_SOUL.md) — durable answer to **what Multi_World is trying to become**.
+2. [`MULTI_WORLD_CURRENT_STATE.md`](MULTI_WORLD_CURRENT_STATE.md) — current qualified technical truth, lifecycle boundaries and nonclaims.
+3. GitHub issue #8 — newest checkpoints when exact evidence/provenance matters.
 
-Read first for the durable answer to:
+Newest R1 integration checkpoint:
 
-> **What is Multi_World trying to become, and what values should survive changes of technology?**
+`5590133257`
 
-It is product/research direction, not live architecture.
+It records PR #39, exact integrated `main`, post-merge validation and remaining nonclaims.
 
-### 2. `MULTI_WORLD_CURRENT_STATE.md`
-
-Read second for:
-
-> **What is actually qualified now, what remains unproven, and what is the current repository/project state?**
-
-This is the canonical live-state summary.
-
-### 3. GitHub issue #8 — newest checkpoint
-
-Use issue #8 when exact evidence/provenance matters.
-
-Technical closure checkpoint:
-
-`5577741764`
-
-It records the four defects found during closure, their repairs, final clean-head validation and explicit non-claims. Read newer issue comments too if they exist; consolidation or later project work may have advanced after that technical checkpoint.
+Older grounding/takeover documents are provenance, not startup requirements.
 
 ---
 
@@ -45,116 +31,132 @@ Use live:
 
 `main`
 
-The closure/main consolidation merge checkpoint is:
+Always verify its head before acting. Documentation-only consolidation after the qualified product anchor may move `main` without creating a new runtime qualification.
 
-`66f40bb86a066658b15bbd45c7baea86d1bb2a44`
+### Qualified integrated product/evidence anchor
 
-PR #38 reconciled the formerly diverged histories without changing runtime relative to the qualified technical checkpoint.
+Exact post-merge product checkpoint:
 
-Validation around that promotion:
+`main@72f971cff84f991f994df1b821f656941c0cd8eb`
 
-- PR CI `34177475444` — SUCCESS;
-- F5 preflight `34177475333` — SUCCESS;
-- post-merge `main` push CI `34177544920` — SUCCESS on exact merge head `66f40bb...`.
+Qualified R1 parent:
 
-Subsequent documentation-only commits may move `main`; verify live head before acting.
+`world-v0-session-continuity-r1-exec@c5b071fa15dff403ba82891e21f36fd36c4ac791`
 
-### Qualified runtime/evidence authority
+PR #39 merged the exact qualified R1 tree. The merge tree is:
 
-Exact checkpoint:
+`c57ab4a7c90aebd5101ae09e973481fb80e8243b`
 
-`world-v0-closure-stabilization@1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
+and is identical to the qualified R1 tree.
 
-Final retained validator:
+### Post-merge validation
 
-- run `34176613974`;
-- job `101907169173`;
-- result `completed / success`;
-- artifact `10037571475`;
-- artifact SHA-256 `3de29b79003fe747f0af2602357c446bf633f95fd26c7d33a922547787565c23`.
+All exact `main@72f971c...` gates passed:
 
-Runtime identity at that checkpoint:
+- normal CI `34264320221` — **SUCCESS**;
+- Session Continuity Validation `34264320224` — **SUCCESS**;
+  - artifact `10071208496`;
+  - SHA-256 `218cc61c43d6b6eb34ddbc71824651cde975a91b090c881dfc963bb388b1032b`;
+- World V0 Current Validation `34264320312` — **SUCCESS**;
+  - artifact `10071385727`;
+  - SHA-256 `014c4467103a4baf71756d2bcd2d8c086ba4ad032faa638d258d9c02873cbf28`.
+
+Runtime identity at that anchor:
 
 - authority `shared-yard-v0-authority-v9-prestart-live-start-gate`;
-- sim build `shared-yard-v0-sim-69ad9c7d0430a929`.
-
-Do not call a later docs-only `main` SHA a new runtime qualification.
+- browser UI `shared-yard-v0-browser-ui-v17-slot-bound-session-continuity`;
+- simulation `shared-yard-v0-sim-69ad9c7d0430a929`;
+- session continuity `world-v0-session-continuity-r2-slot-bound`;
+- directory `world-v0-public-room-directory-r2-slot-presence`.
 
 ### Human-qualified playability ancestor
 
 `world-v0-playability-lead2-owner-feel@2250e45c53aaf2f9107ac718e2ac5dba6ab02d2e`
 
-Preserve this as the relevant Owner-feel ancestor.
+Preserve this as the relevant Owner-feel ancestor. Later reliability/R1 work did not reopen feel/content tuning.
 
-### Earlier reliability anchors
+### Earlier reliability controls
 
 - `world-v0-multiplayer-foundation-integration@a2e821afbbc88371b033af311cc6882d46aa6916`;
 - `world-v0-r0d-reliability-retest@7da9ddd4ad37221f63a3cd418a140824783480ec`;
-- R0d workflow `34060903778` = SUCCESS.
+- R0d workflow `34060903778` — SUCCESS.
 
 These are provenance controls, not current working branches.
 
 ---
 
-## Immediate continuation state
+## What changed in R1
 
-The temporary feature freeze that existed specifically to complete reliability closure and repository consolidation is no longer the active blocker.
+The old takeover docs said that closing a page and opening a new tab could not preserve ActorSession identity. That statement is now stale.
 
-Technical lifecycle/recovery closure is strong enough to stop inventing additional outage variants, and the former `main` divergence has been reconciled.
+Within a still-recoverable live WorldEpoch, the **same browser profile** can now recover the same ActorSession / NetEntity after close-tab/reopen through:
 
-The next work is **product-frontier re-grounding**, not automatic execution of an old phase plan:
+- the room list;
+- the exact public `?run=yard-N` link.
 
-1. verify live `main` and classify any commits after the consolidation checkpoint;
-2. read Project Soul and Current State;
-3. recover the latest relevant Owner play/product evidence;
-4. identify the highest-value current friction or desired capability;
-5. challenge old candidates such as jump, room continuity, richer interaction, persistence or player-count work rather than inheriting them by momentum;
-6. choose the smallest discriminating next experiment or product slice;
-7. use remote/device evidence only when the selected question actually requires it.
+The resume offer is authority-backed and slot-bound:
 
-Do not use the end of consolidation as permission to build persistence, lobby/membership architecture, arbitrary content, 3-player support or broad refactors without a concrete product question.
+- your own slot must be reserved;
+- an already connected own slot cannot be silently stolen by a second tab;
+- another player's reserved slot cannot authorize your Resume;
+- a foreign/new browser profile remains unable to resume.
+
+The room directory exposes only anonymous reserved slot numbers. Private resume authority remains browser-local and is not published.
 
 ---
 
-## Current evidence boundaries to remember
+## Immediate continuation state
 
-The current qualified envelope includes bounded same-ActorSession recovery and exact authority rebase, but it does **not** establish:
+R1 Session Continuity is **integrated and post-merge qualified**. The previous reliability/consolidation work and R1 are strong enough that the agent should **not** keep inventing outage variants by momentum.
 
-- cross-tab/new-tab ActorSession continuity;
-- Durable Object process-loss reconstruction;
-- persistent/open-room semantics;
-- mobile radio/handover behavior;
-- remote Cloudflare placement for the final v9 closure head;
-- a guarantee that every browser outage below the 20 s authority grace recovers.
+The next substantial work should begin with **product-frontier re-grounding**:
+
+1. verify live `main` and classify any movement after `72f971c...` as docs-only or runtime-relevant;
+2. read Project Soul and Current State;
+3. inspect the newest issue #8 checkpoint if exact provenance matters;
+4. recover the latest relevant Owner play/product evidence;
+5. identify the highest-value current friction or desired capability;
+6. challenge old candidates rather than inheriting them;
+7. choose the smallest discriminating experiment/product slice;
+8. use remote/device evidence only when the chosen question requires it.
+
+Do not automatically build persistence, lobby/membership architecture, 3-player support, broad refactors or arbitrary content.
+
+Jump/content behavior was not part of R1. Treat any jump issue as a separate causal/product question, not an inherited next phase.
+
+---
+
+## Evidence boundaries to remember
+
+The qualified envelope **does** include same-profile close-tab/new-tab ActorSession continuity, but it still does **not** establish:
+
+- account/cloud or cross-device session persistence;
+- Durable Object process-loss reconstruction of the same Box3D WorldEpoch;
+- persistent/continuously open room semantics;
+- arbitrary player churn or 3+ player scalability;
+- mobile OS suspension / radio handover behavior;
+- new remote Cloudflare placement qualification for the R1 head;
+- a guarantee that every browser outage shorter than the 20 s authority grace recovers end-to-end.
 
 See `MULTI_WORLD_CURRENT_STATE.md` for the exact lifecycle distinctions.
 
 ---
 
-## Historical documents — useful only when needed
+## Historical material
 
-The following are preserved because they contain reasoning history, negative evidence, Owner feedback or older takeover context. They are **not required startup reading** and must not override newer live evidence:
+Open older files only when a concrete question requires their evidence or reasoning. They must not override newer live evidence.
 
-- `MULTI_WORLD_GROUNDING_V1.md` — 2026-09-02 consolidated grounding around the earlier A2/A2R frontier;
-- `MULTI_WORLD_HUMAN_TEST_CONTEXT.md` — human/device test context;
-- `MULTI_WORLD_FRESH_TAKEOVER_V1.md` — previous fresh-project mandate;
-- `MULTI_WORLD_FRESH_TAKEOVER.md` — older heavier takeover draft;
-- `MULTI_WORLD_GROUNDING_LEDGER.md` — broad historical ledger;
-- `MULTI_WORLD_GROUNDING_REDTEAM.md` — red-team critique that shaped the older grounding;
-- dated 2026-09-05 Friend-Ready / post-Owner / post-R1 / two-phone documents — preserved product and sequencing provenance from the former independent `main` side;
-- experiment-specific `WORLD_V0_*` and `WS0_*` documents — local evidence/contract history.
+Useful historical classes include:
 
-The old `WORLD_V0_OPERATING_MAP.md` was intentionally not restored as a live file during consolidation because its 2026-09-05 snapshot described itself as current. It remains reachable through repository history.
+- `MULTI_WORLD_GROUNDING_V1.md`, grounding ledger/red-team and older fresh-takeover files;
+- `MULTI_WORLD_HUMAN_TEST_CONTEXT.md`;
+- dated 2026-09-05 Friend-Ready / post-Owner / two-phone documents;
+- experiment-specific `WORLD_V0_*` / `WS0_*` documents;
+- repository history for the intentionally retired `WORLD_V0_OPERATING_MAP.md`.
 
----
+Historical branch warning:
 
-## Historical branch warning
-
-`multi-world-r0d-reliability-handoff` is a stale independent documentation/provenance branch relative to the qualified closure lineage.
-
-**Do not merge it wholesale.**
-
-If some historical statement is still useful, re-derive it against live canonical evidence rather than importing the branch as authority.
+`multi-world-r0d-reliability-handoff` remains stale independent documentation/provenance. **Do not merge it wholesale.**
 
 ---
 
@@ -163,11 +165,11 @@ If some historical statement is still useful, re-derive it against live canonica
 A fresh browser orchestrator should:
 
 1. verify live `main`;
-2. compare it with the consolidation merge checkpoint `66f40bb86a066658b15bbd45c7baea86d1bb2a44` and classify any later commits;
+2. compare/classify any commits after qualified product anchor `72f971cff84f991f994df1b821f656941c0cd8eb`;
 3. read Project Soul;
 4. read Current State;
-5. verify the newest issue #8 checkpoint and current CI when technical qualification matters;
+5. read newest issue #8 checkpoint, currently `5590133257`, when technical provenance matters;
 6. recover the latest relevant Owner product/play evidence;
 7. propose the smallest justified next product/research move rather than reopening historical infrastructure work by default.
 
-Only if those checks reveal conflicting evidence should older grounding/handoff material be reopened in depth.
+Only conflicting evidence should force a deep reconstruction from older handoffs.

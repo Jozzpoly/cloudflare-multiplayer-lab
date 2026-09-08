@@ -1,0 +1,75 @@
+name: world-v0-session-slot-binding-materialize
+
+on:
+  push:
+    branches: [world-v0-session-continuity-r1-exec]
+    paths:
+      - .github/workflows/world-v0-session-slot-binding-materialize.yml
+      - scripts/materialize-world-v0-session-slot-binding.mjs
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-session-slot-binding-materialize
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize slot-bound presence contract
+        run: node scripts/materialize-world-v0-session-slot-binding.mjs
+      - name: Targeted contract gates
+        run: |
+          set -euo pipefail
+          node --check public/world-v0/session-continuity.js
+          node --check public/world-v0/public-room-entry.js
+          node --check public/world-v0/friend-ready.js
+          node --check scripts/world-v0-direct-link-resume-browser-audit.mjs
+          node scripts/world-v0-session-continuity-smoke.mjs
+          grep -q 'reservedSlots:' src/world-v0-shared-yard.ts
+          grep -q 'world-v0-public-room-directory-r2-slot-presence' src/world-slice-entry.ts
+          grep -q 'world-v0-session-continuity-r2-slot-bound' public/world-v0/session-continuity.js
+          git diff --check
+      - name: Full repository check
+        run: npm run check
+      - name: Exact diff gate
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            .github/workflows/world-v0-current-validation.yml \
+            public/world-v0/build-contract.js \
+            public/world-v0/friend-ready.js \
+            public/world-v0/public-room-entry.js \
+            public/world-v0/session-continuity.js \
+            scripts/world-v0-direct-link-resume-browser-audit.mjs \
+            scripts/world-v0-session-continuity-smoke.mjs \
+            src/world-slice-entry.ts \
+            src/world-v0-shared-yard.ts | sort)"
+          test "$changed" = "$expected"
+      - name: Commit materialized repair
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/world-v0-current-validation.yml \
+            public/world-v0/build-contract.js \
+            public/world-v0/friend-ready.js \
+            public/world-v0/public-room-entry.js \
+            public/world-v0/session-continuity.js \
+            scripts/world-v0-direct-link-resume-browser-audit.mjs \
+            scripts/world-v0-session-continuity-smoke.mjs \
+            src/world-slice-entry.ts \
+            src/world-v0-shared-yard.ts
+          git commit -m "fix(world-v0): bind resume to the reserved actor slot"
+          git push origin HEAD:world-v0-session-continuity-r1-exec

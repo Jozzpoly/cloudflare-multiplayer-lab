@@ -73,7 +73,7 @@ jobs:
       - name: Real Chromium direct Yard-link resume and active-session takeover guard
         env:
           MW_WORLD_V0_DIRECT_RESUME_BASE: http://127.0.0.1:8787
-          MW_WORLD_V0_DIRECT_RESUME_ROOM: yard-3
+          MW_WORLD_V0_DIRECT_RESUME_ROOM: yard-2
           MW_WORLD_V0_DIRECT_RESUME_OUTPUT: world-v0-direct-link-resume.json
         run: |
           set -euo pipefail

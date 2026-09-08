@@ -1,0 +1,129 @@
+name: World V0 Jump R2 Final Qualification
+
+on:
+  push:
+    branches: [world-v0-jump-r2-final-qualification]
+    paths:
+      - .github/workflows/world-v0-jump-r2-final-qualification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-final-cleanup-head:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact cleanup head
+        uses: actions/checkout@v7
+        with:
+          ref: 1afe2428518c7c97fb96fef46f8a010eaaba3999
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Prove exact qualified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "1afe2428518c7c97fb96fef46f8a010eaaba3999"
+          git diff --exit-code b79199f0645c7fb6800b1bc5b99b8af229d48f05..HEAD -- \
+            public/world-v0/app.js \
+            public/world-v0/build-contract.js \
+            src/world-v0-contract.ts \
+            src/world-v0-shared-yard.ts
+          actual="$(git diff --name-only 4d6a4d04f80b509f83945ba08338521e5cefac8e..HEAD | sort)"
+          expected="$(printf '%s\n' \
+            public/world-v0/app.js \
+            public/world-v0/build-contract.js \
+            scripts/world-v0-jump-delivery-persistence-audit.mjs \
+            src/world-v0-contract.ts \
+            src/world-v0-shared-yard.ts | sort)"
+          test "$actual" = "$expected"
+          test -f scripts/world-v0-jump-delivery-persistence-audit.mjs
+          test ! -e scripts/world-v0-jump-window-repair-audit.mjs
+          test ! -e scripts/materialize-world-v0-jump-reliability-r2.mjs
+          test ! -e .github/workflows/world-v0-jump-reliability-r2-materialize.yml
+          test ! -e .github/workflows/world-v0-jump-r2-qualification-bridge.yml
+          grep -q 'shared-yard-v0-contract-v14-jump-delivery-persistence' src/world-v0-contract.ts
+          grep -q 'shared-yard-v0-authority-v11-jump-delivery-persistence' src/world-v0-contract.ts
+          grep -q 'shared-yard-v0-browser-sim-v10-jump-delivery-persistence' public/world-v0/build-contract.js
+          grep -q 'shared-yard-v0-sim-cd8edc169f791a64' public/world-v0/build-contract.js
+          grep -q 'world-v0-jump-delivery-persistence-v1' public/world-v0/app.js
+          ! grep -q 'jumpIntentWindowTicks' src/world-v0-contract.ts
+          ! grep -q 'jumpQueued' public/world-v0/app.js
+          node --check scripts/world-v0-jump-delivery-persistence-audit.mjs
+          git diff --check 4d6a4d04f80b509f83945ba08338521e5cefac8e..HEAD
+          echo WORLD_V0_JUMP_R2_FINAL_SOURCE_PIN_PASS
+
+      - name: Full repository checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check | tee world-v0-jump-r2-final-check.log
+
+      - name: Start local reliability Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-jump-r2-final-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-jump-r2-final-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "World V0 final R2 Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-jump-r2-final-wrangler.log
+          exit 1
+
+      - name: Requalify jump canonical-delivery persistence
+        env:
+          MW_WORLD_V0_JUMP_DELIVERY_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_JUMP_DELIVERY_LOSS_DELAY_MS: 180
+          MW_WORLD_V0_JUMP_DELIVERY_RECOVERY_DELAY_MS: 45
+          MW_WORLD_V0_JUMP_DELIVERY_OUTPUT: world-v0-jump-r2-final.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 90s node --experimental-strip-types scripts/world-v0-jump-delivery-persistence-audit.mjs | tee world-v0-jump-r2-final.log
+          grep -q 'WORLD_V0_JUMP_DELIVERY_PERSISTENCE_PASS' world-v0-jump-r2-final.log
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const evidence = JSON.parse(readFileSync("world-v0-jump-r2-final.json", "utf8"));
+          if (evidence.firstPress?.deliverySpanTicks < 6) throw new Error("R2 did not escape former fixed six-tick window");
+          if (evidence.firstPress?.lastDeliveredApplied !== true) throw new Error("grounded delivery did not apply");
+          if (evidence.airbornePress?.lastDeliveredApplied !== false) throw new Error("airborne delivery gained support forgiveness");
+          if (evidence.appliedCountFinal !== evidence.appliedCountBefore + 1) throw new Error("jump impulse count regression");
+          if (evidence.guardMismatches !== 0) throw new Error("exact-state guard regression");
+          console.log("WORLD_V0_JUMP_R2_FINAL_CAUSAL_PASS", evidence.firstPress.deliverySpanTicks);
+          NODE
+
+      - name: Stop local Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/world-v0-jump-r2-final-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-jump-r2-final-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload final qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-jump-r2-final-qualification-${{ github.run_attempt }}
+          path: |
+            world-v0-jump-r2-final-check.log
+            world-v0-jump-r2-final.log
+            world-v0-jump-r2-final.json
+            world-v0-jump-r2-final-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

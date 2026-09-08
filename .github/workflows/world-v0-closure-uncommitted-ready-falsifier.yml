@@ -24,10 +24,23 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - name: Static checks
+      - name: Hotfix probe message shape only
+        shell: bash
         run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/world-v0-closure-uncommitted-ready-audit.mjs')
+          s = p.read_text()
+          before = 'rawA.ws.send(JSON.stringify({ type: "world_v0_ping", id: 771 }));\n  const pong = await waitRaw(rawA, (m) => m?.type === "world_v0_pong" && m.id === 771, "A pre-drop pong");'
+          after = 'rawA.ws.send(JSON.stringify({ type: "world_v0_ping", id: "pre-drop-771" }));\n  const pong = await waitRaw(rawA, (m) => m?.type === "world_v0_pong" && m.id === "pre-drop-771", "A pre-drop pong");'
+          if s.count(before) != 1:
+              raise SystemExit('probe hotfix marker mismatch')
+          p.write_text(s.replace(before, after))
+          PY
           node --check scripts/world-v0-closure-uncommitted-ready-audit.mjs
-          npm run check
+      - name: Static checks
+        run: npm run check
       - name: Start local reliability Workerd
         shell: bash
         run: |

@@ -1,0 +1,106 @@
+name: World V0 Post-R2 Owner Remote Gate
+
+on:
+  push:
+    branches: [world-v0-post-r2-owner-remote-gate]
+
+permissions:
+  contents: read
+
+env:
+  STAGING_BASE_URL: https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev
+  EXPECTED_PRODUCT_SOURCE_BRANCH: world-v0-jump-reliability-r2
+  EXPECTED_PRODUCT_SOURCE_SHA: 1afe2428518c7c97fb96fef46f8a010eaaba3999
+  EXPECTED_DELIVERY_BRANCH: world-v0-staging-delivery
+  EXPECTED_DELIVERY_SHA: 29c6a0545435087315889cf2af963a6ca0936cbd
+
+jobs:
+  remote-owner-readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Checkout exact gate source
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify exact R2 staging provenance
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const base = process.env.STAGING_BASE_URL.replace(/\/$/, "");
+          const url = `${base}/world-v0/deploy-provenance.json?ownerGate=${Date.now()}`;
+          const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(10000) });
+          if (!response.ok) throw new Error(`provenance HTTP ${response.status}`);
+          const value = await response.json();
+          const expected = {
+            productSourceBranch: process.env.EXPECTED_PRODUCT_SOURCE_BRANCH,
+            productSourceSha: process.env.EXPECTED_PRODUCT_SOURCE_SHA,
+            deliveryBranch: process.env.EXPECTED_DELIVERY_BRANCH,
+            deliverySha: process.env.EXPECTED_DELIVERY_SHA,
+          };
+          for (const [key, wanted] of Object.entries(expected)) {
+            if (value?.[key] !== wanted) throw new Error(`${key} drift: ${value?.[key]} != ${wanted}`);
+          }
+          console.log("WORLD_V0_POST_R2_STAGING_PROVENANCE_PASS", JSON.stringify(value));
+          NODE
+
+      - name: Remote real-browser human-entry control
+        env:
+          MW_WORLD_V0_HUMAN_ENTRY_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_HUMAN_ENTRY_OUTPUT: world-v0-post-r2-human-entry.json
+        run: |
+          set -euo pipefail
+          timeout 120s node scripts/world-v0-human-entry-browser-smoke.mjs | tee world-v0-post-r2-human-entry.log
+          grep -q 'WORLD_V0_HUMAN_ENTRY_PASS' world-v0-post-r2-human-entry.log
+
+      - name: Remote direct-link R1 continuity control
+        env:
+          MW_WORLD_V0_DIRECT_RESUME_BASE: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_DIRECT_RESUME_ROOM: yard-88
+          MW_WORLD_V0_DIRECT_RESUME_OUTPUT: world-v0-post-r2-direct-resume.json
+        run: |
+          set -euo pipefail
+          timeout 120s node scripts/world-v0-direct-link-resume-browser-audit.mjs | tee world-v0-post-r2-direct-resume.log
+          grep -q 'WORLD_V0_DIRECT_LINK_RESUME_PASS' world-v0-post-r2-direct-resume.log
+
+      - name: Remote room-list R1 continuity control
+        env:
+          MW_WORLD_V0_CROSS_PAGE_BASE: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_CROSS_PAGE_ROOM: yard-89
+          MW_WORLD_V0_CROSS_PAGE_OUTPUT: world-v0-post-r2-cross-page-resume.json
+        run: |
+          set -euo pipefail
+          timeout 120s node scripts/world-v0-cross-page-resume-browser-audit.mjs | tee world-v0-post-r2-cross-page-resume.log
+          grep -q 'WORLD_V0_CROSS_PAGE_RESUME_PASS' world-v0-post-r2-cross-page-resume.log
+
+      - name: Remote current I1 ActorSession lifecycle control
+        env:
+          MW_WORLD_V0_I1_BASE: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_I1_RUN: owner-r2-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-post-r2-i1.log
+          grep -q 'WORLD_V0_INTEGRATION_I1_SERVER_SESSION_PASS' world-v0-post-r2-i1.log
+
+      - name: Upload bounded owner-gate evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-post-r2-owner-remote-gate-${{ github.run_attempt }}
+          path: |
+            world-v0-post-r2-human-entry.json
+            world-v0-post-r2-human-entry.log
+            world-v0-post-r2-direct-resume.json
+            world-v0-post-r2-direct-resume.log
+            world-v0-post-r2-cross-page-resume.json
+            world-v0-post-r2-cross-page-resume.log
+            world-v0-post-r2-i1.log
+          if-no-files-found: warn
+          retention-days: 14

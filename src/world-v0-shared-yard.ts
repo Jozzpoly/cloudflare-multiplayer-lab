@@ -196,6 +196,7 @@ export class SharedYardV0 extends DurableObject<Env> {
   private failure: string | null = null;
   private resetting = false;
   private allDisconnectedSinceTick: number | null = null;
+  private preStartAmbiguityTimer: ReturnType<typeof setTimeout> | null = null;
   private supportContacts: ReturnType<typeof b3.createContactsBuffer> | null = null;
   private readonly supportContact = b3.createContact();
   private readonly supportManifold = b3.createManifold();
@@ -415,6 +416,9 @@ export class SharedYardV0 extends DurableObject<Env> {
     player.socket = server;
     if (resumed) player.resumeCount += 1;
     this.sessionBySocket.set(server, player.sessionId);
+    if (this.protocolStartTick === null && this.connectedPlayerCount() === MAX_PLAYERS) {
+      this.clearPreStartAmbiguityTimer();
+    }
     const rebaseSeed = resumed && this.protocolStartTick !== null
       ? this.createAuthorityRebaseSeed()
       : null;
@@ -455,6 +459,7 @@ export class SharedYardV0 extends DurableObject<Env> {
     if (this.protocolStartTick !== null || this.players.size !== MAX_PLAYERS) return;
     if ([...this.players.values()].some((player) => !player.ready)) return;
 
+    this.clearPreStartAmbiguityTimer();
     this.protocolStartTick = this.tick + WORLD_V0_TIMING.protocolStartDelayTicks;
     this.broadcast({
       type: "world_v0_start",
@@ -856,6 +861,22 @@ export class SharedYardV0 extends DurableObject<Env> {
     return count;
   }
 
+  private clearPreStartAmbiguityTimer(): void {
+    if (this.preStartAmbiguityTimer) clearTimeout(this.preStartAmbiguityTimer);
+    this.preStartAmbiguityTimer = null;
+  }
+
+  private schedulePreStartAmbiguityRetirement(): void {
+    if (this.preStartAmbiguityTimer || this.protocolStartTick !== null || this.players.size !== MAX_PLAYERS) return;
+    const graceMs = WORLD_V0_LIFECYCLE.preStartAmbiguityGraceTicks * STEP_MS;
+    this.preStartAmbiguityTimer = setTimeout(() => {
+      this.preStartAmbiguityTimer = null;
+      if (this.protocolStartTick !== null || this.players.size !== MAX_PLAYERS) return;
+      if (this.connectedPlayerCount() === MAX_PLAYERS) return;
+      this.endEpoch("peer_disconnected_before_start_grace_expired");
+    }, graceMs);
+  }
+
   private detachSocket(ws: WebSocket): void {
     const sessionId = this.sessionBySocket.get(ws);
     this.sessionBySocket.delete(ws);
@@ -864,17 +885,20 @@ export class SharedYardV0 extends DurableObject<Env> {
     if (!player || player.socket !== ws) return;
     player.socket = null;
 
-    // Before canonical play starts there is no ticking input lease and no earned
-    // same-epoch run continuity yet. Preserve the old fail-closed waiting-room
-    // behavior so a vanished peer cannot strand an occupied ActorSession slot.
+    // A one-player waiting room has no ambiguous start commitment and remains
+    // fail-closed. Once two actors have been assembled, however, a browser may
+    // have sent its final ready frame without the authority receiving it. Preserve
+    // that exact pre-start ambiguity for one bounded ActorSession retry horizon.
     if (this.protocolStartTick === null) {
-      this.endEpoch("peer_disconnected_before_start");
+      if (this.players.size === MAX_PLAYERS) this.schedulePreStartAmbiguityRetirement();
+      else this.endEpoch("peer_disconnected_before_start");
     }
   }
 
   private endEpoch(reason: string): void {
     if (this.resetting) return;
     this.resetting = true;
+    this.clearPreStartAmbiguityTimer();
     const identity = this.identityPayloadSafe();
     try {
       this.broadcast({
@@ -902,6 +926,7 @@ export class SharedYardV0 extends DurableObject<Env> {
   }
 
   private destroyWorld(): void {
+    this.clearPreStartAmbiguityTimer();
     if (this.world) {
       try { b3.b3DestroyWorld(this.world); } catch { /* teardown only */ }
     }

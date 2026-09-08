@@ -189,8 +189,8 @@ const HOLD_READY_SCRIPT = `(() => {
   NativeWebSocket.prototype.send = function(data) {
     try {
       const message = JSON.parse(String(data));
-      if (message?.type === "world_v0_ready") {
-        window.__mwHeldReadyCount = (window.__mwHeldReadyCount || 0) + 1;
+      if (message?.type === "world_v0_ready" && (window.__mwHeldReadyCount || 0) === 0) {
+        window.__mwHeldReadyCount = 1;
         window.__mwHeldReady = String(data);
         return;
       }
@@ -267,8 +267,8 @@ try {
   await waitRaw(rawA, (m) => m?.type === "world_v0_ready_ack", "A ready ack");
   await sleep(400);
   assert(!rawA.messages.some((m) => m?.type === "world_v0_start"), "authority committed start despite B ready never leaving browser");
-  rawA.ws.send(JSON.stringify({ type: "world_v0_ping", id: 771 }));
-  const pong = await waitRaw(rawA, (m) => m?.type === "world_v0_pong" && m.id === 771, "A pre-drop pong");
+  rawA.ws.send(JSON.stringify({ type: "world_v0_ping", id: "pre-drop-771" }));
+  const pong = await waitRaw(rawA, (m) => m?.type === "world_v0_pong" && m.id === "pre-drop-771", "A pre-drop pong");
   assert(pong.protocolStartTick === null, `authority protocol unexpectedly committed: ${pong.protocolStartTick}`);
 
   const before = await evidence(browser);
@@ -279,24 +279,38 @@ try {
   assert(drop.activeBeforeDrop >= 1, `B proxy transport absent at drop: ${JSON.stringify(drop)}`);
 
   await waitBrowser(browser,
-    '(() => { const e=window.__sharedYardV0Evidence?.(); return e?.session?.actorResume?.pending === true && e?.session?.actorResume?.attempts >= 1; })()',
-    "B ambiguous ActorSession recovery", 8000);
-  const after = await evidence(browser);
-  const epochEndedA = await waitRaw(rawA, (m) => m?.type === "world_v0_epoch_ended", "A epoch ended", 8000);
-  assert(epochEndedA.reason === "peer_disconnected_before_start", `unexpected authority end reason ${epochEndedA.reason}`);
-  const replacement = await freshWelcome(run, `Fresh-${suffix}`);
-  assert(replacement.worldEpoch !== aw.worldEpoch, "fresh replacement reused uncommitted epoch");
-  assert(replacement.resumed === false, "fresh replacement unexpectedly resumed");
+    '(() => { const e=window.__sharedYardV0Evidence?.(); return (e?.lifecycleEvents || []).some((event) => event.type === "actor-resume-attempt"); })()',
+    "B automatic ambiguity recovery attempt", 8000);
+  const afterDrop = await evidence(browser);
+
+  await waitBrowser(browser,
+    '(() => { const e=window.__sharedYardV0Evidence?.(); return !e?.runtimeFailed && (e?.lifecycleEvents || []).some((event) => event.type === "actor-resume-prestart-complete"); })()',
+    "B prestart ActorSession resume complete", 8000);
+  const resumedPreStart = await evidence(browser);
+  assert(resumedPreStart.identity?.worldEpoch === aw.worldEpoch, "B prestart resume rotated WorldEpoch");
+  assert(resumedPreStart.session?.actorSessionId === captured.selfSessionId, "B prestart resume changed ActorSession");
+  assert(!rawA.messages.some((m) => m?.type === "world_v0_epoch_ended"), "authority ended ambiguity epoch during successful resume");
+
+  const startA = await waitRaw(rawA, (m) => m?.type === "world_v0_start", "A start after B resumed ready", 8000);
+  await waitBrowser(browser,
+    '(() => { const e=window.__sharedYardV0Evidence?.(); return !e?.runtimeFailed && Number.isInteger(e?.protocolStartTick) && Number.isInteger(e?.localBoundaryTick); })()',
+    "B active after ambiguity recovery", 8000);
+  const activeB = await evidence(browser);
+  assert(startA.worldEpoch === aw.worldEpoch, "authority rotated epoch before recovered start");
+  assert(activeB.identity?.worldEpoch === aw.worldEpoch, "B active world rotated after ambiguity recovery");
+  assert(activeB.session?.actorSessionId === captured.selfSessionId, "B active ActorSession changed after ambiguity recovery");
+  assert(activeB.metrics?.guardMismatches === 0, "B exact-state guard mismatch after ambiguity recovery");
+  assert(!rawA.messages.some((m) => m?.type === "world_v0_epoch_ended"), "authority ended recovered ambiguity epoch");
 
   result = {
-    revision: "world-v0-closure-uncommitted-ready-v1-falsifier",
+    revision: "world-v0-closure-uncommitted-ready-v2-recovered",
     chromeVersion: version,
     run,
     authorityBeforeDrop: {
       worldEpoch: aw.worldEpoch,
       rosterPlayers: rosterA.players.length,
       protocolStartTick: pong.protocolStartTick,
-      startObserved: rawA.messages.some((m) => m?.type === "world_v0_start"),
+      startObserved: false,
     },
     browserBeforeDrop: {
       networkState: before.networkState,
@@ -305,21 +319,19 @@ try {
       heldReadyCount: await browser.cdp.evaluate(browser.sessionId, "window.__mwHeldReadyCount || 0"),
       actorSessionId: captured.selfSessionId,
     },
-    browserAfterDrop: {
-      networkState: after.networkState,
-      actorResumePending: after.session.actorResume.pending,
-      actorResumeAttempts: after.session.actorResume.attempts,
-      runtimeFailed: after.runtimeFailed,
-    },
-    authorityAfterDrop: {
-      epochEndReason: epochEndedA.reason,
-      replacementEpoch: replacement.worldEpoch,
-      oldEpochRetired: replacement.worldEpoch !== aw.worldEpoch,
+    recovery: {
+      attemptObserved: (afterDrop.lifecycleEvents || []).some((event) => event.type === "actor-resume-attempt"),
+      prestartResumeObserved: (resumedPreStart.lifecycleEvents || []).some((event) => event.type === "actor-resume-prestart-complete"),
+      sameWorldEpoch: activeB.identity?.worldEpoch === aw.worldEpoch,
+      sameActorSession: activeB.session?.actorSessionId === captured.selfSessionId,
+      protocolStartTick: activeB.protocolStartTick,
+      localBoundaryTick: activeB.localBoundaryTick,
+      guardMismatches: activeB.metrics?.guardMismatches,
     },
     proxy: { drop, current: proxy.snapshot() },
-    verdict: "WORLD_V0_CLOSURE_UNCOMMITTED_READY_AMBIGUITY_REPRODUCED",
-    interpretation: "The browser enters the same local 'both connected · ready' recovery class even when its ready frame never reached authority. Authority therefore remains pre-start and correctly retires the epoch on disconnect, while the browser incorrectly begins ActorSession recovery against a dead session.",
-    nonClaim: "This is a bounded local Chromium/Workerd causal falsifier of delivery ambiguity between WebSocket send intent and authority receipt. It does not estimate real-world incidence or packet-loss probability.",
+    verdict: "WORLD_V0_CLOSURE_UNCOMMITTED_READY_RECOVERY_PASS",
+    interpretation: "A two-player pre-start room remains resumable across the unavoidable ready-delivery ambiguity: the browser's first ready never reached authority, authority remained unscheduled, transport dropped, the same ActorSession resumed inside bounded grace, the browser re-sent ready, and the original WorldEpoch then started normally.",
+    nonClaim: "This is a bounded local Chromium/Workerd causal proof. It does not provide persistence, process-loss recovery, cross-tab token persistence, or a guarantee beyond the configured pre-start ambiguity grace.",
   };
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
   console.log("WORLD_V0_CLOSURE_UNCOMMITTED_READY", JSON.stringify(result, null, 2));

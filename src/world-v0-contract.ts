@@ -1,5 +1,5 @@
-export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v10-retry-aligned-grace";
-export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v7-retry-aligned-grace";
+export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v11-prestart-ambiguity-grace";
+export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v8-prestart-ambiguity-grace";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v8-playability-split-lead";
 export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
@@ -35,9 +35,13 @@ export const WORLD_V0_CLIENT_HISTORY = {
 
 // Actor input still fails neutral after the 36-tick lease. WorldEpoch lifetime is
 // separate and must outlive the browser's current 12-attempt (~18.25 s nominal)
-// ActorSession resume schedule with bounded handshake/detection margin.
+// ActorSession resume schedule with bounded handshake/detection margin. A fully
+// assembled two-player pre-start room gets the same bounded window because the
+// authority cannot distinguish a lost final ready frame from a browser that never
+// sent it. A one-player waiting room remains fail-closed on disconnect.
 export const WORLD_V0_LIFECYCLE = {
   allDisconnectedGraceTicks: 20 * 60,
+  preStartAmbiguityGraceTicks: 20 * 60,
 } as const;
 
 export const WORLD_V0_MOVEMENT = {

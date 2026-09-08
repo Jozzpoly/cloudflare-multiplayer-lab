@@ -1,0 +1,79 @@
+name: world-v0-direct-link-resume-audit
+
+on:
+  push:
+    branches: [world-v0-session-continuity-r1-direct-audit-run]
+    paths:
+      - .github/workflows/world-v0-direct-link-resume-audit.yml
+      - scripts/world-v0-direct-link-resume-browser-audit.mjs
+      - public/world-v0/app.js
+      - public/world-v0/session-continuity.js
+      - public/world-v0/friend-ready.js
+      - public/world-v0/public-room-entry.js
+      - src/world-slice-entry.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-direct-link-resume-audit
+  cancel-in-progress: true
+
+jobs:
+  falsify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Static gate
+        run: |
+          set -euo pipefail
+          node --check scripts/world-v0-direct-link-resume-browser-audit.mjs
+          node --check public/world-v0/friend-ready.js
+          node scripts/world-v0-session-continuity-smoke.mjs
+          git diff --check
+      - name: Start local reliability Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-direct-resume-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-direct-resume-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-direct-resume-wrangler.log
+          exit 1
+      - name: Real Chromium direct-link resume falsifier
+        env:
+          MW_WORLD_V0_DIRECT_RESUME_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_DIRECT_RESUME_ROOM: yard-3
+          MW_WORLD_V0_DIRECT_RESUME_OUTPUT: world-v0-direct-link-resume.json
+        run: |
+          set -euo pipefail
+          timeout 90s node scripts/world-v0-direct-link-resume-browser-audit.mjs | tee world-v0-direct-link-resume.log
+          grep -q 'WORLD_V0_DIRECT_LINK_RESUME_PASS' world-v0-direct-link-resume.log
+      - name: Stop Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-direct-resume-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-direct-resume-wrangler.pid)" 2>/dev/null || true
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-direct-link-resume-audit-${{ github.run_attempt }}
+          path: |
+            world-v0-direct-link-resume.json
+            world-v0-direct-link-resume.log
+            world-v0-direct-resume-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

@@ -37,8 +37,9 @@ const actor = {
 assert.equal(writeWorldV0StoredSession(actor, local), true);
 assert.deepEqual(readWorldV0StoredSession("yard-3", local), { ...actor, savedAt: readWorldV0StoredSession("yard-3", local).savedAt });
 assert.equal(readWorldV0StoredSession("yard-2", local), null);
-assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a" }), true);
-assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-b" }), false);
+assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reserved: 1 }), true);
+assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reserved: 0 }), false, "connected ActorSession must not be offered as resumable");
+assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-b", reserved: 1 }), false);
 assert.equal(writeWorldV0ResumeIntent(actor, session), true);
 assert.equal(takeWorldV0ResumeIntent({ runKey: "yard-3", playerId: "Wrong" }, session), null);
 assert.equal(takeWorldV0ResumeIntent({ runKey: "yard-3", playerId: "Jozz" }, session), null, "resume intent is one-shot even on mismatch");

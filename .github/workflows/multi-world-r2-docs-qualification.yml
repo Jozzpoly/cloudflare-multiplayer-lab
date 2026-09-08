@@ -1,0 +1,52 @@
+name: Multi World R2 Docs Qualification
+
+on:
+  push:
+    branches: [multi-world-r2-docs-qualification]
+    paths:
+      - .github/workflows/multi-world-r2-docs-qualification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact docs candidate
+        uses: actions/checkout@v7
+        with:
+          ref: 9326c545d63fccdcbf2469db1f4e6e2c5a568a58
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Prove docs-only delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=692ac8524c0bd056458658408f7d78d82237aab9
+          test "$(git rev-parse HEAD)" = "9326c545d63fccdcbf2469db1f4e6e2c5a568a58"
+          actual="$(git diff --name-only "$base"..HEAD | sort)"
+          expected="$(printf '%s\n' README.md docs/MULTI_WORLD_CURRENT_STATE.md docs/MULTI_WORLD_TAKEOVER_INDEX.md | sort)"
+          test "$actual" = "$expected"
+          git diff --check "$base"..HEAD
+          git diff --quiet "$base"..HEAD -- public src scripts package.json package-lock.json wrangler.jsonc .github/workflows || {
+            echo 'unexpected runtime/infrastructure drift'
+            exit 1
+          }
+          grep -q 'main@692ac8524c0bd056458658408f7d78d82237aab9' README.md
+          grep -q 'shared-yard-v0-contract-v14-jump-delivery-persistence' docs/MULTI_WORLD_CURRENT_STATE.md
+          grep -q '5592166219' docs/MULTI_WORLD_TAKEOVER_INDEX.md
+          echo MULTI_WORLD_R2_DOCS_ONLY_DELTA_PASS
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Full repository checks
+        run: npm run check

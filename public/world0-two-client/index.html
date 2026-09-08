@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>WS0 two-client intent probe</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0b1117; color: #d9e5ea; }
+    #viewport { position: fixed; inset: 0; }
+    #viewport canvas { width: 100%; height: 100%; display: block; }
+    .panel { position: fixed; z-index: 4; background: rgba(8,13,18,.88); border: 1px solid #34444d; border-radius: 10px; backdrop-filter: blur(8px); }
+    #boot { inset: 50% auto auto 50%; transform: translate(-50%,-50%); width: min(420px, calc(100% - 32px)); padding: 20px; }
+    #boot h1 { margin: 0 0 8px; font: 700 18px/1.2 system-ui, sans-serif; }
+    #boot p { margin: 0 0 14px; color: #9db0ba; font: 13px/1.45 system-ui, sans-serif; }
+    #boot input, #boot button { width: 100%; padding: 10px 12px; margin-top: 8px; border-radius: 7px; border: 1px solid #435760; background: #111b22; color: inherit; }
+    #boot button { cursor: pointer; background: #17312d; border-color: #39796b; }
+    #boot button:disabled { opacity: .55; cursor: wait; }
+    #hud { top: 12px; left: 12px; min-width: 305px; padding: 10px 12px; font-size: 12px; line-height: 1.55; }
+    #hud .title { font-weight: 700; color: #fff; margin-bottom: 4px; }
+    #hud .row { display: flex; justify-content: space-between; gap: 16px; }
+    #hud .value { color: #9fe1d2; text-align: right; }
+    #hud .warn { color: #ffb86b; }
+    #notice { left: 50%; bottom: 18px; transform: translateX(-50%); max-width: min(760px, calc(100% - 24px)); padding: 9px 12px; font: 13px/1.4 system-ui, sans-serif; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="viewport"></div>
+  <section id="boot" class="panel">
+    <h1>WS0 · two-client intent probe</h1>
+    <p>Exactly two players. Self intent is immediate; the one remote player is simulated locally from authority-forwarded delayed intent. Snapshots are evidence only.</p>
+    <input id="callsign" maxlength="24" autocomplete="off" />
+    <button id="enter" disabled>Loading physics…</button>
+    <p id="boot-status"></p>
+  </section>
+  <aside id="hud" class="panel hidden">
+    <div class="title">A2R two-client intent probe</div>
+    <div class="row"><span>network</span><span id="m-net" class="value">—</span></div>
+    <div class="row"><span>players</span><span id="m-players" class="value">—</span></div>
+    <div class="row"><span>peer inputs</span><span id="m-peer" class="value">0</span></div>
+    <div class="row"><span>ack</span><span id="m-ack" class="value">0 / 0</span></div>
+    <div class="row"><span>self raw Δ</span><span id="m-self" class="value">—</span></div>
+    <div class="row"><span>remote raw Δ</span><span id="m-remote" class="value">—</span></div>
+    <div class="row"><span>prop raw Δ max</span><span id="m-prop" class="value">—</span></div>
+    <div class="row"><span>local</span><span id="m-local" class="value">—</span></div>
+    <div class="row"><span>scheduler</span><span id="m-scheduler" class="value">—</span></div>
+    <div class="row"><span>RTT p50</span><span id="m-rtt" class="value">—</span></div>
+  </aside>
+  <div id="notice" class="panel hidden"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

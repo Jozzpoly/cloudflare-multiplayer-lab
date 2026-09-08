@@ -1,0 +1,154 @@
+name: World V0 R0d Reliability Retest
+
+on:
+  push:
+    branches: [world-v0-r0d-reliability-retest]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-r0d-reliability-retest
+  cancel-in-progress: false
+
+env:
+  QUALIFIED_SOURCE_SHA: a2e821afbbc88371b033af311cc6882d46aa6916
+  RELIABILITY_WORKER: cloudflare-multiplayer-lab-reliability-play
+  RELIABILITY_BASE_URL: https://cloudflare-multiplayer-lab-reliability-play.jozzpoly.workers.dev
+  CLOUDFLARE_ACCOUNT_ID: 566456b8f2f4d9f85b3fa8173e190c1a
+
+jobs:
+  isolated-r0d-reliability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact qualified product/runtime source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$QUALIFIED_SOURCE_SHA^{commit}"
+          git merge-base --is-ancestor "$QUALIFIED_SOURCE_SHA" HEAD
+          protected=(public/world-v0 src/box3d-runtime.ts src/world-v0-contract.ts src/world-v0-protocol.ts src/world-v0-shared-yard.ts src/world-slice-entry.ts package.json package-lock.json)
+          git diff --quiet "$QUALIFIED_SOURCE_SHA" HEAD -- "${protected[@]}" || {
+            git diff --name-status "$QUALIFIED_SOURCE_SHA" HEAD -- "${protected[@]}"
+            exit 1
+          }
+          echo "R0D_QUALIFIED_RUNTIME_BYTES_PASS source=$QUALIFIED_SOURCE_SHA delivery=$GITHUB_SHA"
+
+      - name: Verify isolated target
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const c = JSON.parse(readFileSync("wrangler.jsonc", "utf8"));
+          const r = c.env?.reliability_play;
+          const s = c.env?.staging;
+          if (r?.name !== process.env.RELIABILITY_WORKER) throw new Error("reliability worker drift");
+          if (s?.name !== "cloudflare-multiplayer-lab-staging") throw new Error("public staging drift");
+          if (r.name === s.name || r.name === c.name) throw new Error("target is not isolated");
+          if (!r.durable_objects?.bindings?.some((b) => b.name === "SHARED_YARD_V0" && b.class_name === "SharedYardV0")) throw new Error("SharedYardV0 binding missing");
+          console.log("R0D_ISOLATED_TARGET_PASS", r.name);
+          NODE
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+      - name: Full qualified-source regression
+        run: npm run check
+      - name: Isolated deployment dry-run
+        run: npx wrangler deploy --dry-run --env reliability_play --outdir .wrangler/r0d-reliability-dry-run
+
+      - name: Prepare exact delivery provenance
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          import { WORLD_V0_EXPECTED_SIM_BUILD_ID } from "./public/world-v0/build-contract.js";
+          writeFileSync("public/world-v0/r0d-reliability-provenance.json", JSON.stringify({
+            purpose: "r0d-reliability-retest",
+            qualifiedSourceSha: process.env.QUALIFIED_SOURCE_SHA,
+            deliverySha: process.env.GITHUB_SHA,
+            worker: process.env.RELIABILITY_WORKER,
+            simBuildId: WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          }, null, 2) + "\n");
+          NODE
+
+      - name: Deploy isolated worker only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx wrangler whoami
+          npx wrangler deploy --env reliability_play
+
+      - name: Verify exact deployed provenance
+        run: |
+          node --input-type=module <<'NODE'
+          const url = `${process.env.RELIABILITY_BASE_URL}/world-v0/r0d-reliability-provenance.json?r=${Date.now()}`;
+          const deadline = Date.now() + 120000;
+          let last = null;
+          while (Date.now() < deadline) {
+            try {
+              const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+              const p = res.ok ? await res.json() : null;
+              last = p;
+              if (p?.qualifiedSourceSha === process.env.QUALIFIED_SOURCE_SHA && p?.deliverySha === process.env.GITHUB_SHA && p?.worker === process.env.RELIABILITY_WORKER) {
+                console.log("R0D_RELIABILITY_EXACT_SOURCE_VISIBLE", JSON.stringify(p));
+                process.exit(0);
+              }
+            } catch (e) { last = e instanceof Error ? e.message : String(e); }
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+          throw new Error(`exact provenance not visible: ${JSON.stringify(last)}`);
+          NODE
+
+      - name: Remote I1 ActorSession continuity
+        env:
+          MW_WORLD_V0_I1_BASE: ${{ env.RELIABILITY_BASE_URL }}
+          MW_WORLD_V0_I1_RUN: r0d-ci-i1-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-r0d-remote-i1.log
+
+      - name: Remote I2 future-intent supersession
+        env:
+          MW_WORLD_V0_I2_BASE: ${{ env.RELIABILITY_BASE_URL }}
+          MW_WORLD_V0_I2_RUN: r0d-ci-i2-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-r0d-remote-i2.log
+
+      - name: Remote clean rAF-independent browser run
+        env:
+          MW_WORLD_V0_I3_BASE: ${{ env.RELIABILITY_BASE_URL }}
+          MW_WORLD_V0_I3_FREEZE_MS: "1200"
+          MW_WORLD_V0_I3B_CLEAN_REQUIRED: "1"
+          MW_WORLD_V0_I3B_MAX_ATTEMPTS: "4"
+          MW_WORLD_V0_I3B_PREFIX: world-v0-r0d-remote-i3
+        run: node scripts/world-v0-integration-i3b-clean-campaign.mjs
+
+      - name: Remote I4b exact seed and browser rebase
+        env:
+          MW_WORLD_V0_I4B_BASE: ${{ env.RELIABILITY_BASE_URL }}
+          MW_WORLD_V0_I4B_OUTPUT: world-v0-r0d-remote-i4b-browser.json
+        run: |
+          node --experimental-strip-types scripts/world-v0-integration-i4b-authority-probe.mjs | tee world-v0-r0d-remote-i4b-authority.log
+          node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-r0d-remote-i4b-browser.log
+
+      - name: Upload R0d remote evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-r0d-reliability-retest-${{ github.run_attempt }}
+          path: |
+            public/world-v0/r0d-reliability-provenance.json
+            world-v0-r0d-remote-i1.log
+            world-v0-r0d-remote-i2.log
+            world-v0-r0d-remote-i3-*.json
+            world-v0-r0d-remote-i3-*.log
+            world-v0-r0d-remote-i4b-authority.log
+            world-v0-r0d-remote-i4b-browser.json
+            world-v0-r0d-remote-i4b-browser.log
+          if-no-files-found: warn
+          retention-days: 14

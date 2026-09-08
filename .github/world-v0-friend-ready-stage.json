@@ -1,0 +1,11 @@
+{
+  "phase": "Friend-Ready World V1",
+  "stage": "FR-A",
+  "qualifiedControlSha": "1699fb71b3abef425aea6e21cdb81cb7d11250d5",
+  "friendEntryRevision": "shared-yard-v0-friend-entry-v1",
+  "uiRevision": "shared-yard-v0-browser-ui-v8-friend-entry",
+  "simBuildId": "shared-yard-v0-sim-579c7aa172198390",
+  "authorityRevision": "shared-yard-v0-authority-v1",
+  "protocolRevision": "shared-yard-v0-scheduled-input-v1",
+  "claim": "friend-facing host/invite/join presentation only; authority, protocol and simulation remain frozen"
+}

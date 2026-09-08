@@ -1,83 +1,109 @@
-# Multi_World · Cloudflare Multiplayer Lab
+# Multi_World / Cloudflare Multiplayer Lab
 
-Evidence-driven browser multiplayer R&D laboratory evolving into a small shared physical living world.
+Evidence-driven R&D laboratory for a small shared physical browser world.
 
-For current work, start with:
+The repository began as a sequence of Cloudflare multiplayer gates, but the active work has moved well beyond the old Gate 4A README boundary. The current research specimen is **World V0 / Shared Yard**: a two-player server-authoritative Box3D world used to study responsive embodiment, shared physical truth, scheduled input, exact state recovery and real browser lifecycle failures.
 
-**[`docs/WORLD_V0_OPERATING_MAP.md`](docs/WORLD_V0_OPERATING_MAP.md)**
+The project is **not** trying to build a generic multiplayer framework up front. Architecture is earned through bounded falsifiers and real runtime evidence.
 
-Current product-phase plan:
+## Canonical project state
 
-**[`docs/WORLD_V0_FRIEND_READY_V1_PLAN.md`](docs/WORLD_V0_FRIEND_READY_V1_PLAN.md)**
+Start here:
 
-The post-Owner audit that established this phase is preserved at:
+1. [`docs/MULTI_WORLD_PROJECT_SOUL.md`](docs/MULTI_WORLD_PROJECT_SOUL.md) — durable product/research purpose;
+2. [`docs/MULTI_WORLD_CURRENT_STATE.md`](docs/MULTI_WORLD_CURRENT_STATE.md) — current qualified technical truth, non-claims and branch state;
+3. [`docs/MULTI_WORLD_TAKEOVER_INDEX.md`](docs/MULTI_WORLD_TAKEOVER_INDEX.md) — minimal operational takeover path;
+4. GitHub issue #8 — detailed evidence ledger and checkpoints.
 
-**[`docs/WORLD_V0_POST_OWNER_REVIEW_2026-09-05.md`](docs/WORLD_V0_POST_OWNER_REVIEW_2026-09-05.md)**
+Older grounding, takeover and experiment-specific documents are retained as provenance. They are not current authority when newer live evidence disagrees.
 
-## Current active spine
+## Current qualified technical checkpoint
 
-| Role | Branch | Verified 2026-09-05 snapshot |
-| --- | --- | --- |
-| Frozen foundation control | `world-v0-shared-yard` | `b27de8b04c27777250c47e7e936674e0f147fdfa` |
-| Qualified product control | `world-v0-playable-frontier` | `1699fb71b3abef425aea6e21cdb81cb7d11250d5` |
-| Remote delivery control | `world-v0-staging-delivery` | `d6e9d47d72aeac34bc6341a76ebdf7e53ff6522f` |
-| **Active product candidate** | `world-v0-friend-ready-v1` | starts at `1699fb71b3abef425aea6e21cdb81cb7d11250d5` |
-| Stress / capacity research | `world-v0-capacity-cartography` | `d086f51792795d1ab73ba43f9e3b4dbf97441bb7` |
+Branch:
 
-Verify live heads before acting; these are grounded snapshots, not permanent aliases.
+`world-v0-closure-stabilization`
 
-## Current phase
+Qualified clean technical head:
 
-Shared Yard V0 has completed its role as the first world/product falsifier. Fresh Owner hands-on accepted the current camera state, noted only a short non-blocking startup hitch, and judged the existing 12-prop interactions exhausted/boring after repeated testing.
+`1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
 
-The next phase is **Friend-Ready World V1**:
+Runtime identity at that checkpoint:
 
-1. simplify friend entry to a normal invite-link flow instead of exposing raw `Run` lab state;
-2. add bounded room continuity for clean peer leave/rejoin while preserving fresh physical epochs;
-3. keep authority/protocol/SimBuild frozen during those UX/session stages;
-4. build **jump** later as a separate simulation candidate with its own SimBuild/causal qualification;
-5. then run genuine two-human/two-device friend-play;
-6. use that evidence to choose the first serious mini-MMO/living-world preparation problem.
+- authority: `shared-yard-v0-authority-v9-prestart-live-start-gate`;
+- simulation: `shared-yard-v0-sim-69ad9c7d0430a929`.
 
-Do not interpret `mini-MMO` as permission to build generic MMO infrastructure now.
+Final retained current-head validation:
 
-## Qualified control state
+- workflow run `34176613974`;
+- result `completed / success`;
+- artifact `10037571475`;
+- artifact SHA-256 `3de29b79003fe747f0af2602357c446bf633f95fd26c7d33a922547787565c23`.
 
-- UI revision: `shared-yard-v0-browser-ui-v7-solo-inspection`;
-- frozen SimBuild: `shared-yard-v0-sim-579c7aa172198390`;
-- qualified playable run `33957370821`: PASS across fresh-runner core, presentation/lifecycle, `Inspect solo`, and two-Chromium exact-state;
-- remote staging run `33957492089`: PASS on first attempt with exact product provenance, staging isolation, presentation/lifecycle, remote `Inspect solo`, and remote exact-state;
-- public staging control: `https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/`.
+The live closure branch may be ahead of this SHA by documentation-only consolidation commits. Verify the diff before treating a later head as a new runtime qualification.
 
-The delivery lane uses `.github/world-v0-product-source.json` and publishes `world-v0/deploy-provenance.json` so the exact promoted product SHA is mechanically checkable.
+## What World V0 currently demonstrates
 
-`Inspect solo` uses the real two-peer authority/session machinery with a neutral AUTO peer. Its evidence remains `qualificationEligible=false`: it is an Owner/dev convenience, not two-human qualification.
+Within the qualified two-player envelope, the project has established:
 
-## Important boundaries
+- server-authoritative Box3D physical state;
+- fixed `60 Hz / 4 substeps` simulation;
+- scheduled canonical input and a 36-tick actor input lease;
+- responsive local browser simulation with exact state guards;
+- authority recording seeds for exact ActorSession state bootstrap/rebase;
+- bounded same-WorldEpoch / same-ActorSession transport recovery;
+- a 20 s authority lifecycle grace when every active transport disappears;
+- a separate bounded two-player pre-start ambiguity grace;
+- fail-closed pure one-player waiting-room loss;
+- protocol start only when both ready ActorSessions also have live transports;
+- retained real-Chromium recovery evidence, including 14 s single-target and 14.5 s dual hard-TCP-drop cases with zero exact-state guard mismatches.
 
-- `world-v0-shared-yard` remains the frozen foundation control.
-- `world-v0-playable-frontier@1699fb71...` remains the current qualified product control until a replacement candidate is deliberately qualified/promoted.
-- `world-v0-friend-ready-v1` is for friend-entry/session continuity only; it must not silently absorb jump/simulation changes.
-- jump gets a separate causal candidate/new SimBuild.
-- `world-v0-playable-impact-lab-v0@33ddd527...` remains parked/unqualified.
-- Stress × Play is a research reserve, not the product roadmap.
-- PR #32 remains **DRAFT / DO NOT MERGE** and represents the frozen foundation-control line.
-- `main` is navigation/documentation, not live runtime.
-- heavy Chromium/SwiftShader qualification classes remain isolated on fresh hosted runners.
+The closure campaign found and repaired four real lifecycle/handshake defects. Exact evidence and non-claims are in `MULTI_WORLD_CURRENT_STATE.md` and issue #8 checkpoint `5577741764`.
 
-## Basic repository validation
+## What is not claimed
 
-`main` is documentation/navigation and does not currently carry the playable dependency lock:
+Current evidence does **not** establish:
 
-```bash
-npm install
-npm run check
-```
+- cross-tab/new-tab ActorSession continuity;
+- Durable Object process-loss reconstruction;
+- persistent/open-room semantics;
+- production/mobile radio handover behavior;
+- remote Cloudflare qualification for the final v9 closure head;
+- large-player-count multiplayer.
 
-On active playable/candidate/staging product specimens with committed `package-lock.json`, use:
+A 20 s authority grace is not a promise that every browser outage shorter than 20 s recovers end-to-end.
+
+## Current work boundary
+
+Ordinary feature development is temporarily frozen while repository state is consolidated.
+
+`main` and the qualified closure branch have diverged since `d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de`; live `main` at the 2026-09-08 audit was `401be09ccd09decf493e4fcf4bea784e841e6163` and contained its own 20 commits after the merge base.
+
+Therefore the next step is **not** a blind merge and not a new gameplay feature. The independent `main` side must be classified before choosing a safe consolidation path.
+
+## Validation
+
+Use the exact dependency graph:
 
 ```bash
 npm ci
+npm run check
 ```
 
-Exact validation depends on causal blast radius; use the active lane workflow rather than inventing ad-hoc thresholds.
+Local development:
+
+```bash
+npm ci
+npm run dev
+```
+
+The reusable World V0 closure validator is:
+
+`.github/workflows/world-v0-closure-current-validation.yml`
+
+## Historical gate record
+
+The earlier deployment, WebSocket, shared-world game and Gate 4A experiments remain valuable controls and provenance. Their records under `docs/gates/`, older `WORLD_V0_*` / `WS0_*` documents and historical branches should be read when a specific question requires them, not as the default current-state narrative.
+
+Multi_World's durable objective remains simple to state even as the implementation changes:
+
+> Build toward a small shared physical living world where another person's actions feel like consequences in the same place, not merely synchronized coordinates.

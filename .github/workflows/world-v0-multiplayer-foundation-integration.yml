@@ -1,0 +1,170 @@
+name: World V0 Multiplayer Foundation Integration
+
+on:
+  push:
+    branches:
+      - world-v0-multiplayer-foundation-integration
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  i3-logical-input-scheduler:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prove live I2 baseline is rAF-coupled before first I3 application
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q 'shared-yard-v0-logical-input-scheduler-v' public/world-v0/app.js; then
+            echo "I3 runtime already present; historical rAF-coupled baseline intentionally skipped on carry-forward revalidation"
+            exit 0
+          fi
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8793 --log-level warn > world-v0-i3-baseline-wrangler.log 2>&1 &
+          WRANGLER_PID=$!
+          cleanup() {
+            kill "$WRANGLER_PID" 2>/dev/null || true
+            wait "$WRANGLER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 100); do
+            if ! kill -0 "$WRANGLER_PID" 2>/dev/null; then
+              echo "baseline wrangler exited before readiness"
+              cat world-v0-i3-baseline-wrangler.log
+              exit 1
+            fi
+            if curl -fsS http://127.0.0.1:8793/world-v0/ >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.1
+          done
+          curl -fsS http://127.0.0.1:8793/world-v0/ >/dev/null
+          MW_WORLD_V0_I3_MODE=baseline \
+          MW_WORLD_V0_I3_BASE=http://127.0.0.1:8793 \
+          MW_WORLD_V0_I3_FREEZE_MS=1200 \
+          MW_WORLD_V0_CHROMIUM_OUTPUT=world-v0-i3-baseline-chromium.json \
+            node scripts/world-v0-integration-i3-chromium-raf-audit.mjs | tee world-v0-i3-baseline-chromium.log
+
+      - name: Apply bounded I3 logical scheduler candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q 'shared-yard-v0-logical-input-scheduler-v' public/world-v0/app.js; then
+            echo "I3 scheduler runtime already present; historical patch application intentionally skipped"
+          else
+            node scripts/world-v0-integration-i3-apply.mjs
+            node scripts/world-v0-integration-i3-gap-safe-apply.mjs
+            NEW_SIM_BUILD_ID="$(node --experimental-strip-types -e 'import("./src/world-v0-contract.ts").then((m) => process.stdout.write(m.WORLD_V0_SIM_BUILD_ID))')"
+            node scripts/world-v0-integration-i3-build-contract-apply.mjs "$NEW_SIM_BUILD_ID"
+          fi
+          CURRENT_SIM_BUILD_ID="$(node --experimental-strip-types -e 'import("./src/world-v0-contract.ts").then((m) => process.stdout.write(m.WORLD_V0_SIM_BUILD_ID))')"
+          echo "I3 active SimBuildId: $CURRENT_SIM_BUILD_ID"
+          git diff --check
+          git diff -- \
+            src/world-v0-contract.ts \
+            public/world-v0/app.js \
+            public/world-v0/build-contract.js | tee world-v0-i3-runtime.patch
+
+      - name: Run focused I3 ownership, half-batch and cadence-gap falsifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/world-v0-integration-i3-semantics-probe.mjs | tee world-v0-i3-semantics-probe.log
+          node --experimental-strip-types scripts/world-v0-integration-i3-gap-safe-probe.mjs | tee world-v0-i3-gap-safe-probe.log
+
+      - name: Run full repository validation
+        run: npm run check
+
+      - name: Prove I3 candidate survives isolated rAF freeze in real Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8794 --log-level warn > world-v0-i3-candidate-wrangler.log 2>&1 &
+          WRANGLER_PID=$!
+          cleanup() {
+            kill "$WRANGLER_PID" 2>/dev/null || true
+            wait "$WRANGLER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 100); do
+            if ! kill -0 "$WRANGLER_PID" 2>/dev/null; then
+              echo "candidate wrangler exited before readiness"
+              cat world-v0-i3-candidate-wrangler.log
+              exit 1
+            fi
+            if curl -fsS http://127.0.0.1:8794/world-v0/ >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.1
+          done
+          curl -fsS http://127.0.0.1:8794/world-v0/ >/dev/null
+
+          MW_WORLD_V0_I3_BASE=http://127.0.0.1:8794 \
+          MW_WORLD_V0_I3_FREEZE_MS=1200 \
+          MW_WORLD_V0_I3B_CLEAN_REQUIRED=1 \
+          MW_WORLD_V0_I3B_MAX_ATTEMPTS=4 \
+          MW_WORLD_V0_I3B_PREFIX=world-v0-i3-candidate \
+            node scripts/world-v0-integration-i3b-clean-campaign.mjs | tee world-v0-i3-candidate-campaign.log
+          MW_WORLD_V0_I2_BASE=http://127.0.0.1:8794 \
+            node scripts/world-v0-integration-i2-lifecycle-probe.mjs | tee world-v0-i2-regression-lifecycle.log
+          MW_WORLD_V0_I1_BASE=http://127.0.0.1:8794 \
+            node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-i1-regression-lifecycle.log
+          MW_WORLD_V0_I1_BASE=http://127.0.0.1:8794 \
+            node scripts/world-v0-integration-i1-prestart-probe.mjs | tee world-v0-i1-regression-prestart.log
+
+      - name: Commit I3 runtime only after every gate PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME_FILES=(
+            src/world-v0-contract.ts
+            public/world-v0/app.js
+            public/world-v0/build-contract.js
+          )
+          if git diff --quiet -- "${RUNTIME_FILES[@]}"; then
+            echo "I3 runtime already committed; nothing to push"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${RUNTIME_FILES[@]}"
+          git commit -m "feat(world-v0): integrate I3 logical input scheduler"
+          git push origin HEAD:world-v0-multiplayer-foundation-integration
+
+      - name: Upload I3 evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-v0-integration-i3
+          path: |
+            world-v0-i3-runtime.patch
+            world-v0-i3-semantics-probe.log
+            world-v0-i3-gap-safe-probe.log
+            world-v0-i3-baseline-chromium.json
+            world-v0-i3-baseline-chromium.log
+            world-v0-i3-baseline-wrangler.log
+            world-v0-i3-candidate-campaign.log
+            world-v0-i3-candidate-campaign-summary.json
+            world-v0-i3-candidate-attempt-*.json
+            world-v0-i3-candidate-attempt-*.log
+            world-v0-i3-candidate-wrangler.log
+            world-v0-i2-regression-lifecycle.log
+            world-v0-i1-regression-lifecycle.log
+            world-v0-i1-regression-prestart.log
+          if-no-files-found: warn
+          retention-days: 14

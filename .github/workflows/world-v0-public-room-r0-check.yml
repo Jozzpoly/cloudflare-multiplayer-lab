@@ -1,0 +1,126 @@
+name: World V0 Public Room R0 Check
+
+on:
+  push:
+    branches: [world-v0-public-room-r0]
+
+permissions:
+  contents: read
+
+jobs:
+  r0a:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Full repository check
+        run: npm run check
+
+      - name: Start local staging worker
+        run: |
+          npx wrangler dev --env staging --ip 127.0.0.1 --port 8787 > world-v0-public-room-r0-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-public-room-r0.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/world-v0/rooms >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat world-v0-public-room-r0-wrangler.log
+          exit 1
+
+      - name: Prove stable directory and live occupancy
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+
+          const httpBase = "http://127.0.0.1:8787";
+          const wsBase = "ws://127.0.0.1:8787";
+          const expectedIds = ["yard-1", "yard-2", "yard-3"];
+
+          async function directory() {
+            const response = await fetch(`${httpBase}/api/world-v0/rooms`, { cache: "no-store" });
+            assert.equal(response.status, 200);
+            const payload = await response.json();
+            assert.equal(payload.revision, "world-v0-public-room-directory-r0");
+            assert.deepEqual(payload.rooms.map((room) => room.id), expectedIds);
+            return payload;
+          }
+
+          async function waitForRoom(id, predicate, label) {
+            let last = null;
+            for (let i = 0; i < 40; i += 1) {
+              const payload = await directory();
+              last = payload.rooms.find((room) => room.id === id);
+              if (last && predicate(last)) return last;
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            throw new Error(`${label}: ${JSON.stringify(last)}`);
+          }
+
+          const first = await directory();
+          const second = await directory();
+          for (const payload of [first, second]) {
+            for (const room of payload.rooms) {
+              assert.equal(room.occupancy, 0);
+              assert.equal(room.capacity, 2);
+              assert.equal(room.state, "empty");
+              assert.equal(room.joinable, true);
+              assert.equal(room.worldEpoch, null);
+              assert.equal(room.joinPath, `/world-v0/?run=${room.id}`);
+            }
+          }
+
+          const ws = new WebSocket(`${wsBase}/world-v0/ws?player=R0A&run=yard-1`);
+          await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error("welcome timeout")), 5000);
+            ws.addEventListener("error", () => reject(new Error("websocket error")), { once: true });
+            ws.addEventListener("message", (event) => {
+              const message = JSON.parse(String(event.data));
+              if (message.type === "world_v0_welcome") {
+                clearTimeout(timer);
+                resolve(message);
+              }
+            });
+          });
+
+          const occupied = await waitForRoom(
+            "yard-1",
+            (room) => room.occupancy === 1 && room.state === "waiting" && room.joinable === true && room.worldEpoch,
+            "yard-1 did not expose waiting occupancy",
+          );
+          assert.equal(occupied.capacity, 2);
+          assert.equal(occupied.simBuildId, "shared-yard-v0-sim-517b4300b0a5f40f");
+          assert.equal((await directory()).rooms.find((room) => room.id === "yard-2").occupancy, 0);
+
+          ws.close(1000, "r0a_done");
+          await waitForRoom(
+            "yard-1",
+            (room) => room.occupancy === 0 && room.state === "empty" && room.joinable === true && room.worldEpoch === null,
+            "yard-1 did not return to empty after peer close",
+          );
+
+          console.log("WORLD_V0_PUBLIC_ROOM_R0A_PASS", JSON.stringify({
+            rooms: expectedIds,
+            occupiedRoom: "yard-1",
+            occupancyObserved: 1,
+            returnedEmpty: true,
+          }));
+          NODE
+
+      - name: Stop local worker
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-public-room-r0.pid ]; then kill "$(cat /tmp/world-v0-public-room-r0.pid)" 2>/dev/null || true; fi
+
+      - name: Show worker log on failure
+        if: failure()
+        run: cat world-v0-public-room-r0-wrangler.log || true

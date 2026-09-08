@@ -1,0 +1,414 @@
+name: World V0 Playable Staging Delivery + Remote
+
+on:
+  push:
+    branches: [world-v0-staging-delivery]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-playable-staging-delivery
+  cancel-in-progress: false
+
+env:
+  EXPECTED_STAGING_WORKER: cloudflare-multiplayer-lab-staging
+  STAGING_BASE_URL: https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev
+  CLOUDFLARE_ACCOUNT_ID: 566456b8f2f4d9f85b3fa8173e190c1a
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact delivery head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify source identity
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$GITHUB_SHA"
+          echo "Exact delivery specimen: $actual"
+
+      - name: Prove exact promoted product bytes
+        id: product_source
+        run: |
+          set -euo pipefail
+          source_sha="$(node -e 'const m=require("./.github/world-v0-product-source.json"); process.stdout.write(m.productSourceSha)')"
+          source_branch="$(node -e 'const m=require("./.github/world-v0-product-source.json"); process.stdout.write(m.productBranch)')"
+          printf '%s' "$source_sha" | grep -Eq '^[0-9a-f]{40}$'
+          test -n "$source_branch"
+          git cat-file -e "$source_sha^{commit}"
+
+          protected_paths=(
+            public/world-v0
+            src/world-v0-contract.ts
+            src/world-v0-protocol.ts
+            src/world-v0-shared-yard.ts
+            src/box3d-runtime.ts
+            src/world-slice-entry.ts
+            wrangler.jsonc
+            package.json
+            package-lock.json
+          )
+
+          if ! git diff --quiet "$source_sha" "$GITHUB_SHA" -- "${protected_paths[@]}"; then
+            echo "Staging delivery drifted from promoted product source $source_sha on protected product/runtime paths."
+            git diff --stat "$source_sha" "$GITHUB_SHA" -- "${protected_paths[@]}"
+            git diff --name-status "$source_sha" "$GITHUB_SHA" -- "${protected_paths[@]}"
+            exit 1
+          fi
+
+          echo "product_source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "product_source_branch=$source_branch" >> "$GITHUB_OUTPUT"
+          echo "PROMOTED_PRODUCT_BYTES_PASS source=$source_branch@$source_sha delivery=$GITHUB_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prove staging target cannot alias production
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const config = JSON.parse(readFileSync("wrangler.jsonc", "utf8"));
+          const staging = config.env?.staging;
+          if (!staging) throw new Error("wrangler env.staging missing");
+          if (staging.name !== process.env.EXPECTED_STAGING_WORKER) {
+            throw new Error(`staging target drift ${staging.name}`);
+          }
+          if (config.name === staging.name) {
+            throw new Error(`staging aliases root worker ${config.name}`);
+          }
+          if (staging.workers_dev !== true) throw new Error("staging workers_dev must stay enabled");
+          const bindings = staging.durable_objects?.bindings || [];
+          if (!bindings.some((binding) => binding.name === "SHARED_YARD_V0" && binding.class_name === "SharedYardV0")) {
+            throw new Error("staging SharedYardV0 Durable Object binding missing");
+          }
+          const workerFirst = staging.assets?.run_worker_first || [];
+          if (!workerFirst.includes("/world-v0/ws")) throw new Error("staging /world-v0/ws worker-first route missing");
+          console.log(`STAGING_TARGET_GUARD_PASS root=${config.name} staging=${staging.name}`);
+          NODE
+          npm run test:staging-deploy-guard
+          npm run validate:staging-contract
+
+      - name: Generate exact deployment provenance asset
+        env:
+          PRODUCT_SOURCE_SHA: ${{ steps.product_source.outputs.product_source_sha }}
+          PRODUCT_SOURCE_BRANCH: ${{ steps.product_source.outputs.product_source_branch }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          import {
+            WORLD_V0_BROWSER_UI_REVISION,
+            WORLD_V0_CLIENT_SIM_REVISION,
+            WORLD_V0_EXPECTED_SERVER_REVISION,
+            WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          } from "./public/world-v0/build-contract.js";
+
+          const provenance = {
+            productSourceBranch: process.env.PRODUCT_SOURCE_BRANCH,
+            productSourceSha: process.env.PRODUCT_SOURCE_SHA,
+            deliveryBranch: process.env.GITHUB_REF_NAME,
+            deliverySha: process.env.GITHUB_SHA,
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            workflowRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT || 0),
+            uiRevision: WORLD_V0_BROWSER_UI_REVISION,
+            clientSimRevision: WORLD_V0_CLIENT_SIM_REVISION,
+            serverRevision: WORLD_V0_EXPECTED_SERVER_REVISION,
+            protocolRevision: WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            stateGuardRevision: WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            simBuildId: WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          };
+
+          writeFileSync("public/world-v0/deploy-provenance.json", `${JSON.stringify(provenance, null, 2)}\n`);
+          console.log("DEPLOY_PROVENANCE_PREPARED", JSON.stringify(provenance));
+          NODE
+
+      - name: Dry-run exact staging deployment
+        run: npx wrangler deploy --dry-run --env staging --outdir .wrangler/staging-delivery-dry-run
+
+      - name: Require Cloudflare deployment credential
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "CLOUDFLARE_API_TOKEN GitHub Actions secret is absent; refusing deployment."
+            exit 2
+          fi
+          echo "Cloudflare deployment credential is available."
+
+      - name: Authenticate Wrangler
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler whoami
+
+      - name: Deploy only the isolated staging environment
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run deploy:staging
+
+      - name: Require exact product provenance, UI and SimBuild to become public
+        env:
+          MW_WORLD_V0_STAGING_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          PRODUCT_SOURCE_SHA: ${{ steps.product_source.outputs.product_source_sha }}
+          PRODUCT_SOURCE_BRANCH: ${{ steps.product_source.outputs.product_source_branch }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {
+            WORLD_V0_BROWSER_UI_REVISION,
+            WORLD_V0_EXPECTED_SIM_BUILD_ID,
+          } from "./public/world-v0/build-contract.js";
+
+          const base = process.env.MW_WORLD_V0_STAGING_BASE_URL.replace(/\/$/, "");
+          const deadline = Date.now() + 120_000;
+          let last = null;
+          while (Date.now() < deadline) {
+            try {
+              const cacheBust = `${process.env.GITHUB_SHA}-${Date.now()}`;
+              const [contractResponse, provenanceResponse] = await Promise.all([
+                fetch(`${base}/world-v0/build-contract.js?delivery=${cacheBust}`, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(8000),
+                }),
+                fetch(`${base}/world-v0/deploy-provenance.json?delivery=${cacheBust}`, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(8000),
+                }),
+              ]);
+              const contractBody = await contractResponse.text();
+              const provenance = provenanceResponse.ok ? await provenanceResponse.json() : null;
+              last = {
+                contractStatus: contractResponse.status,
+                provenanceStatus: provenanceResponse.status,
+                ui: contractBody.includes(WORLD_V0_BROWSER_UI_REVISION),
+                sim: contractBody.includes(WORLD_V0_EXPECTED_SIM_BUILD_ID),
+                productSourceSha: provenance?.productSourceSha,
+                productSourceBranch: provenance?.productSourceBranch,
+                deliverySha: provenance?.deliverySha,
+                deliveryBranch: provenance?.deliveryBranch,
+              };
+              if (
+                contractResponse.ok &&
+                provenanceResponse.ok &&
+                last.ui &&
+                last.sim &&
+                provenance?.productSourceSha === process.env.PRODUCT_SOURCE_SHA &&
+                provenance?.productSourceBranch === process.env.PRODUCT_SOURCE_BRANCH &&
+                provenance?.deliverySha === process.env.GITHUB_SHA &&
+                provenance?.deliveryBranch === process.env.GITHUB_REF_NAME
+              ) {
+                console.log("STAGING_EXACT_PRODUCT_VISIBLE", JSON.stringify({
+                  ...last,
+                  uiRevision: WORLD_V0_BROWSER_UI_REVISION,
+                  simBuildId: WORLD_V0_EXPECTED_SIM_BUILD_ID,
+                }));
+                process.exit(0);
+              }
+            } catch (error) {
+              last = { error: error instanceof Error ? error.message : String(error) };
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+          throw new Error(`staging did not expose exact promoted product: ${JSON.stringify(last)}`);
+          NODE
+
+      - name: Upload deployment dry-run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playable-staging-deploy-attempt-${{ github.run_attempt }}
+          path: |
+            .wrangler/staging-delivery-dry-run
+            public/world-v0/deploy-provenance.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  remote-authority:
+    needs: deploy-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Checkout exact staging candidate
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Verify remote-gate apparatus syntax
+        run: |
+          node --check public/world-v0/build-contract.js
+          node --check public/world-v0/solo-inspection-core.js
+          node --check public/world-v0/solo-inspection.js
+          node --check scripts/world-v0-authority-stimulus.mjs
+          node --check scripts/world-v0-authority-runtime-smoke.mjs
+          node --check scripts/world-v0-playable-interaction-smoke.mjs
+          node --check scripts/world-v0-solo-inspection-core-smoke.mjs
+          node --check scripts/world-v0-solo-inspection-browser-smoke.mjs
+          node --check scripts/world-v0-session-friction-smoke.mjs
+          node --check scripts/world-v0-runtime-shell-smoke.mjs
+          node --check scripts/world-v0-chromium-cloud-smoke.mjs
+          node --check scripts/world-v0-exact-failure-classifier.mjs
+          node --check scripts/world-v0-exact-failure-classifier-smoke.mjs
+          node scripts/world-v0-solo-inspection-core-smoke.mjs
+          node scripts/world-v0-exact-failure-classifier-smoke.mjs
+
+      - name: Prove remote authority and production isolation
+        env:
+          MW_WORLD_V0_POLL_TIMEOUT_MS: "60000"
+          MW_WORLD_V0_AUTHORITY_OUTPUT: world-v0-playable-staging-authority.json
+        run: node scripts/world-v0-authority-runtime-smoke.mjs
+
+      - name: Upload remote authority evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playable-staging-authority-attempt-${{ github.run_attempt }}
+          path: world-v0-playable-staging-authority.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  remote-presentation:
+    needs: remote-authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact staging candidate
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prove remote camera / controller interactions
+        id: interaction
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_PLAYABLE_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_PLAYABLE_OUTPUT: world-v0-playable-staging-interaction.json
+        run: node scripts/world-v0-playable-interaction-smoke.mjs
+
+      - name: Prove remote epoch-end / fresh-restart lifecycle
+        id: session
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_SESSION_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_SESSION_OUTPUT: world-v0-playable-staging-session.json
+        run: node scripts/world-v0-session-friction-smoke.mjs
+
+      - name: Prove remote desktop and portrait shell
+        id: shell
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_SHELL_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_SHELL_OUTPUT: world-v0-playable-staging-shell.json
+        run: node scripts/world-v0-runtime-shell-smoke.mjs
+
+      - name: Prove remote one-browser real-authority Inspect solo
+        id: solo
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_SOLO_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_SOLO_OUTPUT: world-v0-playable-staging-solo-inspection.json
+        run: node scripts/world-v0-solo-inspection-browser-smoke.mjs
+
+      - name: Preserve all presentation falsifiers as required gates
+        env:
+          INTERACTION: ${{ steps.interaction.outcome }}
+          SESSION: ${{ steps.session.outcome }}
+          SHELL: ${{ steps.shell.outcome }}
+          SOLO: ${{ steps.solo.outcome }}
+        run: |
+          echo "interaction=${INTERACTION} session=${SESSION} shell=${SHELL} solo=${SOLO}"
+          test "${INTERACTION}" = success
+          test "${SESSION}" = success
+          test "${SHELL}" = success
+          test "${SOLO}" = success
+
+      - name: Upload remote presentation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playable-staging-presentation-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-playable-staging-interaction.json
+            world-v0-playable-staging-session.json
+            world-v0-playable-staging-shell.json
+            world-v0-playable-staging-solo-inspection.json
+            world-v0-runtime-shell-*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+  remote-exact-state:
+    needs: remote-presentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact staging candidate
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run remote exact-state attempt 1
+        id: exact1
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playable-staging-exact-attempt1.json
+        run: node scripts/world-v0-chromium-cloud-smoke.mjs
+
+      - name: Classify attempt 1 before any retry
+        if: steps.exact1.outcome == 'failure'
+        run: node scripts/world-v0-exact-failure-classifier.mjs world-v0-playable-staging-exact-attempt1.json
+
+      - name: Run one same-SHA clean-starvation retry
+        if: steps.exact1.outcome == 'failure'
+        id: exact2
+        continue-on-error: true
+        env:
+          MW_WORLD_V0_CHROME_MODE: swangle-webgl
+          MW_WORLD_V0_CHROMIUM_OUTPUT: world-v0-playable-staging-exact-attempt2.json
+        run: node scripts/world-v0-chromium-cloud-smoke.mjs
+
+      - name: Require exact-state qualification
+        env:
+          FIRST: ${{ steps.exact1.outcome }}
+          SECOND: ${{ steps.exact2.outcome }}
+        run: |
+          echo "remote exact-state attempt1=${FIRST} attempt2=${SECOND}"
+          if [ "${FIRST}" = success ]; then
+            exit 0
+          fi
+          test "${SECOND}" = success
+
+      - name: Upload remote exact-state evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-v0-playable-staging-exact-attempt-${{ github.run_attempt }}
+          path: |
+            world-v0-playable-staging-exact-attempt1.json
+            world-v0-playable-staging-exact-attempt2.json
+          if-no-files-found: warn
+          retention-days: 14

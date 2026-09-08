@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <title>Multi_World · Shared Yard Product Lab</title>
+  <style>
+    :root{color-scheme:dark;--bg:#091016;--panel:rgba(8,15,20,.77);--line:rgba(173,215,221,.18);--text:#eef8f6;--muted:#9fb3b7;--mint:#78ddc3;--amber:#efad69;--blue:#78aeda}
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none}
+    #view{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}
+    .glass{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 44px rgba(0,0,0,.28);backdrop-filter:blur(13px);-webkit-backdrop-filter:blur(13px)}
+    #top{position:fixed;z-index:6;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+    #brand{pointer-events:auto;padding:10px 12px;border-radius:13px;max-width:min(440px,72vw)}
+    .eyebrow{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--mint);font-weight:760}.title{margin:3px 0 2px;font-size:19px;font-weight:790;letter-spacing:-.025em}.sub{font-size:10.5px;line-height:1.36;color:var(--muted)}
+    #labtag{pointer-events:auto;border-radius:999px;padding:7px 9px;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#cde4e2;white-space:nowrap}
+    button{border:0;color:var(--muted);background:transparent;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    #modes{position:fixed;z-index:7;left:50%;transform:translateX(-50%);bottom:max(12px,env(safe-area-inset-bottom));display:flex;gap:4px;padding:4px;border-radius:14px;max-width:calc(100vw - 20px)}
+    .mode{padding:9px 11px;border-radius:10px;font-size:10.5px;font-weight:720;white-space:nowrap}.mode.active{background:rgba(120,221,195,.16);color:#edfffb;box-shadow:inset 0 0 0 1px rgba(120,221,195,.3)}
+    #actions{position:fixed;z-index:7;right:max(12px,env(safe-area-inset-right));bottom:max(70px,calc(env(safe-area-inset-bottom) + 58px));display:grid;gap:6px}.action{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;color:#d8e8e9;font-size:15px}
+    #card{position:fixed;z-index:6;left:max(12px,env(safe-area-inset-left));bottom:max(70px,calc(env(safe-area-inset-bottom) + 58px));width:min(350px,calc(100vw - 72px));padding:10px 12px;border-radius:12px;pointer-events:none;transition:.16s ease}.card-title{font-size:11.5px;font-weight:780}.card-copy{margin-top:3px;font-size:10px;line-height:1.42;color:var(--muted)}.legend{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:7px;font-size:9px;color:#c2d0d2}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px}.runtime{background:var(--mint)}.mock{background:var(--amber)}.decor{background:var(--blue)}
+    #hint{position:fixed;z-index:4;left:50%;top:48%;transform:translate(-50%,-50%);font-size:10px;color:rgba(230,243,242,.44);pointer-events:none;transition:opacity .55s}.hidden{opacity:0}
+    #orientation{position:fixed;z-index:4;right:max(9px,env(safe-area-inset-right));top:50%;transform:translateY(-50%);writing-mode:vertical-rl;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:rgba(196,220,223,.26);pointer-events:none}
+    @media(max-width:700px){
+      #top{left:max(9px,env(safe-area-inset-left));right:max(9px,env(safe-area-inset-right));top:max(9px,env(safe-area-inset-top));align-items:center}
+      #brand{padding:7px 9px;border-radius:11px;max-width:72vw}.eyebrow{font-size:7.5px}.title{font-size:15px;margin:2px 0 0}.sub{display:none}#labtag{font-size:7px;padding:5px 7px}
+      #modes{bottom:max(8px,env(safe-area-inset-bottom));width:calc(100vw - 16px);justify-content:stretch}.mode{flex:1;padding:8px 3px;font-size:8.6px}
+      #actions{right:8px;bottom:max(60px,calc(env(safe-area-inset-bottom) + 52px));gap:5px}.action{width:36px;height:36px;border-radius:10px}
+      #card{left:9px;bottom:max(60px,calc(env(safe-area-inset-bottom) + 52px));width:min(264px,calc(100vw - 58px));padding:7px 9px;border-radius:10px}.card-title{font-size:10px}.card-copy{font-size:8.7px;line-height:1.34;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.legend{display:none}
+      #orientation{display:none}#hint{font-size:9px;top:45%}
+    }
+  </style>
+</head>
+<body>
+  <div id="view"></div>
+  <div id="top">
+    <section id="brand" class="glass">
+      <div class="eyebrow">Multi_World · Product Lab</div>
+      <div class="title">Shared Yard V0.5</div>
+      <div class="sub">Presentation-only decision surface over the remote-qualified V0 footprint. Candidate objects below make no multiplayer-evidence claim.</div>
+    </section>
+    <div id="labtag" class="glass">presentation only</div>
+  </div>
+  <section id="card" class="glass">
+    <div class="card-title" id="card-title"></div>
+    <div class="card-copy" id="card-copy"></div>
+    <div class="legend"><span><i class="dot runtime"></i>qualified footprint</span><span><i class="dot mock"></i>candidate mock</span><span><i class="dot decor"></i>presentation cue</span></div>
+  </section>
+  <div id="actions">
+    <button class="action glass" id="reset" aria-label="Reset camera" title="Reset camera">↺</button>
+    <button class="action glass" id="topview" aria-label="Top view" title="Top view">⌖</button>
+  </div>
+  <div id="modes" class="glass">
+    <button class="mode active" data-mode="baseline">V0</button>
+    <button class="mode" data-mode="presence">Presence</button>
+    <button class="mode" data-mode="core">Core set</button>
+    <button class="mode" data-mode="broad">Broad set</button>
+  </div>
+  <div id="hint">drag to orbit · pinch/wheel to zoom</div>
+  <div id="orientation">authored footprint · 20 × 20 m</div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js";
+
+    const view=document.querySelector('#view');
+    const cardTitle=document.querySelector('#card-title');
+    const cardCopy=document.querySelector('#card-copy');
+    const hint=document.querySelector('#hint');
+    const modes=[...document.querySelectorAll('.mode')];
+    const scene=new THREE.Scene();scene.background=new THREE.Color(0x091016);scene.fog=new THREE.FogExp2(0x091016,.021);
+    const camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.05,90);
+    const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;view.append(renderer.domElement);
+    scene.add(new THREE.HemisphereLight(0xc2e2e2,0x172126,1.7));const sun=new THREE.DirectionalLight(0xffffff,3);sun.position.set(7,14,9);sun.castShadow=true;scene.add(sun);const fill=new THREE.DirectionalLight(0x73acd3,.62);fill.position.set(-8,7,-11);scene.add(fill);
+
+    const root=new THREE.Group();const runtimeRoot=new THREE.Group();const presenceRoot=new THREE.Group();const coreMockRoot=new THREE.Group();const extraMockRoot=new THREE.Group();root.add(runtimeRoot,presenceRoot,coreMockRoot,extraMockRoot);scene.add(root);
+    const mat={
+      floor:new THREE.MeshStandardMaterial({color:0x26353c,roughness:.96}),
+      wall:new THREE.MeshStandardMaterial({color:0x3a5059,roughness:.88,transparent:true,opacity:.48}),
+      barricade:new THREE.MeshStandardMaterial({color:0xaa7b4d,roughness:.72}),tower:new THREE.MeshStandardMaterial({color:0x956a45,roughness:.72}),train:new THREE.MeshStandardMaterial({color:0xc28f58,roughness:.72}),
+      self:new THREE.MeshStandardMaterial({color:0x6dd9be,roughness:.5}),remote:new THREE.MeshStandardMaterial({color:0xeba060,roughness:.5}),
+      mock:new THREE.MeshStandardMaterial({color:0xe9ad68,roughness:.6,transparent:true,opacity:.9}),mockHeavy:new THREE.MeshStandardMaterial({color:0x8f653f,roughness:.7,transparent:true,opacity:.92}),
+    };
+    function box(group,size,pos,material,rotationY=0){const mesh=new THREE.Mesh(new THREE.BoxGeometry(...size),material);mesh.position.set(...pos);mesh.rotation.y=rotationY;mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);return mesh}
+    function plane(group,size,pos,color,opacity=.12,rotationY=0){const mesh=new THREE.Mesh(new THREE.PlaneGeometry(...size),new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthWrite:false,side:THREE.DoubleSide}));mesh.rotation.x=-Math.PI/2;mesh.rotation.z=-rotationY;mesh.position.set(...pos);group.add(mesh);return mesh}
+    function canvasTexture(text,color,bg='rgba(5,10,13,.76)',fontPx=42){const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;const ctx=canvas.getContext('2d');ctx.clearRect(0,0,512,128);ctx.font=`700 ${fontPx}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=bg;ctx.fillRect(26,29,460,70);ctx.strokeStyle='rgba(255,255,255,.1)';ctx.strokeRect(26.5,29.5,459,69);ctx.fillStyle=color;ctx.fillText(text,256,64);const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture}
+    function sprite(text,color,scale=.75){const s=new THREE.Sprite(new THREE.SpriteMaterial({map:canvasTexture(text,color),transparent:true,depthTest:false}));s.scale.set(3.5*scale,.875*scale,1);return s}
+    function groundStencil(text,pos,color,scale=1,rotationY=0){const texture=canvasTexture(text,color,'rgba(0,0,0,0)',38);const material=new THREE.MeshBasicMaterial({map:texture,transparent:true,opacity:.54,depthWrite:false,side:THREE.DoubleSide});const mesh=new THREE.Mesh(new THREE.PlaneGeometry(3.4*scale,.85*scale),material);mesh.rotation.x=-Math.PI/2;mesh.rotation.z=-rotationY;mesh.position.set(pos[0],.026,pos[2]);presenceRoot.add(mesh);return mesh}
+    function ring(radius,pos,color){const mesh=new THREE.Mesh(new THREE.RingGeometry(radius*.82,radius,48),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.58,side:THREE.DoubleSide,depthWrite:false}));mesh.rotation.x=-Math.PI/2;mesh.position.set(...pos);presenceRoot.add(mesh);return mesh}
+
+    // Qualified authored footprint. Geometry/positions match V0; materials are presentation choices only.
+    box(runtimeRoot,[20,1,20],[0,-.5,0],mat.floor);box(runtimeRoot,[1,4,20],[-9.5,1.5,0],mat.wall);box(runtimeRoot,[1,4,20],[9.5,1.5,0],mat.wall);box(runtimeRoot,[20,4,1],[0,1.5,-9.5],mat.wall);box(runtimeRoot,[20,4,1],[0,1.5,9.5],mat.wall);
+    const propDefs=[[-.96,.46,-.48,'barricade'],[0,.46,-.48,'barricade'],[.96,.46,-.48,'barricade'],[-.96,.46,.48,'barricade'],[0,.46,.48,'barricade'],[.96,.46,.48,'barricade'],[3.4,.46,-3.2,'tower'],[3.4,1.38,-3.2,'tower'],[3.4,2.3,-3.2,'tower'],[-4,.46,3.3,'train'],[-3.06,.46,3.3,'train'],[-2.12,.46,3.3,'train']];propDefs.forEach(([x,y,z,k])=>box(runtimeRoot,[.92,.92,.92],[x,y,z],mat[k]));
+    const grid=new THREE.GridHelper(20,20,0x52727c,0x30444b);grid.position.y=.012;grid.material.transparent=true;grid.material.opacity=.18;runtimeRoot.add(grid);
+
+    function player(pos,material,name,color){const g=new THREE.Group();const body=new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,.9,20),material);body.castShadow=true;const capGeo=new THREE.SphereGeometry(.35,20,12);const top=new THREE.Mesh(capGeo,material);top.position.y=.45;top.castShadow=true;const bottom=new THREE.Mesh(capGeo,material);bottom.position.y=-.45;bottom.castShadow=true;const nose=box(g,[.14,.16,.48],[0,.05,-.38],material);g.add(body,top,bottom);g.position.set(...pos);runtimeRoot.add(g);const label=sprite(name,color,.72);label.position.set(pos[0],2.24,pos[2]);presenceRoot.add(label);const marker=ring(.68,[pos[0],.014,pos[2]],color);return{g,label,marker}}
+    const p0=player([-6.5,.82,-1.4],mat.self,'YOU','#94f6de');const p1=player([6.5,.82,0],mat.remote,'PEER','#ffc18b');
+
+    // Spatial language: floor-bound cues rather than floating debugger annotations.
+    plane(presenceRoot,[6.7,4.1],[0,.019,0],0x62a8c6,.085);plane(presenceRoot,[4.1,4.0],[3.4,.02,-3.2],0xd9a166,.075);plane(presenceRoot,[5.3,2.3],[-3.05,.02,3.3],0x6fc6af,.075);
+    groundStencil('COLLISION YARD',[0,0,-2.25],'#89cde1',.88);groundStencil('TOWER',[3.4,0,-5.15],'#efc28b',.7);groundStencil('IMPULSE LANE',[-3.05,0,4.7],'#90e2ca',.76);
+    for(let x=-8;x<=8;x+=2)box(presenceRoot,[.07,.025,.48],[x,.027,-8.83],new THREE.MeshStandardMaterial({color:0x72a9d0,roughness:.65,transparent:true,opacity:.68}));
+
+    // Core candidate set: the smallest interaction language that read clearly in v2 evidence.
+    box(coreMockRoot,[2.5,1.25,1.25],[0,.625,4.9],mat.mockHeavy);const heavyLabel=sprite('HEAVY · CO-OP?','#ffd09d',.52);heavyLabel.position.set(0,1.7,4.9);coreMockRoot.add(heavyLabel);
+    box(coreMockRoot,[4.1,.34,.42],[-4.7,.66,-2.6],mat.mock,.18);const ball=new THREE.Mesh(new THREE.SphereGeometry(.7,28,18),mat.mock);ball.position.set(5.2,.72,3.9);ball.castShadow=true;coreMockRoot.add(ball);plane(coreMockRoot,[4.4,3.0],[0,.021,5.3],0xe9ad68,.07);
+
+    // Broad candidates are deliberately separable so we can falsify clutter before physics work.
+    const ramp=box(extraMockRoot,[3.2,.25,2.5],[4.9,.35,-5.8],mat.mock);ramp.rotation.x=-.17;box(extraMockRoot,[.38,2.8,.38],[-1.6,1.4,6.9],mat.mock);box(extraMockRoot,[.38,2.8,.38],[1.6,1.4,6.9],mat.mock);box(extraMockRoot,[3.55,.38,.38],[0,2.62,6.9],mat.mock);plane(extraMockRoot,[5.0,3.1],[4.9,.021,-5.4],0xe9ad68,.06);
+
+    const copy={
+      baseline:['Qualified V0','Remote-qualified authored footprint: two capsule actors and twelve dynamic props. Visual control only.'],
+      presence:['Presence pass','Same physical footprint; identity, orientation and spatial language only. No new physics semantics.'],
+      core:['Core playset','Presence plus the three strongest v2 interaction candidates: heavy co-op block, beam and ball. Presentation mocks only.'],
+      broad:['Broad playset','Core set plus ramp and gate. This intentionally tests whether extra affordances improve the yard or merely add clutter.'],
+    };
+    let mode='baseline';
+    const target=new THREE.Vector3(0,.55,0);let yaw=.74,pitch=.62,distance=16,pointer=null,lastX=0,lastY=0,pinchDistance=null,userMovedCamera=false;
+    function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+    function publishState(){window.__worldV0ProductLabState={mode,mobile:innerWidth<=700,camera:{fov:camera.fov,yaw,pitch,distance,target:[target.x,target.y,target.z]}}}
+    function cameraPreset(){const mobile=innerWidth<=700;camera.fov=mobile?58:48;camera.updateProjectionMatrix();yaw=mobile?.74:.74;pitch=mobile?.75:.62;distance=mobile?27:16;target.set(0,mobile?.35:.55,0);publishState()}
+    function updateCamera(){const cp=Math.cos(pitch);camera.position.set(target.x+Math.sin(yaw)*cp*distance,target.y+Math.sin(pitch)*distance,target.z+Math.cos(yaw)*cp*distance);camera.lookAt(target)}
+    function setMode(next,{updateUrl=true}={}){if(!copy[next])next='baseline';mode=next;modes.forEach(b=>b.classList.toggle('active',b.dataset.mode===next));presenceRoot.visible=next!=='baseline';coreMockRoot.visible=next==='core'||next==='broad';extraMockRoot.visible=next==='broad';const [title,body]=copy[next];cardTitle.textContent=title;cardCopy.textContent=body;if(updateUrl){const url=new URL(location.href);url.searchParams.set('mode',next);history.replaceState(null,'',url)}publishState()}
+    modes.forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+    const requestedMode=new URL(location.href).searchParams.get('mode');setMode(copy[requestedMode]?requestedMode:'baseline',{updateUrl:false});
+
+    function resetCamera(){userMovedCamera=false;cameraPreset();updateCamera();publishState()}function topCamera(){userMovedCamera=true;yaw=0;pitch=1.38;distance=innerWidth<=700?25:18;target.set(0,0,0);updateCamera();publishState()}
+    renderer.domElement.addEventListener('pointerdown',e=>{pointer=e.pointerId;lastX=e.clientX;lastY=e.clientY;userMovedCamera=true;renderer.domElement.setPointerCapture(e.pointerId);hint.classList.add('hidden')});renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerId!==pointer)return;const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;yaw-=dx*.006;pitch=clamp(pitch+dy*.004,-.04,1.4);publishState()});function release(e){if(e.pointerId===pointer)pointer=null}renderer.domElement.addEventListener('pointerup',release);renderer.domElement.addEventListener('pointercancel',release);
+    renderer.domElement.addEventListener('wheel',e=>{distance=clamp(distance+e.deltaY*.012,7,32);userMovedCamera=true;hint.classList.add('hidden');publishState();e.preventDefault()},{passive:false});renderer.domElement.addEventListener('touchstart',e=>{if(e.touches.length===2)pinchDistance=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)},{passive:true});renderer.domElement.addEventListener('touchmove',e=>{if(e.touches.length===2&&pinchDistance){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);distance=clamp(distance+(pinchDistance-d)*.028,7,32);pinchDistance=d;userMovedCamera=true;publishState()}},{passive:true});renderer.domElement.addEventListener('touchend',()=>{pinchDistance=null},{passive:true});
+    document.querySelector('#reset').addEventListener('click',resetCamera);document.querySelector('#topview').addEventListener('click',topCamera);resetCamera();setTimeout(()=>hint.classList.add('hidden'),3200);
+    addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.6));renderer.setSize(innerWidth,innerHeight);if(!userMovedCamera)cameraPreset();publishState()});
+    const clock=new THREE.Clock();function frame(){requestAnimationFrame(frame);const t=clock.getElapsedTime();p0.marker.material.opacity=.46+Math.sin(t*2.1)*.1;p1.marker.material.opacity=.46+Math.sin(t*2.1+1.3)*.1;updateCamera();renderer.render(scene,camera)}frame();
+  </script>
+</body>
+</html>

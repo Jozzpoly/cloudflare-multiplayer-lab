@@ -50,12 +50,21 @@ jobs:
           set -euo pipefail
           npm run check | tee world-v0-closure-current-check.log
           grep -q 'const ACTOR_RESUME_MAX_ATTEMPTS = 12;' public/world-v0/app.js
-          grep -q 'shared-yard-v0-browser-ui-v13-bounded-start-window-resume' public/world-v0/build-contract.js
           grep -q 'allDisconnectedGraceTicks: 20 \* 60' src/world-v0-contract.ts
-          grep -q 'shared-yard-v0-authority-v7-retry-aligned-grace' public/world-v0/build-contract.js
-          grep -q 'shared-yard-v0-sim-9c308539ccf305cc' public/world-v0/build-contract.js
           grep -q 'activeActorTransportRecoverable' public/world-v0/app.js
           grep -q 'committedStartWindowRecoverable' public/world-v0/app.js
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { WORLD_V0_SERVER_REVISION, WORLD_V0_SIM_BUILD_ID } from "./src/world-v0-contract.ts";
+          const build = readFileSync("public/world-v0/build-contract.js", "utf8");
+          if (!build.includes(`WORLD_V0_EXPECTED_SERVER_REVISION = "${WORLD_V0_SERVER_REVISION}"`)) {
+            throw new Error(`browser/server revision drift: ${WORLD_V0_SERVER_REVISION}`);
+          }
+          if (!build.includes(`WORLD_V0_EXPECTED_SIM_BUILD_ID = "${WORLD_V0_SIM_BUILD_ID}"`)) {
+            throw new Error(`browser/sim build drift: ${WORLD_V0_SIM_BUILD_ID}`);
+          }
+          console.log("WORLD_V0_CLOSURE_BUILD_PROVENANCE_PASS", WORLD_V0_SERVER_REVISION, WORLD_V0_SIM_BUILD_ID);
+          NODE
 
       - name: Start local reliability Workerd
         shell: bash

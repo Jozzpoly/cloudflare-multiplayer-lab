@@ -1,4 +1,4 @@
-export const WORLD_V0_BROWSER_UI_REVISION = "shared-yard-v0-browser-ui-v15-prestart-live-start-gate";
+export const WORLD_V0_BROWSER_UI_REVISION = "shared-yard-v0-browser-ui-v16-session-continuity-r1";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v8-playability-split-lead";
 export const WORLD_V0_EXPECTED_SERVER_REVISION = "shared-yard-v0-authority-v9-prestart-live-start-gate";
 export const WORLD_V0_EXPECTED_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v3-supersession";

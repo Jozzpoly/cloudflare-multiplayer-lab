@@ -18,6 +18,13 @@ import {
   normalizeWorldV0PublicRoomDirectory,
   worldV0PublicRoomPresentation,
 } from "./public-room-entry.js";
+import {
+  WORLD_V0_SESSION_CONTINUITY_REVISION,
+  clearWorldV0StoredSession,
+  readWorldV0StoredSession,
+  worldV0StoredSessionMatchesRoom,
+  writeWorldV0ResumeIntent,
+} from "./session-continuity.js";
 
 const bootstrapUrl = new URL(location.href);
 const rawInviteRun = bootstrapUrl.searchParams.get("run");
@@ -90,10 +97,22 @@ callsignInput.addEventListener("keydown", (event) => {
   enterButton.click();
 });
 
+let deepLinkResumeSession = null;
+
 // app.js owns the actual Enter click handler and still sends the original strict
 // server-side playerId contract. This capture-phase adapter runs first so normal
-// human names do not bounce off a hidden wire-identity regex.
+// human names do not bounce off a hidden wire-identity regex, and so a qualified
+// direct-link resume can arm the private ActorSession token before app.js connects.
 enterButton.addEventListener("click", (event) => {
+  if (deepLinkResumeSession) {
+    callsignInput.value = deepLinkResumeSession.playerId;
+    if (!writeWorldV0ResumeIntent(deepLinkResumeSession)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      bootStatus.textContent = "Could not prepare your reserved Yard session";
+      return;
+    }
+  }
   const result = humanNameSnapshot();
   if (!result.valid) {
     event.preventDefault();
@@ -125,10 +144,16 @@ function isCanonicalPublicYard(value) {
   return WORLD_V0_PUBLIC_ROOM_IDS.includes(String(value || "").trim());
 }
 
+function resumableSessionForRoom(room) {
+  const stored = readWorldV0StoredSession(room?.id);
+  return worldV0StoredSessionMatchesRoom(stored, room) ? stored : null;
+}
+
 function publicRoomSnapshot() {
   return {
     revision: WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION,
     directoryRevision: WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION,
+    sessionContinuityRevision: WORLD_V0_SESSION_CONTINUITY_REVISION,
     mode: entryMode === "host" ? "directory" : "deep-link",
     visible: !publicRoomEntry.classList.contains("hidden"),
     loading: publicRoomState.loading,
@@ -136,13 +161,18 @@ function publicRoomSnapshot() {
     selectedRoom: publicRoomState.selectedRoom,
     polls: publicRoomState.polls,
     lastUpdatedAt: publicRoomState.lastUpdatedAt,
+    deepLinkResumable: Boolean(deepLinkResumeSession),
     rooms: publicRoomState.rooms.map((room) => ({
       id: room.id,
       name: room.name,
       occupancy: room.occupancy,
+      connected: room.connected,
+      reserved: room.reserved,
+      reservedSlots: [...room.reservedSlots],
       capacity: room.capacity,
       state: room.state,
       joinable: room.joinable,
+      resumableHere: Boolean(resumableSessionForRoom(room)),
     })),
     advancedFallbackAvailable: entryAdvanced.contains(runInput) && entryAdvanced.contains(inspectButton),
   };
@@ -152,7 +182,8 @@ function renderPublicRooms() {
   if (entryMode !== "host") return;
   publicRoomList.replaceChildren();
   for (const room of publicRoomState.rooms) {
-    const presentation = worldV0PublicRoomPresentation(room);
+    const resumableSession = resumableSessionForRoom(room);
+    const presentation = worldV0PublicRoomPresentation(room, { resumable: Boolean(resumableSession) });
     const button = document.createElement("button");
     button.type = "button";
     button.className = "public-room-card";
@@ -174,6 +205,14 @@ function renderPublicRooms() {
 
     button.addEventListener("click", () => {
       if (button.disabled) return;
+      if (resumableSession) {
+        callsignInput.value = resumableSession.playerId;
+        renderHumanNameHelp();
+        if (!writeWorldV0ResumeIntent(resumableSession)) {
+          publicRoomStatus.textContent = "Could not prepare session resume";
+          return;
+        }
+      }
       publicRoomState.selectedRoom = room.id;
       runInput.value = room.id;
       renderPublicRooms();
@@ -184,7 +223,13 @@ function renderPublicRooms() {
 
   if (publicRoomState.error) publicRoomStatus.textContent = "Room list unavailable · retrying";
   else if (publicRoomState.loading) publicRoomStatus.textContent = "Loading rooms…";
-  else publicRoomStatus.textContent = "Live shared occupancy";
+  else publicRoomStatus.textContent = "Live connected / reserved presence";
+}
+
+async function fetchPublicRooms() {
+  const response = await fetch("/api/world-v0/rooms", { cache: "no-store" });
+  if (!response.ok) throw new Error(`directory HTTP ${response.status}`);
+  return normalizeWorldV0PublicRoomDirectory(await response.json());
 }
 
 async function refreshPublicRooms() {
@@ -193,10 +238,7 @@ async function refreshPublicRooms() {
   directoryRequest = (async () => {
     publicRoomState.loading = publicRoomState.rooms.length === 0;
     try {
-      const response = await fetch("/api/world-v0/rooms", { cache: "no-store" });
-      if (!response.ok) throw new Error(`directory HTTP ${response.status}`);
-      const payload = await response.json();
-      publicRoomState.rooms = normalizeWorldV0PublicRoomDirectory(payload);
+      publicRoomState.rooms = await fetchPublicRooms();
       publicRoomState.error = null;
       publicRoomState.polls += 1;
       publicRoomState.lastUpdatedAt = new Date().toISOString();
@@ -211,6 +253,50 @@ async function refreshPublicRooms() {
   return directoryRequest;
 }
 
+async function resolveDirectLinkResume() {
+  if (entryMode !== "invite" || !isCanonicalPublicYard(rawInviteRun)) return null;
+  const run = rawInviteRun.trim();
+  const stored = readWorldV0StoredSession(run);
+  if (!stored) return null;
+
+  bootStatus.textContent = "Checking your previous Yard session…";
+  enterButton.textContent = "Checking session…";
+  for (let attempt = 0; attempt < 9; attempt += 1) {
+    try {
+      const rooms = await fetchPublicRooms();
+      const room = rooms.find((candidate) => candidate.id === run);
+      if (!room) break;
+      if (room.worldEpoch !== stored.worldEpoch) {
+        if (room.state !== "unavailable") clearWorldV0StoredSession(run, stored.worldEpoch);
+        break;
+      }
+      const resumable = worldV0StoredSessionMatchesRoom(stored, room);
+      if (resumable) {
+        deepLinkResumeSession = stored;
+        callsignInput.value = stored.playerId;
+        renderHumanNameHelp();
+        enterButton.textContent = "Resume world";
+        bootStatus.textContent = `${room.name} kept your player · resume the same session`;
+        return stored;
+      }
+      if (room.reserved === 0 && room.connected === room.occupancy) {
+        // The previous page may still be disconnecting. Give the authority a short
+        // bounded window to expose the seat as reserved before treating this as an
+        // ordinary direct link. This does not rebind an ActorSession that is still live.
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        continue;
+      }
+      break;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+  deepLinkResumeSession = null;
+  enterButton.textContent = entryCopy.enterLabel;
+  bootStatus.textContent = entryCopy.status;
+  return null;
+}
+
 if (entryMode === "host") {
   publicRoomEntry.classList.remove("hidden");
   entryActions.classList.add("public-room-legacy-hidden");
@@ -220,6 +306,7 @@ if (entryMode === "host") {
   directoryTimer = setInterval(refreshPublicRooms, 1200);
 } else {
   publicRoomEntry.classList.add("hidden");
+  await resolveDirectLinkResume();
 }
 
 const enterAvailabilityObserver = new MutationObserver(() => renderPublicRooms());
@@ -273,10 +360,12 @@ function entrySnapshot() {
   return {
     revision: WORLD_V0_FRIEND_ENTRY_REVISION,
     humanEntryRevision: WORLD_V0_HUMAN_ENTRY_REVISION,
+    sessionContinuityRevision: WORLD_V0_SESSION_CONTINUITY_REVISION,
     mode: entryMode,
     invited: entryMode === "invite",
     roomKeyValid: validWorldV0RoomKey(roomKey),
     roomKey,
+    directLinkResumable: Boolean(deepLinkResumeSession),
     humanName: {
       source: humanName.source,
       wireName: humanName.wireName,

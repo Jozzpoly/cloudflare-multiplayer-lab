@@ -227,6 +227,12 @@ export class SharedYardV0 extends DurableObject<Env> {
         protocolStartTick: this.protocolStartTick,
         players: this.players.size,
         connectedPlayers: this.connectedPlayerCount(),
+        // Public presence metadata: slot numbers are simulation topology, not reconnect authority.
+        // This lets the room directory prove whether a browser's own stored slot is the
+        // disconnected/reserved one without exposing player IDs, session IDs, or resume tokens.
+        reservedSlots: this.sortedPlayers()
+          .filter((player) => player.socket?.readyState !== WebSocket.OPEN)
+          .map((player) => player.slot),
         stalePlayers: [...this.players.values()].filter((player) =>
           player.input.stats().currentMissingStreak >= WORLD_V0_TIMING.inputLeaseMissingTicks
         ).length,

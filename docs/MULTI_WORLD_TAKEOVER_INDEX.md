@@ -1,86 +1,165 @@
-# Multi_World — Takeover package index
+# Multi_World — Takeover Index
 
-Status: **HANDOFF READY / FRESH PROJECT MUST VERIFY LIVE BEFORE IMPLEMENTATION**  
-Branch: `multi-world-takeover-grounding`  
-Base specimen: A2R human-reference `2c9116267a0c8bba93061f759cefdb709e966e43`
+Status: **CANONICAL OPERATIONAL ENTRYPOINT — VERIFY LIVE**  
+Updated: **2026-09-08**
 
-This branch exists only to prepare a fresh ChatGPT project takeover. It intentionally does not modify runtime, physics or deployment configuration.
+This index is intentionally short. A fresh continuation should not need to reconstruct the whole project by reading every historical experiment.
 
-## Canonical reading order for the fresh project
+---
 
-1. **`MULTI_WORLD_PROJECT_SOUL.md`**  
-   Canonical purpose, product values, shared-world continuity pressure, boundaries and working method. Read this first so current substrates are not confused with project identity.
+## Canonical reading order
 
-2. **`MULTI_WORLD_GROUNDING_V1.md`**  
-   Canonical consolidated grounding: exact controls, evidence classification, A2/A2R mechanical envelope, current unknowns, donor boundary and human/device validation pressure. Verify it live.
+### 1. `MULTI_WORLD_PROJECT_SOUL.md`
 
-3. **`MULTI_WORLD_HUMAN_TEST_CONTEXT.md`**  
-   Canonical supporting context on desktop/mobile, camera/touch controls and real human test capacity: 2 players as the normal human multiplayer crucible, 3 as a realistic early stress test, 4 as an opportunistic stronger test rather than a current scale requirement.
+Read first for the durable answer to:
 
-4. **`MULTI_WORLD_FRESH_TAKEOVER_V1.md`**  
-   Final startup mandate for the new ChatGPT project. It requires live regrounding and an explicit challenge to the handoff before implementation.
+> **What is Multi_World trying to become, and what values should survive changes of technology?**
 
-## Audit/provenance material — not required startup reading
+It is product/research direction, not live architecture.
 
-- `MULTI_WORLD_GROUNDING_LEDGER.md` — original broad v0 ledger;
-- `MULTI_WORLD_GROUNDING_REDTEAM.md` — critique that produced the accepted v1 corrections;
-- `MULTI_WORLD_FRESH_TAKEOVER.md` — older, heavier takeover draft.
+### 2. `MULTI_WORLD_CURRENT_STATE.md`
 
-Use these only if you need to understand why Grounding v1 or Takeover v1 is phrased cautiously.
+Read second for:
 
-## Exact anchors at latest preparation audit
+> **What is actually qualified now, what remains unproven, and what is the current branch/consolidation state?**
 
-### Multi_World
+This is the canonical live-state summary.
 
-- infrastructure control: `main@d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de`;
-- A2 preserved failed baseline: `world-slice-0-embodied-3d-place@ef26fce6f5f21e219a4d8f57943449f4d2a2abca`;
-- A2R human-reference: `world-slice-0-a2r-timeline-rebuild@2c9116267a0c8bba93061f759cefdb709e966e43`.
+### 3. GitHub issue #8 — newest checkpoint
 
-All three matched live GitHub state during the final preparation audit.
+Use issue #8 when exact evidence/provenance matters.
 
-### Character Controller donor
+Current closure checkpoint at this update:
 
-Repository: `Jozzpoly/Box3d-Character-Controler`
+`5577741764`
 
-Latest audit found:
+It records the four defects found during closure, their repairs, final clean-head validation and explicit non-claims.
 
-- live `main@5891fbf0b2a2a0f2cf5c41578d95b1aa72ac68ad`;
-- this head is a documentation/current-state grounding commit;
-- canonical implementation/behavior baseline recorded by that project: `f4877a46618a347c3be32edf7ddb39ab66a091bd`;
-- exact Owner-qualified Donor v1 mechanics specimen: `bc06ca98e94314af0ba888b74e1c4029429422e5`.
+### 4. This index
 
-Do not collapse live head, behavior baseline and mechanics specimen into one authority fact.
+Use the rest of this file only to locate historical material or the next operational step.
 
-## Deployment freshness audit
+---
 
-The final A2R staging/browser/cloud evidence remains recorded repo-natively in GitHub issue #8, including the Owner PLAY candidate checkpoint and the later smooth Owner judgement.
+## Current exact anchors
 
-During the final takeover preparation session, direct public HTTP re-probing of `workers.dev` could **not** be completed because the execution environment could not resolve those hosts. This is an environment limitation, not deployment evidence either way.
+### Qualified technical authority
 
-Therefore the fresh project's first grounding must independently verify:
+Branch:
 
-- current production fingerprint/isolation;
-- current staging Worker/branch deployment;
-- A2R client revision on staging;
-- current CI/check state relevant to the selected base.
+`world-v0-closure-stabilization`
 
-Do not inherit deployment state merely from this package.
+Qualified clean runtime/evidence head:
 
-## What this package deliberately does not do
+`1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
 
-- no A3 implementation;
-- no new product repository;
-- no merge into `main`;
-- no mutation of A2/A2R controls;
-- no automatic Character Controller import;
-- no declaration that Forecast, rollback, ownership or interaction islands are required;
-- no claim that the current backend/transport/render stack is final;
-- no claim that four-player support is the current milestone merely because four human testers may sometimes be available;
-- no mobile-specific simulation fork;
-- no persistence/storage implementation merely because shared continuity is part of the long-term product soul.
+Final retained validator:
 
-## Expected first action in the new project
+- run `34176613974`;
+- job `101907169173`;
+- result `completed / success`;
+- artifact `10037571475`;
+- artifact SHA-256 `3de29b79003fe747f0af2602357c446bf633f95fd26c7d33a922547787565c23`.
 
-Use `MULTI_WORLD_FRESH_TAKEOVER_V1.md`, then produce the requested live grounding report before any implementation.
+Runtime identity at that checkpoint:
 
-The new project should be free to reject the provisional **remote causality / shared physical truth** framing if newer evidence identifies a more valuable unknown.
+- authority `shared-yard-v0-authority-v9-prestart-live-start-gate`;
+- sim build `shared-yard-v0-sim-69ad9c7d0430a929`.
+
+The live branch may be ahead of `1a759...` by **documentation-only consolidation commits**. Verify the diff before treating a newer SHA as a new runtime specimen.
+
+### Human-qualified playability ancestor
+
+`world-v0-playability-lead2-owner-feel@2250e45c53aaf2f9107ac718e2ac5dba6ab02d2e`
+
+Preserve this as the relevant Owner-feel ancestor. Do not mutate or rewrite it as part of takeover cleanup.
+
+### Earlier reliability anchors
+
+- `world-v0-multiplayer-foundation-integration@a2e821afbbc88371b033af311cc6882d46aa6916`;
+- `world-v0-r0d-reliability-retest@7da9ddd4ad37221f63a3cd418a140824783480ec`;
+- R0d workflow `34060903778` = SUCCESS.
+
+These are provenance controls, not current working branches.
+
+### `main`
+
+Live at the consolidation audit:
+
+`main@401be09ccd09decf493e4fcf4bea784e841e6163`
+
+`main` and closure diverged from `d5758bf18b5ebd5fb7ce5a705d525c80d3bca5de`.
+
+Do **not** blindly merge or force-update `main`. Its independent side must be audited first.
+
+---
+
+## Immediate continuation state
+
+The ordinary feature freeze is still in force during consolidation.
+
+Technical lifecycle/recovery closure is strong enough to stop inventing additional outage variants. The next work is:
+
+1. finish canonical documentation consolidation;
+2. classify the independent `main`-side commits since the divergence point;
+3. choose the safest consolidation path;
+4. validate that consolidation without accidentally changing the qualified runtime;
+5. only then select the next product/research frontier.
+
+Do not use this transition as permission to add persistence, lobby/membership architecture, new content, 3-player support or broad refactors.
+
+---
+
+## Current evidence boundaries to remember
+
+The current qualified envelope includes bounded same-ActorSession recovery and exact authority rebase, but it does **not** establish:
+
+- cross-tab/new-tab ActorSession continuity;
+- Durable Object process-loss reconstruction;
+- persistent/open-room semantics;
+- mobile radio/handover behavior;
+- remote Cloudflare placement for the final v9 closure head;
+- a guarantee that every browser outage below the 20 s authority grace recovers.
+
+See `MULTI_WORLD_CURRENT_STATE.md` for the exact lifecycle distinctions.
+
+---
+
+## Historical documents — useful only when needed
+
+The following are preserved because they contain reasoning history, negative evidence or older takeover context. They are **not required startup reading** and must not override newer live evidence:
+
+- `MULTI_WORLD_GROUNDING_V1.md` — 2026-09-02 consolidated grounding around the earlier A2/A2R frontier;
+- `MULTI_WORLD_HUMAN_TEST_CONTEXT.md` — human/device test context;
+- `MULTI_WORLD_FRESH_TAKEOVER_V1.md` — previous fresh-project mandate;
+- `MULTI_WORLD_FRESH_TAKEOVER.md` — older heavier takeover draft;
+- `MULTI_WORLD_GROUNDING_LEDGER.md` — broad historical ledger;
+- `MULTI_WORLD_GROUNDING_REDTEAM.md` — red-team critique that shaped the older grounding;
+- experiment-specific `WORLD_V0_*` and `WS0_*` documents — local evidence/contract history.
+
+Do not delete historical docs merely because they are stale. Their status is provenance, not current authority.
+
+---
+
+## Historical branch warning
+
+`multi-world-r0d-reliability-handoff` is a stale independent documentation/provenance branch relative to the qualified closure lineage.
+
+**Do not merge it wholesale.**
+
+If some historical statement is still useful, re-derive it against live closure evidence rather than importing the branch as authority.
+
+---
+
+## Minimal fresh-takeover procedure
+
+A fresh browser orchestrator should:
+
+1. verify live `world-v0-closure-stabilization` head;
+2. compare it with qualified technical checkpoint `1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b` and classify any later commits;
+3. read Project Soul;
+4. read Current State;
+5. verify the newest issue #8 checkpoint and current CI if the task depends on technical qualification;
+6. continue the explicit consolidation frontier rather than reopening historical research by default.
+
+Only if those checks reveal conflicting evidence should the older grounding/handoff material be reopened in depth.

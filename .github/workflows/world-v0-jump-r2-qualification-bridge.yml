@@ -1,0 +1,48 @@
+name: World V0 Jump R2 Qualification Bridge
+
+on:
+  push:
+    branches: [world-v0-jump-reliability-r2]
+    paths:
+      - .github/workflows/world-v0-jump-r2-qualification-bridge.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Enable retained validators on R2 branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          paths = [
+              Path('.github/workflows/world-v0-current-validation.yml'),
+              Path('.github/workflows/world-v0-session-continuity-r1-qualification.yml'),
+          ]
+          before = 'branches: [main, world-v0-session-continuity-r1-exec]'
+          after = 'branches: [main, world-v0-session-continuity-r1-exec, world-v0-jump-reliability-r2]'
+          for path in paths:
+              text = path.read_text()
+              if text.count(before) != 1:
+                  raise SystemExit(f'bridge source mismatch: {path}')
+              path.write_text(text.replace(before, after))
+          PY
+          actual="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' .github/workflows/world-v0-current-validation.yml .github/workflows/world-v0-session-continuity-r1-qualification.yml | sort)"
+          test "$actual" = "$expected"
+          test "$(git diff --numstat | awk '{a+=$1; d+=$2} END {print a ":" d}')" = "2:2"
+          git diff --check
+          git config user.name "Jozzpoly"
+          git config user.email "100104127+Jozzpoly@users.noreply.github.com"
+          git add .github/workflows/world-v0-current-validation.yml .github/workflows/world-v0-session-continuity-r1-qualification.yml
+          git commit -m "ci(world-v0): enable retained R2 qualification gates"
+          git push origin HEAD:world-v0-jump-reliability-r2

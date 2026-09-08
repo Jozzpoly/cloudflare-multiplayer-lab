@@ -95,7 +95,8 @@ export function worldV0StoredSessionMatchesRoom(session, room) {
     session && room &&
     session.runKey === room.id &&
     typeof room.worldEpoch === "string" && room.worldEpoch.length > 0 &&
-    session.worldEpoch === room.worldEpoch
+    session.worldEpoch === room.worldEpoch &&
+    Number.isInteger(room.reserved) && room.reserved > 0
   );
 }
 

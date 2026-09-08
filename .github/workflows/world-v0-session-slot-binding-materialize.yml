@@ -27,7 +27,9 @@ jobs:
           node-version: 22
       - run: npm ci
       - name: Materialize slot-bound presence contract
-        run: node scripts/materialize-world-v0-session-slot-binding.mjs
+        run: |
+          set -o pipefail
+          node scripts/materialize-world-v0-session-slot-binding.mjs 2>&1 | tee world-v0-session-slot-binding-materialize.log
       - name: Targeted contract gates
         run: |
           set -euo pipefail
@@ -73,3 +75,11 @@ jobs:
             src/world-v0-shared-yard.ts
           git commit -m "fix(world-v0): bind resume to the reserved actor slot"
           git push origin HEAD:world-v0-session-continuity-r1-exec
+      - name: Upload materializer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-session-slot-binding-materializer-${{ github.run_attempt }}
+          path: world-v0-session-slot-binding-materialize.log
+          if-no-files-found: warn
+          retention-days: 7

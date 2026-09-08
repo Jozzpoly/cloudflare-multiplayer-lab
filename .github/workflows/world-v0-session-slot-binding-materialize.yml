@@ -30,6 +30,11 @@ jobs:
         run: |
           set -o pipefail
           node scripts/materialize-world-v0-session-slot-binding.mjs 2>&1 | tee world-v0-session-slot-binding-materialize.log
+          # The materializer also prepares a future global-validator enhancement, but
+          # GITHUB_TOKEN must not need workflow-file write authority to qualify this
+          # runtime repair. The retained Session Continuity workflow carries the exact
+          # direct-link regression; runtime paths still trigger the global validator.
+          git checkout -- .github/workflows/world-v0-current-validation.yml
       - name: Targeted contract gates
         run: |
           set -euo pipefail
@@ -49,7 +54,6 @@ jobs:
           set -euo pipefail
           changed="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' \
-            .github/workflows/world-v0-current-validation.yml \
             public/world-v0/build-contract.js \
             public/world-v0/friend-ready.js \
             public/world-v0/public-room-entry.js \
@@ -64,8 +68,7 @@ jobs:
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add .github/workflows/world-v0-current-validation.yml \
-            public/world-v0/build-contract.js \
+          git add public/world-v0/build-contract.js \
             public/world-v0/friend-ready.js \
             public/world-v0/public-room-entry.js \
             public/world-v0/session-continuity.js \

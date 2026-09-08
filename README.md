@@ -2,93 +2,96 @@
 
 Evidence-driven R&D laboratory for a small shared physical browser world.
 
-The repository began as a sequence of Cloudflare multiplayer gates, but the active work has moved well beyond the old Gate 4A boundary. The current research specimen is **World V0 / Shared Yard**: a two-player server-authoritative Box3D world used to study responsive embodiment, shared physical truth, scheduled input, exact state recovery and real browser lifecycle failures.
+The current research specimen is **World V0 / Shared Yard**: a two-player server-authoritative Box3D world used to study responsive embodiment, shared physical truth, scheduled input, exact recovery and real browser lifecycle failures.
 
-The project is **not** trying to build a generic multiplayer framework up front. Architecture is earned through bounded falsifiers and real runtime evidence.
+The project is **not** trying to build a generic multiplayer framework up front. Architecture is earned through bounded falsifiers, causal repairs and real runtime evidence.
 
 ## Canonical project state
 
 Start here:
 
 1. [`docs/MULTI_WORLD_PROJECT_SOUL.md`](docs/MULTI_WORLD_PROJECT_SOUL.md) — durable product/research purpose;
-2. [`docs/MULTI_WORLD_CURRENT_STATE.md`](docs/MULTI_WORLD_CURRENT_STATE.md) — current qualified technical truth, non-claims and repository state;
+2. [`docs/MULTI_WORLD_CURRENT_STATE.md`](docs/MULTI_WORLD_CURRENT_STATE.md) — current qualified technical truth and nonclaims;
 3. [`docs/MULTI_WORLD_TAKEOVER_INDEX.md`](docs/MULTI_WORLD_TAKEOVER_INDEX.md) — minimal operational takeover path;
 4. GitHub issue #8 — detailed evidence ledger and checkpoints.
 
-Older grounding, takeover and experiment-specific documents are retained as provenance. They are not current authority when newer live evidence disagrees.
+Older grounding, takeover and experiment-specific documents are provenance. Newer live evidence wins.
 
-## Canonical repository / qualified runtime split
+## Current qualified anchor
 
-Canonical repository branch:
+Canonical branch:
 
 `main`
 
-Closure/main consolidation merge checkpoint:
+Qualified integrated product/evidence anchor:
 
-`66f40bb86a066658b15bbd45c7baea86d1bb2a44`
+`main@72f971cff84f991f994df1b821f656941c0cd8eb`
 
-Qualified clean runtime/evidence checkpoint:
+R1 qualified parent:
 
-`world-v0-closure-stabilization@1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b`
+`world-v0-session-continuity-r1-exec@c5b071fa15dff403ba82891e21f36fd36c4ac791`
 
-Runtime identity at that checkpoint:
+PR #39 merged the exact qualified tree into `main`. The merge tree `c57ab4a7c90aebd5101ae09e973481fb80e8243b` is identical to the pre-merge qualified R1 tree.
+
+Relevant runtime identity:
 
 - authority: `shared-yard-v0-authority-v9-prestart-live-start-gate`;
-- simulation: `shared-yard-v0-sim-69ad9c7d0430a929`.
+- browser UI: `shared-yard-v0-browser-ui-v17-slot-bound-session-continuity`;
+- simulation: `shared-yard-v0-sim-69ad9c7d0430a929`;
+- session continuity: `world-v0-session-continuity-r2-slot-bound`.
 
-Final retained closure validation:
+Post-merge exact-main validation:
 
-- workflow run `34176613974`;
-- result `completed / success`;
-- artifact `10037571475`;
-- artifact SHA-256 `3de29b79003fe747f0af2602357c446bf633f95fd26c7d33a922547787565c23`.
-
-Repository consolidation was separately validated through PR #38:
-
-- PR CI `34177475444` — SUCCESS;
-- F5 preflight `34177475333` — SUCCESS;
-- post-merge `main` push CI `34177544920` — SUCCESS on exact merge head `66f40bb...`.
+- CI `34264320221` — **SUCCESS**;
+- Session Continuity Validation `34264320224` — **SUCCESS**, artifact `10071208496`, SHA-256 `218cc61c43d6b6eb34ddbc71824651cde975a91b090c881dfc963bb388b1032b`;
+- World V0 Current Validation `34264320312` — **SUCCESS**, artifact `10071385727`, SHA-256 `014c4467103a4baf71756d2bcd2d8c086ba4ad032faa638d258d9c02873cbf28`.
 
 Later documentation-only `main` commits do not become new runtime qualification automatically.
 
 ## What World V0 currently demonstrates
 
-Within the qualified two-player envelope, the project has established:
+Within the qualified two-player envelope:
 
 - server-authoritative Box3D physical state;
 - fixed `60 Hz / 4 substeps` simulation;
-- scheduled canonical input and a 36-tick actor input lease;
-- responsive local browser simulation with exact state guards;
-- authority recording seeds for exact ActorSession state bootstrap/rebase;
+- scheduled canonical input and a 36-tick actor-local input lease;
+- responsive local browser simulation with exact f32 state guards;
+- authority recording seeds for exact ActorSession bootstrap/rebase;
 - bounded same-WorldEpoch / same-ActorSession transport recovery;
-- a 20 s authority lifecycle grace when every active transport disappears;
-- a separate bounded two-player pre-start ambiguity grace;
-- fail-closed pure one-player waiting-room loss;
+- a 20 s authority grace when every active transport disappears;
+- bounded two-player pre-start ambiguity recovery while pure one-player waiting-room loss stays fail-closed;
 - protocol start only when both ready ActorSessions also have live transports;
-- retained real-Chromium recovery evidence, including 14 s single-target and 14.5 s dual hard-TCP-drop cases with zero exact-state guard mismatches.
+- real-Chromium 14 s single-target and 14.5 s dual hard-TCP-drop recovery with zero state-guard mismatches;
+- **same-browser-profile close-tab/new-tab ActorSession continuity** while the authoritative seat remains recoverable;
+- recovery from both the room list and exact public Yard links;
+- truthful connected/reserved room presence;
+- slot-bound Resume: another player's reserved seat cannot authorize your own session;
+- foreign/new browser profiles remain truthfully unable to resume.
 
-The closure campaign found and repaired four real lifecycle/handshake defects. Exact evidence and non-claims are in `MULTI_WORLD_CURRENT_STATE.md` and issue #8 checkpoint `5577741764`.
+R1 reconnect authority remains private browser-local state. The public directory exposes only anonymous reserved actor slots, not player IDs, ActorSession UUIDs or resume tokens.
+
+Exact evidence is summarized in `MULTI_WORLD_CURRENT_STATE.md` and issue #8 checkpoint `5590133257`.
 
 ## What is not claimed
 
 Current evidence does **not** establish:
 
-- cross-tab/new-tab ActorSession continuity;
-- Durable Object process-loss reconstruction;
-- persistent/open-room semantics;
+- account/cloud or cross-device session persistence;
+- Durable Object process-loss reconstruction of the same WorldEpoch;
+- persistent/continuously open rooms or lobby/membership architecture;
+- arbitrary player churn or large-player-count multiplayer;
 - production/mobile radio handover behavior;
-- remote Cloudflare qualification for the final v9 closure head;
-- large-player-count multiplayer.
+- new remote Cloudflare qualification for the R1 head.
 
-A 20 s authority grace is not a promise that every browser outage shorter than 20 s recovers end-to-end.
+A 20 s authority grace is not a promise that every browser outage shorter than 20 seconds recovers end-to-end.
 
 ## Current work boundary
 
-The reliability closure and repository consolidation are complete enough to stop treating consolidation as the active project frontier.
+R1 Session Continuity is integrated and post-merge qualified. The reliability foundation is strong enough that the next move should **not** be another outage variant by momentum.
 
-The next step is **product-frontier re-grounding**: recover the latest relevant Owner play/product evidence, challenge old candidate priorities, and choose the smallest product-facing experiment that answers the most important current question.
+The next substantial work should begin with **product-frontier re-grounding**: recover the latest relevant Owner play/product evidence, challenge old candidate priorities, then choose the smallest product-facing experiment that answers the most important current question.
 
-Do not automatically jump into persistence, lobby/membership architecture, 3-player work, content expansion, broad refactors or another old roadmap item simply because the repository is now cleanly consolidated.
+Do not automatically jump into persistence, lobby/membership architecture, 3-player work, arbitrary content or broad refactors. Jump/content behavior was not part of R1 and remains a separate causal/product question rather than an inherited next phase.
 
 ## Validation
 
@@ -106,14 +109,15 @@ npm ci
 npm run dev
 ```
 
-The reusable World V0 closure validator is:
+Reusable current gates:
 
-`.github/workflows/world-v0-closure-current-validation.yml`
+- `.github/workflows/world-v0-session-continuity-r1-qualification.yml`;
+- `.github/workflows/world-v0-current-validation.yml`.
 
-## Historical gate record
+## Historical record
 
-The earlier deployment, WebSocket, shared-world game and Gate 4A experiments remain valuable controls and provenance. Their records under `docs/gates/`, older `WORLD_V0_*` / `WS0_*` documents and historical branches should be read when a specific question requires them, not as the default current-state narrative.
+Earlier deployment, WebSocket, shared-world game, Gate 4A, closure and grounding work remains valuable provenance. Read older `WORLD_V0_*`, `WS0_*`, gate documents and historical branches only when a specific question needs them; they are not the default current-state narrative.
 
-Multi_World's durable objective remains simple to state even as the implementation changes:
+Multi_World's durable objective remains:
 
 > Build toward a small shared physical living world where another person's actions feel like consequences in the same place, not merely synchronized coordinates.

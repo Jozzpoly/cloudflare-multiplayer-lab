@@ -1,6 +1,6 @@
-export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v12-prestart-live-start-gate";
-export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v9-prestart-live-start-gate";
-export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v8-playability-split-lead";
+export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v14-jump-delivery-persistence";
+export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v11-jump-delivery-persistence";
+export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v10-jump-delivery-persistence";
 export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
 export const WORLD_V0_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v3-supersession";
@@ -18,6 +18,10 @@ export const WORLD_V0_TIMING = {
   maxCatchupSteps: 4,
   // Canonical input is authored far enough ahead to survive ordinary transport latency.
   predictionLeadTicks: 8,
+  // Discrete jump delivery is acknowledgement-driven on the browser: a press stays
+  // pending across the moving future-input horizon until world_v0_consumed proves that
+  // the authority canonically consumed jump=true. Physics remains authority rising-edge
+  // triggered, and pending clears on canonical true even when support rejects the impulse.
   // Playability: simulation speculation is separated from canonical input authorship.
   // Two ticks is the first horizon that can consume the earliest newly-authored
   // floor(authority)+1 input in the same prediction pass without speculating farther.

@@ -346,8 +346,22 @@ const keys = new Set();
 const movementCodes = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight"]);
 let touchInput = { x: 0, z: 0 };
 let joystickPointer = null;
-let jumpQueued = false;
 let jumpKeyHeld = false;
+let jumpDelivery = {
+  revision: "world-v0-jump-delivery-persistence-v1",
+  pending: false,
+  edgeArmed: true,
+  pressSequence: 0,
+  pendingSequence: null,
+  firstAuthoredTick: null,
+  lastAuthoredTick: null,
+  deliveredSequence: 0,
+  deliveredTick: null,
+  lastDeliveredApplied: null,
+  rearmedTick: null,
+  appliedCount: 0,
+  lastAppliedTick: null,
+};
 
 function keyboardInput() {
   let x = 0;
@@ -371,15 +385,77 @@ function currentInput() {
   return { x: movement.x, z: movement.z, jump: false };
 }
 
-function queueJump() {
-  if (playing && !runtimeFailed) jumpQueued = true;
+function resetJumpDeliveryForFreshRun() {
+  jumpDelivery = {
+    revision: "world-v0-jump-delivery-persistence-v1",
+    pending: false,
+    edgeArmed: true,
+    pressSequence: 0,
+    pendingSequence: null,
+    firstAuthoredTick: null,
+    lastAuthoredTick: null,
+    deliveredSequence: 0,
+    deliveredTick: null,
+    lastDeliveredApplied: null,
+    rearmedTick: null,
+    appliedCount: 0,
+    lastAppliedTick: null,
+  };
 }
 
-function consumeIntendedInput() {
-  const movement = currentInput();
-  const jump = jumpQueued;
-  jumpQueued = false;
-  return { x: movement.x, z: movement.z, jump };
+function disarmJumpDelivery() {
+  jumpDelivery.pending = false;
+  jumpDelivery.pendingSequence = null;
+  jumpDelivery.edgeArmed = false;
+  jumpDelivery.firstAuthoredTick = null;
+  jumpDelivery.lastAuthoredTick = null;
+}
+
+function queueJump() {
+  if (!playing || runtimeFailed || jumpDelivery.pending || !jumpDelivery.edgeArmed) return false;
+  jumpDelivery.pressSequence += 1;
+  jumpDelivery.pending = true;
+  jumpDelivery.edgeArmed = false;
+  jumpDelivery.pendingSequence = jumpDelivery.pressSequence;
+  jumpDelivery.firstAuthoredTick = null;
+  jumpDelivery.lastAuthoredTick = null;
+  jumpDelivery.deliveredTick = null;
+  jumpDelivery.lastDeliveredApplied = null;
+  jumpDelivery.rearmedTick = null;
+  recordLifecycle("jump-delivery-pending", { sequence: jumpDelivery.pendingSequence });
+  return true;
+}
+
+function noteJumpAuthoredTick(targetTick) {
+  if (!jumpDelivery.pending || !Number.isInteger(targetTick)) return;
+  if (!Number.isInteger(jumpDelivery.firstAuthoredTick)) jumpDelivery.firstAuthoredTick = targetTick;
+  jumpDelivery.lastAuthoredTick = Number.isInteger(jumpDelivery.lastAuthoredTick)
+    ? Math.max(jumpDelivery.lastAuthoredTick, targetTick)
+    : targetTick;
+}
+
+function noteCanonicalJumpDelivery(targetTick, jump, jumpApplied) {
+  if (jumpApplied && jumpDelivery.lastAppliedTick !== targetTick) {
+    jumpDelivery.appliedCount += 1;
+    jumpDelivery.lastAppliedTick = targetTick;
+  }
+  if (jumpDelivery.pending && jump) {
+    jumpDelivery.pending = false;
+    jumpDelivery.deliveredSequence = jumpDelivery.pendingSequence;
+    jumpDelivery.pendingSequence = null;
+    jumpDelivery.deliveredTick = targetTick;
+    jumpDelivery.lastDeliveredApplied = Boolean(jumpApplied);
+    recordLifecycle("jump-delivery-canonical", {
+      sequence: jumpDelivery.deliveredSequence,
+      targetTick,
+      jumpApplied: Boolean(jumpApplied),
+    });
+  }
+  if (!jumpDelivery.pending && !jump && !jumpDelivery.edgeArmed) {
+    jumpDelivery.edgeArmed = true;
+    jumpDelivery.rearmedTick = targetTick;
+    recordLifecycle("jump-delivery-rearmed", { targetTick });
+  }
 }
 
 // I3 logical input authorship scheduler. This is deliberately a same-main-thread
@@ -406,14 +482,14 @@ function pumpLogicalInputScheduler() {
 
   logicalInputPumps += 1;
   const movement = currentInput();
-  const jumpTarget = jumpQueued ? startTick : null;
-  if (jumpTarget !== null) jumpQueued = false;
+  const jumpIntent = jumpDelivery.pending;
   const revisions = [];
 
   for (let tick = startTick; tick <= authoredThrough; tick += 1) {
+    if (jumpIntent) noteJumpAuthoredTick(tick);
     const existing = intendedSelf.get(tick);
     if (!existing) {
-      const next = { x: movement.x, z: movement.z, jump: tick === jumpTarget };
+      const next = { x: movement.x, z: movement.z, jump: jumpIntent };
       intendedSelf.set(tick, next);
       queueInputRecord(tick, next);
       logicalInputAuthored += 1;
@@ -423,8 +499,10 @@ function pumpLogicalInputScheduler() {
     const next = {
       x: movement.x,
       z: movement.z,
-      // Movement/camera revisions must not erase an already-authored one-shot jump.
-      jump: Boolean(existing.jump || tick === jumpTarget),
+      // Pending delivery owns the future jump bit. Once canonical jump=true is
+      // observed, pending clears and this same revision path retracts unconsumed
+      // future true records back to false so the next press requires a new edge.
+      jump: jumpIntent,
     };
     if (sameInput(existing, next)) continue;
     intendedSelf.set(tick, next);
@@ -1252,12 +1330,16 @@ function applyResolvedTick(sim, tick, allowGenerateSelf) {
   void allowGenerateSelf;
   const previous = previousUsedInput(tick);
   const resolved = resolveInputsForTick(tick, previous);
+  // Keep the raw multi-tick jump intent in usedByTick, but turn it into one physical
+  // impulse at simulation time. Replay/correction reconstructs the same rising edge.
+  const selfJumpTrigger = Boolean(resolved.self.jump) && !Boolean(previous.self.jump);
+  const remoteJumpTrigger = Boolean(resolved.remote.jump) && !Boolean(previous.remote.jump);
   usedByTick.set(tick, { self: { ...resolved.self }, remote: { ...resolved.remote } });
   const selfBody = sim.actorBodies.get(selfSessionId);
   const remoteBody = sim.actorBodies.get(remoteSessionId);
   if (!selfBody || !remoteBody) throw new Error("predicted actor mapping incomplete");
-  applyIntent(selfBody, resolved.self);
-  applyIntent(remoteBody, resolved.remote);
+  applyIntent(selfBody, { ...resolved.self, jump: selfJumpTrigger });
+  applyIntent(remoteBody, { ...resolved.remote, jump: remoteJumpTrigger });
 }
 
 function createHistoryAtBoundary(sim, boundaryTick, reason) {
@@ -1646,19 +1728,26 @@ function handleConsumed(message) {
   assertMessageIdentity(message, "consumed");
   if (!Number.isInteger(message.targetTick)) return;
   const map = new Map();
+  let selfCanonical = null;
   for (const player of message.players || []) {
     if (!player.sessionId || !Number.isFinite(player.x) || !Number.isFinite(player.z)) continue;
-    map.set(player.sessionId, {
+    const next = {
       x: player.x,
       z: player.z,
       jump: Boolean(player.jump),
+      jumpApplied: Boolean(player.jumpApplied),
       fresh: Boolean(player.fresh),
       source: player.source,
       missingStreak: player.missingStreak,
-    });
+    };
+    map.set(player.sessionId, next);
+    if (player.sessionId === selfSessionId) selfCanonical = next;
     if (player.source === "lease_expired") metrics.leaseExpiredSeen += 1;
   }
   consumedByTick.set(message.targetTick, map);
+  if (selfCanonical) {
+    noteCanonicalJumpDelivery(message.targetTick, selfCanonical.jump, selfCanonical.jumpApplied);
+  }
   maybeCorrect([message.targetTick], "authority-consumed");
 }
 
@@ -1685,6 +1774,9 @@ function handleStart(message) {
   diagnosticSamples.clear();
   pendingStateGuards.clear();
   protocolStartTick = message.protocolStartTick;
+  // Fresh epochs start with authority previousJumpIntent=false, so a new physical
+  // edge is immediately legal. Resumes deliberately do not use this fresh arm.
+  resetJumpDeliveryForFreshRun();
   buildArenaVisual(contract);
   const sim = createSimulationFromState(message.state);
   buildSpatialCues(message.state);
@@ -2097,7 +2189,7 @@ function buildEvidence() {
     runtimeFailureReason,
     runtimeFailureAt,
     inputScheduler: {
-      revision: "shared-yard-v0-logical-input-scheduler-v2-authority-floor",
+      revision: "shared-yard-v0-logical-input-scheduler-v3-jump-delivery-persistence",
       active: logicalInputTimer !== null,
       pumps: logicalInputPumps,
       authored: logicalInputAuthored,
@@ -2106,6 +2198,7 @@ function buildEvidence() {
       inputLeadTicks: simulation?.timing?.predictionLeadTicks ?? null,
       simulationLeadTicks: simulation?.timing?.clientSimulationLeadTicks ?? null,
       ownsCanonicalAuthorship: true,
+      jumpDelivery: { ...jumpDelivery },
     },
     localBoundaryTick: localState?.boundaryTick ?? null,
     protocolStartTick,
@@ -2437,7 +2530,9 @@ jumpButton.addEventListener("pointerdown", (event) => {
 });
 function neutralizeTransientInputs() {
   keys.clear();
-  jumpQueued = false;
+  // A transport/focus boundary must not guess the authority raw jump edge. Cancel
+  // local pending delivery and stay disarmed until canonical jump=false is observed.
+  disarmJumpDelivery();
   jumpKeyHeld = false;
   touchInput = zeroInput();
   joystickPointer = null;

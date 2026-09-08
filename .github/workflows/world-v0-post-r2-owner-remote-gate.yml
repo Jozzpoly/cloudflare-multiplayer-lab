@@ -63,7 +63,7 @@ jobs:
       - name: Remote direct-link R1 continuity control
         env:
           MW_WORLD_V0_DIRECT_RESUME_BASE: ${{ env.STAGING_BASE_URL }}
-          MW_WORLD_V0_DIRECT_RESUME_ROOM: yard-88
+          MW_WORLD_V0_DIRECT_RESUME_ROOM: yard-2
           MW_WORLD_V0_DIRECT_RESUME_OUTPUT: world-v0-post-r2-direct-resume.json
         run: |
           set -euo pipefail
@@ -73,7 +73,7 @@ jobs:
       - name: Remote room-list R1 continuity control
         env:
           MW_WORLD_V0_CROSS_PAGE_BASE: ${{ env.STAGING_BASE_URL }}
-          MW_WORLD_V0_CROSS_PAGE_ROOM: yard-89
+          MW_WORLD_V0_CROSS_PAGE_ROOM: yard-3
           MW_WORLD_V0_CROSS_PAGE_OUTPUT: world-v0-post-r2-cross-page-resume.json
         run: |
           set -euo pipefail

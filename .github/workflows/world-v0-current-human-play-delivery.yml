@@ -1,0 +1,184 @@
+name: World V0 Current Human Play Delivery
+
+on:
+  push:
+    branches: [world-v0-current-human-play-delivery]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-current-human-play-delivery
+  cancel-in-progress: false
+
+env:
+  QUALIFIED_RUNTIME_SHA: 1a759f0bd7aefd70027b2ed1d85e5cc7987bc01b
+  CANONICAL_MAIN_SHA: 175677eff7355570d97cbff4934d73154da6de04
+  RELIABILITY_WORKER: cloudflare-multiplayer-lab-reliability-play
+  RELIABILITY_BASE_URL: https://cloudflare-multiplayer-lab-reliability-play.jozzpoly.workers.dev
+
+jobs:
+  deliver-current-human-play:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact delivery head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Prove docs-main ancestry and unchanged qualified runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$QUALIFIED_RUNTIME_SHA^{commit}"
+          git cat-file -e "$CANONICAL_MAIN_SHA^{commit}"
+          git merge-base --is-ancestor "$QUALIFIED_RUNTIME_SHA" HEAD
+          git merge-base --is-ancestor "$CANONICAL_MAIN_SHA" HEAD
+          protected=(
+            public/world-v0
+            src/box3d-runtime.ts
+            src/world-v0-contract.ts
+            src/world-v0-protocol.ts
+            src/world-v0-shared-yard.ts
+            src/world-slice-entry.ts
+            package.json
+            package-lock.json
+            wrangler.jsonc
+          )
+          git diff --quiet "$QUALIFIED_RUNTIME_SHA" HEAD -- "${protected[@]}" || {
+            echo "Runtime drift from qualified checkpoint"
+            git diff --name-status "$QUALIFIED_RUNTIME_SHA" HEAD -- "${protected[@]}"
+            exit 1
+          }
+          git diff --quiet "$CANONICAL_MAIN_SHA" HEAD -- "${protected[@]}" || {
+            echo "Delivery branch changed protected runtime"
+            git diff --name-status "$CANONICAL_MAIN_SHA" HEAD -- "${protected[@]}"
+            exit 1
+          }
+          changed="$(git diff --name-only "$CANONICAL_MAIN_SHA" HEAD)"
+          test "$changed" = ".github/workflows/world-v0-current-human-play-delivery.yml"
+          echo "WORLD_V0_CURRENT_HUMAN_DELIVERY_SOURCE_PASS runtime=$QUALIFIED_RUNTIME_SHA main=$CANONICAL_MAIN_SHA delivery=$GITHUB_SHA"
+
+      - name: Verify isolated target
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const config = JSON.parse(readFileSync("wrangler.jsonc", "utf8"));
+          const target = config.env?.reliability_play;
+          if (target?.name !== process.env.RELIABILITY_WORKER) throw new Error("reliability worker drift");
+          if (target.name === config.name || target.name === config.env?.staging?.name) throw new Error("human-play target is not isolated");
+          if (!target.durable_objects?.bindings?.some((binding) => binding.name === "SHARED_YARD_V0" && binding.class_name === "SharedYardV0")) {
+            throw new Error("SharedYardV0 binding missing");
+          }
+          console.log("WORLD_V0_CURRENT_HUMAN_ISOLATED_TARGET_PASS", target.name);
+          NODE
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Full repository regression
+        run: npm run check
+
+      - name: Isolated deployment dry-run
+        run: npx wrangler deploy --dry-run --env reliability_play --outdir .wrangler/current-human-play-dry-run
+
+      - name: Prepare exact delivery provenance
+        run: |
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          import { WORLD_V0_SERVER_REVISION, WORLD_V0_SIM_BUILD_ID } from "./src/world-v0-contract.ts";
+          writeFileSync("public/world-v0/current-human-play-provenance.json", JSON.stringify({
+            purpose: "current-v9-human-play",
+            qualifiedRuntimeSha: process.env.QUALIFIED_RUNTIME_SHA,
+            canonicalMainSha: process.env.CANONICAL_MAIN_SHA,
+            deliverySha: process.env.GITHUB_SHA,
+            worker: process.env.RELIABILITY_WORKER,
+            serverRevision: WORLD_V0_SERVER_REVISION,
+            simBuildId: WORLD_V0_SIM_BUILD_ID,
+            roomDirectoryUntouchedByCi: true
+          }, null, 2) + "\n");
+          NODE
+
+      - name: Deploy isolated worker only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx wrangler whoami
+          npx wrangler deploy --env reliability_play
+
+      - name: Verify exact deployed provenance without touching public Yard directory
+        run: |
+          node --input-type=module <<'NODE'
+          const provenanceUrl = `${process.env.RELIABILITY_BASE_URL}/world-v0/current-human-play-provenance.json?r=${Date.now()}`;
+          const buildUrl = `${process.env.RELIABILITY_BASE_URL}/world-v0/build-contract.js?r=${Date.now()}`;
+          const deadline = Date.now() + 120000;
+          let last = null;
+          while (Date.now() < deadline) {
+            try {
+              const response = await fetch(provenanceUrl, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+              const provenance = response.ok ? await response.json() : null;
+              last = provenance;
+              if (
+                provenance?.qualifiedRuntimeSha === process.env.QUALIFIED_RUNTIME_SHA &&
+                provenance?.canonicalMainSha === process.env.CANONICAL_MAIN_SHA &&
+                provenance?.deliverySha === process.env.GITHUB_SHA &&
+                provenance?.worker === process.env.RELIABILITY_WORKER &&
+                provenance?.roomDirectoryUntouchedByCi === true
+              ) {
+                const build = await fetch(buildUrl, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+                if (!build.ok) throw new Error(`build contract HTTP ${build.status}`);
+                const text = await build.text();
+                if (!text.includes(provenance.serverRevision) || !text.includes(provenance.simBuildId)) throw new Error("deployed build identity drift");
+                console.log("WORLD_V0_CURRENT_HUMAN_EXACT_DELIVERY_PASS", JSON.stringify(provenance));
+                process.exit(0);
+              }
+            } catch (error) {
+              last = error instanceof Error ? error.message : String(error);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+          throw new Error(`exact human-play provenance not visible: ${JSON.stringify(last)}`);
+          NODE
+
+      - name: Remote current lifecycle smoke on CI-only run ID
+        env:
+          MW_WORLD_V0_I1_BASE: ${{ env.RELIABILITY_BASE_URL }}
+          MW_WORLD_V0_I1_RUN: current-human-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-current-human-remote-i1.log
+          grep -q 'WORLD_V0_INTEGRATION_I1_SERVER_SESSION_PASS' world-v0-current-human-remote-i1.log
+
+      - name: Human-play handoff boundary
+        run: |
+          {
+            echo '## World V0 current human-play delivery ready'
+            echo
+            echo "- exact delivery head: \`$GITHUB_SHA\`"
+            echo "- qualified runtime: \`$QUALIFIED_RUNTIME_SHA\`"
+            echo "- canonical main anchor: \`$CANONICAL_MAIN_SHA\`"
+            echo "- isolated base URL: $RELIABILITY_BASE_URL/world-v0/"
+            echo '- CI deliberately did **not** request `/api/world-v0/rooms` or the normal base page.'
+            echo '- For locality, the Owner in Poland should open the base URL first; only after the room list appears should the second human open the same base URL.'
+            echo '- Primary evidence is natural two-human play and emergent friction/fun, not another QA matrix.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload bounded delivery evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-current-human-play-delivery-${{ github.run_attempt }}
+          path: |
+            public/world-v0/current-human-play-provenance.json
+            world-v0-current-human-remote-i1.log
+          if-no-files-found: warn
+          retention-days: 14

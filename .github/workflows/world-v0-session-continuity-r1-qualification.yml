@@ -12,6 +12,7 @@ on:
       - public/world-v0/public-room-entry.js
       - public/world-v0/friend-ready.js
       - src/world-slice-entry.ts
+      - src/world-v0-shared-yard.ts
       - scripts/world-v0-session-continuity-smoke.mjs
       - scripts/world-v0-cross-page-resume-browser-audit.mjs
       - scripts/world-v0-direct-link-resume-browser-audit.mjs
@@ -46,6 +47,11 @@ jobs:
           node --check scripts/world-v0-cross-page-resume-browser-audit.mjs
           node --check scripts/world-v0-direct-link-resume-browser-audit.mjs
           node scripts/world-v0-session-continuity-smoke.mjs
+          grep -q 'world-v0-session-continuity-r2-slot-bound' public/world-v0/session-continuity.js
+          grep -q 'world-v0-public-room-directory-r2-slot-presence' public/world-v0/public-room-entry.js
+          grep -q 'reservedSlots:' src/world-v0-shared-yard.ts
+          test ! -e scripts/materialize-world-v0-session-slot-binding.mjs
+          test ! -e .github/workflows/world-v0-session-slot-binding-materialize.yml
           npm run check
           git diff --check
       - name: Start local reliability Workerd
@@ -70,7 +76,7 @@ jobs:
           set -euo pipefail
           timeout 90s node scripts/world-v0-cross-page-resume-browser-audit.mjs | tee world-v0-cross-page-resume.log
           grep -q 'WORLD_V0_CROSS_PAGE_RESUME_PASS' world-v0-cross-page-resume.log
-      - name: Real Chromium direct Yard-link resume and active-session takeover guard
+      - name: Real Chromium direct Yard-link slot-bound resume
         env:
           MW_WORLD_V0_DIRECT_RESUME_BASE: http://127.0.0.1:8787
           MW_WORLD_V0_DIRECT_RESUME_ROOM: yard-2
@@ -79,6 +85,19 @@ jobs:
           set -euo pipefail
           timeout 90s node scripts/world-v0-direct-link-resume-browser-audit.mjs | tee world-v0-direct-link-resume.log
           grep -q 'WORLD_V0_DIRECT_LINK_RESUME_PASS' world-v0-direct-link-resume.log
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const evidence = JSON.parse(readFileSync("world-v0-direct-link-resume.json", "utf8"));
+          if (evidence.activeProbe?.entry?.directLinkResumable !== false) throw new Error("active ActorSession takeover guard failed");
+          if (evidence.mixedReservedProbe?.entry?.directLinkResumable !== false) throw new Error("other reserved slot incorrectly authorized Resume");
+          if (evidence.reservedRoom?.reservedSlots?.length !== 1 || evidence.reservedRoom.reservedSlots[0] !== 1) throw new Error("reserved slot evidence mismatch");
+          if (evidence.directResume?.entry?.directLinkResumable !== true) throw new Error("own reserved slot was not resumable");
+          if (evidence.original?.actorSessionId !== evidence.peerAfter?.actorSessionId) throw new Error("ActorSession identity drift");
+          if (evidence.original?.netEntityId !== evidence.peerAfter?.netEntityId) throw new Error("NetEntity identity drift");
+          if (evidence.original?.worldEpoch !== evidence.peerAfter?.worldEpoch) throw new Error("WorldEpoch identity drift");
+          if (evidence.peerAfter?.guardMismatches !== 0 || evidence.ownerAfter?.guardMismatches !== 0) throw new Error("exact-state guard regression");
+          console.log("WORLD_V0_SLOT_BOUND_DIRECT_RESUME_PASS", evidence.original.actorSessionId);
+          NODE
       - name: Existing fresh-profile reopen remains truthfully rejected
         env:
           MW_WORLD_V0_HUMAN_ENTRY_BASE_URL: http://127.0.0.1:8787

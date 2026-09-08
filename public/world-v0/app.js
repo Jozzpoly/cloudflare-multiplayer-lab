@@ -27,6 +27,12 @@ import {
   pinchZoomDistance,
   wheelZoomDistance,
 } from "./playable-control.js";
+import {
+  WORLD_V0_SESSION_CONTINUITY_REVISION,
+  clearWorldV0StoredSession,
+  takeWorldV0ResumeIntent,
+  writeWorldV0StoredSession,
+} from "./session-continuity.js";
 
 const FIXED_DT = 1 / 60;
 const STEP_MS = 1000 / 60;
@@ -527,6 +533,25 @@ let selfNetEntityId = null;
 let remoteNetEntityId = null;
 let selfSlot = null;
 let resumeToken = null;
+
+function persistCurrentActorSession() {
+  if (!identity || !selfSessionId || !resumeToken || !selfNetEntityId || !Number.isInteger(selfSlot)) return false;
+  return writeWorldV0StoredSession({
+    runKey,
+    playerId: callsign,
+    worldEpoch: identity.worldEpoch,
+    sessionId: selfSessionId,
+    resumeToken,
+    netEntityId: selfNetEntityId,
+    slot: selfSlot,
+  });
+}
+
+function clearCurrentStoredActorSession(worldEpoch = identity?.worldEpoch ?? null) {
+  if (!runKey) return false;
+  return clearWorldV0StoredSession(runKey, worldEpoch);
+}
+
 let protocolStartTick = null;
 let simulation = null;
 let phaseAnchor = null;
@@ -1721,6 +1746,7 @@ function handleMessage(message) {
       selfNetEntityId = message.selfNetEntityId;
       selfSlot = message.slot;
       resumeToken = message.resumeToken;
+      persistCurrentActorSession();
       clearActorResumeTimer();
       actorResume.pending = false;
       actorResume.attempts = 0;
@@ -1758,6 +1784,7 @@ function handleMessage(message) {
     selfSessionId = message.selfSessionId;
     selfNetEntityId = message.selfNetEntityId;
     selfSlot = message.slot;
+    persistCurrentActorSession();
     networkState = message.waitingForPeer ? "waiting for peer" : "peer joined";
     if (recoveringRoom) {
       clearRoomRecoveryTimer();
@@ -1811,6 +1838,7 @@ function handleMessage(message) {
       roomRecovery.sourceEpoch = message.worldEpoch;
     }
     playing = false;
+    clearCurrentStoredActorSession(message.worldEpoch);
     sessionEnd = {
       kind: "epoch-ended",
       reason: message.reason,
@@ -1966,7 +1994,9 @@ function advancePrediction() {
     trimHistory();
     steps += 1;
   }
-  if (localState.boundaryTick < targetBoundary - MAX_PREDICTION_STEPS_PER_FRAME) networkState = "prediction backlog";
+  const stillBacklogged = localState.boundaryTick < targetBoundary - MAX_PREDICTION_STEPS_PER_FRAME;
+  if (stillBacklogged) networkState = "prediction backlog";
+  else if (networkState === "prediction backlog") networkState = "live · Shared Yard V0";
 }
 
 function syncPresence(mesh, position) {
@@ -2102,6 +2132,7 @@ function buildEvidence() {
       worldInputPreview: currentInput(),
     },
     session: {
+      sessionContinuityRevision: WORLD_V0_SESSION_CONTINUITY_REVISION,
       inviteUrl: buildInviteUrl(),
       restartAvailable: canRestartRound(),
       end: sessionEnd ? { ...sessionEnd } : null,
@@ -2326,7 +2357,22 @@ function enterWorld() {
   shareUrl.hash = "";
   shareUrl.searchParams.set("run", runKey);
   history.replaceState(null, "", shareUrl);
+  const resumeIntent = takeWorldV0ResumeIntent({ runKey, playerId: callsign });
   resetProtocolState();
+  if (resumeIntent) {
+    resumeToken = resumeIntent.resumeToken;
+    selfSessionId = resumeIntent.sessionId;
+    selfNetEntityId = resumeIntent.netEntityId;
+    selfSlot = resumeIntent.slot;
+    actorResume.pending = true;
+    actorResume.attempts = 0;
+    actorResume.sourceBoundary = null;
+    recordLifecycle("cross-page-resume-intent", {
+      sessionId: resumeIntent.sessionId,
+      netEntityId: resumeIntent.netEntityId,
+      storedWorldEpoch: resumeIntent.worldEpoch,
+    });
+  }
   clearNotice();
   playing = true;
   boot.classList.add("compact");

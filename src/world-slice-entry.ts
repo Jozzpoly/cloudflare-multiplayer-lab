@@ -93,6 +93,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
       const status = await response.json() as {
         players?: number;
         connectedPlayers?: number;
+        reservedSlots?: number[];
         protocolStartTick?: number | null;
         worldEpoch?: string | null;
         simBuildId?: string | null;
@@ -103,6 +104,10 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         ? Math.max(0, Math.min(occupancy, Number(status.connectedPlayers)))
         : occupancy;
       const reserved = Math.max(0, occupancy - connected);
+      const reservedSlots = Array.isArray(status.reservedSlots)
+        ? [...new Set(status.reservedSlots.filter((slot) => Number.isInteger(slot) && slot >= 0 && slot < WORLD_V0_PUBLIC_ROOM_CAPACITY))].sort((a, b) => a - b)
+        : [];
+      if (reservedSlots.length !== reserved) throw new Error(`reserved_slot_accounting_${reservedSlots.length}_${reserved}`);
       const active = status.protocolStartTick !== null && status.protocolStartTick !== undefined;
       const state = active
         ? reserved > 0 ? "live-reserved" : "live"
@@ -115,6 +120,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         occupancy,
         connected,
         reserved,
+        reservedSlots,
         capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
         state,
         joinable: !active && occupancy < WORLD_V0_PUBLIC_ROOM_CAPACITY && !status.failure,
@@ -130,6 +136,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         occupancy: null,
         connected: null,
         reserved: null,
+        reservedSlots: [],
         capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
         state: "unavailable",
         joinable: false,
@@ -142,7 +149,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
   }));
 
   return new Response(JSON.stringify({
-    revision: "world-v0-public-room-directory-r1",
+    revision: "world-v0-public-room-directory-r2-slot-presence",
     generatedAt: new Date().toISOString(),
     rooms,
   }), {

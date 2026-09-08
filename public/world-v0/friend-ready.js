@@ -20,6 +20,7 @@ import {
 } from "./public-room-entry.js";
 import {
   WORLD_V0_SESSION_CONTINUITY_REVISION,
+  clearWorldV0StoredSession,
   readWorldV0StoredSession,
   worldV0StoredSessionMatchesRoom,
   writeWorldV0ResumeIntent,
@@ -167,6 +168,7 @@ function publicRoomSnapshot() {
       occupancy: room.occupancy,
       connected: room.connected,
       reserved: room.reserved,
+      reservedSlots: [...room.reservedSlots],
       capacity: room.capacity,
       state: room.state,
       joinable: room.joinable,
@@ -263,7 +265,11 @@ async function resolveDirectLinkResume() {
     try {
       const rooms = await fetchPublicRooms();
       const room = rooms.find((candidate) => candidate.id === run);
-      if (!room || room.worldEpoch !== stored.worldEpoch) break;
+      if (!room) break;
+      if (room.worldEpoch !== stored.worldEpoch) {
+        if (room.state !== "unavailable") clearWorldV0StoredSession(run, stored.worldEpoch);
+        break;
+      }
       const resumable = worldV0StoredSessionMatchesRoom(stored, room);
       if (resumable) {
         deepLinkResumeSession = stored;

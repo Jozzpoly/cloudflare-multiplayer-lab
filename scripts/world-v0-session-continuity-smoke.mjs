@@ -37,9 +37,10 @@ const actor = {
 assert.equal(writeWorldV0StoredSession(actor, local), true);
 assert.deepEqual(readWorldV0StoredSession("yard-3", local), { ...actor, savedAt: readWorldV0StoredSession("yard-3", local).savedAt });
 assert.equal(readWorldV0StoredSession("yard-2", local), null);
-assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reserved: 1 }), true);
-assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reserved: 0 }), false, "connected ActorSession must not be offered as resumable");
-assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-b", reserved: 1 }), false);
+assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reservedSlots: [1] }), true);
+assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reservedSlots: [0] }), false, "other reserved slot must not authorize takeover");
+assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reservedSlots: [] }), false, "connected ActorSession must not be offered as resumable");
+assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-b", reservedSlots: [1] }), false);
 assert.equal(writeWorldV0ResumeIntent(actor, session), true);
 assert.equal(takeWorldV0ResumeIntent({ runKey: "yard-3", playerId: "Wrong" }, session), null);
 assert.equal(takeWorldV0ResumeIntent({ runKey: "yard-3", playerId: "Jozz" }, session), null, "resume intent is one-shot even on mismatch");
@@ -53,9 +54,9 @@ assert.equal(readWorldV0StoredSession("yard-3", local), null);
 const rooms = normalizeWorldV0PublicRoomDirectory({
   revision: WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION,
   rooms: [
-    { id: "yard-1", name: "Yard 1", occupancy: 0, connected: 0, reserved: 0, capacity: 2, state: "empty", joinable: true, worldEpoch: null },
-    { id: "yard-2", name: "Yard 2", occupancy: 2, connected: 2, reserved: 0, capacity: 2, state: "live", joinable: false, worldEpoch: "epoch-2" },
-    { id: "yard-3", name: "Yard 3", occupancy: 2, connected: 1, reserved: 1, capacity: 2, state: "live-reserved", joinable: false, worldEpoch: "epoch-a" },
+    { id: "yard-1", name: "Yard 1", occupancy: 0, connected: 0, reserved: 0, reservedSlots: [], capacity: 2, state: "empty", joinable: true, worldEpoch: null },
+    { id: "yard-2", name: "Yard 2", occupancy: 2, connected: 2, reserved: 0, reservedSlots: [], capacity: 2, state: "live", joinable: false, worldEpoch: "epoch-2" },
+    { id: "yard-3", name: "Yard 3", occupancy: 2, connected: 1, reserved: 1, reservedSlots: [1], capacity: 2, state: "live-reserved", joinable: false, worldEpoch: "epoch-a" },
   ],
 });
 assert.deepEqual(rooms.map((room) => [room.id, room.connected, room.reserved]), [

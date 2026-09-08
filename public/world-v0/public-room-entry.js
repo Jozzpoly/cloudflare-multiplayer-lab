@@ -1,5 +1,5 @@
-export const WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION = "world-v0-public-room-entry-r1-v1";
-export const WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION = "world-v0-public-room-directory-r1";
+export const WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION = "world-v0-public-room-entry-r1-v2-slot-presence";
+export const WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION = "world-v0-public-room-directory-r2-slot-presence";
 export const WORLD_V0_PUBLIC_ROOM_IDS = Object.freeze(["yard-1", "yard-2", "yard-3"]);
 
 export function normalizeWorldV0PublicRoomDirectory(payload) {
@@ -14,6 +14,7 @@ export function normalizeWorldV0PublicRoomDirectory(payload) {
     const occupancy = room.occupancy === null ? null : Number(room.occupancy);
     const connected = room.connected === null || room.connected === undefined ? null : Number(room.connected);
     const reserved = room.reserved === null || room.reserved === undefined ? null : Number(room.reserved);
+    const reservedSlots = Array.isArray(room.reservedSlots) ? [...room.reservedSlots] : null;
     if (!Number.isInteger(capacity) || capacity <= 0) throw new Error(`public room capacity invalid: ${id}`);
     if (occupancy !== null && (!Number.isInteger(occupancy) || occupancy < 0 || occupancy > capacity)) {
       throw new Error(`public room occupancy invalid: ${id}`);
@@ -27,12 +28,19 @@ export function normalizeWorldV0PublicRoomDirectory(payload) {
     if (occupancy !== null && connected !== null && reserved !== null && connected + reserved !== occupancy) {
       throw new Error(`public room presence accounting invalid: ${id}`);
     }
+    if (reservedSlots === null || reservedSlots.some((slot) => !Number.isInteger(slot) || slot < 0 || slot >= capacity)) {
+      throw new Error(`public room reserved slots invalid: ${id}`);
+    }
+    if (new Set(reservedSlots).size !== reservedSlots.length) throw new Error(`public room reserved slots duplicate: ${id}`);
+    if (reserved !== null && reservedSlots.length !== reserved) throw new Error(`public room reserved slot accounting invalid: ${id}`);
+    reservedSlots.sort((a, b) => a - b);
     return {
       id,
       name: room.name,
       occupancy,
       connected,
       reserved,
+      reservedSlots,
       capacity,
       state: String(room.state || "unavailable"),
       joinable: room.joinable === true,

@@ -1,4 +1,4 @@
-export const WORLD_V0_SESSION_CONTINUITY_REVISION = "world-v0-session-continuity-r1";
+export const WORLD_V0_SESSION_CONTINUITY_REVISION = "world-v0-session-continuity-r2-slot-bound";
 
 const SESSION_STORE_KEY = "shared-yard-v0-actor-sessions-v1";
 const RESUME_INTENT_KEY = "shared-yard-v0-resume-intent-v1";
@@ -96,7 +96,8 @@ export function worldV0StoredSessionMatchesRoom(session, room) {
     session.runKey === room.id &&
     typeof room.worldEpoch === "string" && room.worldEpoch.length > 0 &&
     session.worldEpoch === room.worldEpoch &&
-    Number.isInteger(room.reserved) && room.reserved > 0
+    Array.isArray(room.reservedSlots) &&
+    room.reservedSlots.includes(session.slot)
   );
 }
 

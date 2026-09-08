@@ -196,6 +196,7 @@ let peerBrowser = null;
 let ownerPage = null;
 let peerPage = null;
 let activeProbePage = null;
+let mixedReservedProbePage = null;
 let resumePage = null;
 const result = {
   verdict: "WORLD_V0_DIRECT_LINK_RESUME_FAIL",
@@ -269,6 +270,25 @@ try {
     await sleep(150);
   }
   assert(reservedRoom?.occupancy === 2 && reservedRoom?.connected === 1 && reservedRoom?.reserved === 1, `reserved directory mismatch ${JSON.stringify(reservedRoom)}`);
+  assert(Array.isArray(reservedRoom?.reservedSlots) && reservedRoom.reservedSlots.length === 1 && reservedRoom.reservedSlots[0] === 1, `reserved slot mismatch ${JSON.stringify(reservedRoom)}`);
+
+  // Mixed presence red-team: Owner-A is still live in slot 0 while only Peer-B's
+  // slot 1 is reserved. Owner-A's second direct-link tab knows its own stored token,
+  // but MUST NOT be offered Resume just because some other slot is reserved.
+  mixedReservedProbePage = await attachPage(ownerBrowser, DIRECT_URL);
+  await bootDirect(ownerBrowser, mixedReservedProbePage);
+  const mixedReservedProbe = await evaluate(ownerBrowser, mixedReservedProbePage, `({
+    entry: window.__sharedYardV0FriendEntry(),
+    status: document.querySelector("#boot-status")?.textContent || null,
+    callsign: document.querySelector("#callsign")?.value || null,
+  })`);
+  assert(mixedReservedProbe.entry?.directLinkResumable === false, `connected own slot incorrectly matched other reserved slot ${JSON.stringify(mixedReservedProbe)}`);
+  assert(mixedReservedProbe.entry?.enterLabel === "Enter world", `mixed reserved direct-link label ${mixedReservedProbe.entry?.enterLabel}`);
+  const ownerDuringMixedProbe = await evaluate(ownerBrowser, ownerPage, `window.__sharedYardV0Evidence()`);
+  assert(ownerDuringMixedProbe.session?.actorSessionId === ownerBefore.session.actorSessionId, "mixed reserved probe stole connected owner ActorSession");
+  assert(!String(ownerDuringMixedProbe.networkState || "").startsWith("closed"), `mixed reserved probe closed owner ${ownerDuringMixedProbe.networkState}`);
+  await closePage(ownerBrowser, mixedReservedProbePage);
+  mixedReservedProbePage = null;
 
   const ownerBoundaryAfterClose = ownerBefore.localBoundaryTick + 12;
   await waitFor(ownerBrowser, ownerPage, `(() => {
@@ -311,6 +331,7 @@ try {
     verdict: "WORLD_V0_DIRECT_LINK_RESUME_PASS",
     original,
     activeProbe,
+    mixedReservedProbe,
     reservedRoom,
     directResume,
     restoredRoom,
@@ -342,6 +363,7 @@ try {
 } finally {
   await closePage(peerBrowser, resumePage);
   await closePage(peerBrowser, activeProbePage);
+  await closePage(ownerBrowser, mixedReservedProbePage);
   await closePage(peerBrowser, peerPage);
   await closePage(ownerBrowser, ownerPage);
   await stopBrowser(peerBrowser);

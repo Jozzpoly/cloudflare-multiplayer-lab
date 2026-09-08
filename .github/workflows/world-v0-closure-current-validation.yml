@@ -16,6 +16,8 @@ on:
       - scripts/world-v0-closure-dual-browser-grace-audit.mjs
       - scripts/world-v0-closure-start-window-audit.mjs
       - scripts/world-v0-closure-waiting-room-drop-audit.mjs
+      - scripts/world-v0-closure-uncommitted-ready-audit.mjs
+      - scripts/world-v0-closure-prestart-grace-probe.mjs
       - scripts/world-v0-human-entry-browser-smoke.mjs
   workflow_dispatch:
 
@@ -29,7 +31,7 @@ concurrency:
 jobs:
   validate-current-head:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout exact event head
         uses: actions/checkout@v7
@@ -51,8 +53,10 @@ jobs:
           npm run check | tee world-v0-closure-current-check.log
           grep -q 'const ACTOR_RESUME_MAX_ATTEMPTS = 12;' public/world-v0/app.js
           grep -q 'allDisconnectedGraceTicks: 20 \* 60' src/world-v0-contract.ts
+          grep -q 'preStartAmbiguityGraceTicks: 20 \* 60' src/world-v0-contract.ts
           grep -q 'activeActorTransportRecoverable' public/world-v0/app.js
           grep -q 'committedStartWindowRecoverable' public/world-v0/app.js
+          grep -q 'schedulePreStartAmbiguityRetirement' src/world-v0-shared-yard.ts
           node --experimental-strip-types --input-type=module <<'NODE'
           import { readFileSync } from "node:fs";
           import { WORLD_V0_SERVER_REVISION, WORLD_V0_SIM_BUILD_ID } from "./src/world-v0-contract.ts";
@@ -94,7 +98,7 @@ jobs:
           grep -q '"oldEpochPreservedAt1800msAllDisconnected": true' world-v0-closure-current-i1.log
           grep -q '"oldEpochRetiredAfterGrace": true' world-v0-closure-current-i1.log
 
-      - name: Requalify waiting-room fail-closed boundary
+      - name: Requalify one-player waiting-room fail-closed boundary
         env:
           MW_WORLD_V0_WAITING_DROP_BASE: http://127.0.0.1:8787
           MW_WORLD_V0_WAITING_DROP_OUTPUT: world-v0-closure-current-waiting-room.json
@@ -103,6 +107,26 @@ jobs:
           set -euo pipefail
           timeout 60s node scripts/world-v0-closure-waiting-room-drop-audit.mjs | tee world-v0-closure-current-waiting-room.log
           grep -q 'WORLD_V0_CLOSURE_WAITING_ROOM_FAIL_CLOSED_PASS' world-v0-closure-current-waiting-room.log
+
+      - name: Requalify uncommitted-ready ambiguity recovery
+        env:
+          MW_WORLD_V0_UNCOMMITTED_READY_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_UNCOMMITTED_READY_OUTPUT: world-v0-closure-current-uncommitted-ready.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 90s node scripts/world-v0-closure-uncommitted-ready-audit.mjs | tee world-v0-closure-current-uncommitted-ready.log
+          grep -q 'WORLD_V0_CLOSURE_UNCOMMITTED_READY_RECOVERY_PASS' world-v0-closure-current-uncommitted-ready.log
+
+      - name: Requalify bounded two-player prestart ambiguity grace
+        env:
+          MW_WORLD_V0_PRESTART_GRACE_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_PRESTART_GRACE_OUTPUT: world-v0-closure-current-prestart-grace.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 45s node scripts/world-v0-closure-prestart-grace-probe.mjs | tee world-v0-closure-current-prestart-grace.log
+          grep -q 'WORLD_V0_CLOSURE_PRESTART_AMBIGUITY_GRACE_PASS' world-v0-closure-current-prestart-grace.log
 
       - name: Requalify committed-start ActorSession recovery window
         env:
@@ -207,6 +231,10 @@ jobs:
             world-v0-closure-current-i1.log
             world-v0-closure-current-waiting-room.log
             world-v0-closure-current-waiting-room.json
+            world-v0-closure-current-uncommitted-ready.log
+            world-v0-closure-current-uncommitted-ready.json
+            world-v0-closure-current-prestart-grace.log
+            world-v0-closure-current-prestart-grace.json
             world-v0-closure-current-start-window.log
             world-v0-closure-current-start-window.json
             world-v0-closure-current-all-drop.log

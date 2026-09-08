@@ -1,0 +1,92 @@
+name: World V0 Jump Causal Audit
+
+on:
+  push:
+    branches: [world-v0-jump-causal-audit]
+    paths:
+      - .github/workflows/world-v0-jump-causal-audit.yml
+      - scripts/world-v0-jump-one-shot-late-audit.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-jump-causal-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Prove product runtime unchanged from qualified R1 anchor
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code 72f971cff84f991f994df1b821f656941c0cd8eb -- \
+            public/world-v0 \
+            src/world-v0-contract.ts \
+            src/world-v0-protocol.ts \
+            src/world-v0-shared-yard.ts
+          echo WORLD_V0_JUMP_AUDIT_RUNTIME_UNCHANGED_PASS
+
+      - name: Start local reliability Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-jump-causal-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-jump-causal-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "jump causal Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-jump-causal-wrangler.log
+          exit 1
+
+      - name: Reproduce one-shot jump late loss
+        env:
+          MW_WORLD_V0_JUMP_AUDIT_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_JUMP_AUDIT_DELAY_MS: 45
+          MW_WORLD_V0_JUMP_AUDIT_OUTPUT: world-v0-jump-one-shot-late.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 90s node scripts/world-v0-jump-one-shot-late-audit.mjs | tee world-v0-jump-one-shot-late.log
+          grep -q 'WORLD_V0_JUMP_ONE_SHOT_LATE_CAUSAL_PASS' world-v0-jump-one-shot-late.log
+
+      - name: Stop local Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/world-v0-jump-causal-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-jump-causal-wrangler.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload jump causal evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-jump-causal-audit-${{ github.run_attempt }}
+          path: |
+            world-v0-jump-one-shot-late.log
+            world-v0-jump-one-shot-late.json
+            world-v0-jump-causal-wrangler.log
+          if-no-files-found: warn
+          retention-days: 14

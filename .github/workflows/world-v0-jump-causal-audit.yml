@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/world-v0-jump-causal-audit.yml
       - scripts/world-v0-jump-one-shot-late-audit.mjs
+      - scripts/world-v0-jump-causal-classify.mjs
   workflow_dispatch:
 
 permissions:
@@ -60,7 +61,7 @@ jobs:
           cat world-v0-jump-causal-wrangler.log
           exit 1
 
-      - name: Reproduce one-shot jump late loss
+      - name: Reproduce and classify one-shot jump late loss
         env:
           MW_WORLD_V0_JUMP_AUDIT_BASE: http://127.0.0.1:8787
           MW_WORLD_V0_JUMP_AUDIT_DELAY_MS: 45
@@ -68,8 +69,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          timeout 90s node scripts/world-v0-jump-one-shot-late-audit.mjs | tee world-v0-jump-one-shot-late.log
-          grep -q 'WORLD_V0_JUMP_ONE_SHOT_LATE_CAUSAL_PASS' world-v0-jump-one-shot-late.log
+          set +e
+          timeout 90s node scripts/world-v0-jump-one-shot-late-audit.mjs 2>&1 | tee world-v0-jump-one-shot-late.log
+          raw_rc=${PIPESTATUS[0]}
+          set -e
+          echo "RAW_JUMP_AUDIT_EXIT=${raw_rc}" | tee world-v0-jump-causal-classifier.log
+          node scripts/world-v0-jump-causal-classify.mjs world-v0-jump-one-shot-late.json | tee -a world-v0-jump-causal-classifier.log
+          grep -q 'WORLD_V0_JUMP_ONE_SHOT_LATE_CAUSAL_PASS' world-v0-jump-causal-classifier.log
 
       - name: Stop local Workerd
         if: always()
@@ -87,6 +93,7 @@ jobs:
           path: |
             world-v0-jump-one-shot-late.log
             world-v0-jump-one-shot-late.json
+            world-v0-jump-causal-classifier.log
             world-v0-jump-causal-wrangler.log
           if-no-files-found: warn
           retention-days: 14

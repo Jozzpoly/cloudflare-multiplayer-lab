@@ -341,7 +341,11 @@ try {
   assert(reopen.session?.restartAvailable === false, "fresh reopen incorrectly offers Restart");
   assert(reopen.evidence?.identity == null, "fresh reopen unexpectedly acquired world identity");
   assert(reopen.evidence?.session?.end?.kind === "join-failed", `fresh reopen end kind ${reopen.evidence?.session?.end?.kind}`);
-  assert(reopen.notice.includes("Couldn’t join this Yard"), `fresh reopen notice ${reopen.notice}`);
+  assert(reopen.evidence?.session?.end?.classification === "room-unknown", `fresh reopen classification ${reopen.evidence?.session?.end?.classification}`);
+  assert(reopen.evidence?.session?.end?.directoryReachable === true, "fresh reopen directory unexpectedly unreachable");
+  assert(reopen.notice.includes("join failed"), `fresh reopen notice ${reopen.notice}`);
+  assert(!reopen.notice.includes("full right now"), `fresh reopen guessed public capacity ${reopen.notice}`);
+  assert(!reopen.notice.includes("connection or handshake problem"), `fresh reopen guessed transport failure ${reopen.notice}`);
 
   const ownerAfterReopen = await evaluate(owner, `window.__sharedYardV0Evidence()`);
   assert(ownerAfterReopen.runtimeFailed === false, `owner failed after peer reopen ${ownerAfterReopen.runtimeFailureReason}`);

@@ -33,6 +33,10 @@ import {
   takeWorldV0ResumeIntent,
   writeWorldV0StoredSession,
 } from "./session-continuity.js";
+import {
+  WORLD_V0_JOIN_FAILURE_CLARITY_REVISION,
+  classifyWorldV0JoinFailure,
+} from "./join-failure-clarity.js";
 
 const FIXED_DT = 1 / 60;
 const STEP_MS = 1000 / 60;
@@ -576,6 +580,48 @@ function showNotice(text) {
 function clearNotice() {
   notice.classList.add("hidden");
   notice.textContent = "";
+}
+
+async function classifyUnadmittedJoinFailure(connection, attemptedRunKey) {
+  let directoryReachable = false;
+  let room = null;
+  try {
+    const response = await fetch("/api/world-v0/rooms", { cache: "no-store" });
+    if (response.ok) {
+      directoryReachable = true;
+      const payload = await response.json();
+      room = Array.isArray(payload?.rooms)
+        ? payload.rooms.find((candidate) => candidate?.id === attemptedRunKey) || null
+        : null;
+    }
+  } catch {
+    directoryReachable = false;
+  }
+
+  // Do not let a slow diagnostic fetch paint stale failure UI over a new connection.
+  if (socket !== connection || identity) return null;
+  const classification = classifyWorldV0JoinFailure({ directoryReachable, room });
+  networkState = `join failed · ${classification.kind}`;
+  if (sessionEnd?.kind === "join-failed") {
+    sessionEnd.classification = classification.kind;
+    sessionEnd.clarityRevision = WORLD_V0_JOIN_FAILURE_CLARITY_REVISION;
+    sessionEnd.directoryReachable = directoryReachable;
+    sessionEnd.roomState = room?.state || null;
+    sessionEnd.roomConnected = Number.isFinite(Number(room?.connected)) ? Number(room.connected) : null;
+    sessionEnd.roomReserved = Number.isFinite(Number(room?.reserved)) ? Number(room.reserved) : null;
+    sessionEnd.roomJoinable = typeof room?.joinable === "boolean" ? room.joinable : null;
+  }
+  recordLifecycle("join-failure-classified", {
+    classification: classification.kind,
+    clarityRevision: WORLD_V0_JOIN_FAILURE_CLARITY_REVISION,
+    directoryReachable,
+    roomState: room?.state || null,
+    roomJoinable: typeof room?.joinable === "boolean" ? room.joinable : null,
+  });
+  showNotice(classification.message);
+  persistLastSessionEvidence("join-failure-classified");
+  updateProductStatus();
+  return classification;
 }
 
 function formatBytes(value) {
@@ -2056,7 +2102,7 @@ function connect() {
     }
     if (!runtimeFailed) {
       if (admittedActor) showNotice("Shared Yard round ended. Restart when ready; the next round uses a fresh world epoch.");
-      else showNotice("Couldn’t join this Yard. It may already be active, full, or temporarily unreachable.");
+      else void classifyUnadmittedJoinFailure(connection, runKey);
     }
   });
   connection.addEventListener("error", () => {
@@ -2316,6 +2362,7 @@ function productStatusText() {
   if (networkState === "connecting" || networkState === "syncing") return "Connecting to Shared Yard…";
   if (networkState.startsWith("closed")) return "Round ended · restart when ready";
   if (networkState.startsWith("epoch ended")) return "Round ending · preparing fresh epoch";
+  if (networkState.startsWith("join failed")) return "Could not enter this Yard · see the reason below";
   if (networkState === "prediction backlog") return "Catching up…";
   return "Ready · share the same Run key with another player";
 }

@@ -84,8 +84,11 @@ async function startPair(run, prefix) {
 }
 
 async function closeAndWait(client, reason) {
-  if (client.ws.readyState === WebSocket.OPEN) client.ws.close(1000, reason);
-  await waitFor(() => client.state.closed, `${client.playerId} close`);
+  // Node's experimental WebSocket close callback is not the lifecycle authority.
+  // Request transport close, then let the following Durable Object directory poll
+  // prove when the server has actually detached the socket.
+  try { client.ws.close(1000, reason); } catch {}
+  await sleep(80);
 }
 
 async function rejectResume(run, playerId, token, label) {

@@ -124,13 +124,18 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
       const protectedReserved = protectedReservedSlots.length;
       const softReserved = softReservedSlots.length;
       const active = status.protocolStartTick !== null && status.protocolStartTick !== undefined;
-      const replacementCapable = active && softReserved > 0 && protectedReserved === 0 && connected < WORLD_V0_PUBLIC_ROOM_CAPACITY;
+      const fullyVacantResumable = active && connected === 0 && reserved > 0;
+      const replacementCapable = active && connected < WORLD_V0_PUBLIC_ROOM_CAPACITY && (
+        fullyVacantResumable || (softReserved > 0 && protectedReserved === 0)
+      );
       const state = active
-        ? protectedReserved > 0
-          ? "live-protected-reserved"
-          : softReserved > 0
-            ? "live-soft-reserved"
-            : "live"
+        ? fullyVacantResumable
+          ? "live-vacant-resumable"
+          : protectedReserved > 0
+            ? "live-protected-reserved"
+            : softReserved > 0
+              ? "live-soft-reserved"
+              : "live"
         : occupancy > 0
           ? reserved > 0 ? "waiting-reserved" : "waiting"
           : "empty";
@@ -179,7 +184,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
   }));
 
   return new Response(JSON.stringify({
-    revision: "world-v0-public-room-directory-r3-soft-reservation",
+    revision: "world-v0-public-room-directory-r4-vacant-capacity",
     generatedAt: new Date().toISOString(),
     rooms,
   }), {

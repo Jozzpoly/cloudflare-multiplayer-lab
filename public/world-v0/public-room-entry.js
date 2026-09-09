@@ -1,5 +1,5 @@
-export const WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION = "world-v0-public-room-entry-r2-soft-reservation";
-export const WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION = "world-v0-public-room-directory-r3-soft-reservation";
+export const WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION = "world-v0-public-room-entry-r3-presence-capacity";
+export const WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION = "world-v0-public-room-directory-r4-vacant-capacity";
 export const WORLD_V0_PUBLIC_ROOM_IDS = Object.freeze(["yard-1", "yard-2", "yard-3"]);
 
 function normalizedSlotList(value, capacity, id, label) {
@@ -78,7 +78,13 @@ export function normalizeWorldV0PublicRoomDirectory(payload) {
   });
 }
 
-export function worldV0PublicRoomPresentation(room, { resumable = false } = {}) {
+export function worldV0LocalSessionPresence(room, session) {
+  if (!room || !session || room.worldEpoch !== session.worldEpoch || room.id !== session.runKey) return "none";
+  if (!Number.isInteger(session.slot) || !Array.isArray(room.reservedSlots)) return "unknown";
+  return room.reservedSlots.includes(session.slot) ? "resumable" : "active";
+}
+
+export function worldV0PublicRoomPresentation(room, { resumable = false, session = null } = {}) {
   if (!room || room.occupancy === null || room.state === "unavailable") {
     return { status: "Unavailable", action: "Unavailable", joinable: false, tone: "unavailable" };
   }
@@ -86,16 +92,35 @@ export function worldV0PublicRoomPresentation(room, { resumable = false } = {}) 
   const connected = Number.isInteger(room.connected) ? room.connected : room.occupancy;
   const protectedReserved = Number.isInteger(room.protectedReserved) ? room.protectedReserved : 0;
   const softReserved = Number.isInteger(room.softReserved) ? room.softReserved : 0;
-  if (resumable) {
+  const localPresence = session ? worldV0LocalSessionPresence(room, session) : (resumable ? "resumable" : "none");
+  if (localPresence === "active") {
     return {
-      status: protectedReserved > 0
-        ? `${connected}/${room.capacity} online · your place protected`
-        : softReserved > 0
-          ? `${connected}/${room.capacity} online · your session can resume`
-          : `${occupancy} · Your session`,
+      status: `${connected}/${room.capacity} online · your session is active`,
+      action: "Take over",
+      joinable: true,
+      tone: "resume",
+    };
+  }
+  if (localPresence === "resumable" || localPresence === "unknown") {
+    return {
+      status: connected === 0 && room.replacementCapable
+        ? `${connected}/${room.capacity} online · your session can resume`
+        : protectedReserved > 0
+          ? `${connected}/${room.capacity} online · your place protected`
+          : softReserved > 0
+            ? `${connected}/${room.capacity} online · your session can resume`
+            : `${occupancy} · Your session`,
       action: "Resume",
       joinable: true,
       tone: "resume",
+    };
+  }
+  if (connected === 0 && room.reserved > 0 && room.replacementCapable) {
+    return {
+      status: `${connected}/${room.capacity} online · room available`,
+      action: "Enter",
+      joinable: true,
+      tone: "soft",
     };
   }
   if (protectedReserved > 0) {

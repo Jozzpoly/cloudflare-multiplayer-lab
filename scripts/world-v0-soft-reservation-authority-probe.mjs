@@ -29,7 +29,7 @@ async function room() {
   const response = await fetch(`${BASE}/api/world-v0/rooms?r=${Date.now()}`, { cache: "no-store" });
   assert(response.ok, `room directory HTTP ${response.status}`);
   const payload = await response.json();
-  assert(payload.revision === "world-v0-public-room-directory-r3-soft-reservation", `directory revision ${payload.revision}`);
+  assert(payload.revision === "world-v0-public-room-directory-r4-vacant-capacity", `directory revision ${payload.revision}`);
   const found = payload.rooms?.find((candidate) => candidate.id === RUN);
   assert(found, `room ${RUN} missing`);
   return found;

@@ -16,6 +16,7 @@ import {
   WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION,
   WORLD_V0_PUBLIC_ROOM_IDS,
   normalizeWorldV0PublicRoomDirectory,
+  worldV0LocalSessionPresence,
   worldV0PublicRoomPresentation,
 } from "./public-room-entry.js";
 import {
@@ -149,6 +150,11 @@ function resumableSessionForRoom(room) {
   return worldV0StoredSessionMatchesRoom(stored, room) ? stored : null;
 }
 
+function localSessionStateForRoom(room) {
+  const session = resumableSessionForRoom(room);
+  return session ? worldV0LocalSessionPresence(room, session) : "none";
+}
+
 function publicRoomSnapshot() {
   return {
     revision: WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION,
@@ -169,10 +175,16 @@ function publicRoomSnapshot() {
       connected: room.connected,
       reserved: room.reserved,
       reservedSlots: [...room.reservedSlots],
+      protectedReserved: room.protectedReserved,
+      protectedReservedSlots: [...room.protectedReservedSlots],
+      softReserved: room.softReserved,
+      softReservedSlots: [...room.softReservedSlots],
+      replacementCapable: room.replacementCapable,
       capacity: room.capacity,
       state: room.state,
       joinable: room.joinable,
       resumableHere: Boolean(resumableSessionForRoom(room)),
+      localSessionState: localSessionStateForRoom(room),
     })),
     advancedFallbackAvailable: entryAdvanced.contains(runInput) && entryAdvanced.contains(inspectButton),
   };
@@ -183,7 +195,7 @@ function renderPublicRooms() {
   publicRoomList.replaceChildren();
   for (const room of publicRoomState.rooms) {
     const resumableSession = resumableSessionForRoom(room);
-    const presentation = worldV0PublicRoomPresentation(room, { resumable: Boolean(resumableSession) });
+    const presentation = worldV0PublicRoomPresentation(room, { resumable: Boolean(resumableSession), session: resumableSession });
     const button = document.createElement("button");
     button.type = "button";
     button.className = "public-room-card";

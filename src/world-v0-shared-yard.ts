@@ -391,7 +391,16 @@ export class SharedYardV0 extends DurableObject<Env> {
       // so an authority-valid fresh join preempts only via an explicit recoverable epoch
       // handoff. Any still-connected old peer then uses the existing same-room recovery
       // path and returns as a fresh actor in the new epoch.
-      if ((this.protocolStartTick !== null || this.loopTimer) && this.softReservedPlayers().length > 0 && this.protectedReservedPlayers().length === 0) {
+      const activeEpoch = this.protocolStartTick !== null || Boolean(this.loopTimer);
+      const fullyVacantActiveEpoch = activeEpoch && this.players.size > 0 && this.connectedPlayerCount() === 0;
+      const softOnlyReplacement = activeEpoch && this.softReservedPlayers().length > 0 && this.protectedReservedPlayers().length === 0;
+      if (fullyVacantActiveEpoch) {
+        // Private ActorSession resume authority may survive while the epoch is unused,
+        // but zero connected humans never own scarce public room capacity. The first
+        // authority-valid request wins: a Resume request is handled above, while a
+        // fresh request retires the fully dormant epoch before creating a new one.
+        this.endEpoch("all_players_disconnected_replaced");
+      } else if (softOnlyReplacement) {
         this.endEpoch("peer_left_restart_required");
       }
       // Fresh actors otherwise may only join before the run starts. Reconnects use the private token above.

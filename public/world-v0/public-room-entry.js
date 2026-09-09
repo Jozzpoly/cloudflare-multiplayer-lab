@@ -1,4 +1,4 @@
-export const WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION = "world-v0-public-room-entry-r1-v2-slot-presence";
+export const WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION = "world-v0-public-room-entry-r1-v3-live-rebind";
 export const WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION = "world-v0-public-room-directory-r2-slot-presence";
 export const WORLD_V0_PUBLIC_ROOM_IDS = Object.freeze(["yard-1", "yard-2", "yard-3"]);
 
@@ -61,7 +61,7 @@ export function worldV0PublicRoomPresentation(room, { resumable = false } = {}) 
   if (resumable) {
     return {
       status: hasReserved
-        ? `${connected}/${room.capacity} online · your place reserved`
+        ? `${connected}/${room.capacity} online · Your session`
         : `${occupancy} · Your session`,
       action: "Resume",
       joinable: true,

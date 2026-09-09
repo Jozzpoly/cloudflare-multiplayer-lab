@@ -4,7 +4,7 @@ on:
   push:
     branches: [world-v0-foundation-stabilization-closure]
     paths:
-      - scripts/apply-world-v0-vacant-capacity-refinement.mjs
+      - scripts/apply-world-v0-vacant-capacity-refinement-v2.mjs
 
 permissions:
   contents: write
@@ -34,7 +34,7 @@ jobs:
       - name: Apply fail-closed refinement
         run: |
           set -euo pipefail
-          node scripts/apply-world-v0-vacant-capacity-refinement.mjs
+          node scripts/apply-world-v0-vacant-capacity-refinement-v2.mjs
           git diff --check
           node --check public/world-v0/public-room-entry.js
           node --check public/world-v0/friend-ready.js

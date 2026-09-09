@@ -1,0 +1,61 @@
+name: World V0 Resumed-Stayer After DO Churn Remote
+
+on:
+  push:
+    branches: [world-v0-foundation-stabilization-closure]
+    paths:
+      - .github/workflows/world-v0-resumed-stayer-after-churn-remote.yml
+      - scripts/world-v0-remote-do-churn.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  churn-then-target:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Static apparatus checks
+        run: |
+          set -euo pipefail
+          node --check scripts/world-v0-remote-do-churn.mjs
+          node --check scripts/world-v0-resumed-stayer-handoff-remote-audit.mjs
+      - name: Churn the same isolated remote Durable Object
+        env:
+          MW_WORLD_V0_CHURN_BASE: https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev
+          MW_WORLD_V0_CHURN_RUN: cr-${{ github.run_id }}
+          MW_WORLD_V0_CHURN_CYCLES: 12
+        run: |
+          set -euo pipefail
+          echo "CHURN_RANDOM_RUN=$MW_WORLD_V0_CHURN_RUN"
+          echo "PUBLIC_YARDS_UNTOUCHED=yard-1,yard-2,yard-3"
+          timeout 150s node scripts/world-v0-remote-do-churn.mjs | tee world-v0-remote-do-churn.log
+          grep -q WORLD_V0_REMOTE_DO_CHURN_PASS world-v0-remote-do-churn.log
+      - name: Run Owner-shape resumed-stayer sequence on the churned DO
+        env:
+          MW_WORLD_V0_RSH_REMOTE_BASE: https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev
+          MW_WORLD_V0_RSH_REMOTE_RUN: cr-${{ github.run_id }}
+          MW_WORLD_V0_RSH_REMOTE_SOFT_WAIT_MS: 22000
+          MW_WORLD_V0_RSH_REMOTE_OBSERVE_MS: 15000
+          MW_WORLD_V0_RSH_REMOTE_OUTPUT: world-v0-resumed-stayer-after-churn.json
+        run: |
+          set -euo pipefail
+          timeout 210s node scripts/world-v0-resumed-stayer-handoff-remote-audit.mjs | tee world-v0-resumed-stayer-after-churn.log
+          grep -q WORLD_V0_RESUMED_STAYER_HANDOFF_REMOTE_PASS world-v0-resumed-stayer-after-churn.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-resumed-stayer-after-churn-${{ github.run_id }}
+          path: |
+            world-v0-remote-do-churn.log
+            world-v0-resumed-stayer-after-churn.json
+            world-v0-resumed-stayer-after-churn.log
+          if-no-files-found: warn
+          retention-days: 30

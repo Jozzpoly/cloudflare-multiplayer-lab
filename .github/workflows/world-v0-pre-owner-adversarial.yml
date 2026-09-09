@@ -1,0 +1,122 @@
+name: World V0 Pre-Owner Adversarial Validation
+
+on:
+  push:
+    branches: [world-v0-foundation-stabilization-closure]
+    paths:
+      - .github/workflows/world-v0-pre-owner-adversarial.yml
+      - scripts/world-v0-prestart-vacant-capacity-probe.mjs
+      - scripts/world-v0-keyboard-real-input-browser-audit.mjs
+      - scripts/world-v0-soft-preemption-browser-audit.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-pre-owner-adversarial
+  cancel-in-progress: true
+
+jobs:
+  red-team:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Static baseline and apparatus checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check
+          node --check scripts/world-v0-live-rebind-browser-audit.mjs
+          node --check scripts/world-v0-keyboard-real-input-browser-audit.mjs
+          node --check scripts/world-v0-soft-preemption-browser-audit.mjs
+          node --check scripts/world-v0-prestart-vacant-capacity-probe.mjs
+
+      - name: Start isolated local Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-pre-owner-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-pre-owner-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo WORLD_V0_PRE_OWNER_LOCAL_WORKER_READY
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-pre-owner-wrangler.log
+          exit 1
+
+      - name: Reprove same-owner live takeover in real Chromium
+        env:
+          MW_WORLD_V0_LIVE_REBIND_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_LIVE_REBIND_ROOM: yard-1
+          MW_WORLD_V0_LIVE_REBIND_OUTPUT: world-v0-pre-owner-live-rebind.json
+        run: |
+          set -euo pipefail
+          timeout 120s node scripts/world-v0-live-rebind-browser-audit.mjs | tee world-v0-pre-owner-live-rebind.log
+          grep -q WORLD_V0_LIVE_REBIND_PASS world-v0-pre-owner-live-rebind.log
+
+      - name: Prove physical WASD remains text input
+        env:
+          MW_WORLD_V0_KEYBOARD_REAL_BASE: http://127.0.0.1:8787
+        run: |
+          set -euo pipefail
+          timeout 90s node scripts/world-v0-keyboard-real-input-browser-audit.mjs | tee world-v0-pre-owner-keyboard.log
+          grep -q WORLD_V0_KEYBOARD_REAL_INPUT_PASS world-v0-pre-owner-keyboard.log
+
+      - name: Prove browser automatic recovery after soft preemption
+        env:
+          MW_WORLD_V0_SOFT_BROWSER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_SOFT_BROWSER_ROOM: yard-3
+          MW_WORLD_V0_SOFT_BROWSER_OUTPUT: world-v0-pre-owner-soft-browser.json
+        run: |
+          set -euo pipefail
+          timeout 150s node scripts/world-v0-soft-preemption-browser-audit.mjs | tee world-v0-pre-owner-soft-browser.log
+          grep -q WORLD_V0_SOFT_PREEMPTION_BROWSER_PASS world-v0-pre-owner-soft-browser.log
+
+      - name: Falsify zero-online prestart capacity ownership
+        env:
+          MW_WORLD_V0_PRESTART_VACANT_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_PRESTART_VACANT_ROOM: yard-2
+        run: |
+          set -euo pipefail
+          timeout 60s node scripts/world-v0-prestart-vacant-capacity-probe.mjs | tee world-v0-pre-owner-prestart-vacant.log
+          grep -q WORLD_V0_PRESTART_VACANT_CAPACITY_PASS world-v0-pre-owner-prestart-vacant.log
+
+      - name: Upload adversarial evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-pre-owner-adversarial-${{ github.run_id }}
+          path: |
+            world-v0-pre-owner-live-rebind.json
+            world-v0-pre-owner-live-rebind.log
+            world-v0-pre-owner-keyboard.log
+            world-v0-pre-owner-soft-browser.json
+            world-v0-pre-owner-soft-browser.log
+            world-v0-pre-owner-prestart-vacant.log
+            world-v0-pre-owner-wrangler.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-pre-owner-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-pre-owner-wrangler.pid)" 2>/dev/null || true
+          fi

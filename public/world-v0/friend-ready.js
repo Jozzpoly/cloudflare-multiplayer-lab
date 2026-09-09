@@ -273,13 +273,19 @@ async function resolveDirectLinkResume() {
 
   bootStatus.textContent = "Checking your previous Yard session…";
   enterButton.textContent = "Checking session…";
+  let authorityDisprovedStoredSession = false;
   for (let attempt = 0; attempt < 9; attempt += 1) {
     try {
       const rooms = await fetchPublicRooms();
       const room = rooms.find((candidate) => candidate.id === run);
       if (!room) break;
       if (room.worldEpoch !== stored.worldEpoch) {
-        if (room.state !== "unavailable") clearWorldV0StoredSession(run, stored.worldEpoch);
+        if (room.state === "unavailable") {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          continue;
+        }
+        clearWorldV0StoredSession(run, stored.worldEpoch);
+        authorityDisprovedStoredSession = true;
         break;
       }
       const resumable = worldV0StoredSessionMatchesRoom(stored, room);
@@ -302,6 +308,19 @@ async function resolveDirectLinkResume() {
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
+  }
+  if (!authorityDisprovedStoredSession) {
+    // A room-directory outage or unavailable status is not evidence that the private
+    // ActorSession token is stale. Keep the operation fail-closed: send the stored
+    // Resume authority and let the Durable Object validate it. A stale token can be
+    // rejected, but uncertainty must never silently downgrade into a fresh admission
+    // that could retire the user's still-recoverable zero-online epoch.
+    deepLinkResumeSession = stored;
+    callsignInput.value = stored.playerId;
+    renderHumanNameHelp();
+    enterButton.textContent = "Resume world";
+    bootStatus.textContent = "Previous Yard session found locally · Resume will verify it with the world";
+    return stored;
   }
   deepLinkResumeSession = null;
   enterButton.textContent = entryCopy.enterLabel;

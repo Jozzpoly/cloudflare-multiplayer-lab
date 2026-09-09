@@ -204,8 +204,9 @@ try {
   let resumed = null;
   try {
     resumed = await waitFor(async () => {
-      const session = await cdp.evaluate(page, `window.__sharedYardV0Session?.()`);
-      return session?.actorSessionId ? session : false;
+      const evidence = await cdp.evaluate(page, `window.__sharedYardV0Evidence?.()`);
+      const completed = evidence?.lifecycleEvents?.some((event) => event.type === "actor-resume-prestart-complete");
+      return evidence?.session?.actorSessionId && evidence?.identity?.worldEpoch === oldEpoch && completed ? evidence : false;
     }, "authority resume after directory outage", 12_000);
   } catch (error) {
     const postClick = await cdp.evaluate(page, `({
@@ -225,8 +226,12 @@ try {
     throw new Error(`${error instanceof Error ? error.message : String(error)} · preClick=${JSON.stringify(preClick)} · postClick=${JSON.stringify(postClick)} · authorityRoom=${JSON.stringify(authorityRoom)}`);
   }
 
-  assert(resumed.actorSessionId === aw.selfSessionId, `ActorSession changed after outage resume: ${JSON.stringify(resumed)}`);
-  assert(resumed.identity?.worldEpoch === oldEpoch || resumed.worldEpoch === oldEpoch, `WorldEpoch changed after outage resume: ${JSON.stringify(resumed)}`);
+  assert(resumed.session?.actorSessionId === aw.selfSessionId, `ActorSession changed after outage resume: ${JSON.stringify(resumed)}`);
+  assert(resumed.identity?.worldEpoch === oldEpoch, `WorldEpoch changed after outage resume: ${JSON.stringify(resumed)}`);
+  assert(resumed.lifecycleEvents?.some((event) => event.type === "actor-resume-prestart-complete"), `pre-start authority Resume completion missing: ${JSON.stringify(resumed.lifecycleEvents)}`);
+  const resumedRoom = await room();
+  assert(resumedRoom?.worldEpoch === oldEpoch, `directory epoch changed after outage Resume: ${JSON.stringify(resumedRoom)}`);
+  assert(resumedRoom?.connected === 1 && resumedRoom?.reserved === 1, `directory presence mismatch after outage Resume: ${JSON.stringify(resumedRoom)}`);
 
   console.log("WORLD_V0_DIRECT_RESUME_DIRECTORY_OUTAGE_PASS", JSON.stringify({
     room: ROOM,

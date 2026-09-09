@@ -248,8 +248,8 @@ try {
     status: document.querySelector("#boot-status")?.textContent || null,
     callsign: document.querySelector("#callsign")?.value || null,
   })`);
-  assert(activeProbe.entry?.directLinkResumable === false, `live ActorSession incorrectly resumable ${JSON.stringify(activeProbe)}`);
-  assert(activeProbe.entry?.enterLabel === "Enter world", `live ActorSession direct-link label ${activeProbe.entry?.enterLabel}`);
+  assert(activeProbe.entry?.directLinkResumable === true, `same-owner live ActorSession not offered R3 Resume ${JSON.stringify(activeProbe)}`);
+  assert(activeProbe.entry?.enterLabel === "Resume world", `same-owner live ActorSession direct-link label ${activeProbe.entry?.enterLabel}`);
   const peerDuringProbe = await evaluate(peerBrowser, peerPage, `window.__sharedYardV0Evidence()`);
   assert(peerDuringProbe.identity?.worldEpoch === original.worldEpoch, "active probe rotated WorldEpoch");
   assert(peerDuringProbe.session?.actorSessionId === original.actorSessionId, "active probe stole ActorSession");
@@ -282,8 +282,8 @@ try {
     status: document.querySelector("#boot-status")?.textContent || null,
     callsign: document.querySelector("#callsign")?.value || null,
   })`);
-  assert(mixedReservedProbe.entry?.directLinkResumable === false, `connected own slot incorrectly matched other reserved slot ${JSON.stringify(mixedReservedProbe)}`);
-  assert(mixedReservedProbe.entry?.enterLabel === "Enter world", `mixed reserved direct-link label ${mixedReservedProbe.entry?.enterLabel}`);
+  assert(mixedReservedProbe.entry?.directLinkResumable === true, `same-owner connected slot not offered R3 Resume during mixed reservation ${JSON.stringify(mixedReservedProbe)}`);
+  assert(mixedReservedProbe.entry?.enterLabel === "Resume world", `mixed reserved same-owner direct-link label ${mixedReservedProbe.entry?.enterLabel}`);
   const ownerDuringMixedProbe = await evaluate(ownerBrowser, ownerPage, `window.__sharedYardV0Evidence()`);
   assert(ownerDuringMixedProbe.session?.actorSessionId === ownerBefore.session.actorSessionId, "mixed reserved probe stole connected owner ActorSession");
   assert(!String(ownerDuringMixedProbe.networkState || "").startsWith("closed"), `mixed reserved probe closed owner ${ownerDuringMixedProbe.networkState}`);

@@ -391,7 +391,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       // so an authority-valid fresh join preempts only via an explicit recoverable epoch
       // handoff. Any still-connected old peer then uses the existing same-room recovery
       // path and returns as a fresh actor in the new epoch.
-      if ((this.protocolStartTick !== null || this.loopTimer) && this.softReservedPlayers().length > 0) {
+      if ((this.protocolStartTick !== null || this.loopTimer) && this.softReservedPlayers().length > 0 && this.protectedReservedPlayers().length === 0) {
         this.endEpoch("peer_left_restart_required");
       }
       // Fresh actors otherwise may only join before the run starts. Reconnects use the private token above.

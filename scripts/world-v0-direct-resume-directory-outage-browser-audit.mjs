@@ -174,11 +174,57 @@ try {
   assert(entry.directLinkResumable === true, `valid local Resume authority was silently downgraded during directory outage: ${JSON.stringify(entry)}`);
   assert(entry.enterLabel === "Resume world", `outage resume label drift: ${JSON.stringify(entry)}`);
 
+  const preClick = await cdp.evaluate(page, `({
+    entry: window.__sharedYardV0FriendEntry?.(),
+    session: window.__sharedYardV0Session?.() || null,
+    evidence: window.__sharedYardV0Evidence?.() || null,
+    buttonDisabled: Boolean(document.querySelector("#enter")?.disabled),
+    callsign: document.querySelector("#callsign")?.value || null,
+    run: document.querySelector("#run")?.value || null,
+    status: document.querySelector("#boot-status")?.textContent || null,
+    notice: document.querySelector("#notice")?.textContent || null,
+    resumeIntentBefore: sessionStorage.getItem("shared-yard-v0-resume-intent-v1"),
+  })`);
+  assert(preClick.buttonDisabled === false, `Resume button unexpectedly disabled: ${JSON.stringify(preClick)}`);
+  assert(preClick.callsign === stored.playerId && preClick.run === ROOM, `Resume identity UI drift: ${JSON.stringify(preClick)}`);
+
+  await cdp.evaluate(page, `(() => {
+    window.__directOutageClickTrace = [];
+    document.querySelector("#enter")?.addEventListener("click", () => {
+      window.__directOutageClickTrace.push({
+        at: performance.now(),
+        resumeIntentAtCapture: sessionStorage.getItem("shared-yard-v0-resume-intent-v1"),
+        callsign: document.querySelector("#callsign")?.value || null,
+        run: document.querySelector("#run")?.value || null,
+      });
+    }, { capture: true });
+  })()`);
+
   await cdp.evaluate(page, `document.querySelector("#enter").click()`);
-  const resumed = await waitFor(async () => {
-    const session = await cdp.evaluate(page, `window.__sharedYardV0Session?.()`);
-    return session?.actorSessionId ? session : false;
-  }, "authority resume after directory outage");
+  let resumed = null;
+  try {
+    resumed = await waitFor(async () => {
+      const session = await cdp.evaluate(page, `window.__sharedYardV0Session?.()`);
+      return session?.actorSessionId ? session : false;
+    }, "authority resume after directory outage", 12_000);
+  } catch (error) {
+    const postClick = await cdp.evaluate(page, `({
+      entry: window.__sharedYardV0FriendEntry?.() || null,
+      session: window.__sharedYardV0Session?.() || null,
+      evidence: window.__sharedYardV0Evidence?.() || null,
+      clickTrace: window.__directOutageClickTrace || [],
+      resumeIntentAfter: sessionStorage.getItem("shared-yard-v0-resume-intent-v1"),
+      callsign: document.querySelector("#callsign")?.value || null,
+      run: document.querySelector("#run")?.value || null,
+      status: document.querySelector("#boot-status")?.textContent || null,
+      notice: document.querySelector("#notice")?.textContent || null,
+      bootClass: document.querySelector("#boot")?.className || null,
+    })`);
+    let authorityRoom = null;
+    try { authorityRoom = await room(); } catch (roomError) { authorityRoom = { error: roomError instanceof Error ? roomError.message : String(roomError) }; }
+    throw new Error(`${error instanceof Error ? error.message : String(error)} · preClick=${JSON.stringify(preClick)} · postClick=${JSON.stringify(postClick)} · authorityRoom=${JSON.stringify(authorityRoom)}`);
+  }
+
   assert(resumed.actorSessionId === aw.selfSessionId, `ActorSession changed after outage resume: ${JSON.stringify(resumed)}`);
   assert(resumed.identity?.worldEpoch === oldEpoch || resumed.worldEpoch === oldEpoch, `WorldEpoch changed after outage resume: ${JSON.stringify(resumed)}`);
 

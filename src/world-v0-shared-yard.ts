@@ -219,6 +219,8 @@ export class SharedYardV0 extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+      const protectedReservedSlots = this.protectedReservedPlayers().map((player) => player.slot);
+      const softReservedSlots = this.softReservedPlayers().map((player) => player.slot);
       return json({
         ok: this.failure === null,
         revision: WORLD_V0_SERVER_REVISION,
@@ -231,11 +233,12 @@ export class SharedYardV0 extends DurableObject<Env> {
         players: this.players.size,
         connectedPlayers: this.connectedPlayerCount(),
         // Public presence metadata: slot numbers are simulation topology, not reconnect authority.
-        // This lets the room directory prove whether a browser's own stored slot is the
-        // disconnected/reserved one without exposing player IDs, session IDs, or resume tokens.
-        reservedSlots: this.sortedPlayers()
-          .filter((player) => player.socket?.readyState !== WebSocket.OPEN)
-          .map((player) => player.slot),
+        // Protected reservations still block admission; soft reservations remain resumable but
+        // become preemptible on an authority-valid fresh join after the R1 recovery horizon.
+        reservedSlots: [...protectedReservedSlots, ...softReservedSlots].sort((a, b) => a - b),
+        protectedReservedSlots,
+        softReservedSlots,
+        replaceableReservations: softReservedSlots.length,
         stalePlayers: [...this.players.values()].filter((player) =>
           player.input.stats().currentMissingStreak >= WORLD_V0_TIMING.inputLeaseMissingTicks
         ).length,
@@ -381,7 +384,17 @@ export class SharedYardV0 extends DurableObject<Env> {
       if (!player || player.playerId !== playerId) return json({ ok: false, error: "invalid_resume_token" }, 403);
       resumed = true;
     } else {
-      // Fresh actors may only join before the run starts. Reconnects use the private token above.
+      // A disconnected ActorSession keeps exact resume authority through the existing
+      // R1 recovery horizon. After that it becomes a soft reservation: still resumable
+      // while unclaimed, but no longer allowed to permanently consume public capacity.
+      // World V0 cannot safely replace one actor inside the fixed deterministic epoch,
+      // so an authority-valid fresh join preempts only via an explicit recoverable epoch
+      // handoff. Any still-connected old peer then uses the existing same-room recovery
+      // path and returns as a fresh actor in the new epoch.
+      if ((this.protocolStartTick !== null || this.loopTimer) && this.softReservedPlayers().length > 0) {
+        this.endEpoch("peer_left_restart_required");
+      }
+      // Fresh actors otherwise may only join before the run starts. Reconnects use the private token above.
       if (this.protocolStartTick !== null || this.loopTimer) return json({ ok: false, error: "world_v0_run_already_active" }, 409);
       if (this.players.size >= MAX_PLAYERS) return json({ ok: false, error: "world_v0_full" }, 503);
       if (!this.world) this.createWorld(requestedWorldId);
@@ -876,6 +889,22 @@ export class SharedYardV0 extends DurableObject<Env> {
       if (player.socket?.readyState === WebSocket.OPEN) count += 1;
     }
     return count;
+  }
+
+  private disconnectedPlayers(): SharedYardPlayer[] {
+    return this.sortedPlayers().filter((player) => player.socket?.readyState !== WebSocket.OPEN);
+  }
+
+  private softReservedPlayers(): SharedYardPlayer[] {
+    if (this.protocolStartTick === null) return [];
+    return this.disconnectedPlayers().filter((player) =>
+      player.input.stats().currentMissingStreak >= WORLD_V0_LIFECYCLE.allDisconnectedGraceTicks
+    );
+  }
+
+  private protectedReservedPlayers(): SharedYardPlayer[] {
+    const soft = new Set(this.softReservedPlayers().map((player) => player.sessionId));
+    return this.disconnectedPlayers().filter((player) => !soft.has(player.sessionId));
   }
 
   private clearPreStartAmbiguityTimer(): void {

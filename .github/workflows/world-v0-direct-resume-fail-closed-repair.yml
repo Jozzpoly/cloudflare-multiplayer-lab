@@ -32,6 +32,7 @@ jobs:
           git diff --check
           node --check public/world-v0/friend-ready.js
           node --check scripts/world-v0-direct-link-resume-browser-audit.mjs
+          node --check scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs
           npm run check
       - name: Start isolated local Workerd
         run: |
@@ -66,7 +67,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/world-v0/friend-ready.js scripts/world-v0-direct-link-resume-browser-audit.mjs
+          git add public/world-v0/friend-ready.js scripts/world-v0-direct-link-resume-browser-audit.mjs scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs
           git diff --cached --quiet && { echo "No qualified change"; exit 1; }
           git commit -m "Keep direct Resume fail-closed without directory"
           git push origin HEAD:world-v0-foundation-stabilization-closure

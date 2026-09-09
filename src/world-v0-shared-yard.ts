@@ -392,13 +392,13 @@ export class SharedYardV0 extends DurableObject<Env> {
       // handoff. Any still-connected old peer then uses the existing same-room recovery
       // path and returns as a fresh actor in the new epoch.
       const activeEpoch = this.protocolStartTick !== null || Boolean(this.loopTimer);
-      const fullyVacantActiveEpoch = activeEpoch && this.players.size > 0 && this.connectedPlayerCount() === 0;
+      const fullyVacantAssembledEpoch = this.players.size === MAX_PLAYERS && this.connectedPlayerCount() === 0;
       const softOnlyReplacement = activeEpoch && this.softReservedPlayers().length > 0 && this.protectedReservedPlayers().length === 0;
-      if (fullyVacantActiveEpoch) {
-        // Private ActorSession resume authority may survive while the epoch is unused,
-        // but zero connected humans never own scarce public room capacity. The first
-        // authority-valid request wins: a Resume request is handled above, while a
-        // fresh request retires the fully dormant epoch before creating a new one.
+      if (fullyVacantAssembledEpoch) {
+        // Private ActorSession resume authority may survive while an assembled 2P epoch
+        // is unused, including bounded pre-start ambiguity. Zero connected humans never
+        // own scarce public capacity: Resume is handled above and wins if it arrives
+        // first; a fresh request retires the dormant epoch and starts a new waiting room.
         this.endEpoch("all_players_disconnected_replaced");
       } else if (softOnlyReplacement) {
         this.endEpoch("peer_left_restart_required");

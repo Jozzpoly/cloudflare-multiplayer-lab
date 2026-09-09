@@ -58,4 +58,31 @@ replaceAuditExact(
 );
 
 writeFileSync(auditPath, audit);
+
+// The outage falsifier originally inspected __sharedYardV0Session().actorSessionId,
+// but that convenience wrapper does not expose ActorSession identity at top level in
+// the pre-start shell. Authority evidence does. Require the actual accepted Resume
+// identity plus the explicit pre-start-complete lifecycle marker and directory state.
+const outagePath = "scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs";
+let outage = readFileSync(outagePath, "utf8");
+function replaceOutageExact(oldText, newText, label) {
+  const first = outage.indexOf(oldText);
+  if (first < 0) throw new Error(`${label}: old text missing`);
+  if (outage.indexOf(oldText, first + oldText.length) >= 0) throw new Error(`${label}: old text not unique`);
+  outage = outage.slice(0, first) + newText + outage.slice(first + oldText.length);
+}
+
+replaceOutageExact(
+  `      const session = await cdp.evaluate(page, \`window.__sharedYardV0Session?.()\`);\n      return session?.actorSessionId ? session : false;`,
+  `      const evidence = await cdp.evaluate(page, \`window.__sharedYardV0Evidence?.()\`);\n      return evidence?.session?.actorSessionId ? evidence : false;`,
+  "outage authority evidence source"
+);
+
+replaceOutageExact(
+  `  assert(resumed.actorSessionId === aw.selfSessionId, \`ActorSession changed after outage resume: \${JSON.stringify(resumed)}\`);\n  assert(resumed.identity?.worldEpoch === oldEpoch || resumed.worldEpoch === oldEpoch, \`WorldEpoch changed after outage resume: \${JSON.stringify(resumed)}\`);`,
+  `  assert(resumed.session?.actorSessionId === aw.selfSessionId, \`ActorSession changed after outage resume: \${JSON.stringify(resumed)}\`);\n  assert(resumed.identity?.worldEpoch === oldEpoch, \`WorldEpoch changed after outage resume: \${JSON.stringify(resumed)}\`);\n  assert(resumed.lifecycleEvents?.some((event) => event.type === "actor-resume-prestart-complete"), \`pre-start authority Resume completion missing: \${JSON.stringify(resumed.lifecycleEvents)}\`);\n  const resumedRoom = await room();\n  assert(resumedRoom?.worldEpoch === oldEpoch, \`directory epoch changed after outage Resume: \${JSON.stringify(resumedRoom)}\`);\n  assert(resumedRoom?.connected === 1 && resumedRoom?.reserved === 1, \`directory presence mismatch after outage Resume: \${JSON.stringify(resumedRoom)}\`);`,
+  "outage accepted Resume assertions"
+);
+
+writeFileSync(outagePath, outage);
 console.log("WORLD_V0_DIRECT_RESUME_FAIL_CLOSED_REPAIR_APPLIED");

@@ -2,7 +2,7 @@ name: World V0 Current Validation
 
 on:
   push:
-    branches: [main, world-v0-session-continuity-r1-exec]
+    branches: [main, world-v0-session-continuity-r1-exec, world-v0-foundation-stabilization-closure]
     paths:
       - .github/workflows/world-v0-current-validation.yml
       - .github/workflows/world-v0-closure-current-validation.yml
@@ -70,7 +70,9 @@ jobs:
           grep -q 'connectedPlayerCount() !== MAX_PLAYERS' src/world-v0-shared-yard.ts
           grep -q 'WORLD_V0_SESSION_CONTINUITY_REVISION' public/world-v0/session-continuity.js
           grep -q 'takeWorldV0ResumeIntent' public/world-v0/app.js
-          grep -q 'live-reserved' src/world-slice-entry.ts
+          grep -q 'live-protected-reserved' src/world-slice-entry.ts
+          grep -q 'live-soft-reserved' src/world-slice-entry.ts
+          grep -q 'softReservedPlayers' src/world-v0-shared-yard.ts
           test ! -e .github/workflows/world-v0-closure-prestart-ambiguity-repair.yml
           test ! -e .github/workflows/world-v0-closure-prestart-live-start-repair.yml
           test ! -e .github/workflows/world-v0-closure-prestart-partial-resume-falsifier.yml

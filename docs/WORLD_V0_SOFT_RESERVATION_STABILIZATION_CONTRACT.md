@@ -1,140 +1,107 @@
-# World V0 — Soft Reservation Stabilization Contract
+# World V0 — Session Presence / Capacity Stabilization Contract
 
-Status: **DESIGNED FOR STABILIZATION / NOT YET IMPLEMENTED**  
-Date: **2026-09-09**  
+Status: **IMPLEMENTED BASELINE / OWNER REFINEMENT ACTIVE**  
+Recorded: **2026-09-09**  
 Parent direction: `docs/WORLD_V0_FOUNDATION_STABILIZATION_DIRECTION.md`
 
-## Problem recovered from Owner stress testing
+## Purpose
 
-R1 correctly separated ActorSession identity from WebSocket transport, but the public-room model currently counts every disconnected ActorSession as occupied capacity for as long as the same two-player WorldEpoch remains alive.
+This contract closes the remaining public-room/session-lifecycle debt without redesigning the fixed deterministic 2-player simulation. It separates three concepts that must not be treated as the same thing:
 
-That creates an unintended capacity leak: a small number of browser profiles can accumulate disconnected ActorSessions across Yard 1/2/3 and prevent unrelated players from using the public rooms.
+1. **active presence** — a currently connected player;
+2. **private resume authority** — possession of the valid ActorSession resume token for the current WorldEpoch;
+3. **public capacity rights** — whether an absent ActorSession is allowed to prevent a different player from entering the Yard.
 
-The Owner explicitly wants the opposite product property: a player may retain a useful right to return, but that dormant right must not indefinitely prevent other people from playing.
+Private resume authority is not itself a public capacity reservation.
 
-## Constraint discovered by architecture audit
+## Fixed constraints
 
-The current World V0 run is deliberately a fixed two-actor deterministic simulation:
+This stabilization does **not** introduce dynamic roster mutation, 3+ players, live actor hot-swap, persistence, account identity, or a new physics/protocol topology.
 
-- `actor:0` and `actor:1` are part of the fixed NetEntity order;
-- browser prediction/history maps actor bodies through ActorSession IDs;
-- authority consumed-input records are ActorSession keyed;
-- a running client assumes exactly `self + one remote` actor;
-- state guards cover the fixed two-actor body topology.
+World V0 remains a fixed two-actor deterministic WorldEpoch with `actor:0` and `actor:1`. If a new human must replace an absent actor, the safe boundary is a new WorldEpoch rather than mutating the running fixed topology.
 
-Replacing one ActorSession in-place inside a live epoch would therefore be a new dynamic-roster architecture, not a stabilization patch. It is deferred to the later 3+ / generalized multiplayer frontier.
-
-## Stabilization model
-
-Use **protected reconnect grace -> soft reservation -> demand-driven epoch handoff**.
+## Presence states
 
 ### Active
 
-A connected ActorSession occupies room capacity normally.
+The ActorSession owns an open WebSocket and consumes one public player place.
 
 ### Protected reconnect grace
 
-When an ActorSession transport disappears, keep its exact resume authority protected for the existing bounded R1 recovery horizon.
+An ActorSession has disconnected while at least one peer remains connected. During the existing R1 reconnect horizon its identity/state remains resumable and its public place is protected from unrelated replacement.
 
-During this window:
-
-- the private resume token can reclaim the exact ActorSession;
-- another browser profile cannot steal it;
-- a fresh unrelated join must not evict it yet;
-- the room may temporarily advertise the seat as protected/reserved.
-
-Reuse the existing World V0 recovery horizon rather than inventing a shorter timeout that would undermine ActorSession recovery.
+This protects a still-live shared session from being rotated because one peer briefly refreshed, lost transport, or changed tabs.
 
 ### Soft reservation
 
-After the protected reconnect horizon expires, do **not** immediately destroy the ActorSession merely because nobody has requested the capacity.
+With at least one peer still connected, a disconnected ActorSession becomes soft after the existing protection horizon. The private owner may still resume it if no replacement request has won, but an unrelated authority-valid fresh join may rotate the fixed WorldEpoch through the existing demand-driven handoff.
 
-Instead:
+### Fully vacant resumable epoch
 
-- the dormant session may still be resumed if it remains unclaimed;
-- it no longer has the right to block an unrelated fresh join;
-- the public room directory should expose the room as available through a soft reservation / replacement-capable state.
+If an already-started WorldEpoch has **zero connected players**, its ActorSessions and exact state may remain alive for the existing bounded R1 resume window, but they no longer own scarce public capacity.
 
-This preserves useful late Resume without creating permanent capacity ownership.
+The room is publicly joinable immediately even when the preserved ActorSessions are still technically inside their private protected-resume horizon.
 
-### Demand-driven preemption
+This is the critical Owner refinement: **zero humans online must not mean a publicly blocked Yard.**
 
-If a fresh unrelated player requests a Yard containing replaceable soft reservation(s), the current fixed-2P implementation must **not** mutate one actor identity inside the running deterministic epoch.
+## First valid request wins
 
-Instead perform a controlled WorldEpoch handoff:
+A fully vacant resumable epoch is retained lazily until somebody actually asks for it.
 
-1. end the old epoch with an explicit recoverable reason such as `peer_left_restart_required`;
-2. invalidate the old epoch's ActorSession tokens by retiring that epoch;
-3. accept the new player into a fresh epoch for the same logical Yard;
-4. any still-connected old peer uses the existing room-recovery path to re-enter the same logical Yard as a fresh actor;
-5. the new pair starts only after normal two-player ready/start qualification.
+- If a valid private Resume request arrives first, the old WorldEpoch remains and that ActorSession resumes exactly.
+- If an unrelated valid fresh-entry request arrives first, the old fully vacant WorldEpoch is retired and a new waiting WorldEpoch is created in the same logical Yard.
+- Resume tokens belonging to the retired epoch then fail closed.
 
-If nobody from the old epoch remains connected, the fresh requester simply starts the new waiting room.
+This preserves close-tab -> reopen -> exact Resume when nobody else needed the Yard, without allowing abandoned sessions to monopolize public capacity.
 
-## Why demand-driven handoff is preferred over a fixed expiry
+## One-connected-peer invariant
 
-A fixed rule such as “reservation dies after 20 seconds” throws away useful continuity even when nobody needs the seat.
+The Owner refinement does **not** remove R1 protection when another human is still connected.
 
-Demand-driven handoff provides the stronger product semantics:
+For `connected > 0`:
 
-- return later if the place is still unused;
-- do not block friends/strangers indefinitely if they actually want to play;
-- preserve current fixed deterministic topology until dynamic roster is deliberately designed later.
+`active -> protected reconnect grace -> soft reservation -> demand-driven epoch handoff`
 
-## Race policy
+A newly disconnected peer remains non-preemptible during the protected horizon. After the horizon, soft-only missing capacity may be replaced through epoch rotation. A connected player is never silently hot-swapped out of the fixed epoch.
 
-First authority-valid request wins.
+## Multi-tab / local-history semantics
 
-- A valid private resume token arriving before preemption reclaims the existing ActorSession.
-- A fresh join arriving after the reservation becomes replaceable may rotate the epoch and claim capacity.
-- A stale resume token presented after epoch rotation must fail closed and the client should recover to ordinary entry rather than report a generic network failure.
+The browser may deliberately retain one private ActorSession record per Yard. Multiple stored Yard records are not themselves a defect.
 
-No active connected player may be silently evicted from the logical Yard without receiving the explicit recoverable epoch-end transition.
+The room list must distinguish:
 
-## Public directory semantics
+- **active elsewhere** — the stored session matches the current WorldEpoch, but its slot is not present in the room's `reservedSlots`; the ActorSession is already connected, usually in another tab;
+- **resumable here** — the stored session matches the current WorldEpoch and its slot is in `reservedSlots`; the ActorSession is disconnected and may be resumed while that epoch still exists.
 
-The directory must stop equating every disconnected ActorSession with permanently unavailable capacity.
+A same-owner live takeover remains legal: presenting an active session in another tab must not remove the private-token rebound behavior. A foreign browser without the token must remain unable to steal it.
 
-It should be able to distinguish at least:
+## Required public-directory truth
 
-- connected capacity;
-- protected reconnect reservation;
-- replaceable/soft reservation;
-- ordinary free capacity.
+The public directory must expose enough state to distinguish:
 
-A fresh user:
+- connected players;
+- disconnected/reserved ActorSessions;
+- protected vs soft disconnected slots;
+- a fully vacant but resumable epoch that is nevertheless public-capacity replaceable.
 
-- cannot enter a fully-connected active 2P run;
-- cannot preempt a protected reservation;
-- can enter when capacity is genuinely free;
-- can request a handoff when the only blocker is replaceable soft reservation.
+`occupancy` remains ActorSessions retained in the current WorldEpoch; it must not be interpreted as the number of humans currently online. `connected` is the live-presence count.
 
-A browser holding the matching private ActorSession token may see `Resume` while that epoch/session still exists, including when its old transport is still connected (same-owner live rebound).
+## Required causal cases
 
-## Required evidence before qualification
+Before this refinement is accepted, evidence must prove all of the following:
 
-Automated causal cases:
+1. two connected players -> third fresh join rejected;
+2. one connected + one newly disconnected protected peer -> third fresh join rejected;
+3. one connected + one soft peer -> fresh replacement can rotate the epoch;
+4. both disconnected -> public room is immediately joinable, without waiting for the 20 s private resume horizon;
+5. both disconnected -> valid private Resume arriving first preserves the same WorldEpoch and ActorSession;
+6. both disconnected -> fresh entrant arriving first creates a new WorldEpoch and invalidates both old tokens;
+7. no fresh competitor -> ordinary close-tab/reopen still resumes exact state inside the existing R1 window;
+8. local room-list presentation distinguishes an active stored session from a disconnected resumable one;
+9. same-owner live rebound still works;
+10. foreign-profile token theft still fails closed;
+11. exact-state guards and existing R1/R2 historical regressions remain green.
 
-1. same-owner live F5/new-tab rebound keeps WorldEpoch + ActorSession + NetEntity identity;
-2. unrelated profile cannot resume without token;
-3. protected reservation blocks unrelated preemption during recovery grace;
-4. soft reservation remains resumable while unclaimed;
-5. fresh unrelated join preempts soft reservation via explicit epoch handoff;
-6. connected peer automatically recovers into the same logical Yard after that handoff;
-7. old token is invalid after handoff;
-8. fully live 2/2 room remains non-joinable;
-9. exact-state guards remain clean before handoff and in the new epoch;
-10. repeated room switching cannot permanently exhaust all public Yard capacity.
+## Explicit non-claims
 
-Owner qualification:
-
-- hostile Chrome/Brave room switching;
-- F5 while both are live;
-- close-tab -> ordinary resume;
-- leave one seat dormant beyond protected grace, then let another player/browser take the Yard;
-- verify old browser can no longer steal the new session;
-- desktop + mobile representative play on Owner-first placement.
-
-## Non-goal
-
-This contract deliberately does **not** implement live dynamic roster replacement, 3+ players, accounts, durable MMO identity, persistent world-state ownership, or seamless actor succession inside one WorldEpoch. Those belong to the next multiplayer architecture era after stabilization and safe-stop cleanup.
+This contract does not claim long-term persistence after the bounded WorldEpoch grace expires. It does not define what a future MMO account or character should persist. It does not solve generalized `self + N peers`. Those remain later frontiers after the 2-player baseline is frozen and the repository reaches its deliberate safe stop.

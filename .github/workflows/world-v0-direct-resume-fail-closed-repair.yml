@@ -6,6 +6,8 @@ on:
     paths:
       - .github/workflows/world-v0-direct-resume-fail-closed-repair.yml
       - scripts/apply-world-v0-direct-resume-fail-closed-repair.mjs
+      - scripts/world-v0-direct-link-resume-browser-audit.mjs
+      - scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs
   workflow_dispatch:
 
 permissions:
@@ -29,6 +31,7 @@ jobs:
           node scripts/apply-world-v0-direct-resume-fail-closed-repair.mjs
           git diff --check
           node --check public/world-v0/friend-ready.js
+          node --check scripts/world-v0-direct-link-resume-browser-audit.mjs
           npm run check
       - name: Start isolated local Workerd
         run: |
@@ -63,8 +66,8 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/world-v0/friend-ready.js
-          git diff --cached --quiet && { echo "No product change"; exit 1; }
+          git add public/world-v0/friend-ready.js scripts/world-v0-direct-link-resume-browser-audit.mjs
+          git diff --cached --quiet && { echo "No qualified change"; exit 1; }
           git commit -m "Keep direct Resume fail-closed without directory"
           git push origin HEAD:world-v0-foundation-stabilization-closure
       - name: Upload evidence

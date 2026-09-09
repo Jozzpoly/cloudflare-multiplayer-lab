@@ -131,11 +131,13 @@ try {
   const snapshot = await cdp.evaluate(page, `({
     value: document.querySelector("#callsign")?.value || "",
     active: document.activeElement?.id || null,
-    network: window.__sharedYardV0Session?.().networkState || null,
+    compact: document.querySelector("#boot")?.classList.contains("compact") === true,
+    enterDisabled: document.querySelector("#enter")?.disabled === true,
   })`);
   assert(snapshot.value === "wasdWASD", `real keyboard text interception regression: ${JSON.stringify(snapshot)}`);
   assert(snapshot.active === "callsign", `callsign lost focus: ${snapshot.active}`);
-  assert(snapshot.network === "idle", `typing touched gameplay/network state: ${snapshot.network}`);
+  assert(snapshot.compact === false, `typing unexpectedly entered world: ${JSON.stringify(snapshot)}`);
+  assert(snapshot.enterDisabled === false, `typing unexpectedly disabled entry: ${JSON.stringify(snapshot)}`);
 
   console.log("WORLD_V0_KEYBOARD_REAL_INPUT_PASS", JSON.stringify(snapshot));
 } finally {

@@ -61,8 +61,9 @@ writeFileSync(auditPath, audit);
 
 // The outage falsifier originally inspected __sharedYardV0Session().actorSessionId,
 // but that convenience wrapper does not expose ActorSession identity at top level in
-// the pre-start shell. Authority evidence does. Require the actual accepted Resume
-// identity plus the explicit pre-start-complete lifecycle marker and directory state.
+// the pre-start shell. Authority evidence does. Wait for the full accepted Resume
+// boundary, not the earlier client-side point where ActorSession metadata has been
+// loaded but the authority welcome/identity has not arrived yet.
 const outagePath = "scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs";
 let outage = readFileSync(outagePath, "utf8");
 function replaceOutageExact(oldText, newText, label) {
@@ -74,7 +75,7 @@ function replaceOutageExact(oldText, newText, label) {
 
 replaceOutageExact(
   `      const session = await cdp.evaluate(page, \`window.__sharedYardV0Session?.()\`);\n      return session?.actorSessionId ? session : false;`,
-  `      const evidence = await cdp.evaluate(page, \`window.__sharedYardV0Evidence?.()\`);\n      return evidence?.session?.actorSessionId ? evidence : false;`,
+  `      const evidence = await cdp.evaluate(page, \`window.__sharedYardV0Evidence?.()\`);\n      const completed = evidence?.lifecycleEvents?.some((event) => event.type === "actor-resume-prestart-complete");\n      return evidence?.session?.actorSessionId && evidence?.identity?.worldEpoch === oldEpoch && completed ? evidence : false;`,
   "outage authority evidence source"
 );
 

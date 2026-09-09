@@ -1,5 +1,6 @@
-export const WORLD_V0_SESSION_CONTINUITY_REVISION = "world-v0-session-continuity-r2-slot-bound";
+export const WORLD_V0_SESSION_CONTINUITY_REVISION = "world-v0-session-continuity-r3-live-rebind";
 
+const PREVIOUS_SESSION_CONTINUITY_REVISION = "world-v0-session-continuity-r2-slot-bound";
 const SESSION_STORE_KEY = "shared-yard-v0-actor-sessions-v1";
 const RESUME_INTENT_KEY = "shared-yard-v0-resume-intent-v1";
 const RUN_KEY_PATTERN = /^[A-Za-z0-9_-]{1,20}$/;
@@ -40,7 +41,9 @@ function readStore(storage) {
     const raw = storage.getItem(SESSION_STORE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.revision !== WORLD_V0_SESSION_CONTINUITY_REVISION || typeof parsed.sessions !== "object" || parsed.sessions === null) return {};
+    const compatibleRevision = parsed?.revision === WORLD_V0_SESSION_CONTINUITY_REVISION ||
+      parsed?.revision === PREVIOUS_SESSION_CONTINUITY_REVISION;
+    if (!parsed || !compatibleRevision || typeof parsed.sessions !== "object" || parsed.sessions === null) return {};
     const sessions = {};
     for (const [runKey, value] of Object.entries(parsed.sessions)) {
       const record = normalizeRecord(value);
@@ -91,13 +94,16 @@ export function clearWorldV0StoredSession(runKey, worldEpoch = null, storage = g
 }
 
 export function worldV0StoredSessionMatchesRoom(session, room) {
+  // Possession of the private resume token, not public disconnected/reserved state,
+  // is the authority for ActorSession ownership. Matching the same live WorldEpoch
+  // therefore permits a same-owner refresh/new-tab rebound while the old transport
+  // is still connected. The server validates the token and closes only that exact
+  // prior socket; another browser profile without the token cannot claim the actor.
   return Boolean(
     session && room &&
     session.runKey === room.id &&
     typeof room.worldEpoch === "string" && room.worldEpoch.length > 0 &&
-    session.worldEpoch === room.worldEpoch &&
-    Array.isArray(room.reservedSlots) &&
-    room.reservedSlots.includes(session.slot)
+    session.worldEpoch === room.worldEpoch
   );
 }
 

@@ -138,7 +138,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler deploy --env "$QUALIFIED_ENV"
 
-      - name: Verify only static build identity without touching human Durable Objects
+      - name: Wait for static build identity without touching human Durable Objects
         run: |
           node --input-type=module <<'NODE'
           import {
@@ -147,21 +147,61 @@ jobs:
           } from "./public/world-v0/build-contract.js";
 
           const base = process.env.QUALIFIED_BASE_URL.replace(/\/$/, "");
-          const cacheBust = `${process.env.GITHUB_SHA}-${Date.now()}`;
-          const [contractResponse, provenanceResponse] = await Promise.all([
-            fetch(`${base}/world-v0/build-contract.js?qualified=${cacheBust}`, { cache: "no-store" }),
-            fetch(`${base}/world-v0/deploy-provenance.json?qualified=${cacheBust}`, { cache: "no-store" }),
-          ]);
-          if (!contractResponse.ok || !provenanceResponse.ok) throw new Error("qualified static assets not public");
-          const contractBody = await contractResponse.text();
-          const provenance = await provenanceResponse.json();
-          if (!contractBody.includes(WORLD_V0_BROWSER_UI_REVISION)) throw new Error("qualified UI revision missing");
-          if (!contractBody.includes(WORLD_V0_EXPECTED_SIM_BUILD_ID)) throw new Error("qualified SimBuild missing");
-          if (provenance.baselineProductSha !== process.env.BASELINE_PRODUCT_SHA) throw new Error("baseline provenance drift");
-          if (provenance.deliverySha !== process.env.GITHUB_SHA) throw new Error("delivery provenance drift");
-          if (provenance.worker !== process.env.EXPECTED_WORKER) throw new Error("worker provenance drift");
-          console.log("QUALIFIED_STATIC_IDENTITY_PASS", JSON.stringify(provenance));
-          console.log("OWNER_DO_PLACEMENT_UNTOUCHED_BY_WORKFLOW");
+          const deadline = Date.now() + 90_000;
+          let last = null;
+
+          while (Date.now() < deadline) {
+            const cacheBust = `${process.env.GITHUB_SHA}-${Date.now()}`;
+            try {
+              const [contractResponse, provenanceResponse] = await Promise.all([
+                fetch(`${base}/world-v0/build-contract.js?qualified=${cacheBust}`, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(8000),
+                }),
+                fetch(`${base}/world-v0/deploy-provenance.json?qualified=${cacheBust}`, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(8000),
+                }),
+              ]);
+
+              const contractBody = await contractResponse.text();
+              let provenance = null;
+              if (provenanceResponse.ok) {
+                try { provenance = await provenanceResponse.json(); } catch {}
+              }
+
+              last = {
+                contractStatus: contractResponse.status,
+                provenanceStatus: provenanceResponse.status,
+                ui: contractBody.includes(WORLD_V0_BROWSER_UI_REVISION),
+                sim: contractBody.includes(WORLD_V0_EXPECTED_SIM_BUILD_ID),
+                baselineProductSha: provenance?.baselineProductSha,
+                deliverySha: provenance?.deliverySha,
+                worker: provenance?.worker,
+              };
+
+              if (
+                contractResponse.ok &&
+                provenanceResponse.ok &&
+                last.ui &&
+                last.sim &&
+                provenance?.baselineProductSha === process.env.BASELINE_PRODUCT_SHA &&
+                provenance?.deliverySha === process.env.GITHUB_SHA &&
+                provenance?.worker === process.env.EXPECTED_WORKER
+              ) {
+                console.log("QUALIFIED_STATIC_IDENTITY_PASS", JSON.stringify(last));
+                console.log("OWNER_DO_PLACEMENT_UNTOUCHED_BY_WORKFLOW");
+                process.exit(0);
+              }
+            } catch (error) {
+              last = { error: error instanceof Error ? error.message : String(error) };
+            }
+
+            console.log("QUALIFIED_STATIC_IDENTITY_WAIT", JSON.stringify(last));
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
+
+          throw new Error(`qualified static identity did not converge: ${JSON.stringify(last)}`);
           NODE
 
       - name: Upload qualified delivery evidence

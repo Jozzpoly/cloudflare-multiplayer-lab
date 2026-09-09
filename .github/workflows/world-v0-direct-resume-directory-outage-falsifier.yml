@@ -1,0 +1,61 @@
+name: World V0 Direct Resume Directory Outage Falsifier
+
+on:
+  push:
+    branches: [world-v0-foundation-stabilization-closure]
+    paths:
+      - .github/workflows/world-v0-direct-resume-directory-outage-falsifier.yml
+      - scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  falsify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Static checks
+        run: |
+          set -euo pipefail
+          node --check scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs
+          npm run check
+      - name: Start isolated local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > direct-outage-wrangler.log 2>&1 &
+          echo $! > /tmp/direct-outage.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat direct-outage-wrangler.log
+          exit 1
+      - name: Falsify directory-outage downgrade
+        env:
+          MW_WORLD_V0_DIRECT_OUTAGE_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_DIRECT_OUTAGE_ROOM: yard-2
+        run: |
+          set -euo pipefail
+          timeout 90s node scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs | tee direct-outage.log
+          grep -q WORLD_V0_DIRECT_RESUME_DIRECTORY_OUTAGE_PASS direct-outage.log
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-direct-resume-outage-${{ github.run_id }}
+          path: |
+            direct-outage.log
+            direct-outage-wrangler.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Stop Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/direct-outage.pid ]; then kill "$(cat /tmp/direct-outage.pid)" 2>/dev/null || true; fi

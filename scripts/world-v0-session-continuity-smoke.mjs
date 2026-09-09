@@ -78,3 +78,5 @@ assert.deepEqual(worldV0PublicRoomPresentation(rooms[2], { resumable: true }), {
 });
 
 console.log("WORLD_V0_SESSION_CONTINUITY_SMOKE_PASS");
+
+// Requalification trigger only. Product source under validation: cea1093d2add10ae9a1c49661529b257b8c1efdd

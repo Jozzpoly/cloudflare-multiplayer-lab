@@ -1,0 +1,124 @@
+name: World V0 Prestart Vacant Capacity Repair
+
+on:
+  push:
+    branches: [world-v0-foundation-stabilization-closure]
+    paths:
+      - .github/workflows/world-v0-prestart-vacant-capacity-repair.yml
+      - scripts/apply-world-v0-prestart-vacant-capacity-repair.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-prestart-vacant-capacity-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Apply exact bounded repair
+        run: |
+          set -euo pipefail
+          node scripts/apply-world-v0-prestart-vacant-capacity-repair.mjs
+          git diff --check
+          npm run check
+
+      - name: Start isolated local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-prestart-vacant-repair-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-prestart-vacant-repair.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo WORLD_V0_PRESTART_VACANT_REPAIR_WORKER_READY
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-prestart-vacant-repair-wrangler.log
+          exit 1
+
+      - name: Prove zero-online prestart capacity handoff
+        env:
+          MW_WORLD_V0_PRESTART_VACANT_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_PRESTART_VACANT_ROOM: yard-2
+        run: |
+          set -euo pipefail
+          timeout 60s node scripts/world-v0-prestart-vacant-capacity-probe.mjs | tee world-v0-prestart-vacant-repair.log
+          grep -q WORLD_V0_PRESTART_VACANT_CAPACITY_PASS world-v0-prestart-vacant-repair.log
+
+      - name: Preserve one-peer prestart grace
+        env:
+          MW_WORLD_V0_PRESTART_GRACE_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_PRESTART_GRACE_OUTPUT: world-v0-prestart-grace-repair.json
+        run: |
+          set -euo pipefail
+          timeout 45s node scripts/world-v0-closure-prestart-grace-probe.mjs | tee world-v0-prestart-grace-repair.log
+          grep -q WORLD_V0_CLOSURE_PRESTART_AMBIGUITY_GRACE_PASS world-v0-prestart-grace-repair.log
+
+      - name: Preserve resume-first fully-disconnected prestart recovery
+        env:
+          MW_WORLD_V0_PRESTART_PARTIAL_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_PRESTART_PARTIAL_OUTPUT: world-v0-prestart-partial-repair.json
+        run: |
+          set -euo pipefail
+          timeout 45s node scripts/world-v0-closure-prestart-partial-resume-audit.mjs | tee world-v0-prestart-partial-repair.log
+          grep -q WORLD_V0_CLOSURE_PRESTART_PARTIAL_RESUME_GATE_PASS world-v0-prestart-partial-repair.log
+
+      - name: Preserve active vacant race
+        env:
+          MW_WORLD_V0_VACANT_BASE: http://127.0.0.1:8787
+        run: |
+          set -euo pipefail
+          timeout 120s node scripts/world-v0-vacant-capacity-authority-probe.mjs | tee world-v0-active-vacant-repair.log
+          grep -q WORLD_V0_VACANT_CAPACITY_AUTHORITY_PASS world-v0-active-vacant-repair.log
+
+      - name: Commit qualified product repair
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/world-v0-shared-yard.ts src/world-slice-entry.ts
+          git diff --cached --quiet && { echo "No product changes to commit"; exit 1; }
+          git commit -m "Release fully vacant prestart room capacity"
+          git push origin HEAD:world-v0-foundation-stabilization-closure
+
+      - name: Upload repair evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-prestart-vacant-repair-${{ github.run_id }}
+          path: |
+            world-v0-prestart-vacant-repair.log
+            world-v0-prestart-grace-repair.log
+            world-v0-prestart-grace-repair.json
+            world-v0-prestart-partial-repair.log
+            world-v0-prestart-partial-repair.json
+            world-v0-active-vacant-repair.log
+            world-v0-prestart-vacant-repair-wrangler.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-prestart-vacant-repair.pid ]; then
+            kill "$(cat /tmp/world-v0-prestart-vacant-repair.pid)" 2>/dev/null || true
+          fi

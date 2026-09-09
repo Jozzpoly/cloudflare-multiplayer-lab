@@ -1,0 +1,46 @@
+name: World V0 Qualified Deployment Forensics
+
+on:
+  push:
+    branches: [world-v0-foundation-stabilization-closure]
+    paths:
+      - .github/workflows/world-v0-qualified-deployment-forensics.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cloudflare-history:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Require read credential
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: test -n "$CLOUDFLARE_API_TOKEN"
+      - name: Read qualified-play deployment and version history only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 566456b8f2f4d9f85b3fa8173e190c1a
+        run: |
+          set -euo pipefail
+          npx wrangler deployments list --env qualified_play --json | tee qualified-deployments.json
+          npx wrangler versions list --env qualified_play --json | tee qualified-versions.json
+          echo "READ_ONLY_CLOUDFLARE_HISTORY_PASS"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-qualified-deployment-forensics-${{ github.run_id }}
+          path: |
+            qualified-deployments.json
+            qualified-versions.json
+          if-no-files-found: warn
+          retention-days: 30

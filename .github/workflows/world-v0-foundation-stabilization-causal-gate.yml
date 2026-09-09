@@ -13,6 +13,7 @@ on:
       - scripts/world-v0-session-continuity-r3-smoke.mjs
       - scripts/world-v0-live-rebind-browser-audit.mjs
       - scripts/world-v0-soft-reservation-authority-probe.mjs
+      - scripts/world-v0-soft-reservation-browser-handoff-audit.mjs
   workflow_dispatch:
 
 permissions:
@@ -25,7 +26,7 @@ concurrency:
 jobs:
   causal-gate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 14
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v7
@@ -47,6 +48,7 @@ jobs:
           node scripts/world-v0-session-continuity-r3-smoke.mjs
           node --check scripts/world-v0-live-rebind-browser-audit.mjs
           node --check scripts/world-v0-soft-reservation-authority-probe.mjs
+          node --check scripts/world-v0-soft-reservation-browser-handoff-audit.mjs
 
       - name: Start local reliability Workerd
         shell: bash
@@ -84,6 +86,17 @@ jobs:
           set -euo pipefail
           timeout 90s node scripts/world-v0-soft-reservation-authority-probe.mjs | tee world-v0-stabilization-soft-reservation.log
           grep -q 'WORLD_V0_SOFT_RESERVATION_AUTHORITY_PASS' world-v0-stabilization-soft-reservation.log
+
+      - name: Prove browser automatic recovery across soft handoff
+        env:
+          MW_WORLD_V0_SOFT_BROWSER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_SOFT_BROWSER_ROOM: yard-3
+          MW_WORLD_V0_SOFT_BROWSER_OUTPUT: world-v0-stabilization-soft-browser-handoff.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120s node scripts/world-v0-soft-reservation-browser-handoff-audit.mjs | tee world-v0-stabilization-soft-browser-handoff.log
+          grep -q 'WORLD_V0_SOFT_RESERVATION_BROWSER_HANDOFF_PASS' world-v0-stabilization-soft-browser-handoff.log
 
       - name: Preserve local-only evidence
         if: always()

@@ -84,6 +84,12 @@ async function sharedYardV0WebSocketResponse(request: Request, env: Env): Promis
   return world.fetch(request);
 }
 
+function normalizedSlots(value: unknown): number[] {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((slot) => Number.isInteger(slot) && Number(slot) >= 0 && Number(slot) < WORLD_V0_PUBLIC_ROOM_CAPACITY).map(Number))].sort((a, b) => a - b)
+    : [];
+}
+
 async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Response> {
   const rooms = await Promise.all(WORLD_V0_PUBLIC_ROOMS.map(async (room) => {
     try {
@@ -94,6 +100,9 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         players?: number;
         connectedPlayers?: number;
         reservedSlots?: number[];
+        protectedReservedSlots?: number[];
+        softReservedSlots?: number[];
+        replaceableReservations?: number;
         protocolStartTick?: number | null;
         worldEpoch?: string | null;
         simBuildId?: string | null;
@@ -104,13 +113,24 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         ? Math.max(0, Math.min(occupancy, Number(status.connectedPlayers)))
         : occupancy;
       const reserved = Math.max(0, occupancy - connected);
-      const reservedSlots = Array.isArray(status.reservedSlots)
-        ? [...new Set(status.reservedSlots.filter((slot) => Number.isInteger(slot) && slot >= 0 && slot < WORLD_V0_PUBLIC_ROOM_CAPACITY))].sort((a, b) => a - b)
-        : [];
+      const reservedSlots = normalizedSlots(status.reservedSlots);
+      const protectedReservedSlots = normalizedSlots(status.protectedReservedSlots);
+      const softReservedSlots = normalizedSlots(status.softReservedSlots);
       if (reservedSlots.length !== reserved) throw new Error(`reserved_slot_accounting_${reservedSlots.length}_${reserved}`);
+      const classified = [...protectedReservedSlots, ...softReservedSlots].sort((a, b) => a - b);
+      if (new Set(classified).size !== classified.length || classified.length !== reservedSlots.length || classified.some((slot, index) => slot !== reservedSlots[index])) {
+        throw new Error(`reservation_classification_${classified.join("-")}_${reservedSlots.join("-")}`);
+      }
+      const protectedReserved = protectedReservedSlots.length;
+      const softReserved = softReservedSlots.length;
       const active = status.protocolStartTick !== null && status.protocolStartTick !== undefined;
+      const replacementCapable = active && softReserved > 0 && protectedReserved === 0 && connected < WORLD_V0_PUBLIC_ROOM_CAPACITY;
       const state = active
-        ? reserved > 0 ? "live-reserved" : "live"
+        ? protectedReserved > 0
+          ? "live-protected-reserved"
+          : softReserved > 0
+            ? "live-soft-reserved"
+            : "live"
         : occupancy > 0
           ? reserved > 0 ? "waiting-reserved" : "waiting"
           : "empty";
@@ -121,9 +141,14 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         connected,
         reserved,
         reservedSlots,
+        protectedReserved,
+        protectedReservedSlots,
+        softReserved,
+        softReservedSlots,
+        replacementCapable,
         capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
         state,
-        joinable: !active && occupancy < WORLD_V0_PUBLIC_ROOM_CAPACITY && !status.failure,
+        joinable: !status.failure && ((!active && occupancy < WORLD_V0_PUBLIC_ROOM_CAPACITY) || replacementCapable),
         joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}`,
         worldEpoch: status.worldEpoch ?? null,
         simBuildId: status.simBuildId ?? null,
@@ -137,6 +162,11 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         connected: null,
         reserved: null,
         reservedSlots: [],
+        protectedReserved: null,
+        protectedReservedSlots: [],
+        softReserved: null,
+        softReservedSlots: [],
+        replacementCapable: false,
         capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
         state: "unavailable",
         joinable: false,
@@ -149,7 +179,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
   }));
 
   return new Response(JSON.stringify({
-    revision: "world-v0-public-room-directory-r2-slot-presence",
+    revision: "world-v0-public-room-directory-r3-soft-reservation",
     generatedAt: new Date().toISOString(),
     rooms,
   }), {

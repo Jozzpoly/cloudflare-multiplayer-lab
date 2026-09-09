@@ -1,4 +1,4 @@
-# Product source under adversarial requalification: f97dc27e3cd9fd0a09318a9716019994e6161472
+# Product source under adversarial requalification: 68c25577270214311b8814e27b8b5ec1c84fbff6
 name: World V0 Pre-Owner Adversarial Validation
 
 on:
@@ -41,6 +41,9 @@ jobs:
         run: |
           set -euo pipefail
           npm run check
+          node --check public/world-v0/join-failure-clarity.js
+          node --check scripts/world-v0-join-failure-clarity-smoke.mjs
+          node scripts/world-v0-join-failure-clarity-smoke.mjs
           node --check scripts/world-v0-live-rebind-browser-audit.mjs
           node --check scripts/world-v0-keyboard-real-input-browser-audit.mjs
           node --check scripts/world-v0-soft-preemption-browser-audit.mjs

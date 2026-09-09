@@ -5,7 +5,7 @@ on:
     branches: [world-v0-foundation-stabilization-closure]
     paths:
       - .github/workflows/world-v0-peer-departure-isolation-causal.yml
-      - scripts/world-v0-peer-departure-isolation-public-audit.mjs
+      - scripts/world-v0-peer-departure-control-matrix.mjs
       - public/world-v0/**
       - src/world-v0-shared-yard.ts
       - src/world-v0-contract.ts
@@ -38,49 +38,49 @@ jobs:
       - name: Static validation
         run: |
           set -euo pipefail
-          node --check scripts/world-v0-peer-departure-isolation-public-audit.mjs
+          node --check scripts/world-v0-peer-departure-control-matrix.mjs
           npm run check
 
       - name: Start local reliability Workerd
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-peer-iso-wrangler.log 2>&1 &
-          echo $! > /tmp/world-v0-peer-iso-wrangler.pid
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-peer-matrix-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-peer-matrix-wrangler.pid
           for i in {1..60}; do
             if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
-              echo WORLD_V0_PEER_ISO_LOCAL_WORKER_READY
+              echo WORLD_V0_PEER_MATRIX_LOCAL_WORKER_READY
               exit 0
             fi
             sleep 1
           done
-          cat world-v0-peer-iso-wrangler.log
+          cat world-v0-peer-matrix-wrangler.log
           exit 1
 
-      - name: Prove peer departure does not interrupt survivor
+      - name: Run peer departure control matrix
         env:
-          MW_WORLD_V0_PEER_ISO_BASE: http://127.0.0.1:8787
-          MW_WORLD_V0_PEER_ISO_OUTPUT: world-v0-peer-departure-isolation.json
+          MW_WORLD_V0_PEER_MATRIX_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_PEER_MATRIX_OUTPUT: world-v0-peer-departure-control-matrix.json
         run: |
           set -euo pipefail
-          timeout 180s node scripts/world-v0-peer-departure-isolation-public-audit.mjs | tee world-v0-peer-departure-isolation.log
-          grep -q WORLD_V0_PEER_DEPARTURE_ISOLATION_PASS world-v0-peer-departure-isolation.log
+          timeout 180s node scripts/world-v0-peer-departure-control-matrix.mjs | tee world-v0-peer-departure-control-matrix.log
+          grep -q WORLD_V0_PEER_DEPARTURE_CONTROL_MATRIX_COMPLETE world-v0-peer-departure-control-matrix.log
 
       - name: Upload causal evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: world-v0-peer-departure-isolation-${{ github.run_id }}
+          name: world-v0-peer-departure-matrix-${{ github.run_id }}
           path: |
-            world-v0-peer-departure-isolation.json
-            world-v0-peer-departure-isolation.log
-            world-v0-peer-iso-wrangler.log
+            world-v0-peer-departure-control-matrix.json
+            world-v0-peer-departure-control-matrix.log
+            world-v0-peer-matrix-wrangler.log
           if-no-files-found: warn
           retention-days: 30
 
       - name: Stop local Workerd
         if: always()
         run: |
-          if [ -f /tmp/world-v0-peer-iso-wrangler.pid ]; then
-            kill "$(cat /tmp/world-v0-peer-iso-wrangler.pid)" 2>/dev/null || true
+          if [ -f /tmp/world-v0-peer-matrix-wrangler.pid ]; then
+            kill "$(cat /tmp/world-v0-peer-matrix-wrangler.pid)" 2>/dev/null || true
           fi

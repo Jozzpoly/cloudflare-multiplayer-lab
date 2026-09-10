@@ -1,29 +1,30 @@
 # World V0 — Stabilization Polish Ledger
 
-Status: **POLISH CLOSURE / FINAL OWNER GATE PENDING**  
+Status: **POLISH CLOSED / OWNER CORE PASS / FINAL UI SANITY PENDING**  
 Date: **2026-09-10**  
-Frozen product: `fef4a2a4b6007c3e42cbd3b430cb9943343cc970`  
+Pre-Owner product: `fef4a2a4b6007c3e42cbd3b430cb9943343cc970`  
+Final UI-repaired product: `7755a668d7488f04ecbf42a00fbc96fcb978d544`  
 Polish branch: `world-v0-foundation-polish-closure`
 
 ## Purpose
 
-This ledger records the bounded polish/repair/cleanup pass performed after the broad adversarial verification campaign. It is intentionally not a new feature plan and does not rewrite Project Soul.
+This ledger records the bounded challenge / polish / repair / cleanup pass performed before safe stop. It is intentionally not a new feature plan and does not rewrite Project Soul.
 
-The governing rule is:
+The governing rule was:
 
-> improve trust, maintainability and takeover truth without changing the frozen gameplay/runtime unless a new falsifier requires it.
+> improve trust, maintainability and takeover truth without changing the stabilized gameplay/runtime unless a concrete falsifier from automated or Owner evidence requires it.
 
-## 1. Product preservation
+That rule produced exactly one late product exception: the Owner's final broad recording exposed a reproducible local UI/input bug, which was repaired narrowly and requalified without changing simulation/authority physics.
 
-The polish branch was created from exact frozen product `fef4a2a4...`.
+## 1. Starting product preservation
 
-Repeated compare checks confirm no polish changes in:
+The polish branch began from exact stabilized product `fef4a2a4...`.
 
-- `public/world-v0/**`;
-- `src/**`;
-- `package-lock.json`.
+Before the final Owner run, repeated compare checks confirmed the initial polish work changed no gameplay/runtime source in `public/world-v0/**` or `src/**`; changes were validation, documentation and workflow cleanup only.
 
-The only package change is `package.json` validation coverage. Product behavior remains the already delivered `fef4...` candidate.
+The final Owner run then supplied new evidence requiring one bounded presentation/input repair. That exception is recorded in section 8 below.
+
+`src/**`, server authority physics, deterministic topology, protocol and SimBuild remain unchanged throughout the final UI repair.
 
 ## 2. Broad adversarial input to polish
 
@@ -43,40 +44,29 @@ Additional authority race:
 - both legal winner orders observed;
 - no split-brain or double authoritative WorldEpoch.
 
-## 3. Validation coverage repair
+Further resumed-stayer work reproduced the suspicious lifecycle sequence successfully locally, on fresh remote Durable Objects and under repeated churn. Controlled authority-process loss reproduced the earlier fatal dual-`1006` signature and led to the already-promoted bounded authority-epoch-loss recovery in `fef4a2a4...`.
 
-### Problem
+## 3. Validation coverage repair
 
 The promoted product had added:
 
 - `public/world-v0/authority-epoch-loss.js`;
 - `public/world-v0/join-failure-clarity.js`;
 
-and corresponding smoke tests, but the ordinary `npm run check` did not execute those new contract smokes.
+but ordinary `npm run check` did not execute their contract smokes.
 
-### Repair
+`package.json` `check:client` was repaired so standard repository validation includes syntax and smoke coverage for both modules.
 
-`package.json` `check:client` now includes syntax checks for both modules and runs:
+`.github/workflows/world-v0-current-validation.yml` was also repaired to:
 
-- `scripts/world-v0-authority-epoch-loss-classifier-smoke.mjs`;
-- `scripts/world-v0-join-failure-clarity-smoke.mjs`.
+- run on the polish branch;
+- trigger on current stabilization modules/smokes;
+- assert current authority-loss and join-failure markers;
+- require their smoke PASS signals in ordinary repository checks.
 
-The standard repository check therefore once again covers the current stabilization product instead of relying on specialist one-shot workflows.
-
-### Global Current Validation repair
-
-`.github/workflows/world-v0-current-validation.yml` was also stale relative to the new product. It now:
-
-- includes `world-v0-foundation-polish-closure` in its push branches;
-- triggers on both new product modules and both smoke scripts;
-- explicitly asserts authority-loss and join-failure revision markers;
-- explicitly requires both smoke PASS markers in the ordinary repository-check step.
-
-Final polish Current Validation run is recorded below when complete.
+After the final UI repair it also runs the focus/visibility checks through canonical `npm run check`.
 
 ## 4. Dependency and toolchain audit
-
-One-shot debt audit and toolchain audit established:
 
 ### Production graph
 
@@ -90,52 +80,48 @@ One-shot debt audit and toolchain audit established:
 
 ### Development graph
 
-Full `npm audit` reports three high findings under the development-only chain:
+Full `npm audit` reports three high findings under development-only:
 
 `wrangler -> miniflare -> sharp`
 
-Current frozen graph:
+Frozen graph:
 
 - Wrangler `4.127.1`;
 - Miniflare `5.20260828.0-alpha`;
 - sharp `0.35.2`.
 
-An isolated candidate upgrade to Wrangler `4.130.0`:
+An isolated Wrangler `4.130.0` candidate:
 
-- passed the complete repository validation;
+- passed complete repository validation;
 - kept production vulnerabilities at zero;
-- still reported the same three high dev-only findings;
-- still resolved sharp `0.35.2`.
+- retained the same three dev-only findings and sharp `0.35.2`.
 
-Decision: **do not churn the frozen toolchain merely to change the Wrangler version**. Keep this as bounded upstream dev-dependency debt until a candidate graph actually removes the advisory path.
+Decision: **do not churn the frozen toolchain merely to move a version number**. This remains bounded upstream dev-dependency debt until a candidate graph actually removes the advisory path.
 
-Evidence: toolchain audit run `34429140500`, artifact `10133798229`, digest `sha256:7238ed80d4e2c4ba426b7c87510a1bc80c2ff6a792bd644f2c41521bfcdde22a`.
+Evidence:
+
+- run `34429140500` — **SUCCESS**;
+- artifact `10133798229`;
+- digest `sha256:7238ed80d4e2c4ba426b7c87510a1bc80c2ff6a792bd644f2c41521bfcdde22a`.
 
 ## 5. Canonical documentation reconciliation
 
-The following documents were materially stale and have been refreshed on the polish branch:
+Materially stale documents were refreshed:
 
 - `MULTI_WORLD_CURRENT_STATE.md`;
 - `MULTI_WORLD_TAKEOVER_INDEX.md`;
 - `WORLD_V0_FOUNDATION_STABILIZATION_DIRECTION.md`;
 - `WORLD_V0_QUALIFIED_BASELINE_GATE.md`;
-- `WORLD_V0_AUTHORITY_EPOCH_LOSS_RESILIENCE.md`.
+- `WORLD_V0_AUTHORITY_EPOCH_LOSS_RESILIENCE.md`;
+- this ledger.
 
-The refreshed spine now points to:
-
-- frozen product `fef4a2a4...`;
-- authority-loss checkpoint `5611456843`;
-- broad adversarial checkpoint `5611643968`;
-- qualified-play delivery run `34426803131`;
-- Cloudflare Version ID `d62c2e72-c4d9-4124-8847-85815d715ff1`.
-
-`MULTI_WORLD_PROJECT_SOUL.md` is intentionally unchanged. Formal project-role/Soul review remains a post-Owner-PASS safe-stop task.
+`MULTI_WORLD_PROJECT_SOUL.md` remains intentionally unchanged. Project-role/Soul review is a post-freeze, post-cleanup decision.
 
 ## 6. Consumed workflow retirement
 
-The polish pass removed active workflow files that had already completed their one-shot purpose and whose results remain preserved in Git history, Actions runs/artifacts and issue #8.
+The polish pass removed active one-shot workflow files whose purposes had already been completed and whose evidence remains preserved in Git history, Actions artifacts and issue #8.
 
-Retired categories include:
+Retired categories included:
 
 - authority-loss candidate/regression/promotion machinery;
 - controlled pre-repair authority-reset baselines;
@@ -147,57 +133,143 @@ Retired categories include:
 - pre-Owner adversarial one-shot workflow;
 - resumed-stayer local/remote/repetition/churn forensics;
 - superseded old qualified-baseline delivery workflow;
-- the polish-only toolchain audit workflow after its artifact was preserved.
+- polish-only toolchain audit workflow after evidence preservation.
 
-These deletions remove active automation surface, not evidence. The underlying commits, specialist scripts and Actions artifacts remain available for provenance/reproduction.
+These deletions remove active automation surface, not history/evidence.
 
-## 7. Workflows deliberately retained
+No broad R0/R1/R2 workflow or branch purge was performed. Larger classification belongs to the post-freeze archaeology campaign.
 
-Do not interpret polish cleanup as a general workflow purge.
+## 7. Owner broad human qualification
 
-Important retained gates include:
+The Owner performed a natural desktop/mobile run on the qualified-play candidate and reported:
+
+> gameplay stable and smooth.
+
+The recordings did not expose a new broad multiplayer/netcode failure. They did expose one reproducible local UI/input defect:
+
+- clicking Diagnostics could leave focus on its `<summary>`;
+- the v1 focus guard treated interactive controls like editables and swallowed subsequent WASD;
+- movement returned after clicking another gameplay/touch surface;
+- desktop also unnecessarily displayed touch joystick controls.
+
+The mobile recording additionally gave useful lifecycle/background-return evidence, but it is not overclaimed as exhaustive mobile-radio reliability proof.
+
+The Owner also identified an important architectural concern: current soft-reservation replacement rotates the WorldEpoch and loses prior shared physical history. That is recorded as a next-era persistent-world/dynamic-roster question, not repaired inside this closure.
+
+## 8. Bounded final UI repair
+
+Exact final product:
+
+`7755a668d7488f04ecbf42a00fbc96fcb978d544`
+
+Presentation/input changes only:
+
+- keyboard focus guard -> `world-v0-keyboard-focus-guard-v2-semantic-ownership`;
+- editables continue owning all keyboard input;
+- buttons / links / `<summary>` own activation keys (`Space` / `Enter`) but no longer swallow unrelated gameplay WASD merely because they retain focus;
+- keydown/keyup ownership is symmetric;
+- touch joystick, gimbal and JUMP are hidden for primary fine-pointer desktop and shown for coarse-pointer/mobile;
+- browser UI revision -> `shared-yard-v0-browser-ui-v20-owner-ui-focus`.
+
+Unchanged:
+
+- `src/**` runtime authority implementation;
+- authority revision `shared-yard-v0-authority-v11-jump-delivery-persistence`;
+- browser simulation `shared-yard-v0-browser-sim-v10-jump-delivery-persistence`;
+- protocol `shared-yard-v0-scheduled-input-v3-supersession`;
+- state guard `shared-yard-v0-f32-state-v1`;
+- SimBuild `shared-yard-v0-sim-cd8edc169f791a64`.
+
+### Focused causal evidence
+
+Run `34474057233` — **SUCCESS**.
+
+- artifact `10150740652`;
+- digest `sha256:62bb4b39cb70e46f280df7bfcae061a51bb5b72744a30817d456dc2c688df38d`.
+
+Real Chromium proved:
+
+- Diagnostics `<summary>` stayed focused while physical `W` reached gameplay (`raw z = -1`);
+- `Space` remained owned by Diagnostics and did not enter gameplay;
+- `w` in callsign remained text and did not enter gameplay;
+- fine-pointer desktop controls were absent;
+- coarse-pointer/mobile controls were present.
+
+### Full regression evidence
+
+Current Validation on exact `7755a668...`:
+
+- run `34474343862` — **SUCCESS**;
+- artifact `10151068683`;
+- digest `sha256:728f0f5c7dfa68a6fb5f11ab04a1fd7e8b6c55f8d63b6d123255fb54ffa4827d`.
+
+Every historical lifecycle/prestart/cross-page/all-drop/exact-rebase/dual-browser/human-entry step passed.
+
+## 9. Final delivery
+
+Final delivery branch:
+
+`world-v0-foundation-final-delivery`
+
+Delivery head:
+
+`fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`
+
+It is a direct child of exact product `7755a668...` and adds delivery apparatus only.
+
+Delivery:
+
+- run `34475199474` / job `102864191837` — **SUCCESS**;
+- Cloudflare Version ID `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`;
+- artifact `10151181384`;
+- digest `sha256:4d0cdc5eb04bf3dcafdbad4ccd469b2db24f7d372f1549212d7e0321e3f49553`;
+- protected runtime bytes matched exact product `7755a668...`;
+- static convergence passed;
+- human public Yard Durable Objects were not accessed by the delivery verifier;
+- final marker: `HUMAN_DURABLE_OBJECTS_UNTOUCHED_BY_WORKFLOW`.
+
+## 10. Retained reusable gates
+
+Important retained validation includes:
 
 - `.github/workflows/ci.yml`;
 - `.github/workflows/world-v0-current-validation.yml`;
 - `.github/workflows/world-v0-foundation-stabilization-causal-gate.yml`;
 - `.github/workflows/world-v0-foundation-stabilization-delivery.yml`;
+- `.github/workflows/world-v0-owner-ui-regression.yml`;
 - `.github/workflows/world-v0-session-continuity-r1-qualification.yml`.
 
-Older R0/R1/R2 workflows have not been broadly deleted during this pre-freeze pass. Their classification belongs to the larger post-freeze workflow/branch archaeology, where provenance can be reviewed as a whole.
+Classification of older remaining workflows should happen together with branch archaeology after freeze.
 
-## 8. Remaining final gate
+## 11. Accepted next-era architecture question
 
-No further synthetic reliability expansion is justified by momentum.
+The fixed two-player stabilization model deliberately uses fresh-epoch handoff instead of live actor replacement. It therefore cannot preserve old shared-world state across that membership replacement.
 
-The remaining blocker is one representative **Owner adversarial human qualification** of the currently delivered `fef4...` candidate on representative Poland placement, including desktop and mobile.
+Future persistent co-op / mini-MMO work must reconsider the separation:
 
-Owner URL:
+`world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
 
-`https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev/world-v0/`
+Related future questions include 3+ membership, durable world identity/state, human identity spanning devices and actor succession. They are intentionally deferred until after safe stop and repository cleanup.
 
-The Owner gate should judge natural play, smoothness, F5/live takeover, close/reopen Resume, capacity reuse, protected/soft/vacant transitions, stale-profile rejection, Yard cycling, keyboard text entry, error clarity, mobile background/return and recovery behavior.
+## 12. Remaining gate and stop condition
 
-## 9. After Owner PASS
+Broad product qualification is complete enough to stop expanding tests by momentum.
 
-Only after the final human gate passes:
+Only a short real-device sanity check remains:
 
-1. freeze exact baseline and evidence anchors;
-2. enter deliberate safe stop;
-3. reconcile the stabilization product with the long-lived canonical repository branch;
-4. classify remaining workflows and >150 branches as canonical, retained evidence/archive, superseded, disposable or unknown;
-5. preserve provenance before deletion;
-6. reduce active branch/workflow surface deliberately;
-7. review Project Soul / repository role;
-8. only then open the next multiplayer frontier, with 3+ players an early desired capability.
+1. desktop Diagnostics open/close -> WASD must continue immediately;
+2. desktop fine-pointer -> no joystick/gimbal/JUMP;
+3. mobile/coarse-pointer -> joystick/gimbal/JUMP remain present and usable.
 
-If Owner qualification instead finds a reproducible foundation failure, repair that specific falsifier before safe stop.
+If PASS:
 
-## 10. Stop condition
+- freeze exact product `7755a668...`;
+- freeze qualified delivery Version `1cc9a0fd...`;
+- record final Owner verdict;
+- enter deliberate safe stop;
+- inventory/classify branches/workflows before deletion;
+- preserve provenance;
+- then clean/consolidate repository;
+- only afterward review Project Soul and next architecture direction.
 
-Polish is complete when:
-
-- final Current Validation is green on the polish branch;
-- compare against `fef4...` confirms zero runtime/source drift beyond validation/docs/workflow surfaces;
-- documentation and operational takeover entrypoints describe the current product truth;
-- consumed one-shot automation has been retired without deleting evidence;
-- the final Owner test can begin without another preparatory feature or reliability campaign.
+If FAIL, repair only the reproduced UI regression unless evidence actually contradicts the broader core PASS.

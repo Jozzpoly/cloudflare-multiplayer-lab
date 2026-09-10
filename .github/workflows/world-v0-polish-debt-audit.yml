@@ -1,0 +1,74 @@
+name: World V0 Polish Debt Audit
+
+on:
+  push:
+    branches: [world-v0-foundation-adversarial-verification]
+    paths:
+      - .github/workflows/world-v0-polish-debt-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debt-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Production and full dependency audit
+        run: |
+          set +e
+          npm audit --omit=dev --json > npm-audit-production.json
+          prod=$?
+          npm audit --json > npm-audit-full.json
+          full=$?
+          set -e
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          for (const [label,file] of [["production","npm-audit-production.json"],["full","npm-audit-full.json"]]) {
+            const value=JSON.parse(readFileSync(file,"utf8"));
+            console.log(`NPM_AUDIT_${label.toUpperCase()}`, JSON.stringify({
+              vulnerabilities:value.metadata?.vulnerabilities || null,
+              dependencies:value.metadata?.dependencies || null,
+              advisories:Object.entries(value.vulnerabilities||{}).map(([name,v])=>({name,severity:v.severity,isDirect:v.isDirect,via:(v.via||[]).map(x=>typeof x==="string"?x:{source:x.source,name:x.name,severity:x.severity,title:x.title}),effects:v.effects,range:v.range,fixAvailable:v.fixAvailable})),
+            }));
+          }
+          NODE
+          echo "AUDIT_EXIT_PRODUCTION=$prod"
+          echo "AUDIT_EXIT_FULL=$full"
+      - name: Validation coverage inventory
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const pkg=JSON.parse(readFileSync("package.json","utf8"));
+          const check=pkg.scripts?.["check:client"]||"";
+          const targets=[
+            "public/world-v0/authority-epoch-loss.js",
+            "public/world-v0/join-failure-clarity.js",
+            "scripts/world-v0-authority-epoch-loss-classifier-smoke.mjs",
+            "scripts/world-v0-join-failure-clarity-smoke.mjs",
+            "scripts/world-v0-keyboard-focus-guard-smoke.mjs",
+            "scripts/world-v0-session-continuity-r3-smoke.mjs",
+          ];
+          console.log("WORLD_V0_VALIDATION_COVERAGE",JSON.stringify(targets.map(path=>({path,inClientCheck:check.includes(path)}))));
+          NODE
+      - name: Stale-document markers
+        run: |
+          grep -R -n -E 'NOT YET IMPLEMENTED|OWNER REMOTE / HOSTILE NATURAL PLAY: PENDING|ACTIVE STABILIZATION|PENDING' docs/WORLD_V0_* docs/MULTI_WORLD_CURRENT_STATE.md 2>/dev/null | tee stale-doc-markers.txt || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-polish-debt-audit-${{ github.run_id }}
+          path: |
+            npm-audit-production.json
+            npm-audit-full.json
+            stale-doc-markers.txt
+          if-no-files-found: warn
+          retention-days: 30

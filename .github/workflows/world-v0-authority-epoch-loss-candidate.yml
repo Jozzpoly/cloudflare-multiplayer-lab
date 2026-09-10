@@ -7,6 +7,7 @@ on:
       - .github/workflows/world-v0-authority-epoch-loss-candidate.yml
       - scripts/apply-world-v0-authority-epoch-loss-recovery.mjs
       - scripts/world-v0-authority-epoch-loss-classifier-smoke.mjs
+      - scripts/world-v0-authority-epoch-verdict-browser-controls.mjs
   workflow_dispatch:
 
 permissions:
@@ -15,7 +16,7 @@ permissions:
 jobs:
   candidate-causal:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v7
         with:
@@ -30,6 +31,7 @@ jobs:
           node scripts/apply-world-v0-authority-epoch-loss-recovery.mjs
           node --check public/world-v0/authority-epoch-loss.js
           node --check public/world-v0/app.js
+          node --check scripts/world-v0-authority-epoch-verdict-browser-controls.mjs
           node scripts/world-v0-authority-epoch-loss-classifier-smoke.mjs
           git diff -- public/world-v0/app.js public/world-v0/authority-epoch-loss.js | tee world-v0-authority-epoch-loss-candidate.diff
       - name: Full repository checks with candidate
@@ -45,38 +47,53 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from "node:fs";
           const r=JSON.parse(readFileSync("world-v0-authority-epoch-loss-reset.json","utf8"));
-          const pairs=[[r.beforeA,r.afterA],[r.beforeB,r.afterB]];
-          for (const [before,e] of pairs) {
-            if (!e || e.runtimeFailed) throw new Error("recovered browser runtime failed");
-            const attempt=(e.lifecycleEvents||[]).find(x=>x.type==="room-reconnect-attempt" && x.reason==="authority_epoch_lost_recovery" && x.sourceEpoch===r.oldEpoch);
-            if (!attempt) throw new Error("missing bounded authority-loss room recovery attempt");
-            if (!(e.lifecycleEvents||[]).some(x=>x.type==="room-recovered" && x.sourceEpoch===r.oldEpoch)) throw new Error("missing fresh room recovery");
-            if (e.session?.actorSessionId===before.session?.actorSessionId) throw new Error("authority-loss fallback incorrectly preserved stale ActorSession");
-            if ((e.metrics?.guardMismatches||0)!==0) throw new Error("guard mismatch after authority-loss recovery");
+          const transitions=[[r.beforeA,r.recoveredA],[r.beforeB,r.recoveredB]];
+          for (const [before,recovered] of transitions) {
+            if (!recovered || recovered.runtimeFailed) throw new Error("fresh authority recovery failed");
+            const attempt=(recovered.lifecycleEvents||[]).find(x=>x.type==="room-reconnect-attempt" && x.reason==="authority_epoch_lost_recovery" && x.sourceEpoch===r.oldEpoch);
+            if (!attempt) throw new Error("missing bounded authority-loss room recovery attempt at transition");
+            if (!(recovered.lifecycleEvents||[]).some(x=>x.type==="room-recovered" && x.sourceEpoch===r.oldEpoch)) throw new Error("missing fresh room recovery at transition");
+            if (recovered.session?.actorSessionId===before.session?.actorSessionId) throw new Error("authority-loss fallback incorrectly preserved stale ActorSession");
+            if ((recovered.metrics?.guardMismatches||0)!==0) throw new Error("guard mismatch at authority-loss recovery transition");
           }
-          if (r.afterA.identity.worldEpoch!==r.afterB.identity.worldEpoch || r.afterA.identity.worldEpoch===r.oldEpoch) throw new Error("replacement epoch contract failed");
-          if (!(r.afterA.localBoundaryTick>120 && r.afterB.localBoundaryTick>120)) throw new Error("replacement epoch did not demonstrate sustained progression");
-          console.log("WORLD_V0_AUTHORITY_EPOCH_LOSS_RESET_CAUSAL_PASS",r.oldEpoch,r.afterA.identity.worldEpoch);
+          const afters=[r.afterA,r.afterB];
+          for (const e of afters) {
+            if (!e || e.runtimeFailed) throw new Error("replacement epoch became fatal during observation");
+            if ((e.metrics?.guardMismatches||0)!==0) throw new Error("replacement epoch exact guard mismatch");
+          }
+          if (r.recoveredA.identity.worldEpoch!==r.recoveredB.identity.worldEpoch || r.recoveredA.identity.worldEpoch===r.oldEpoch) throw new Error("replacement epoch contract failed");
+          if (r.afterA.identity.worldEpoch!==r.recoveredA.identity.worldEpoch || r.afterB.identity.worldEpoch!==r.recoveredB.identity.worldEpoch) throw new Error("replacement epoch rotated during observation");
+          if (!(r.afterA.localBoundaryTick>r.recoveredA.localBoundaryTick+120 && r.afterB.localBoundaryTick>r.recoveredB.localBoundaryTick+120)) throw new Error("replacement epoch did not demonstrate sustained progression");
+          console.log("WORLD_V0_AUTHORITY_EPOCH_LOSS_RESET_CAUSAL_PASS",r.oldEpoch,r.recoveredA.identity.worldEpoch);
           NODE
-      - name: D - Directory uncertainty remains fail-closed to exact resume
+      - name: C+D - Same-epoch and directory-unknown verdicts stay exact-resume fail-closed
         env:
-          MW_WORLD_V0_I4B_BASE: http://127.0.0.1:8796
-          MW_WORLD_V0_I4B_OFFLINE_MS: "14000"
-          MW_WORLD_V0_I4B_OUTPUT: world-v0-authority-epoch-loss-unknown-control.json
+          MW_WORLD_V0_AUTHORITY_VERDICT_BASE: http://127.0.0.1:8796
+          MW_WORLD_V0_AUTHORITY_VERDICT_OUTPUT: world-v0-authority-epoch-verdict-controls.json
         run: |
           set -euo pipefail
-          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8796 > world-v0-authority-epoch-loss-control-wrangler.log 2>&1 &
-          echo $! > /tmp/world-v0-authority-loss-control.pid
-          trap 'kill "$(cat /tmp/world-v0-authority-loss-control.pid)" 2>/dev/null || true' EXIT
-          for i in {1..60}; do curl -fsS http://127.0.0.1:8796/api/ping >/dev/null && break; sleep 1; done
-          timeout 90s node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-authority-epoch-loss-unknown-control.log
-          grep -q WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS world-v0-authority-epoch-loss-unknown-control.log
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8796 > world-v0-authority-epoch-verdict-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-authority-verdict.pid
+          trap 'kill "$(cat /tmp/world-v0-authority-verdict.pid)" 2>/dev/null || true' EXIT
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8796/api/ping >/dev/null; then break; fi
+            sleep 1
+          done
+          timeout 150s node scripts/world-v0-authority-epoch-verdict-browser-controls.mjs | tee world-v0-authority-epoch-verdict-controls.log
+          grep -q WORLD_V0_AUTHORITY_EPOCH_VERDICT_CONTROLS_PASS world-v0-authority-epoch-verdict-controls.log
           node --input-type=module <<'NODE'
           import { readFileSync } from "node:fs";
-          const r=JSON.parse(readFileSync("world-v0-authority-epoch-loss-unknown-control.json","utf8"));
-          if (!r.actorSession?.preserved || !r.actorSession?.netEntityPreserved) throw new Error("uncertain outage destroyed ActorSession continuity");
-          if (r.exactness?.guardMismatches!==0) throw new Error("uncertain outage exactness failed");
-          console.log("WORLD_V0_AUTHORITY_EPOCH_LOSS_UNKNOWN_FAIL_CLOSED_PASS",r.worldEpoch);
+          const r=JSON.parse(readFileSync("world-v0-authority-epoch-verdict-controls.json","utf8"));
+          if (!Array.isArray(r.cases) || r.cases.length!==2) throw new Error("missing authority verdict controls");
+          const same=r.cases.find(x=>x.mode==="same-epoch");
+          const unknown=r.cases.find(x=>x.mode==="unknown");
+          if (same?.verdict?.kind!=="same-epoch" || same.verdict.reason!=="authority-still-reports-source") throw new Error("same-epoch verdict not proven");
+          if (unknown?.verdict?.kind!=="unknown" || unknown.verdict.reason!=="directory-unreachable") throw new Error("unknown verdict not proven");
+          for (const c of r.cases) {
+            if (c.after?.worldEpoch!==c.sourceEpoch || c.after?.actorSessionId!==c.sourceSession || c.after?.netEntityId!==c.sourceNet) throw new Error(`${c.mode}: exact identity continuity lost`);
+            if (c.after?.runtimeFailed || c.after?.guardMismatches!==0) throw new Error(`${c.mode}: recovery not clean`);
+          }
+          console.log("WORLD_V0_AUTHORITY_EPOCH_VERDICT_NEGATIVE_CONTROLS_PASS");
           NODE
       - uses: actions/upload-artifact@v7
         if: always()
@@ -86,8 +103,8 @@ jobs:
             world-v0-authority-epoch-loss-candidate.diff
             world-v0-authority-epoch-loss-reset.json
             world-v0-authority-epoch-loss-reset.log
-            world-v0-authority-epoch-loss-unknown-control.json
-            world-v0-authority-epoch-loss-unknown-control.log
-            world-v0-authority-epoch-loss-control-wrangler.log
+            world-v0-authority-epoch-verdict-controls.json
+            world-v0-authority-epoch-verdict-controls.log
+            world-v0-authority-epoch-verdict-wrangler.log
           if-no-files-found: warn
           retention-days: 30

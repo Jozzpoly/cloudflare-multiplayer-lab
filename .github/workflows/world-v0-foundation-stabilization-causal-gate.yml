@@ -1,19 +1,6 @@
 name: World V0 Foundation Stabilization Causal Gate
 
 on:
-  push:
-    branches: [world-v0-foundation-stabilization-closure]
-    paths:
-      - .github/workflows/world-v0-foundation-stabilization-causal-gate.yml
-      - package.json
-      - public/world-v0/**
-      - src/world-slice-entry.ts
-      - src/world-v0-shared-yard.ts
-      - scripts/world-v0-keyboard-focus-guard-smoke.mjs
-      - scripts/world-v0-session-continuity-r3-smoke.mjs
-      - scripts/world-v0-live-rebind-browser-audit.mjs
-      - scripts/world-v0-soft-reservation-authority-probe.mjs
-      - scripts/world-v0-soft-reservation-browser-handoff-audit.mjs
   workflow_dispatch:
 
 permissions:

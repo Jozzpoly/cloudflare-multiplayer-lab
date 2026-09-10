@@ -1,17 +1,6 @@
 name: World V0 Owner UI Regression
 
 on:
-  push:
-    branches: [world-v0-final-owner-ui-repair, world-v0-foundation-polish-closure]
-    paths:
-      - .github/workflows/world-v0-owner-ui-regression.yml
-      - public/world-v0/keyboard-focus-guard.js
-      - public/world-v0/control-surface-visibility.css
-      - public/world-v0/index.html
-      - scripts/world-v0-keyboard-focus-guard-smoke.mjs
-      - scripts/world-v0-control-surface-visibility-smoke.mjs
-      - scripts/world-v0-owner-ui-focus-browser-audit.mjs
-      - package.json
   workflow_dispatch:
 
 permissions:

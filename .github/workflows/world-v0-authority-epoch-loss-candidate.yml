@@ -45,13 +45,17 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from "node:fs";
           const r=JSON.parse(readFileSync("world-v0-authority-epoch-loss-reset.json","utf8"));
-          for (const e of [r.afterA,r.afterB]) {
+          const pairs=[[r.beforeA,r.afterA],[r.beforeB,r.afterB]];
+          for (const [before,e] of pairs) {
             if (!e || e.runtimeFailed) throw new Error("recovered browser runtime failed");
-            if (!(e.lifecycleEvents||[]).some(x=>x.type==="authority-epoch-lost-confirmed")) throw new Error("missing authority epoch lost confirmation");
-            if (!(e.lifecycleEvents||[]).some(x=>x.type==="room-recovered")) throw new Error("missing fresh room recovery");
+            const attempt=(e.lifecycleEvents||[]).find(x=>x.type==="room-reconnect-attempt" && x.reason==="authority_epoch_lost_recovery" && x.sourceEpoch===r.oldEpoch);
+            if (!attempt) throw new Error("missing bounded authority-loss room recovery attempt");
+            if (!(e.lifecycleEvents||[]).some(x=>x.type==="room-recovered" && x.sourceEpoch===r.oldEpoch)) throw new Error("missing fresh room recovery");
+            if (e.session?.actorSessionId===before.session?.actorSessionId) throw new Error("authority-loss fallback incorrectly preserved stale ActorSession");
             if ((e.metrics?.guardMismatches||0)!==0) throw new Error("guard mismatch after authority-loss recovery");
           }
           if (r.afterA.identity.worldEpoch!==r.afterB.identity.worldEpoch || r.afterA.identity.worldEpoch===r.oldEpoch) throw new Error("replacement epoch contract failed");
+          if (!(r.afterA.localBoundaryTick>120 && r.afterB.localBoundaryTick>120)) throw new Error("replacement epoch did not demonstrate sustained progression");
           console.log("WORLD_V0_AUTHORITY_EPOCH_LOSS_RESET_CAUSAL_PASS",r.oldEpoch,r.afterA.identity.worldEpoch);
           NODE
       - name: D - Directory uncertainty remains fail-closed to exact resume

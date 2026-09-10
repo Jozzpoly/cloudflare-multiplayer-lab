@@ -1,0 +1,154 @@
+name: Repository cleanup v3 atomic apply runner
+
+on:
+  push:
+    branches: [maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10]
+    paths:
+      - .github/workflows/repository-cleanup-v3-atomic-apply-runner.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+  issues: read
+
+jobs:
+  guarded-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Reconstruct and byte-verify qualified Cleanup Kit v3 core
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .repo-cleanup/runtime-kit cleanup-evidence
+          cat .repo-cleanup/kit-payload/part-* > /tmp/repository-cleanup-kit-src.b64
+          base64 -d /tmp/repository-cleanup-kit-src.b64 > /tmp/repository-cleanup-kit-src.tgz
+          echo 'cb763dcbf6811bd0bcca6f62b474785831d6469050f4a1aada2aac10e156041c  /tmp/repository-cleanup-kit-src.tgz' | sha256sum -c -
+          tar -xzf /tmp/repository-cleanup-kit-src.tgz -C .repo-cleanup/runtime-kit
+          (
+            cd .repo-cleanup/runtime-kit
+            echo '8605e24a6e9764affbc2efb4c078bc7aa9f3514bb1e269c3c4ef2f6347a8c7e7  src/cli.mjs' | sha256sum -c -
+            echo '7748d1f6707eb25ec529cad8fed30e83e497a3636bcbf08f5ba9eb5012fcb92e  src/closure.mjs' | sha256sum -c -
+            echo 'b6c9042a8d2d30652e4a72578cedf59fd86108d8c4eaad9ed66e5ae9cd828c37  src/core.mjs' | sha256sum -c -
+            echo '09c84e96ebf7bcc7daba514fca289bf7a4ec5d724e426e21bed9b0088b27b1a2  src/git.mjs' | sha256sum -c -
+            echo '2c4a21211a535a142b0d2eb99def24def51e3497d971f261158b95788685d988  src/github.mjs' | sha256sum -c -
+            echo '496b26d284011e9dcd4c34c447a86863d66d8d41a44fc8a798cba9c24217f8b3  src/rehearsal.mjs' | sha256sum -c -
+          )
+
+      - name: Recover immutable prepared evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: repository-cleanup-v3-prepared-34511799800
+          path: /tmp/repository-cleanup-v3-prepared
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34511799800
+
+      - name: Verify preserved archive witness before planning
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = '7974e3d1eb8ed3a7236db11b0b772bc73ff3cea6'
+          test "$(git ls-remote origin refs/heads/maintenance/repository-cleanup-v3-2026-09-10 | cut -f1)" = 'feb2cea533dc227d078b01e13113a32634ca9f78'
+          test "$(git ls-remote origin refs/heads/archive/repository-cleanup-v3-2026-09-10 | cut -f1)" = '61f202289f0dcbde26cb5d72de67e7a46397c159'
+          test "$(git ls-remote origin refs/heads/archive/world-v0-qualified-2p-baseline-2026-09-10 | cut -f1)" = '7755a668d7488f04ecbf42a00fbc96fcb978d544'
+          test "$(git ls-remote origin refs/heads/archive/world-v0-final-delivery-2026-09-10 | cut -f1)" = 'fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65'
+          test "$(git ls-remote origin refs/heads/archive/pre-safe-stop-main-2026-09-10 | cut -f1)" = '829deef82c71780d2d661e7a7e82685739d7b23d'
+          test "$(git ls-remote origin 'refs/tags/repository-cleanup-v3-pre-prune-2026-09-10^{}' | cut -f1)" = '61f202289f0dcbde26cb5d72de67e7a46397c159'
+
+      - name: Regenerate exact live transaction plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .repo-cleanup/runtime-kit/src/cli.mjs plan \
+            --config=.repo-cleanup/config.json \
+            --freeze=/tmp/repository-cleanup-v3-prepared/freeze.json \
+            --out=cleanup-evidence/transaction.json | tee cleanup-evidence/plan.log
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const p = JSON.parse(readFileSync('cleanup-evidence/transaction.json', 'utf8'));
+          const runnerRef = `refs/heads/${process.env.GITHUB_REF_NAME}`;
+          const expectedUnknown = [{ ref: runnerRef, sha: process.env.GITHUB_SHA }];
+          if (p.updates.filter(x => x.kind === 'DELETE').length !== 167) throw new Error('DELETE cardinality drift');
+          if (p.updates.filter(x => x.kind === 'RETAIN_ASSERT').length !== 6) throw new Error('RETAIN cardinality drift');
+          if (JSON.stringify(p.unknownRefsAtPlan) !== JSON.stringify(expectedUnknown)) throw new Error(`Unexpected post-freeze refs: ${JSON.stringify(p.unknownRefsAtPlan)}`);
+          const token = `REPO_CLEANUP_APPLY:${p.repository}:${p.transactionSha256}`;
+          writeFileSync('cleanup-evidence/OWNER_STOP.txt', `${token}\n`);
+          writeFileSync('cleanup-evidence/runner-binding.json', JSON.stringify({runnerRef, runnerSha: process.env.GITHUB_SHA, deleteCount: 167, retainAssertCount: 6, unknownRefsAtPlan: p.unknownRefsAtPlan, transactionSha256: p.transactionSha256}, null, 2) + '\n');
+          console.log(`OWNER_STOP=${token}`);
+          NODE
+
+      - name: Check exact repository-owner authorization on issue 41
+        id: auth
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync, writeFileSync } from 'node:fs';
+          const expected = readFileSync('cleanup-evidence/OWNER_STOP.txt', 'utf8').trim();
+          const owner = process.env.GITHUB_REPOSITORY_OWNER;
+          const api = `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/issues/41/comments?per_page=100`;
+          const res = await fetch(api, { headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' } });
+          if (!res.ok) throw new Error(`Issue authorization read failed: ${res.status}`);
+          const comments = await res.json();
+          const matches = comments.filter(c => c?.user?.login === owner && String(c.body ?? '').split(/\r?\n/).map(x => x.trim()).includes(expected));
+          const authorized = matches.length > 0;
+          writeFileSync('cleanup-evidence/authorization-check.json', JSON.stringify({authorized, owner, matchingCommentIds: matches.map(c => c.id), expectedTransactionSha256: expected.split(':').at(-1)}, null, 2) + '\n');
+          appendFileSync(process.env.GITHUB_OUTPUT, `authorized=${authorized ? 'true' : 'false'}\n`);
+          if (!authorized) console.log('OWNER_STOP: no exact owner authorization for this transaction; destructive step will be skipped.');
+          else console.log(`OWNER_AUTHORIZATION_MATCH comment=${matches.at(-1).id}`);
+          NODE
+
+      - name: Apply exact atomic transaction
+        if: steps.auth.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO_CLEANUP_AUTHORIZATION: ${{ steps.auth.outputs.authorization }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export REPO_CLEANUP_AUTHORIZATION="$(cat cleanup-evidence/OWNER_STOP.txt)"
+          node .repo-cleanup/runtime-kit/src/cli.mjs apply \
+            --config=.repo-cleanup/config.json \
+            --plan=cleanup-evidence/transaction.json \
+            --transport=github-graphql \
+            --execute | tee cleanup-evidence/apply.log
+
+      - name: Independent post-apply namespace assertions
+        if: steps.auth.outputs.authorized == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const p = JSON.parse(readFileSync('cleanup-evidence/transaction.json', 'utf8'));
+          const out = execFileSync('git', ['ls-remote', '--heads', 'origin'], {encoding:'utf8'}).trim();
+          const live = new Map(out ? out.split('\n').map(line => { const [sha, ref] = line.split(/\s+/); return [ref, sha]; }) : []);
+          for (const u of p.updates) {
+            if (u.kind === 'DELETE' && live.has(u.ref)) throw new Error(`Postflight DELETE still live: ${u.ref}`);
+            if (u.kind === 'RETAIN_ASSERT' && live.get(u.ref) !== u.beforeOid) throw new Error(`Postflight RETAIN drift: ${u.ref}`);
+          }
+          for (const u of p.unknownRefsAtPlan) if (live.get(u.ref) !== u.sha) throw new Error(`Unknown survivor drift: ${u.ref}`);
+          console.log(`INDEPENDENT_POSTFLIGHT_PASS liveHeads=${live.size}`);
+          NODE
+
+      - name: Preserve runner evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-cleanup-v3-atomic-runner-${{ github.run_id }}
+          path: cleanup-evidence/
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,0 +1,86 @@
+name: World V0 Polish Toolchain Audit
+
+on:
+  push:
+    branches: [world-v0-foundation-polish-closure]
+    paths:
+      - .github/workflows/world-v0-polish-toolchain-audit.yml
+      - package.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-current-and-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install frozen graph
+        run: npm ci
+      - name: Validate canonical check coverage repair
+        run: |
+          set -euo pipefail
+          npm run check | tee polish-current-check.log
+          grep -q WORLD_V0_AUTHORITY_EPOCH_LOSS_CLASSIFIER_PASS polish-current-check.log
+          grep -q WORLD_V0_JOIN_FAILURE_CLARITY_SMOKE_PASS polish-current-check.log
+          echo WORLD_V0_CANONICAL_STABILIZATION_CHECK_COVERAGE_PASS
+      - name: Record current toolchain graph and audit
+        run: |
+          set +e
+          npm ls wrangler miniflare sharp --all > toolchain-current-tree.txt 2>&1
+          npm audit --omit=dev --json > toolchain-current-prod-audit.json
+          prod=$?
+          npm audit --json > toolchain-current-full-audit.json
+          full=$?
+          set -e
+          echo "CURRENT_PROD_AUDIT_EXIT=$prod"
+          echo "CURRENT_FULL_AUDIT_EXIT=$full"
+          cat toolchain-current-tree.txt
+      - name: Materialize latest Wrangler candidate only in runner
+        run: |
+          set -euo pipefail
+          npm install --save-dev --save-exact wrangler@4.130.0
+          npm ls wrangler miniflare sharp --all | tee toolchain-candidate-tree.txt
+          git diff -- package.json package-lock.json > toolchain-candidate.diff
+      - name: Audit latest candidate
+        run: |
+          set +e
+          npm audit --omit=dev --json > toolchain-candidate-prod-audit.json
+          prod=$?
+          npm audit --json > toolchain-candidate-full-audit.json
+          full=$?
+          set -e
+          echo "CANDIDATE_PROD_AUDIT_EXIT=$prod"
+          echo "CANDIDATE_FULL_AUDIT_EXIT=$full"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          for (const file of ["toolchain-current-full-audit.json","toolchain-candidate-full-audit.json"]) {
+            const value=JSON.parse(readFileSync(file,"utf8"));
+            console.log(file, JSON.stringify(value.metadata?.vulnerabilities || null));
+          }
+          NODE
+      - name: Full repository validation on latest candidate
+        run: npm run check | tee toolchain-candidate-check.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-polish-toolchain-${{ github.run_id }}
+          path: |
+            polish-current-check.log
+            toolchain-current-tree.txt
+            toolchain-current-prod-audit.json
+            toolchain-current-full-audit.json
+            toolchain-candidate-tree.txt
+            toolchain-candidate-prod-audit.json
+            toolchain-candidate-full-audit.json
+            toolchain-candidate.diff
+            toolchain-candidate-check.log
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,4 +1,4 @@
-name: Repository cleanup v3 read-only audit
+name: Repository cleanup v3 preservation preparation
 
 on:
   push:
@@ -9,16 +9,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
   deployments: read
   pages: read
   pull-requests: read
 
 jobs:
-  audit:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,19 +48,127 @@ jobs:
             for f in src/*.mjs; do node --check "$f"; done
           )
 
-      - name: Audit Git ref evidence
+      - name: Fresh native audit
         run: node .repo-cleanup/runtime-kit/src/cli.mjs audit --config=.repo-cleanup/config.json --out=cleanup-evidence/audit.json
 
-      - name: Audit GitHub platform state
+      - name: Fresh GitHub platform snapshot
         env:
           GH_TOKEN: ${{ github.token }}
         run: node .repo-cleanup/runtime-kit/src/cli.mjs platform --config=.repo-cleanup/config.json --out=cleanup-evidence/platform.json
 
-      - name: Preserve read-only evidence
+      - name: Recover qualified baseline audit artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: repository-cleanup-v3-audit-34499179534
+          path: /tmp/repository-cleanup-v3-baseline
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34499179534
+
+      - name: Bind fresh namespace to reviewed audit and emit explicit dispositions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor a0aa690f9155f8bc5df2b6c9966a815ed2b77fa7 "$GITHUB_SHA"
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { recomputeAuditDigest } from './.repo-cleanup/runtime-kit/src/core.mjs';
+
+          const expectedBaselineDigest = '0907f987f86b521ebd44879878a27a50df5a28b21c8e21bf50a032dc88c1f168';
+          const helperRef = 'refs/heads/maintenance/repository-cleanup-v3-2026-09-10';
+          const baseline = JSON.parse(readFileSync('/tmp/repository-cleanup-v3-baseline/audit.json', 'utf8'));
+          const fresh = JSON.parse(readFileSync('cleanup-evidence/audit.json', 'utf8'));
+
+          if (baseline.auditSha256 !== expectedBaselineDigest || recomputeAuditDigest(baseline) !== expectedBaselineDigest) {
+            throw new Error('Qualified baseline audit digest mismatch');
+          }
+          if (recomputeAuditDigest(fresh) !== fresh.auditSha256) throw new Error('Fresh audit self-hash mismatch');
+          if (baseline.repository !== fresh.repository || baseline.canonicalRef !== fresh.canonicalRef || baseline.canonicalSha !== fresh.canonicalSha) {
+            throw new Error('Fresh audit authority identity drift');
+          }
+          if (fresh.canonicalSha !== '7974e3d1eb8ed3a7236db11b0b772bc73ff3cea6') throw new Error('Canonical main moved');
+
+          const b = new Map(baseline.records.map((row) => [row.ref, row]));
+          const f = new Map(fresh.records.map((row) => [row.ref, row]));
+          const added = [...f.keys()].filter((ref) => !b.has(ref)).sort();
+          const missing = [...b.keys()].filter((ref) => !f.has(ref)).sort();
+          if (added.length || missing.length) throw new Error(`Reviewed namespace changed: ${JSON.stringify({ added, missing })}`);
+
+          const moved = [];
+          for (const [ref, row] of b) {
+            const now = f.get(ref);
+            if (ref !== helperRef && now.expectedSha !== row.expectedSha) moved.push({ ref, before: row.expectedSha, after: now.expectedSha });
+          }
+          if (moved.length) throw new Error(`Reviewed historical refs moved: ${JSON.stringify(moved)}`);
+          if (f.get(helperRef)?.expectedSha !== process.env.GITHUB_SHA) throw new Error('Fresh helper tip is not this exact workflow head');
+
+          const keepReasons = new Map([
+            ['refs/heads/main', 'canonical authority; frozen qualified World V0 product remains reachable through canonical lineage'],
+            ['refs/heads/archive/world-v0-qualified-2p-baseline-2026-09-10', 'hard-deny exact qualified World V0 product anchor'],
+            ['refs/heads/archive/world-v0-final-delivery-2026-09-10', 'hard-deny final qualified delivery anchor'],
+            ['refs/heads/archive/pre-safe-stop-main-2026-09-10', 'hard-deny pre-safe-stop recovery anchor'],
+            [helperRef, 'temporary Cleanup Kit v3 execution helper; separate Owner boundary for later disposal'],
+          ]);
+          const specialDeleteReasons = new Map([
+            ['refs/heads/archive/world-v0-research-closure-2026-09-10', 'provisional research closure superseded by formal Cleanup Kit v3 aggregate archive; preserve exact tip in v3 recovery manifest'],
+            ['refs/heads/archive/box3d-do-feasibility', 'semantic research witness absorbed into formal v3 aggregate archive; live branch name no longer required after qualified preservation'],
+            ['refs/heads/archive/foundation-v0-q1-determinism-envelope', 'semantic research witness absorbed into formal v3 aggregate archive; live branch name no longer required after qualified preservation'],
+            ['refs/heads/archive/world-v0-capacity-cartography', 'semantic research witness absorbed into formal v3 aggregate archive; live branch name no longer required after qualified preservation'],
+            ['refs/heads/archive/ws0-human-zero-reconciliation-control', 'semantic research witness absorbed into formal v3 aggregate archive; live branch name no longer required after qualified preservation'],
+          ]);
+
+          const decisions = fresh.records.map((row) => {
+            if (keepReasons.has(row.ref)) return { ref: row.ref, disposition: 'KEEP', reason: keepReasons.get(row.ref) };
+            let reason = specialDeleteReasons.get(row.ref);
+            if (!reason && row.proofClass === 'ANCESTOR_OF_CANONICAL') reason = 'historical live name; exact tip is already in canonical ancestry and will also be catalogued by the formal v3 archive';
+            if (!reason && row.proofClass === 'EQUAL_CANONICAL') reason = 'redundant live alias of the canonical tip; retire the branch name after v3 preservation';
+            if (!reason && row.proofClass === 'PR_HEAD_PRESERVED') reason = 'historical live name with PR-head witness; exact tip will additionally be catalogued by the formal v3 archive';
+            if (!reason) reason = 'divergent historical/research tip selected for archive-backed retirement; preserve exact identity in the formal v3 recovery manifest before delete';
+            return { ref: row.ref, disposition: 'DELETE', reason };
+          });
+
+          const keepCount = decisions.filter((row) => row.disposition === 'KEEP').length;
+          const deleteCount = decisions.filter((row) => row.disposition === 'DELETE').length;
+          if (decisions.length !== 172 || keepCount !== 5 || deleteCount !== 167) {
+            throw new Error(`Disposition count mismatch: ${JSON.stringify({ total: decisions.length, keepCount, deleteCount })}`);
+          }
+
+          writeFileSync('cleanup-evidence/decisions.json', JSON.stringify(decisions, null, 2) + '\n');
+          writeFileSync('cleanup-evidence/baseline-binding.json', JSON.stringify({
+            baselineAuditSha256: baseline.auditSha256,
+            freshAuditSha256: fresh.auditSha256,
+            canonicalSha: fresh.canonicalSha,
+            baselineHelperSha: b.get(helperRef).expectedSha,
+            freshHelperSha: f.get(helperRef).expectedSha,
+            reviewedRefCount: decisions.length,
+            keepCount,
+            deleteCount,
+            addedRefs: added,
+            missingRefs: missing,
+            nonHelperMovedRefs: moved,
+          }, null, 2) + '\n');
+          NODE
+
+      - name: Freeze exact dispositions against fresh namespace
+        run: node .repo-cleanup/runtime-kit/src/cli.mjs freeze --config=.repo-cleanup/config.json --audit=cleanup-evidence/audit.json --decisions=cleanup-evidence/decisions.json --out=cleanup-evidence/freeze.json
+
+      - name: Build formal aggregate recovery archive
+        run: node .repo-cleanup/runtime-kit/src/cli.mjs archive --config=.repo-cleanup/config.json --freeze=cleanup-evidence/freeze.json --out=cleanup-evidence/archive.json
+
+      - name: Rehearse exact recovery after self-contained bundle and aggressive GC
+        run: node .repo-cleanup/runtime-kit/src/cli.mjs rehearse --config=.repo-cleanup/config.json --freeze=cleanup-evidence/freeze.json --archive=cleanup-evidence/archive.json --out=cleanup-evidence/rehearsal | tee cleanup-evidence/rehearsal.log
+
+      - name: Publish archive branch and immutable pre-prune witness tag
+        run: node .repo-cleanup/runtime-kit/src/cli.mjs publish-archive --config=.repo-cleanup/config.json --freeze=cleanup-evidence/freeze.json --archive=cleanup-evidence/archive.json --execute | tee cleanup-evidence/archive-publish.json
+
+      - name: Build exact destructive transaction plan without applying it
+        run: node .repo-cleanup/runtime-kit/src/cli.mjs plan --config=.repo-cleanup/config.json --freeze=cleanup-evidence/freeze.json --out=cleanup-evidence/transaction.json | tee cleanup-evidence/plan.log
+
+      - name: Preserve preparation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: repository-cleanup-v3-audit-${{ github.run_id }}
+          name: repository-cleanup-v3-prepared-${{ github.run_id }}
           path: cleanup-evidence/
           if-no-files-found: warn
           retention-days: 30

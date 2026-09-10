@@ -1,4 +1,4 @@
-name: Repository terminal closure vNext dry qualification
+name: Repository terminal closure vNext
 
 on:
   push:
@@ -13,10 +13,14 @@ permissions:
   issues: read
   actions: read
 
+concurrency:
+  group: repository-terminal-closure-vnext-2026-09-10
+  cancel-in-progress: false
+
 jobs:
-  qualify:
+  terminal:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       GITHUB_TOKEN: ${{ github.token }}
       TERMINAL_REPOSITORY: Jozzpoly/cloudflare-multiplayer-lab
@@ -30,8 +34,8 @@ jobs:
       TERMINAL_FINAL_DELIVERY_SHA: fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65
       TERMINAL_PRE_SAFE_STOP_SHA: 829deef82c71780d2d661e7a7e82685739d7b23d
       TERMINAL_PREPRUNE_TARGET: 61f202289f0dcbde26cb5d72de67e7a46397c159
-      TERMINAL_PUBLISH_ARCHIVE: "false"
-      TERMINAL_ALLOW_APPLY: "false"
+      TERMINAL_PUBLISH_ARCHIVE: "true"
+      TERMINAL_ALLOW_APPLY: "true"
       TERMINAL_OUT_DIR: terminal-closure-out
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +52,7 @@ jobs:
             '+refs/pull/*/head:refs/remotes/pull/*/head'
           git fsck --full
 
-      - name: Materialize and verify terminal closure prototype
+      - name: Materialize exact dry-qualified terminal runtime
         shell: bash
         run: |
           set -euo pipefail
@@ -57,15 +61,13 @@ jobs:
           echo '12529e1065afe687f652b7c1a7de76f79e3f15da00fd82cb4cd5837e16066cc1  /tmp/repository-terminal-closure-vnext.py' | sha256sum -c -
           python -m py_compile /tmp/repository-terminal-closure-vnext.py
 
-      - name: Execute strict non-mutating preparation
+      - name: Prepare or execute exact terminal transaction
         shell: bash
         run: |
           set -euo pipefail
-          python /tmp/repository-terminal-closure-vnext.py | tee terminal-dry.log
-          grep -q '^DRY_PREP_ARCHIVE_NOT_PUBLISHED candidate=' terminal-dry.log
-          grep -q '^OWNER_STOP transaction=' terminal-dry.log
+          python /tmp/repository-terminal-closure-vnext.py | tee terminal-run.log
 
-      - name: Independently constrain generated evidence
+      - name: Independently constrain terminal evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -76,36 +78,40 @@ jobs:
           p=json.loads((out/'preparation.json').read_text())
           t=json.loads((out/'terminal-transaction.json').read_text())
           s=json.loads((out/'semantic-index.json').read_text())['summary']
-          assert p['publishArchiveEnabled'] is False
-          assert p['applyEnabled'] is False
-          assert p['authorizationPresent'] is False
+          assert p['publishArchiveEnabled'] is True
+          assert p['applyEnabled'] is True
           assert t['schema']=='repository-terminal-transaction-v2'
           assert t['transport']=='github-graphql-updateRefs-atomic-cas'
           kinds={k:sum(u['kind']==k for u in t['refUpdates']) for k in {'DELETE','CREATE_ANNOTATED_TAG','RETAIN_ASSERT'}}
           assert kinds=={'DELETE':5,'CREATE_ANNOTATED_TAG':4,'RETAIN_ASSERT':2}, kinds
           assert len(t['refUpdates'])==11 and len({u['name'] for u in t['refUpdates']})==11
           assert all(u['beforeOid']==u['afterOid'] for u in t['refUpdates'] if u['kind']=='RETAIN_ASSERT')
-          assert s['historicalBranchCount']==167
-          assert s['distinctTipCount']==144
-          assert s['branchesWithAnyTransientOnlyPath']==20
-          assert s['branchesWithCommitsBeyondRecentFive']==59
-          assert s['netZeroBranchesWithHistoricalWork']==3
-          assert s['distinctTransientOnlyPathCount']==167
-          assert s['historyWideUniqueCommitCountScanned']==443
-          assert s['historyWideDistinctBlobCountScanned']==867
-          assert s['historyWideSmallBlobCountInspected']==342
-          assert s['historyWideGitlinkCount']==0
-          assert s['historyWideLfsPointerCount']==0
-          print('TERMINAL_DRY_EVIDENCE_CONSTRAINT_PASS',kinds)
+          expected={'historicalBranchCount':167,'distinctTipCount':144,'branchesWithAnyTransientOnlyPath':20,'branchesWithCommitsBeyondRecentFive':59,'netZeroBranchesWithHistoricalWork':3,'distinctTransientOnlyPathCount':167,'historyWideUniqueCommitCountScanned':443,'historyWideDistinctBlobCountScanned':867,'historyWideSmallBlobCountInspected':342,'historyWideGitlinkCount':0,'historyWideLfsPointerCount':0}
+          for k,v in expected.items(): assert s[k]==v,(k,s[k],v)
+          remote_objects=out/'remote-annotated-tag-objects.json'
+          assert remote_objects.exists()
+          ro=json.loads(remote_objects.read_text())
+          assert len(ro)==4 and all(x['mode']=='github-unreferenced-tag-object' for x in ro)
+          if p.get('authorizationPresent'):
+              v=json.loads((out/'terminal-verification.json').read_text())
+              assert v['status']=='PASS'
+              assert v['freshMirror']['status']=='PASS' and v['freshMirror']['historicalRefsVerified']==167
+              assert 'PASS_GITHUB_TERMINAL_UPDATE_REFS_ATOMIC_CAS' in Path('terminal-run.log').read_text()
+          else:
+              assert not (out/'terminal-verification.json').exists()
+              log=Path('terminal-run.log').read_text()
+              assert 'OWNER_STOP transaction=' in log
+              assert p['authorizationToken'] in log
+          print('TERMINAL_EVIDENCE_CONSTRAINT_PASS',kinds,'authorized=',p.get('authorizationPresent'))
           PY
 
-      - name: Preserve dry qualification evidence
+      - name: Preserve terminal evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: repository-terminal-vnext-dry-${{ github.run_id }}
+          name: repository-terminal-vnext-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             terminal-closure-out/
-            terminal-dry.log
+            terminal-run.log
           if-no-files-found: warn
           retention-days: 90

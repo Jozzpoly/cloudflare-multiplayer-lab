@@ -15,22 +15,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect exact frozen runtime around tag object creation
+      - name: Inspect exact frozen runtime around transaction and terminal verification
         shell: bash
         run: |
           set -euo pipefail
           gzip -dc .github/terminal/repository-terminal-closure-vnext.py.gz > /tmp/terminal.py
           python - <<'PY'
           from pathlib import Path
-          text=Path('/tmp/terminal.py').read_text()
-          needles=['GitHub annotated tag object identity mismatch','remote-annotated-tag-objects.json','/git/tags','mktag']
-          lines=text.splitlines(); printed=set()
-          for needle in needles:
-              hits=[i for i,l in enumerate(lines) if needle in l]
-              print(f'=== NEEDLE {needle!r} HITS {hits} ===')
-              for i in hits:
-                  lo=max(0,i-18); hi=min(len(lines),i+19); key=(lo,hi)
-                  if key in printed: continue
-                  printed.add(key)
-                  for n in range(lo,hi): print(f'{n+1:04d}: {lines[n]}')
+          lines=Path('/tmp/terminal.py').read_text().splitlines()
+          for lo,hi in [(326,430),(475,610)]:
+              print(f'=== SOURCE {lo}-{hi} ===')
+              for n in range(lo-1,min(hi,len(lines))): print(f'{n+1:04d}: {lines[n]}')
           PY

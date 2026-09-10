@@ -10,9 +10,9 @@ Status: **PREPARED / OWNER STOP UNTIL EXACT TERMINAL TRANSACTION AUTHORIZATION**
 - pre-safe-stop main: `829deef82c71780d2d661e7a7e82685739d7b23d`;
 - pre-prune aggregate anchor: `61f202289f0dcbde26cb5d72de67e7a46397c159`;
 - Cleanup Kit v3 verified seal: `4d2fae1a18613f0c90c4b242edfa68eb26fd66a2`;
-- previous aggregate archive parent: `60d623d3215fd2b92d215643174f087e9934a1a7`;
+- previous aggregate archive parent: `434907c25fdcfdc7425295417e225e652fcb4865`;
 - cleanup helper exact tip preserved in archive ancestry: `feb2cea533dc227d078b01e13113a32634ca9f78`;
-- terminal runner exact tip preserved by this archive candidate: `861caded34b51e4d36a0405317be1bbd93cd7f9f`.
+- terminal runner exact tip preserved by this archive candidate: `f668e4aeeac0208bee7c49ac6e9c40d740dff21e`.
 
 ## Bulk prune evidence
 

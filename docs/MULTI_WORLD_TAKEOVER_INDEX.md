@@ -1,182 +1,177 @@
 # Multi_World — Takeover Index
 
-Status: **CURRENT OPERATIONAL ENTRYPOINT — VERIFY LIVE**  
+Status: **CURRENT OPERATIONAL ENTRYPOINT — FINAL UI SANITY PENDING**  
 Updated: **2026-09-10**
 
-This index is intentionally short. A fresh continuation should not reconstruct the whole project from historical branches unless a concrete question requires it.
+This index is intentionally short. A fresh continuation should not reconstruct the whole project from historical branches unless a concrete conflicting fact requires it.
 
 ---
 
 ## Canonical reading order for the current closure
 
-1. [`MULTI_WORLD_PROJECT_SOUL.md`](MULTI_WORLD_PROJECT_SOUL.md) — durable answer to **what Multi_World is trying to become**.
-2. [`MULTI_WORLD_CURRENT_STATE.md`](MULTI_WORLD_CURRENT_STATE.md) — current technical truth, exact product/delivery anchors, lifecycle boundaries and nonclaims.
-3. [`WORLD_V0_FOUNDATION_STABILIZATION_DIRECTION.md`](WORLD_V0_FOUNDATION_STABILIZATION_DIRECTION.md) — current execution order and remaining gate.
-4. [`WORLD_V0_QUALIFIED_BASELINE_GATE.md`](WORLD_V0_QUALIFIED_BASELINE_GATE.md) — exact Owner qualification target.
-5. GitHub issue #8 — newest checkpoints when detailed evidence/provenance matters.
+1. [`MULTI_WORLD_PROJECT_SOUL.md`](MULTI_WORLD_PROJECT_SOUL.md) — durable intent; intentionally not yet rewritten.
+2. [`MULTI_WORLD_CURRENT_STATE.md`](MULTI_WORLD_CURRENT_STATE.md) — current factual state and exact final candidate.
+3. [`WORLD_V0_STABILIZATION_POLISH_LEDGER.md`](WORLD_V0_STABILIZATION_POLISH_LEDGER.md) — what the broad challenge/polish phase changed and preserved.
+4. [`WORLD_V0_FOUNDATION_STABILIZATION_DIRECTION.md`](WORLD_V0_FOUNDATION_STABILIZATION_DIRECTION.md) — current closure order.
+5. [`WORLD_V0_QUALIFIED_BASELINE_GATE.md`](WORLD_V0_QUALIFIED_BASELINE_GATE.md) — Owner gate and tiny remaining sanity check.
+6. GitHub issue #8 — detailed evidence/provenance checkpoints.
 
-Important recent issue checkpoints:
+Important issue checkpoints before the final UI repair:
 
-- authority-epoch-loss stabilization: `5611456843`;
-- broad adversarial verification: `5611643968`.
+- authority-epoch-loss stabilization `5611456843`;
+- broad adversarial verification `5611643968`;
+- polish checkpoint `5617342390`.
 
 Older R0/R1/R2/takeover documents are provenance, not startup requirements.
 
 ---
 
-## Current exact anchors
+## Current exact product
 
-### Frozen stabilization product
-
-`fef4a2a4b6007c3e42cbd3b430cb9943343cc970`
+`7755a668d7488f04ecbf42a00fbc96fcb978d544`
 
 Message:
 
-`Recover public Yard after lost authority epoch`
+`Rev World V0 browser UI for final owner focus repair`
 
-This is the current product authority for the final polish/Owner-gate phase. `main` still carries older integrated R2-era canonical history and should not silently override this newer unmerged stabilization product.
+This is the exact final stabilization candidate. It differs from pre-Owner product `fef4a2a4...` only through the bounded UI/input repair forced by the 2026-09-10 Owner recording plus validation coverage already present in the polish branch. Server physics, deterministic simulation, protocol and SimBuild did not change.
 
 ### Current qualified-play Owner candidate
 
 `https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev/world-v0/`
 
-Delivery:
+Final delivery:
 
-- run `34426803131` / job `102713664761` — **SUCCESS**;
-- Cloudflare Version ID `d62c2e72-c4d9-4124-8847-85815d715ff1`;
-- product bytes match `fef4a2a4...`;
+- delivery branch `world-v0-foundation-final-delivery`;
+- delivery head `fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`;
+- run `34475199474` / job `102864191837` — **SUCCESS**;
+- Cloudflare Version ID `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`;
+- artifact `10151181384`;
+- digest `sha256:4d0cdc5eb04bf3dcafdbad4ccd469b2db24f7d372f1549212d7e0321e3f49553`;
+- protected runtime bytes matched `7755a668...`;
 - human public Yard Durable Objects were not touched by the delivery workflow.
 
-### Current simulation identity
+---
+
+## Current identities
+
+Simulation/physics:
 
 - contract `shared-yard-v0-contract-v14-jump-delivery-persistence`;
 - authority `shared-yard-v0-authority-v11-jump-delivery-persistence`;
 - browser sim `shared-yard-v0-browser-sim-v10-jump-delivery-persistence`;
-- browser UI `shared-yard-v0-browser-ui-v19-jump-delivery-persistence`;
 - protocol `shared-yard-v0-scheduled-input-v3-supersession`;
 - state guard `shared-yard-v0-f32-state-v1`;
 - SimBuild `shared-yard-v0-sim-cd8edc169f791a64`.
 
-### Current admission/lifecycle shell
+Presentation/input/lifecycle shell:
 
+- browser UI `shared-yard-v0-browser-ui-v20-owner-ui-focus`;
+- keyboard focus guard `world-v0-keyboard-focus-guard-v2-semantic-ownership`;
 - session continuity `world-v0-session-continuity-r3-live-rebind`;
 - public room entry `world-v0-public-room-entry-r3-presence-capacity`;
-- directory `world-v0-public-room-directory-r4-vacant-capacity`;
+- public room directory `world-v0-public-room-directory-r4-vacant-capacity`;
 - join failure clarity `world-v0-join-failure-clarity-v1`;
-- authority epoch-loss recovery `world-v0-authority-epoch-loss-v1`.
-
----
-
-## What changed since the old R2 takeover spine
-
-R1/R2 remain earned, but the project no longer stops at those capabilities.
-
-The September stabilization campaign additionally closed:
-
-- gameplay keyboard stealing W/A/S/D from callsign input;
-- same-owner F5/new-tab overlap failing against its own live ActorSession;
-- dormant ActorSessions permanently consuming public Yard capacity;
-- cross-Yard history exhausting all three public Yards;
-- unsafe ambiguity between protected and replaceable reservations;
-- fully vacant resumable epochs owning capacity despite zero connected humans;
-- stale old-epoch tokens surviving demand-driven handoff;
-- generic join messages conflating capacity/lifecycle/transport failures;
-- fatal `actor_session_resume_exhausted` when the in-memory authority WorldEpoch was actually gone.
-
-The current fixed two-player deterministic topology is deliberately preserved. These repairs do **not** introduce dynamic roster replacement or 3+ players.
+- authority epoch-loss recovery `world-v0-authority-epoch-loss-v1`;
+- desktop touch controls hidden for primary fine pointer, retained for coarse/mobile.
 
 ---
 
 ## Latest evidence to trust
 
-### Post-promotion product gates
+### Core/adversarial product evidence
 
-- focused authority-loss/ordinary-outage requalification `34426373914` — **SUCCESS**;
-- full historical Current Validation `34426331772` — **SUCCESS**.
+- post-promotion authority-loss focused gate `34426373914` — **SUCCESS**;
+- full Current Validation `34426331772` — **SUCCESS**;
+- broad adversarial campaign `34428181101` — **SUCCESS / 8 of 8 jobs**;
+- Resume-vs-fresh authority race `34428538218` — **SUCCESS**, both legal winner orders, no split-brain.
 
-### Broad adversarial campaign
+### Owner broad human run
 
-`34428181101` — **SUCCESS / 8 of 8 jobs**.
+Owner verdict on the delivered pre-UI candidate:
 
-Notable extra challenges:
+> gameplay stable and smooth.
 
-- three authority losses in one persistent browser pair;
-- one peer background-hidden during authority loss;
-- retained history across Yard 1/2/3 without capacity exhaustion;
-- four fresh remote Cloudflare Durable Objects;
-- composed same-owner/soft-handoff/zero-online/direct-resume flows.
+The recording did not justify reopening broad netcode/reliability. It isolated one local UI defect: Diagnostics focus swallowed desktop WASD; visible desktop touch controls accidentally provided a way to restore focus.
 
-### Admission race
+### Final UI repair evidence
 
-`34428538218` — **SUCCESS**.
+Focused real Chromium:
 
-Near-simultaneous private Resume versus unrelated fresh admission produced both legal winner orders across repeated cases. Exactly one authority-valid outcome won each time; no split-brain/double WorldEpoch was observed.
+- run `34474057233` — **SUCCESS**;
+- artifact `10150740652`;
+- digest `sha256:62bb4b39cb70e46f280df7bfcae061a51bb5b72744a30817d456dc2c688df38d`.
+
+Full Current Validation on exact `7755a668...`:
+
+- run `34474343862` — **SUCCESS**;
+- artifact `10151068683`;
+- digest `sha256:728f0f5c7dfa68a6fb5f11ab04a1fd7e8b6c55f8d63b6d123255fb54ffa4827d`.
 
 ---
 
-## Current polish branch
+## What is now closed
 
-`world-v0-foundation-polish-closure`
+The current foundation has causally/humanly closed the present-scope problems around:
 
-Purpose:
+- ordinary two-player smoothness and exact shared simulation;
+- same-owner live F5/new-tab ActorSession rebound;
+- protected/soft/vacant capacity semantics;
+- cross-Yard dormant-history capacity exhaustion;
+- stale-token rejection and Resume-vs-fresh authority races;
+- bounded authority-epoch-loss recovery;
+- text-entry W/A/S/D ownership;
+- join failure clarity;
+- Diagnostics focus no longer owning unrelated gameplay WASD;
+- desktop/mobile control-surface separation at automated causal level.
 
-- do not change gameplay/runtime unless a new falsifier requires it;
-- repair canonical validation coverage;
-- reconcile stale documentation;
-- audit dependency/toolchain debt;
-- classify reusable gates versus one-shot apparatus;
-- prepare a clean final Owner gate and eventual safe stop.
+---
 
-The polish branch currently changes the frozen product only in validation/documentation surfaces. Standard `npm run check` has been extended so the authority-epoch-loss and join-failure-clarity modules and smoke tests are part of the ordinary canonical repository check.
+## Important accepted boundary
 
-Toolchain finding: production dependency audit is clean. The remaining three high advisories are dev-only under `wrangler -> miniflare -> sharp`; a tested Wrangler `4.130.0` upgrade does not remove them, so no cosmetic upgrade is currently justified.
+Current fixed-2P replacement still rotates the WorldEpoch. The old shared physical state is not preserved when a soft-reserved actor is replaced by a fresh player.
+
+That is accepted for this stabilization baseline but is explicitly **not** the target model for a persistent co-op sandbox or mini-MMO.
+
+Future architecture must revisit:
+
+`world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
+
+Do not implement that before safe stop and repository cleanup.
 
 ---
 
 ## Immediate continuation state
 
-**Do not open another feature frontier.**
+**Do not open another broad test or feature frontier.**
 
-The current order is:
+Only this tiny Owner sanity check remains on the currently delivered URL:
 
-1. finish bounded polish/document/validation cleanup;
-2. ensure the polish branch has no unintended product drift;
-3. run one final representative Owner adversarial qualification against the delivered candidate;
-4. if PASS, freeze the two-player baseline and enter safe stop;
-5. then classify/retire one-shot workflows and branches without losing provenance;
-6. only after cleanup review Project Soul / repository role and choose the next multiplayer frontier.
+1. desktop: repeatedly open/close Diagnostics and immediately use WASD — movement must keep working;
+2. desktop: joystick/gimbal/JUMP must be absent on a normal fine-pointer desktop;
+3. mobile: joystick/gimbal/JUMP must remain present and usable.
 
-The preliminary long-horizon direction remains that Multi_World may become a long-lived multiplayer systems laboratory / reusable core, with **3+ players an early desired post-cleanup capability**. Do not implement that during this closure.
+If PASS:
 
----
-
-## Evidence boundaries to remember
-
-The current foundation does **not** establish:
-
-- durable reconstruction of a lost Box3D WorldEpoch;
-- account/cloud or cross-device private session identity;
-- persistent continuously-open-world semantics;
-- arbitrary dynamic membership in one deterministic epoch;
-- 3+ player scalability;
-- guaranteed recovery through every mobile OS/radio suspension pattern;
-- arbitrary permanent-network-loss input delivery;
-- coyote time, landing buffer or a final character controller.
-
-Authority-loss recovery deliberately fresh-starts the same logical Yard when the old in-memory epoch is positively gone; it does not resurrect the old physical state.
+1. freeze exact runtime/product `7755a668...` and Cloudflare Version `1cc9a0fd...`;
+2. record final Owner verdict/evidence;
+3. enter deliberate safe stop;
+4. inventory and classify workflows/branches before deletion;
+5. preserve canonical/evidence/archive/donor provenance;
+6. reconcile the stabilization baseline with the long-lived canonical branch;
+7. only after cleanup review Project Soul / repository role;
+8. only then choose the next architecture frontier, with 3+ players an early desired capability.
 
 ---
 
-## Minimal fresh-takeover procedure
+## Minimal fresh takeover procedure
 
 A fresh browser orchestrator should:
 
-1. verify live `world-v0-foundation-polish-closure` and product anchor `fef4a2a4...`;
-2. confirm any commits after `fef4...` are validation/docs/apparatus only unless evidence says otherwise;
-3. read Project Soul;
-4. read Current State;
-5. read stabilization direction and Owner gate;
-6. inspect issue #8 checkpoint `5611643968` when exact adversarial evidence matters;
-7. continue final polish or Owner qualification — **not** historical reliability exploration by default.
+1. verify live polish branch; commits after `7755a668...` should be docs-only unless evidence says otherwise;
+2. verify final delivery branch `fa5e4559...` and Version `1cc9a0fd...`;
+3. read Project Soul, then Current State, Polish Ledger, stabilization direction and baseline gate;
+4. recover newest issue #8 checkpoint when exact evidence is needed;
+5. continue only the final UI sanity or, if already passed, safe-stop/branch-cleanup preparation.
 
-Only conflicting new evidence should force reconstruction from older branches or handoffs.
+Do not restart historical reliability exploration unless genuinely conflicting evidence appears.

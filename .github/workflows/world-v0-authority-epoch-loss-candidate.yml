@@ -1,0 +1,89 @@
+name: World V0 Authority Epoch Loss Candidate
+
+on:
+  push:
+    branches: [world-v0-foundation-stabilization-closure]
+    paths:
+      - .github/workflows/world-v0-authority-epoch-loss-candidate.yml
+      - scripts/apply-world-v0-authority-epoch-loss-recovery.mjs
+      - scripts/world-v0-authority-epoch-loss-classifier-smoke.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-causal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize candidate only in runner workspace
+        run: |
+          set -euo pipefail
+          node scripts/apply-world-v0-authority-epoch-loss-recovery.mjs
+          node --check public/world-v0/authority-epoch-loss.js
+          node --check public/world-v0/app.js
+          node scripts/world-v0-authority-epoch-loss-classifier-smoke.mjs
+          git diff -- public/world-v0/app.js public/world-v0/authority-epoch-loss.js | tee world-v0-authority-epoch-loss-candidate.diff
+      - name: Full repository checks with candidate
+        run: npm run check
+      - name: B - Recover two real browsers after authority process loss
+        env:
+          MW_WORLD_V0_AUTHORITY_RESET_EXPECT: recovered
+          MW_WORLD_V0_AUTHORITY_RESET_BROWSER_OUTPUT: world-v0-authority-epoch-loss-reset.json
+        run: |
+          set -euo pipefail
+          timeout 150s node scripts/world-v0-authority-reset-browser-audit.mjs | tee world-v0-authority-epoch-loss-reset.log
+          grep -q WORLD_V0_AUTHORITY_RESET_BROWSER_RECOVERED world-v0-authority-epoch-loss-reset.log
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const r=JSON.parse(readFileSync("world-v0-authority-epoch-loss-reset.json","utf8"));
+          for (const e of [r.afterA,r.afterB]) {
+            if (!e || e.runtimeFailed) throw new Error("recovered browser runtime failed");
+            if (!(e.lifecycleEvents||[]).some(x=>x.type==="authority-epoch-lost-confirmed")) throw new Error("missing authority epoch lost confirmation");
+            if (!(e.lifecycleEvents||[]).some(x=>x.type==="room-recovered")) throw new Error("missing fresh room recovery");
+            if ((e.metrics?.guardMismatches||0)!==0) throw new Error("guard mismatch after authority-loss recovery");
+          }
+          if (r.afterA.identity.worldEpoch!==r.afterB.identity.worldEpoch || r.afterA.identity.worldEpoch===r.oldEpoch) throw new Error("replacement epoch contract failed");
+          console.log("WORLD_V0_AUTHORITY_EPOCH_LOSS_RESET_CAUSAL_PASS",r.oldEpoch,r.afterA.identity.worldEpoch);
+          NODE
+      - name: D - Directory uncertainty remains fail-closed to exact resume
+        env:
+          MW_WORLD_V0_I4B_BASE: http://127.0.0.1:8796
+          MW_WORLD_V0_I4B_OFFLINE_MS: "14000"
+          MW_WORLD_V0_I4B_OUTPUT: world-v0-authority-epoch-loss-unknown-control.json
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8796 > world-v0-authority-epoch-loss-control-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-authority-loss-control.pid
+          trap 'kill "$(cat /tmp/world-v0-authority-loss-control.pid)" 2>/dev/null || true' EXIT
+          for i in {1..60}; do curl -fsS http://127.0.0.1:8796/api/ping >/dev/null && break; sleep 1; done
+          timeout 90s node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-authority-epoch-loss-unknown-control.log
+          grep -q WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS world-v0-authority-epoch-loss-unknown-control.log
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const r=JSON.parse(readFileSync("world-v0-authority-epoch-loss-unknown-control.json","utf8"));
+          if (!r.actorSession?.preserved || !r.actorSession?.netEntityPreserved) throw new Error("uncertain outage destroyed ActorSession continuity");
+          if (r.exactness?.guardMismatches!==0) throw new Error("uncertain outage exactness failed");
+          console.log("WORLD_V0_AUTHORITY_EPOCH_LOSS_UNKNOWN_FAIL_CLOSED_PASS",r.worldEpoch);
+          NODE
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-authority-epoch-loss-candidate-${{ github.run_id }}
+          path: |
+            world-v0-authority-epoch-loss-candidate.diff
+            world-v0-authority-epoch-loss-reset.json
+            world-v0-authority-epoch-loss-reset.log
+            world-v0-authority-epoch-loss-unknown-control.json
+            world-v0-authority-epoch-loss-unknown-control.log
+            world-v0-authority-epoch-loss-control-wrangler.log
+          if-no-files-found: warn
+          retention-days: 30

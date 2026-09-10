@@ -1,0 +1,165 @@
+name: World V0 Foundation Final Delivery
+
+on:
+  push:
+    branches: [world-v0-foundation-final-delivery]
+    paths:
+      - .github/workflows/world-v0-foundation-final-delivery.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-foundation-final-delivery
+  cancel-in-progress: false
+
+env:
+  VALIDATED_PRODUCT_SHA: 7755a668d7488f04ecbf42a00fbc96fcb978d544
+  OWNER_UI_REGRESSION_RUN: "34474057233"
+  CURRENT_VALIDATION_RUN: "34474343862"
+  QUALIFIED_ENV: qualified_play
+  EXPECTED_WORKER: cloudflare-multiplayer-lab-qualified-play
+  QUALIFIED_BASE_URL: https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev
+  CLOUDFLARE_ACCOUNT_ID: 566456b8f2f4d9f85b3fa8173e190c1a
+
+jobs:
+  deploy-final-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact delivery identity and protected bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git cat-file -e "$VALIDATED_PRODUCT_SHA^{commit}"
+          protected_paths=(public/world-v0 src package.json package-lock.json)
+          git diff --quiet "$VALIDATED_PRODUCT_SHA" "$GITHUB_SHA" -- "${protected_paths[@]}" || {
+            echo "FINAL_DELIVERY_PRODUCT_DRIFT"
+            git diff --name-status "$VALIDATED_PRODUCT_SHA" "$GITHUB_SHA" -- "${protected_paths[@]}"
+            exit 1
+          }
+          echo "FINAL_DELIVERY_RUNTIME_BYTES_MATCH=$VALIDATED_PRODUCT_SHA"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+
+      - name: Revalidate exact final source
+        run: |
+          set -euo pipefail
+          npm run check
+          node scripts/world-v0-keyboard-focus-guard-smoke.mjs
+          node scripts/world-v0-control-surface-visibility-smoke.mjs
+
+      - name: Guard isolated qualified-play target
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const config=JSON.parse(readFileSync("wrangler.jsonc","utf8"));
+          const env=config.env?.qualified_play;
+          if (!env || env.name!==process.env.EXPECTED_WORKER || env.workers_dev!==true) throw new Error("qualified_play target drift");
+          const yard=(env.durable_objects?.bindings||[]).find(x=>x.name==="SHARED_YARD_V0");
+          if (!yard || yard.class_name!=="SharedYardV0" || yard.script_name) throw new Error("qualified_play SharedYardV0 isolation drift");
+          if (!(env.assets?.run_worker_first||[]).includes("/world-v0/ws")) throw new Error("world-v0 worker-first route drift");
+          console.log("FINAL_DELIVERY_TARGET_GUARD_PASS");
+          NODE
+
+      - name: Generate final provenance asset
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          import { WORLD_V0_BROWSER_UI_REVISION, WORLD_V0_CLIENT_SIM_REVISION, WORLD_V0_EXPECTED_SERVER_REVISION, WORLD_V0_EXPECTED_PROTOCOL_REVISION, WORLD_V0_EXPECTED_STATE_GUARD_REVISION, WORLD_V0_EXPECTED_SIM_BUILD_ID } from "./public/world-v0/build-contract.js";
+          import { WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION, WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION } from "./public/world-v0/public-room-entry.js";
+          import { WORLD_V0_SESSION_CONTINUITY_REVISION } from "./public/world-v0/session-continuity.js";
+          import { WORLD_V0_AUTHORITY_EPOCH_LOSS_REVISION } from "./public/world-v0/authority-epoch-loss.js";
+          import { WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION } from "./public/world-v0/keyboard-focus-guard.js";
+          const p={
+            purpose:"world-v0-foundation-final-owner-candidate",
+            validatedProductSha:process.env.VALIDATED_PRODUCT_SHA,
+            ownerUiRegressionRun:process.env.OWNER_UI_REGRESSION_RUN,
+            currentValidationRun:process.env.CURRENT_VALIDATION_RUN,
+            deliveryBranch:process.env.GITHUB_REF_NAME,
+            deliverySha:process.env.GITHUB_SHA,
+            workflowRunId:process.env.GITHUB_RUN_ID,
+            worker:process.env.EXPECTED_WORKER,
+            environment:process.env.QUALIFIED_ENV,
+            placementMode:"reuse-owner-placed-qualified-play-namespace",
+            workflowTouchesHumanDurableObjects:false,
+            uiRevision:WORLD_V0_BROWSER_UI_REVISION,
+            clientSimRevision:WORLD_V0_CLIENT_SIM_REVISION,
+            serverRevision:WORLD_V0_EXPECTED_SERVER_REVISION,
+            protocolRevision:WORLD_V0_EXPECTED_PROTOCOL_REVISION,
+            stateGuardRevision:WORLD_V0_EXPECTED_STATE_GUARD_REVISION,
+            simBuildId:WORLD_V0_EXPECTED_SIM_BUILD_ID,
+            publicRoomEntryRevision:WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION,
+            publicRoomDirectoryRevision:WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION,
+            sessionContinuityRevision:WORLD_V0_SESSION_CONTINUITY_REVISION,
+            authorityEpochLossRevision:WORLD_V0_AUTHORITY_EPOCH_LOSS_REVISION,
+            keyboardFocusGuardRevision:WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION,
+            desktopTouchControls:"hidden-for-primary-fine-pointer-v1",
+          };
+          writeFileSync("public/world-v0/deploy-provenance.json",JSON.stringify(p,null,2)+"\n");
+          console.log("FINAL_DELIVERY_PROVENANCE",JSON.stringify(p));
+          NODE
+
+      - name: Dry-run final isolated deployment
+        run: npx wrangler deploy --dry-run --env "$QUALIFIED_ENV" --outdir .wrangler/final-delivery-dry-run
+
+      - name: Authenticate and deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx wrangler whoami
+          npx wrangler deploy --env "$QUALIFIED_ENV"
+
+      - name: Verify static convergence without touching human Durable Objects
+        run: |
+          node --input-type=module <<'NODE'
+          import { WORLD_V0_BROWSER_UI_REVISION } from "./public/world-v0/build-contract.js";
+          import { WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION } from "./public/world-v0/keyboard-focus-guard.js";
+          const base=process.env.QUALIFIED_BASE_URL.replace(/\/$/,"");
+          const deadline=Date.now()+90000;
+          let last=null;
+          while(Date.now()<deadline){
+            const q=`${process.env.GITHUB_SHA}-${Date.now()}`;
+            try{
+              const [build,guard,css,index,prov]=await Promise.all([
+                fetch(`${base}/world-v0/build-contract.js?final=${q}`,{cache:"no-store"}),
+                fetch(`${base}/world-v0/keyboard-focus-guard.js?final=${q}`,{cache:"no-store"}),
+                fetch(`${base}/world-v0/control-surface-visibility.css?final=${q}`,{cache:"no-store"}),
+                fetch(`${base}/world-v0/index.html?final=${q}`,{cache:"no-store"}),
+                fetch(`${base}/world-v0/deploy-provenance.json?final=${q}`,{cache:"no-store"}),
+              ]);
+              const [b,g,c,i]=await Promise.all([build.text(),guard.text(),css.text(),index.text()]);
+              const p=prov.ok?await prov.json():null;
+              last={build:build.status,guard:guard.status,css:css.status,index:index.status,prov:prov.status,ui:b.includes(WORLD_V0_BROWSER_UI_REVISION),focus:g.includes(WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION),desktopHidden:c.includes("display: none !important"),coarse:c.includes("pointer: coarse"),cssLinked:i.includes("control-surface-visibility.css"),validated:p?.validatedProductSha,delivery:p?.deliverySha,humanDO:p?.workflowTouchesHumanDurableObjects};
+              if(build.ok&&guard.ok&&css.ok&&index.ok&&prov.ok&&last.ui&&last.focus&&last.desktopHidden&&last.coarse&&last.cssLinked&&p?.validatedProductSha===process.env.VALIDATED_PRODUCT_SHA&&p?.deliverySha===process.env.GITHUB_SHA&&p?.workflowTouchesHumanDurableObjects===false){
+                console.log("FINAL_DELIVERY_STATIC_IDENTITY_PASS",JSON.stringify(last));
+                console.log("HUMAN_DURABLE_OBJECTS_UNTOUCHED_BY_WORKFLOW");
+                process.exit(0);
+              }
+            }catch(error){last={error:error instanceof Error?error.message:String(error)}}
+            console.log("FINAL_DELIVERY_STATIC_WAIT",JSON.stringify(last));
+            await new Promise(r=>setTimeout(r,1500));
+          }
+          throw new Error("final static identity did not converge: "+JSON.stringify(last));
+          NODE
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-foundation-final-delivery-${{ github.run_id }}
+          path: |
+            .wrangler/final-delivery-dry-run
+            public/world-v0/deploy-provenance.json
+          if-no-files-found: warn
+          retention-days: 30

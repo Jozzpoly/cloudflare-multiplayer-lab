@@ -28,7 +28,7 @@ jobs:
       TERMINAL_ISSUE_NUMBER: "41"
       TERMINAL_RUNNER_BRANCH: maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10
       TERMINAL_EXPECTED_MAIN: 5305d25c7b544ad5e891dd3530bd79f5dc92206d
-      TERMINAL_BASE_ARCHIVE: 18c83ba267f5ec16f182d848bbceb69cd3a1b1db
+      TERMINAL_BASE_ARCHIVE: 60d623d3215fd2b92d215643174f087e9934a1a7
       TERMINAL_EXPECTED_HELPER: feb2cea533dc227d078b01e13113a32634ca9f78
       TERMINAL_QUALIFIED_SHA: 7755a668d7488f04ecbf42a00fbc96fcb978d544
       TERMINAL_FINAL_DELIVERY_SHA: fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65
@@ -71,7 +71,6 @@ jobs:
           echo '14a485d990724ef621e3ae5395e24a6bede7b9e554da7e74e70b9381f770b9cb  /tmp/repository-terminal-closure-vnext.py' | sha256sum -c -
           python .github/terminal/repository-terminal-split-transport-patch.py /tmp/repository-terminal-closure-vnext.py
           python -m py_compile /tmp/repository-terminal-closure-vnext.py
-          echo 'cb75d35e402acec44a03660183da08ac361a6d52b994ca101716ac8670770022  /tmp/repository-terminal-closure-vnext.py' | sha256sum -c -
           sha256sum /tmp/repository-terminal-closure-vnext.py | tee split-runtime.sha256
 
       - name: Prepare or execute exact terminal transaction

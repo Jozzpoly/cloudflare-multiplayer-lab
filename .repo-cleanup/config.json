@@ -1,0 +1,11 @@
+{
+  "repository": "Jozzpoly/cloudflare-multiplayer-lab",
+  "canonicalBranch": "main",
+  "archiveBranch": "archive/repository-cleanup-v3-2026-09-10",
+  "helperBranch": "maintenance/repository-cleanup-v3-2026-09-10",
+  "hardDenyRefs": [
+    "archive/world-v0-qualified-2p-baseline-2026-09-10",
+    "archive/world-v0-final-delivery-2026-09-10",
+    "archive/pre-safe-stop-main-2026-09-10"
+  ]
+}

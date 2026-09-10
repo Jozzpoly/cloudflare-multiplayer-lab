@@ -1,0 +1,112 @@
+name: Repository cleanup v3 canonical workflow semantics repair
+
+on:
+  push:
+    branches: [maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10]
+    paths:
+      - .github/workflows/repository-cleanup-v3-canonical-workflow-semantics.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      EXPECTED_MAIN_BEFORE: 5224bea2d26fc0686f453a44c5143b05eb0fc537
+      QUALIFIED_PRODUCT_SHA: 7755a668d7488f04ecbf42a00fbc96fcb978d544
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require exact canonical starting point
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_BEFORE"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$EXPECTED_MAIN_BEFORE"
+          git cat-file -e "$QUALIFIED_PRODUCT_SHA^{commit}"
+          git diff --quiet "$QUALIFIED_PRODUCT_SHA" HEAD -- public/world-v0 src package.json package-lock.json
+
+      - name: Remove dead branch triggers only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one target block in {path}, found {text.count(old)}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              '.github/workflows/world-v0-current-validation.yml',
+              '    branches: [main, world-v0-session-continuity-r1-exec, world-v0-foundation-stabilization-closure, world-v0-foundation-polish-closure]',
+              '    branches: [main]'
+          )
+
+          replace_once(
+              '.github/workflows/world-v0-foundation-stabilization-causal-gate.yml',
+              "on:\n  push:\n    branches: [world-v0-foundation-stabilization-closure]\n    paths:\n      - .github/workflows/world-v0-foundation-stabilization-causal-gate.yml\n      - package.json\n      - public/world-v0/**\n      - src/world-slice-entry.ts\n      - src/world-v0-shared-yard.ts\n      - scripts/world-v0-keyboard-focus-guard-smoke.mjs\n      - scripts/world-v0-session-continuity-r3-smoke.mjs\n      - scripts/world-v0-live-rebind-browser-audit.mjs\n      - scripts/world-v0-soft-reservation-authority-probe.mjs\n      - scripts/world-v0-soft-reservation-browser-handoff-audit.mjs\n  workflow_dispatch:\n",
+              "on:\n  workflow_dispatch:\n"
+          )
+
+          replace_once(
+              '.github/workflows/world-v0-owner-ui-regression.yml',
+              "on:\n  push:\n    branches: [world-v0-final-owner-ui-repair, world-v0-foundation-polish-closure]\n    paths:\n      - .github/workflows/world-v0-owner-ui-regression.yml\n      - public/world-v0/keyboard-focus-guard.js\n      - public/world-v0/control-surface-visibility.css\n      - public/world-v0/index.html\n      - scripts/world-v0-keyboard-focus-guard-smoke.mjs\n      - scripts/world-v0-control-surface-visibility-smoke.mjs\n      - scripts/world-v0-owner-ui-focus-browser-audit.mjs\n      - package.json\n  workflow_dispatch:\n",
+              "on:\n  workflow_dispatch:\n"
+          )
+          PY
+
+      - name: Prove bounded semantic-only diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            .github/workflows/world-v0-current-validation.yml
+            .github/workflows/world-v0-foundation-stabilization-causal-gate.yml
+            .github/workflows/world-v0-owner-ui-regression.yml
+          )
+          test "${#changed[@]}" -eq 3
+          for i in 0 1 2; do test "${changed[$i]}" = "${expected[$i]}"; done
+          git diff --check
+          grep -q 'branches: \[main\]' .github/workflows/world-v0-current-validation.yml
+          ! grep -q 'world-v0-session-continuity-r1-exec\|world-v0-foundation-stabilization-closure\|world-v0-foundation-polish-closure\|world-v0-final-owner-ui-repair' .github/workflows/world-v0-current-validation.yml .github/workflows/world-v0-foundation-stabilization-causal-gate.yml .github/workflows/world-v0-owner-ui-regression.yml
+          test "$(grep -c '^  workflow_dispatch:' .github/workflows/world-v0-foundation-stabilization-causal-gate.yml)" -eq 1
+          test "$(grep -c '^  workflow_dispatch:' .github/workflows/world-v0-owner-ui-regression.yml)" -eq 1
+
+      - name: Validate resulting canonical tree before push
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run check
+          git diff --quiet "$QUALIFIED_PRODUCT_SHA" HEAD -- public/world-v0 src package.json package-lock.json
+          echo CANONICAL_WORKFLOW_SEMANTICS_REPAIR_VALIDATION_PASS
+          echo QUALIFIED_RUNTIME_STILL_BYTE_IDENTICAL
+
+      - name: Commit and fast-forward main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$EXPECTED_MAIN_BEFORE"
+          git config user.name 'Repository Cleanup Closure'
+          git config user.email 'repository-cleanup-closure@invalid.local'
+          git add -- .github/workflows/world-v0-current-validation.yml .github/workflows/world-v0-foundation-stabilization-causal-gate.yml .github/workflows/world-v0-owner-ui-regression.yml
+          git commit -m 'Reconcile World V0 workflow triggers after branch prune'
+          after="$(git rev-parse HEAD)"
+          git push origin HEAD:refs/heads/main
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$after"
+          echo "CANONICAL_AFTER=$after"

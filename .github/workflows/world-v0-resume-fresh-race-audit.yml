@@ -1,0 +1,55 @@
+name: World V0 Resume Fresh Race Audit
+
+on:
+  push:
+    branches: [world-v0-foundation-adversarial-verification]
+    paths:
+      - .github/workflows/world-v0-resume-fresh-race-audit.yml
+      - scripts/world-v0-resume-fresh-authority-race-audit.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  race:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Static product and audit checks
+        run: |
+          set -euo pipefail
+          node --check scripts/world-v0-resume-fresh-authority-race-audit.mjs
+          npm run check
+      - name: Start isolated local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8788 > resume-fresh-race-wrangler.log 2>&1 &
+          echo $! > /tmp/resume-fresh-race.pid
+          for i in {1..60}; do curl -fsS http://127.0.0.1:8788/api/ping >/dev/null && exit 0; sleep 1; done
+          cat resume-fresh-race-wrangler.log
+          exit 1
+      - name: Race private Resume against unrelated fresh admission
+        env:
+          MW_WORLD_V0_RACE_BASE: http://127.0.0.1:8788
+        run: |
+          set -euo pipefail
+          timeout 300s node scripts/world-v0-resume-fresh-authority-race-audit.mjs | tee resume-fresh-race.log
+          grep -q WORLD_V0_RESUME_FRESH_RACE_PASS resume-fresh-race.log
+      - name: Stop Workerd
+        if: always()
+        run: if [ -f /tmp/resume-fresh-race.pid ]; then kill "$(cat /tmp/resume-fresh-race.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-resume-fresh-race-${{ github.run_id }}
+          path: |
+            resume-fresh-race.log
+            resume-fresh-race-wrangler.log
+          if-no-files-found: warn
+          retention-days: 30

@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  VALIDATED_PRODUCT_SHA: 67dc5d2044827dc4ea1cee7b6f1b60805b062c4c
+  VALIDATED_PRODUCT_SHA: fef4a2a4b6007c3e42cbd3b430cb9943343cc970
   QUALIFIED_ENV: qualified_play
   EXPECTED_WORKER: cloudflare-multiplayer-lab-qualified-play
   QUALIFIED_BASE_URL: https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev
@@ -65,7 +65,10 @@ jobs:
         run: npm ci
 
       - name: Run repository validation
-        run: npm run check
+        run: |
+          npm run check
+          node --check public/world-v0/authority-epoch-loss.js
+          node scripts/world-v0-authority-epoch-loss-classifier-smoke.mjs
 
       - name: Guard existing isolated qualified-play target
         run: |
@@ -102,6 +105,7 @@ jobs:
             WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION,
           } from "./public/world-v0/public-room-entry.js";
           import { WORLD_V0_SESSION_CONTINUITY_REVISION } from "./public/world-v0/session-continuity.js";
+          import { WORLD_V0_AUTHORITY_EPOCH_LOSS_REVISION } from "./public/world-v0/authority-epoch-loss.js";
 
           const provenance = {
             purpose: "world-v0-foundation-stabilization-owner-candidate",
@@ -123,6 +127,7 @@ jobs:
             publicRoomEntryRevision: WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION,
             publicRoomDirectoryRevision: WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION,
             sessionContinuityRevision: WORLD_V0_SESSION_CONTINUITY_REVISION,
+            authorityEpochLossRevision: WORLD_V0_AUTHORITY_EPOCH_LOSS_REVISION,
           };
 
           writeFileSync("public/world-v0/deploy-provenance.json", `${JSON.stringify(provenance, null, 2)}\n`);
@@ -161,6 +166,7 @@ jobs:
             WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION,
           } from "./public/world-v0/public-room-entry.js";
           import { WORLD_V0_SESSION_CONTINUITY_REVISION } from "./public/world-v0/session-continuity.js";
+          import { WORLD_V0_AUTHORITY_EPOCH_LOSS_REVISION } from "./public/world-v0/authority-epoch-loss.js";
 
           const base = process.env.QUALIFIED_BASE_URL.replace(/\/$/, "");
           const deadline = Date.now() + 90_000;
@@ -169,16 +175,18 @@ jobs:
           while (Date.now() < deadline) {
             const cacheBust = `${process.env.GITHUB_SHA}-${Date.now()}`;
             try {
-              const [contractResponse, roomResponse, sessionResponse, provenanceResponse] = await Promise.all([
+              const [contractResponse, roomResponse, sessionResponse, authorityLossResponse, provenanceResponse] = await Promise.all([
                 fetch(`${base}/world-v0/build-contract.js?candidate=${cacheBust}`, { cache: "no-store", signal: AbortSignal.timeout(8000) }),
                 fetch(`${base}/world-v0/public-room-entry.js?candidate=${cacheBust}`, { cache: "no-store", signal: AbortSignal.timeout(8000) }),
                 fetch(`${base}/world-v0/session-continuity.js?candidate=${cacheBust}`, { cache: "no-store", signal: AbortSignal.timeout(8000) }),
+                fetch(`${base}/world-v0/authority-epoch-loss.js?candidate=${cacheBust}`, { cache: "no-store", signal: AbortSignal.timeout(8000) }),
                 fetch(`${base}/world-v0/deploy-provenance.json?candidate=${cacheBust}`, { cache: "no-store", signal: AbortSignal.timeout(8000) }),
               ]);
 
               const contractBody = await contractResponse.text();
               const roomBody = await roomResponse.text();
               const sessionBody = await sessionResponse.text();
+              const authorityLossBody = await authorityLossResponse.text();
               let provenance = null;
               if (provenanceResponse.ok) {
                 try { provenance = await provenanceResponse.json(); } catch {}
@@ -188,12 +196,14 @@ jobs:
                 contractStatus: contractResponse.status,
                 roomStatus: roomResponse.status,
                 sessionStatus: sessionResponse.status,
+                authorityLossStatus: authorityLossResponse.status,
                 provenanceStatus: provenanceResponse.status,
                 ui: contractBody.includes(WORLD_V0_BROWSER_UI_REVISION),
                 sim: contractBody.includes(WORLD_V0_EXPECTED_SIM_BUILD_ID),
                 publicRoomEntry: roomBody.includes(WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION),
                 publicRoomDirectory: roomBody.includes(WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION),
                 sessionContinuity: sessionBody.includes(WORLD_V0_SESSION_CONTINUITY_REVISION),
+                authorityEpochLoss: authorityLossBody.includes(WORLD_V0_AUTHORITY_EPOCH_LOSS_REVISION),
                 validatedProductSha: provenance?.validatedProductSha,
                 deliverySha: provenance?.deliverySha,
                 worker: provenance?.worker,
@@ -201,11 +211,12 @@ jobs:
               };
 
               if (
-                contractResponse.ok && roomResponse.ok && sessionResponse.ok && provenanceResponse.ok &&
-                last.ui && last.sim && last.publicRoomEntry && last.publicRoomDirectory && last.sessionContinuity &&
+                contractResponse.ok && roomResponse.ok && sessionResponse.ok && authorityLossResponse.ok && provenanceResponse.ok &&
+                last.ui && last.sim && last.publicRoomEntry && last.publicRoomDirectory && last.sessionContinuity && last.authorityEpochLoss &&
                 provenance?.validatedProductSha === process.env.VALIDATED_PRODUCT_SHA &&
                 provenance?.deliverySha === process.env.GITHUB_SHA &&
                 provenance?.worker === process.env.EXPECTED_WORKER &&
+                provenance?.authorityEpochLossRevision === WORLD_V0_AUTHORITY_EPOCH_LOSS_REVISION &&
                 provenance?.workflowTouchesHumanDurableObjects === false
               ) {
                 console.log("STABILIZATION_STATIC_IDENTITY_PASS", JSON.stringify(last));

@@ -1,151 +1,98 @@
 # World V0 — Qualified Baseline Gate
 
-Status: **FINAL OWNER REQUALIFICATION PENDING**  
+Status: **PASS / BASELINE FROZEN**  
 Updated: **2026-09-10**  
-Current product source: `fef4a2a4b6007c3e42cbd3b430cb9943343cc970`  
-Qualified-play environment: `cloudflare-multiplayer-lab-qualified-play`
+Exact qualified product: `7755a668d7488f04ecbf42a00fbc96fcb978d544`
 
-## Purpose
+## Verdict
 
-This is the final human gate for the current two-player foundation before safe stop. It no longer describes only the old post-R2 baseline: it includes the September stabilization work around public capacity, same-owner live rebound, error clarity and bounded recovery when an in-memory authority WorldEpoch is genuinely gone.
+The current fixed-two-player Shared Yard foundation has passed its final Owner gate and is qualified for deliberate safe stop.
 
-The target is still not a new product frontier. It is a trustworthy ordinary two-player Shared Yard baseline.
+The final broad desktop/mobile Owner recordings judged ordinary play **stable and smooth**. They did not reproduce a broad multiplayer/netcode failure. They isolated one local UI/input defect around Diagnostics focus plus unnecessary desktop touch controls; both were repaired in the final product.
 
-## Current delivered specimen
+The final tiny real-device sanity after that repair passed **3/3**:
 
-Owner URL:
+1. desktop: repeatedly open/close Diagnostics -> immediate WASD continues working without another click/refresh — **PASS**;
+2. desktop: joystick/gimbal/JUMP absent on normal fine-pointer desktop — **PASS**;
+3. mobile: joystick/gimbal/JUMP visible and usable — **PASS**.
 
-`https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev/world-v0/`
+No further broad Owner reliability campaign is required by default.
 
-Exact product commit:
+## Exact product and evidence
 
-`fef4a2a4b6007c3e42cbd3b430cb9943343cc970`
+Product source:
 
-Delivery:
+`7755a668d7488f04ecbf42a00fbc96fcb978d544`
 
-- run `34426803131` / job `102713664761` — **SUCCESS**;
-- Cloudflare Version ID `d62c2e72-c4d9-4124-8847-85815d715ff1`;
-- artifact `10132969847`;
-- digest `sha256:0abc40bf613c7e503d4084f2eeac08475b56404dee5d66b0e617ec948fdf4639`.
+Focused Owner-UI causal run:
 
-The delivery workflow proved protected product bytes were identical to `fef4a2a4...` and did not instantiate/probe the human public Yard Durable Objects.
+- run `34474057233` — **SUCCESS**;
+- artifact `10150740652`;
+- digest `sha256:62bb4b39cb70e46f280df7bfcae061a51bb5b72744a30817d456dc2c688df38d`.
 
-## Automated evidence already earned
+Full Current Validation on exact final product:
 
-The current product has already passed:
+- run `34474343862` — **SUCCESS**;
+- artifact `10151068683`;
+- digest `sha256:728f0f5c7dfa68a6fb5f11ab04a1fd7e8b6c55f8d63b6d123255fb54ffa4827d`.
 
-- focused post-promotion authority-loss/ordinary-outage requalification — run `34426373914`;
-- full historical Current Validation — run `34426331772`;
-- broad adversarial verification — run `34428181101`, **8/8 jobs success**;
-- Resume-vs-fresh authority race — run `34428538218`, **SUCCESS**.
+Final delivery:
 
-The broad campaign added coverage beyond the old baseline:
+- branch `world-v0-foundation-final-delivery`;
+- head `fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`;
+- run `34475199474` / job `102864191837` — **SUCCESS**;
+- Worker `cloudflare-multiplayer-lab-qualified-play`;
+- Cloudflare Version `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`;
+- artifact `10151181384`;
+- digest `sha256:4d0cdc5eb04bf3dcafdbad4ccd469b2db24f7d372f1549212d7e0321e3f49553`;
+- terminal marker `HUMAN_DURABLE_OBJECTS_UNTOUCHED_BY_WORKFLOW`.
 
-- three repeated authority-process losses in one browser pair;
-- background-hidden peer during authority loss;
-- retained-history pressure across Yard 1/2/3;
-- four fresh remote Cloudflare Durable Objects;
-- same-owner live rebound;
-- physical W/A/S/D text-entry ownership;
-- protected -> soft -> demand-driven epoch handoff;
-- zero-online capacity release;
-- resumed-stayer handoff composition;
-- direct-link Resume and directory-outage fail-closed behavior.
+The delivery commit adds delivery apparatus; protected product bytes are the exact qualified `7755a668...` source.
 
-No new product blocker was found in the broad campaign.
+## Qualified product identity
 
-## What the Owner gate must judge
+Presentation/input:
 
-This remains primarily a human/product gate. Automated green evidence does not replace natural play.
+- browser UI `shared-yard-v0-browser-ui-v20-owner-ui-focus`;
+- keyboard focus guard `world-v0-keyboard-focus-guard-v2-semantic-ownership`.
 
-PASS requires the combined experience to be good enough that remaining defects are bounded debt rather than reasons to distrust the multiplayer foundation.
+Server simulation/network identity remains:
 
-Judge especially:
+- authority `shared-yard-v0-authority-v11-jump-delivery-persistence`;
+- browser sim `shared-yard-v0-browser-sim-v10-jump-delivery-persistence`;
+- protocol `shared-yard-v0-scheduled-input-v3-supersession`;
+- state guard `shared-yard-v0-f32-state-v1`;
+- SimBuild `shared-yard-v0-sim-cd8edc169f791a64`.
 
-- ordinary two-device foreground play is broadly smooth and stable;
-- movement, shared props and jump remain usable and responsive;
-- exact same-profile F5/live takeover works without an artificial full-room rejection;
-- close-tab -> ordinary room-list reopen / Resume works while continuity still exists;
-- a dormant history does not permanently own Yard capacity;
-- after the protected window, another player can take needed capacity through the intentional fresh-epoch handoff;
-- a retired old profile cannot steal the replacement session;
-- cycling between Yards does not accumulate permanent blockers;
-- W/A/S/D can be typed normally into the callsign field;
-- join/capacity/lifecycle/network messages are materially distinguishable;
-- mobile movement/jump, background/foreground and close/reopen behavior are representative enough to trust the baseline;
-- `runtimeFailed = false` in ordinary successful play;
-- exact state-guard mismatches remain `0`;
-- normal foreground play does not exhibit recurring recovery churn.
+## What PASS means
 
-## Authority loss versus ordinary transport loss
+PASS means the current two-player foundation is trustworthy enough that remaining limitations are bounded debt rather than reasons to distrust the core.
 
-A key new distinction is now part of the candidate:
+It does **not** prove or authorize claims of:
 
-### Old epoch still alive
+- persistent physical-world reconstruction;
+- arbitrary dynamic roster replacement;
+- 3+ players;
+- account/cloud identity;
+- seamless MMO-style lifecycle;
+- universal mobile network/suspension recovery;
+- final movement/controller behavior.
 
-If an abnormal transport loss occurs and authority still reports the same WorldEpoch, the browser keeps exact ActorSession recovery and exact rebase semantics.
-
-### Old epoch positively gone
-
-If exact resume fails and reachable authority-backed room evidence proves the source WorldEpoch no longer exists, the browser abandons the dead private token and fresh-joins the same logical Yard. Both peers should converge on one replacement epoch instead of eventually reaching `actor_session_resume_exhausted`.
-
-### Authority state uncertain
-
-If the directory cannot establish whether the source epoch still exists, uncertainty is not permission to destroy continuity. The client remains fail-closed to the existing bounded exact-resume path.
-
-This is service/play continuity after authority loss; it does not reconstruct the lost physical world.
-
-## Practical Owner run
-
-Use ordinary natural play rather than following a laboratory script too literally. A useful hostile run should still include, when convenient:
-
-1. type a callsign containing `W`, `A`, `S`, `D`;
-2. join the same Yard from two independent profiles/devices and play for a while;
-3. F5 or reopen the same profile while the pair is live;
-4. close one peer and observe protected reservation first, then capacity becoming available later;
-5. let a third profile take the available seat and judge the brief intentional epoch reset/recovery;
-6. try returning with the displaced old profile;
-7. cycle between Yard 1/2/3 enough to look for capacity leaks;
-8. do representative mobile play including background/foreground and close/reopen;
-9. continue playing through odd transitions instead of stopping immediately, so recovery behavior itself is exercised;
-10. capture video and copy Diagnostics/evidence from both sides if a suspicious transition occurs.
-
-## PASS / FAIL interpretation
-
-### PASS
-
-The two-player foundation is stable enough to freeze when:
-
-- natural Owner play is broadly smooth and comprehensible;
-- lifecycle operations recover or fail in the intended bounded way;
-- no new recurring blocker appears;
-- exact-state evidence stays clean;
-- remaining imperfections are small controller/presentation/feel debt.
-
-### FAIL
-
-Do not open the next feature frontier if the Owner still sees a reproducible foundation defect such as:
-
-- recurrent simultaneous disconnect/recovery failure;
-- a Yard becoming permanently unavailable because of dormant history;
-- same-owner F5 unable to recover a valid ActorSession;
-- stale identity stealing an active replacement session;
-- repeated low-latency recovery churn during ordinary foreground play;
-- nonzero exact-state guard mismatches;
-- mobile behavior that materially contradicts the desktop foundation contract.
-
-Classify the failure before changing runtime.
+A fresh player taking a soft-reserved seat can still rotate the fixed WorldEpoch and lose prior physical history. That is an accepted architectural limit of this baseline.
 
 ## What PASS earns
 
-PASS earns a deliberate safe stop, not immediate 3+ player implementation.
+The correct next action is not another feature. It is:
 
-After PASS:
+1. freeze exact product/delivery/recovery anchors;
+2. deliberate safe stop;
+3. canonical documentation reconciliation;
+4. controlled workflow/branch/PR archaeology and cleanup;
+5. compact recovery/takeover spine;
+6. then Project Soul / repository-role review and next-era architecture selection.
 
-- freeze exact runtime/product and evidence anchors;
-- refresh canonical Current State / takeover docs;
-- retire consumed one-shot validation apparatus while preserving decisive evidence;
-- perform controlled branch archaeology and cleanup;
-- then review Project Soul / repository role and formalize the next multiplayer era.
+## Deferred near-term Owner requirement
 
-The current preliminary long-horizon direction remains that this repository may become a long-lived multiplayer systems laboratory / reusable multiplayer core, with 3+ players an early post-cleanup capability target. That direction is not made canonical by this gate alone.
+After cleanup, the next-era design should allow a player to enter a Yard **alone**, immediately inhabit and play in the physical world, and wait there for another player. The current waiting shell is not the intended near-term product behavior.
+
+Do not retrofit that feature into the frozen baseline during cleanup.

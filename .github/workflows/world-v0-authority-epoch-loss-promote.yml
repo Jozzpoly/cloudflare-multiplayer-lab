@@ -1,0 +1,46 @@
+name: World V0 Authority Epoch Loss Promote
+
+on:
+  push:
+    branches: [world-v0-foundation-stabilization-closure]
+    paths:
+      - .github/workflows/world-v0-authority-epoch-loss-promote.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-authority-epoch-loss-promote
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize exact qualified candidate
+        run: |
+          set -euo pipefail
+          node scripts/apply-world-v0-authority-epoch-loss-recovery.mjs
+          git diff --check
+          node --check public/world-v0/authority-epoch-loss.js
+          node --check public/world-v0/app.js
+          node scripts/world-v0-authority-epoch-loss-classifier-smoke.mjs
+          npm run check
+      - name: Commit bounded authority-loss recovery
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/world-v0/app.js public/world-v0/authority-epoch-loss.js
+          git diff --cached --quiet && { echo "No candidate changes to promote"; exit 1; }
+          git commit -m "Recover public Yard after lost authority epoch"
+          git push origin HEAD:world-v0-foundation-stabilization-closure

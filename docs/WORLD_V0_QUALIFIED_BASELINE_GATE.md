@@ -1,88 +1,151 @@
 # World V0 — Qualified Baseline Gate
 
-Status: **OWNER-HUMAN QUALIFICATION PENDING**  
-Prepared: **2026-09-09**  
-Baseline runtime source: `main@3ffb3255892961feb2cc4362b80e2419c1a4c8a9`  
+Status: **FINAL OWNER REQUALIFICATION PENDING**  
+Updated: **2026-09-10**  
+Current product source: `fef4a2a4b6007c3e42cbd3b430cb9943343cc970`  
 Qualified-play environment: `cloudflare-multiplayer-lab-qualified-play`
 
 ## Purpose
 
-This gate consolidates the closed R1 Session Continuity and R2 Jump Reliability work into one ordinary playable baseline before any new product feature frontier is opened.
+This is the final human gate for the current two-player foundation before safe stop. It no longer describes only the old post-R2 baseline: it includes the September stabilization work around public capacity, same-owner live rebound, error clarity and bounded recovery when an in-memory authority WorldEpoch is genuinely gone.
 
-The target is not a new feature. It is the version we fought to earn:
+The target is still not a new product frontier. It is a trustworthy ordinary two-player Shared Yard baseline.
 
-- ordinary two-player Shared Yard entry;
-- smooth and stable foreground play on representative placement;
-- same-profile close-tab / ordinary reopen continuity while the ActorSession remains recoverable;
-- R2 acknowledgement-driven jump delivery;
-- no recurring false connection-loss / actor-resume churn caused by test placement;
-- exact state guards remain clean.
+## Current delivered specimen
 
-Residual jump feel debt such as lack of coyote time or landing buffering is explicitly not a blocker unless it again becomes a dominant Owner-visible reliability failure.
+Owner URL:
 
-## Why a new deployment environment is required
+`https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev/world-v0/`
 
-The earlier post-R2 Owner gate exposed a validation-apparatus defect. Remote GitHub-hosted CI touched fixed public staging room identities before the Polish Owner. Cloudflare Durable Objects are placed near their initial access and do not automatically migrate afterward, so the fixed staging Yards could be pinned far from the Owner and produce ~180–350 ms RTT, repeated authority-silence recovery and red connection notices.
+Exact product commit:
 
-A fresh run-specific Yard first touched by the Owner from Poland immediately returned the expected low-latency regime and removed recovery churn. The qualified baseline therefore uses a fresh Wrangler environment with an isolated Durable Object namespace.
+`fef4a2a4b6007c3e42cbd3b430cb9943343cc970`
 
-Automation is forbidden from requesting the human room directory, public Yard status, `/world-v0/ws`, or any human run identity before the Owner performs first placement.
+Delivery:
 
-## Deployment contract
+- run `34426803131` / job `102713664761` — **SUCCESS**;
+- Cloudflare Version ID `d62c2e72-c4d9-4124-8847-85815d715ff1`;
+- artifact `10132969847`;
+- digest `sha256:0abc40bf613c7e503d4084f2eeac08475b56404dee5d66b0e617ec948fdf4639`.
 
-The qualified delivery workflow may:
+The delivery workflow proved protected product bytes were identical to `fef4a2a4...` and did not instantiate/probe the human public Yard Durable Objects.
 
-- validate repository/runtime bytes locally;
-- dry-run Wrangler locally;
-- deploy the isolated `qualified_play` Worker;
-- fetch only static `build-contract.js` and deployment provenance assets.
+## Automated evidence already earned
 
-It must not instantiate a Shared Yard Durable Object.
+The current product has already passed:
 
-The qualified runtime/product bytes must remain identical to the closed post-R2 baseline on `public/world-v0`, `src`, `package.json` and `package-lock.json`. Only deployment apparatus/configuration and qualification documentation may differ before Owner qualification.
+- focused post-promotion authority-loss/ordinary-outage requalification — run `34426373914`;
+- full historical Current Validation — run `34426331772`;
+- broad adversarial verification — run `34428181101`, **8/8 jobs success**;
+- Resume-vs-fresh authority race — run `34428538218`, **SUCCESS**.
 
-## Owner-first placement procedure
+The broad campaign added coverage beyond the old baseline:
 
-After the workflow reports success:
+- three repeated authority-process losses in one browser pair;
+- background-hidden peer during authority loss;
+- retained-history pressure across Yard 1/2/3;
+- four fresh remote Cloudflare Durable Objects;
+- same-owner live rebound;
+- physical W/A/S/D text-entry ownership;
+- protected -> soft -> demand-driven epoch handoff;
+- zero-online capacity release;
+- resumed-stayer handoff composition;
+- direct-link Resume and directory-outage fail-closed behavior.
 
-1. On the Owner's first device in Poland, open the ordinary qualified-play entry page: `/world-v0/` without a `?run=` parameter.
-2. Allow the public room directory to load. This is intentionally the first human-region access to the fresh qualified-play Shared Yard namespace.
-3. Enter one ordinary Yard and wait for `waiting for peer`.
-4. Open the same ordinary qualified-play entry page on the second device and join the same Yard through the normal room UI.
-5. Play naturally for several minutes: movement, shared props and repeated jumps.
-6. Close one game tab completely, reopen through the ordinary `/world-v0/` entry page and use the normal room UI to resume the reserved seat.
-7. Continue ordinary play after resume.
-8. Copy evidence from both devices at the end.
+No new product blocker was found in the broad campaign.
 
-Do not use a special run-specific direct link for the qualification unless the ordinary entry path itself fails and a narrower falsifier is required.
+## What the Owner gate must judge
 
-## PASS judgement
+This remains primarily a human/product gate. Automated green evidence does not replace natural play.
 
-This is primarily a product/human gate, not a synthetic benchmark. PASS requires all of the following together:
+PASS requires the combined experience to be good enough that remaining defects are bounded debt rather than reasons to distrust the multiplayer foundation.
 
-- Owner judges ordinary two-device play as broadly smooth and stable;
-- no recurring red `Connection lost · restoring exact Shared Yard state…` notices during normal foreground play;
-- same-profile close-tab -> ordinary room-list reopen restores the correct reserved ActorSession within the current recovery contract;
-- jump is materially reliable enough that occasional residual feel imperfections no longer dominate play;
-- `runtimeFailed = false` on both clients;
+Judge especially:
+
+- ordinary two-device foreground play is broadly smooth and stable;
+- movement, shared props and jump remain usable and responsive;
+- exact same-profile F5/live takeover works without an artificial full-room rejection;
+- close-tab -> ordinary room-list reopen / Resume works while continuity still exists;
+- a dormant history does not permanently own Yard capacity;
+- after the protected window, another player can take needed capacity through the intentional fresh-epoch handoff;
+- a retired old profile cannot steal the replacement session;
+- cycling between Yards does not accumulate permanent blockers;
+- W/A/S/D can be typed normally into the callsign field;
+- join/capacity/lifecycle/network messages are materially distinguishable;
+- mobile movement/jump, background/foreground and close/reopen behavior are representative enough to trust the baseline;
+- `runtimeFailed = false` in ordinary successful play;
 - exact state-guard mismatches remain `0`;
-- ordinary foreground play shows no repeated `authoritySilenceResumes` / `rebases` cycle;
-- RTT is consistent with representative European placement rather than the known US-contaminated ~180–350 ms regime.
+- normal foreground play does not exhibit recurring recovery churn.
 
-The fresh Poland-first falsifier already demonstrated ~33 ms median / ~35 ms p95 on desktop with `authoritySilenceResumes = 0`, `rebases = 0`, and clean exact guards. Those values are evidence context, not a permanent hard SLO.
+## Authority loss versus ordinary transport loss
 
-## FAIL classification
+A key new distinction is now part of the candidate:
 
-If the ordinary qualified-play flow is still unstable, do not open product feature work. Classify before changing runtime:
+### Old epoch still alive
 
-- high RTT from first Owner placement -> placement/environment assumption failed;
-- low RTT but repeated authority-silence resume/rebase -> runtime recovery regression or hidden transport defect;
-- continuity failure only after full tab close/reopen -> R1 product contract regression;
-- canonical jump delivery missing under otherwise healthy transport -> R2 regression;
-- only small grounded/contact timing imperfections -> residual controller/feel debt, not automatically a reliability-front reopening.
+If an abnormal transport loss occurs and authority still reports the same WorldEpoch, the browser keeps exact ActorSession recovery and exact rebase semantics.
+
+### Old epoch positively gone
+
+If exact resume fails and reachable authority-backed room evidence proves the source WorldEpoch no longer exists, the browser abandons the dead private token and fresh-joins the same logical Yard. Both peers should converge on one replacement epoch instead of eventually reaching `actor_session_resume_exhausted`.
+
+### Authority state uncertain
+
+If the directory cannot establish whether the source epoch still exists, uncertainty is not permission to destroy continuity. The client remains fail-closed to the existing bounded exact-resume path.
+
+This is service/play continuity after authority loss; it does not reconstruct the lost physical world.
+
+## Practical Owner run
+
+Use ordinary natural play rather than following a laboratory script too literally. A useful hostile run should still include, when convenient:
+
+1. type a callsign containing `W`, `A`, `S`, `D`;
+2. join the same Yard from two independent profiles/devices and play for a while;
+3. F5 or reopen the same profile while the pair is live;
+4. close one peer and observe protected reservation first, then capacity becoming available later;
+5. let a third profile take the available seat and judge the brief intentional epoch reset/recovery;
+6. try returning with the displaced old profile;
+7. cycle between Yard 1/2/3 enough to look for capacity leaks;
+8. do representative mobile play including background/foreground and close/reopen;
+9. continue playing through odd transitions instead of stopping immediately, so recovery behavior itself is exercised;
+10. capture video and copy Diagnostics/evidence from both sides if a suspicious transition occurs.
+
+## PASS / FAIL interpretation
+
+### PASS
+
+The two-player foundation is stable enough to freeze when:
+
+- natural Owner play is broadly smooth and comprehensible;
+- lifecycle operations recover or fail in the intended bounded way;
+- no new recurring blocker appears;
+- exact-state evidence stays clean;
+- remaining imperfections are small controller/presentation/feel debt.
+
+### FAIL
+
+Do not open the next feature frontier if the Owner still sees a reproducible foundation defect such as:
+
+- recurrent simultaneous disconnect/recovery failure;
+- a Yard becoming permanently unavailable because of dormant history;
+- same-owner F5 unable to recover a valid ActorSession;
+- stale identity stealing an active replacement session;
+- repeated low-latency recovery churn during ordinary foreground play;
+- nonzero exact-state guard mismatches;
+- mobile behavior that materially contradicts the desktop foundation contract.
+
+Classify the failure before changing runtime.
 
 ## What PASS earns
 
-PASS establishes one solid current World V0 baseline that can be treated as the starting point for product-frontier re-grounding.
+PASS earns a deliberate safe stop, not immediate 3+ player implementation.
 
-It does not itself authorize a particular next feature, account system, persistence model, richer world interaction, 3+ player expansion or MMO architecture. Those decisions happen only after this baseline is frozen and documented.
+After PASS:
+
+- freeze exact runtime/product and evidence anchors;
+- refresh canonical Current State / takeover docs;
+- retire consumed one-shot validation apparatus while preserving decisive evidence;
+- perform controlled branch archaeology and cleanup;
+- then review Project Soul / repository role and formalize the next multiplayer era.
+
+The current preliminary long-horizon direction remains that this repository may become a long-lived multiplayer systems laboratory / reusable multiplayer core, with 3+ players an early post-cleanup capability target. That direction is not made canonical by this gate alone.

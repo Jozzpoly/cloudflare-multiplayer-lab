@@ -1,0 +1,222 @@
+name: World V0 Broad Adversarial Verification
+
+on:
+  push:
+    branches: [world-v0-foundation-adversarial-verification]
+    paths:
+      - .github/workflows/world-v0-broad-adversarial-verification.yml
+      - docs/WORLD_V0_ADVERSARIAL_VERIFICATION_CAMPAIGN.md
+      - scripts/world-v0-authority-loss-repeat-browser-audit.mjs
+      - scripts/world-v0-cross-yard-history-exhaustion-audit.mjs
+      - scripts/world-v0-authority-loss-hidden-peer-audit.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-broad-adversarial-verification
+  cancel-in-progress: true
+
+env:
+  PRODUCT_SHA: fef4a2a4b6007c3e42cbd3b430cb9943343cc970
+
+jobs:
+  local-composition:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Prove audit branch has no product drift
+        run: |
+          set -euo pipefail
+          git cat-file -e "$PRODUCT_SHA^{commit}"
+          git diff --quiet "$PRODUCT_SHA" HEAD -- public/world-v0 src package.json package-lock.json
+          echo WORLD_V0_ADVERSARIAL_PRODUCT_FROZEN_PASS
+      - name: Static baseline
+        run: npm run check
+      - name: Start isolated local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > broad-local-wrangler.log 2>&1 &
+          echo $! > /tmp/broad-local.pid
+          for i in {1..60}; do curl -fsS http://127.0.0.1:8787/api/ping >/dev/null && exit 0; sleep 1; done
+          cat broad-local-wrangler.log
+          exit 1
+      - name: Same-owner live rebound
+        env:
+          MW_WORLD_V0_LIVE_REBIND_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_LIVE_REBIND_ROOM: yard-1
+          MW_WORLD_V0_LIVE_REBIND_OUTPUT: broad-live-rebind.json
+        run: timeout 120s node scripts/world-v0-live-rebind-browser-audit.mjs | tee broad-live-rebind.log
+      - name: Physical keyboard ownership
+        env:
+          MW_WORLD_V0_KEYBOARD_REAL_BASE: http://127.0.0.1:8787
+        run: timeout 90s node scripts/world-v0-keyboard-real-input-browser-audit.mjs | tee broad-keyboard.log
+      - name: Soft reservation and automatic handoff
+        env:
+          MW_WORLD_V0_SOFT_BROWSER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_SOFT_BROWSER_ROOM: yard-3
+          MW_WORLD_V0_SOFT_BROWSER_OUTPUT: broad-soft-preemption.json
+        run: timeout 150s node scripts/world-v0-soft-preemption-browser-audit.mjs | tee broad-soft-preemption.log
+      - name: Zero-online prestart capacity
+        env:
+          MW_WORLD_V0_PRESTART_VACANT_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_PRESTART_VACANT_ROOM: yard-2
+        run: timeout 60s node scripts/world-v0-prestart-vacant-capacity-probe.mjs | tee broad-prestart-vacant.log
+      - name: Resumed-stayer handoff composition
+        env:
+          MW_WORLD_V0_RSH_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RSH_ROOM: yard-2
+          MW_WORLD_V0_RSH_OBSERVE_MS: 10000
+          MW_WORLD_V0_RSH_OUTPUT: broad-resumed-stayer.json
+        run: timeout 150s node scripts/world-v0-resumed-stayer-handoff-browser-audit.mjs | tee broad-resumed-stayer.log
+      - name: Direct-link exact Resume
+        env:
+          MW_WORLD_V0_DIRECT_RESUME_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_DIRECT_RESUME_ROOM: yard-3
+          MW_WORLD_V0_DIRECT_RESUME_OUTPUT: broad-direct-resume.json
+        run: timeout 120s node scripts/world-v0-direct-link-resume-browser-audit.mjs | tee broad-direct-resume.log
+      - name: Directory-outage fail-closed Resume
+        env:
+          MW_WORLD_V0_DIRECT_OUTAGE_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_DIRECT_OUTAGE_ROOM: yard-2
+        run: timeout 90s node scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs | tee broad-direct-outage.log
+      - name: Stop Workerd
+        if: always()
+        run: if [ -f /tmp/broad-local.pid ]; then kill "$(cat /tmp/broad-local.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-broad-local-${{ github.run_id }}
+          path: |
+            broad-*.json
+            broad-*.log
+          if-no-files-found: warn
+          retention-days: 30
+
+  repeated-authority-loss:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Three authority losses in one live browser pair
+        env:
+          MW_WORLD_V0_AUTHORITY_REPEAT_CYCLES: 3
+          MW_WORLD_V0_AUTHORITY_REPEAT_OUTPUT: authority-repeat.json
+        run: |
+          set -euo pipefail
+          node --check scripts/world-v0-authority-loss-repeat-browser-audit.mjs
+          timeout 300s node scripts/world-v0-authority-loss-repeat-browser-audit.mjs | tee authority-repeat.log
+          grep -q WORLD_V0_AUTHORITY_LOSS_REPEAT_PASS authority-repeat.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-authority-repeat-${{ github.run_id }}
+          path: authority-repeat.*
+          if-no-files-found: warn
+          retention-days: 30
+
+  cross-yard-history:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Start isolated Workerd
+        run: |
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8795 > cross-yard-wrangler.log 2>&1 &
+          echo $! > /tmp/cross-yard.pid
+          for i in {1..60}; do curl -fsS http://127.0.0.1:8795/api/ping >/dev/null && exit 0; sleep 1; done
+          exit 1
+      - name: Accumulate history across all public Yards without exhausting capacity
+        env:
+          MW_WORLD_V0_CROSS_YARD_BASE: http://127.0.0.1:8795
+          MW_WORLD_V0_CROSS_YARD_OUTPUT: cross-yard-history.json
+        run: |
+          set -euo pipefail
+          node --check scripts/world-v0-cross-yard-history-exhaustion-audit.mjs
+          timeout 240s node scripts/world-v0-cross-yard-history-exhaustion-audit.mjs | tee cross-yard-history.log
+          grep -q WORLD_V0_CROSS_YARD_HISTORY_EXHAUSTION_PASS cross-yard-history.log
+      - name: Stop Workerd
+        if: always()
+        run: if [ -f /tmp/cross-yard.pid ]; then kill "$(cat /tmp/cross-yard.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-cross-yard-history-${{ github.run_id }}
+          path: cross-yard-*
+          if-no-files-found: warn
+          retention-days: 30
+
+  hidden-peer-authority-loss:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Authority loss while one peer is background-hidden
+        env:
+          MW_WORLD_V0_HIDDEN_PEER_OUTPUT: hidden-peer.json
+        run: |
+          set -euo pipefail
+          node --check scripts/world-v0-authority-loss-hidden-peer-audit.mjs
+          timeout 240s node scripts/world-v0-authority-loss-hidden-peer-audit.mjs | tee hidden-peer.log
+          grep -q WORLD_V0_AUTHORITY_LOSS_HIDDEN_PEER_PASS hidden-peer.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-hidden-peer-${{ github.run_id }}
+          path: hidden-peer.*
+          if-no-files-found: warn
+          retention-days: 30
+
+  remote-random-do:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        specimen: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Fresh random remote Durable Object composition
+        env:
+          MW_WORLD_V0_RSH_REMOTE_BASE: https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev
+          MW_WORLD_V0_RSH_REMOTE_RUN: adv-${{ github.run_id }}-${{ matrix.specimen }}
+          MW_WORLD_V0_RSH_REMOTE_SOFT_WAIT_MS: 22000
+          MW_WORLD_V0_RSH_REMOTE_OBSERVE_MS: 10000
+          MW_WORLD_V0_RSH_REMOTE_OUTPUT: remote-${{ matrix.specimen }}.json
+        run: |
+          set -euo pipefail
+          echo "RANDOM_RUN=$MW_WORLD_V0_RSH_REMOTE_RUN"
+          echo "PUBLIC_YARDS_UNTOUCHED=yard-1,yard-2,yard-3"
+          node --check scripts/world-v0-resumed-stayer-handoff-remote-audit.mjs
+          timeout 180s node scripts/world-v0-resumed-stayer-handoff-remote-audit.mjs | tee remote-${{ matrix.specimen }}.log
+          grep -q WORLD_V0_RESUMED_STAYER_HANDOFF_REMOTE_PASS remote-${{ matrix.specimen }}.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-remote-adversarial-${{ matrix.specimen }}-${{ github.run_id }}
+          path: remote-${{ matrix.specimen }}.*
+          if-no-files-found: warn
+          retention-days: 30

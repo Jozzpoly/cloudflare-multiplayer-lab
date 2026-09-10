@@ -1,4 +1,4 @@
-export const WORLD_V0_BROWSER_UI_REVISION = "shared-yard-v0-browser-ui-v19-jump-delivery-persistence";
+export const WORLD_V0_BROWSER_UI_REVISION = "shared-yard-v0-browser-ui-v20-owner-ui-focus";
 export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v10-jump-delivery-persistence";
 export const WORLD_V0_EXPECTED_SERVER_REVISION = "shared-yard-v0-authority-v11-jump-delivery-persistence";
 export const WORLD_V0_EXPECTED_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v3-supersession";

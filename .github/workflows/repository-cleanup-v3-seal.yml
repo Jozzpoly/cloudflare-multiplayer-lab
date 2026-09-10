@@ -1,0 +1,138 @@
+name: Repository cleanup v3 post-prune seal
+
+on:
+  push:
+    branches: [maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10]
+    paths:
+      - .github/workflows/repository-cleanup-v3-seal.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  seal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CANONICAL_SHA: 5224bea2d26fc0686f453a44c5143b05eb0fc537
+      RUNNER_REF: maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Reconstruct and verify qualified Cleanup Kit v3
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .repo-cleanup/runtime-kit cleanup-evidence
+          cat .repo-cleanup/kit-payload/part-* > /tmp/kit.b64
+          base64 -d /tmp/kit.b64 > /tmp/kit.tgz
+          echo 'cb763dcbf6811bd0bcca6f62b474785831d6469050f4a1aada2aac10e156041c  /tmp/kit.tgz' | sha256sum -c -
+          tar -xzf /tmp/kit.tgz -C .repo-cleanup/runtime-kit
+          echo '8605e24a6e9764affbc2efb4c078bc7aa9f3514bb1e269c3c4ef2f6347a8c7e7  .repo-cleanup/runtime-kit/src/cli.mjs' | sha256sum -c -
+          echo '7748d1f6707eb25ec529cad8fed30e83e497a3636bcbf08f5ba9eb5012fcb92e  .repo-cleanup/runtime-kit/src/closure.mjs' | sha256sum -c -
+          echo 'b6c9042a8d2d30652e4a72578cedf59fd86108d8c4eaad9ed66e5ae9cd828c37  .repo-cleanup/runtime-kit/src/core.mjs' | sha256sum -c -
+          echo '09c84e96ebf7bcc7daba514fca289bf7a4ec5d724e426e21bed9b0088b27b1a2  .repo-cleanup/runtime-kit/src/git.mjs' | sha256sum -c -
+          echo '2c4a21211a535a142b0d2eb99def24def51e3497d971f261158b95788685d988  .repo-cleanup/runtime-kit/src/github.mjs' | sha256sum -c -
+
+      - name: Recover immutable preparation evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: repository-cleanup-v3-prepared-34511799800
+          path: /tmp/prepared
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34511799800
+
+      - name: Require exact canonical head and successful ordinary CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$CANONICAL_SHA"
+          node --input-type=module <<'NODE'
+          const repo = process.env.GITHUB_REPOSITORY;
+          const sha = process.env.CANONICAL_SHA;
+          const token = process.env.GH_TOKEN;
+          const deadline = Date.now() + 6 * 60 * 1000;
+          let last = null;
+          while (Date.now() < deadline) {
+            const url = `https://api.github.com/repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`;
+            const r = await fetch(url, {headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${token}`,'X-GitHub-Api-Version':'2022-11-28'}});
+            if (!r.ok) throw new Error(`CI lookup failed HTTP ${r.status}`);
+            const body = await r.json();
+            const runs = (body.workflow_runs || []).filter(x => x.name === 'CI');
+            const success = runs.find(x => x.status === 'completed' && x.conclusion === 'success');
+            const terminalBad = runs.find(x => x.status === 'completed' && x.conclusion && x.conclusion !== 'success');
+            last = runs.map(x => ({id:x.id,status:x.status,conclusion:x.conclusion,head_sha:x.head_sha}));
+            if (success) {
+              console.log(`CANONICAL_CI_PASS run=${success.id} sha=${sha}`);
+              process.exit(0);
+            }
+            if (terminalBad) throw new Error(`Canonical CI terminal failure: ${JSON.stringify(last)}`);
+            await new Promise(r => setTimeout(r, 5000));
+          }
+          throw new Error(`Canonical CI did not reach success before timeout: ${JSON.stringify(last)}`);
+          NODE
+
+      - name: Assert exact post-prune namespace inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote --heads origin | wc -l)" -eq 7
+          test "$(git ls-remote origin refs/heads/archive/repository-cleanup-v3-2026-09-10 | cut -f1)" = '61f202289f0dcbde26cb5d72de67e7a46397c159'
+          test "$(git ls-remote origin refs/heads/maintenance/repository-cleanup-v3-2026-09-10 | cut -f1)" = 'feb2cea533dc227d078b01e13113a32634ca9f78'
+          test "$(git ls-remote origin refs/heads/$RUNNER_REF | cut -f1)" = "$GITHUB_SHA"
+          test "$(git ls-remote origin 'refs/tags/repository-cleanup-v3-pre-prune-2026-09-10^{}' | cut -f1)" = '61f202289f0dcbde26cb5d72de67e7a46397c159'
+
+      - name: Create Cleanup Kit v3 closure seal
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .repo-cleanup/runtime-kit/src/cli.mjs seal \
+            --config=.repo-cleanup/config.json \
+            --freeze=/tmp/prepared/freeze.json \
+            --archive=/tmp/prepared/archive.json \
+            --allow-live="$RUNNER_REF" \
+            --docs-out=cleanup-evidence/seal-docs \
+            --out=cleanup-evidence/closure-seal.json | tee cleanup-evidence/seal.log
+
+      - name: Publish seal by exact leased archive fast-forward
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .repo-cleanup/runtime-kit/src/cli.mjs publish-seal \
+            --config=.repo-cleanup/config.json \
+            --freeze=/tmp/prepared/freeze.json \
+            --archive=/tmp/prepared/archive.json \
+            --seal=cleanup-evidence/closure-seal.json \
+            --execute | tee cleanup-evidence/publish-seal.log
+
+      - name: Final Cleanup Kit v3 verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .repo-cleanup/runtime-kit/src/cli.mjs verify \
+            --config=.repo-cleanup/config.json \
+            --freeze=/tmp/prepared/freeze.json \
+            --archive=/tmp/prepared/archive.json \
+            --seal=cleanup-evidence/closure-seal.json \
+            --out=cleanup-evidence/final-verification.json | tee cleanup-evidence/verify.log
+          grep -q '"status": "PASS"' cleanup-evidence/final-verification.json
+
+      - name: Preserve closure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-cleanup-v3-seal-${{ github.run_id }}
+          path: cleanup-evidence/
+          if-no-files-found: warn
+          retention-days: 30

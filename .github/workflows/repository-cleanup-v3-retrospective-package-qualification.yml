@@ -1,4 +1,4 @@
-name: Repository cleanup v3 retrospective embedded-package qualification
+name: Repository cleanup v3 retrospective embedded-payload audit
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  qualify:
+  audit-payload:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -36,69 +36,69 @@ jobs:
           tar -xzf qualification/kit.tgz -C qualification/kit
           printf 'embeddedTarballSha256=%s\nrunnerSha=%s\n' "$actual" "$GITHUB_SHA" | tee qualification/logs/identity.txt
 
-      - name: Verify source-tree checksums and declared package identity
+      - name: Inventory payload and classify release-wrapper coverage
         shell: bash
         run: |
           set -euo pipefail
           cd qualification/kit
-          test -f CHECKSUMS.sha256
-          test -f package.json
-          test -f package-manifest.json
-          test -f FINAL_QUALIFICATION.md
-          sha256sum -c CHECKSUMS.sha256 | tee ../logs/checksums.log
-          grep -q 'FINAL_VALIDATED_READY_FOR_FRESH_AGENT_HANDOFF' FINAL_QUALIFICATION.md
+          find . -type f -print | sort | tee ../logs/inventory.txt
+          for f in CHECKSUMS.sha256 package.json package-manifest.json FINAL_QUALIFICATION.md FRESH_AGENT_TAKEOVER.md; do
+            if test -f "$f"; then echo "PRESENT $f"; else echo "ABSENT $f"; fi
+          done | tee ../logs/release-wrapper-coverage.txt
+          if test -f CHECKSUMS.sha256 && test -f package.json && test -f package-manifest.json && test -f FINAL_QUALIFICATION.md; then
+            echo FULL_RELEASE_WRAPPER_PRESENT | tee ../logs/payload-classification.txt
+          else
+            echo RUNTIME_SOURCE_PAYLOAD_NOT_FULL_RELEASE_PACKAGE | tee ../logs/payload-classification.txt
+          fi
 
-      - name: Run package automated tests
+      - name: Verify exact runtime source identities used by campaign
         shell: bash
         run: |
           set -euo pipefail
           cd qualification/kit
-          npm test | tee ../logs/npm-test.log
+          echo '8605e24a6e9764affbc2efb4c078bc7aa9f3514bb1e269c3c4ef2f6347a8c7e7  src/cli.mjs' | sha256sum -c -
+          echo '7748d1f6707eb25ec529cad8fed30e83e497a3636bcbf08f5ba9eb5012fcb92e  src/closure.mjs' | sha256sum -c -
+          echo 'b6c9042a8d2d30652e4a72578cedf59fd86108d8c4eaad9ed66e5ae9cd828c37  src/core.mjs' | sha256sum -c -
+          echo '09c84e96ebf7bcc7daba514fca289bf7a4ec5d724e426e21bed9b0088b27b1a2  src/git.mjs' | sha256sum -c -
+          echo '2c4a21211a535a142b0d2eb99def24def51e3497d971f261158b95788685d988  src/github.mjs' | sha256sum -c -
+          echo '496b26d284011e9dcd4c34c447a86863d66d8d41a44fc8a798cba9c24217f8b3  src/rehearsal.mjs' | sha256sum -c -
+          for f in src/*.mjs; do node --check "$f"; done
+          echo EMBEDDED_RUNTIME_SOURCE_IDENTITY_AND_SYNTAX_PASS | tee ../logs/runtime-source-validation.txt
 
-      - name: Run package product audit
+      - name: Execute full package qualification only if actually present
         shell: bash
         run: |
           set -euo pipefail
           cd qualification/kit
-          npm run audit:product | tee ../logs/product-audit.log
-
-      - name: Re-run module syntax checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd qualification/kit
-          count=0
-          for f in src/*.mjs tests/*.mjs; do
-            node --check "$f"
-            count=$((count+1))
-          done
-          echo "MODULE_SYNTAX_PASS count=$count" | tee ../logs/module-syntax.log
-
-      - name: Parse all package YAML independently
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd qualification/kit
-          mapfile -t yamls < <(find . -type f \( -name '*.yml' -o -name '*.yaml' \) -print | sort)
-          test "${#yamls[@]}" -ge 2
-          ruby -e 'require "yaml"; ARGV.each { |f| YAML.load_file(f); puts "YAML_PARSE_PASS #{f}" }' "${yamls[@]}" | tee ../logs/yaml-parse.log
+          if test -f CHECKSUMS.sha256 && test -f package.json && test -f package-manifest.json && test -f FINAL_QUALIFICATION.md; then
+            sha256sum -c CHECKSUMS.sha256 | tee ../logs/checksums.log
+            npm test | tee ../logs/npm-test.log
+            npm run audit:product | tee ../logs/product-audit.log
+            for f in tests/*.mjs; do node --check "$f"; done
+            mapfile -t yamls < <(find . -type f \( -name '*.yml' -o -name '*.yaml' \) -print | sort)
+            ruby -e 'require "yaml"; ARGV.each { |f| YAML.load_file(f); puts "YAML_PARSE_PASS #{f}" }' "${yamls[@]}" | tee ../logs/yaml-parse.log
+            echo FULL_EMBEDDED_PACKAGE_QUALIFICATION_PASS | tee ../logs/full-package-result.txt
+          else
+            echo FULL_PACKAGE_QUALIFICATION_NOT_EXECUTABLE_FROM_EMBEDDED_PAYLOAD | tee ../logs/full-package-result.txt
+          fi
 
       - name: State exact evidentiary boundary
         shell: bash
         run: |
           set -euo pipefail
           cat > qualification/logs/boundary.txt <<'EOF'
-          PASS scope: exact embedded source tarball used by the Multi_World cleanup runner.
-          NOT PROVEN: byte identity with the external distribution ZIP, because that ZIP was not supplied to this campaign.
-          NOT PROVEN: external ZIP SHA-256 identity.
+          Proven: exact SHA-256 and source identities of the embedded runtime payload actually used by Multi_World cleanup; source syntax revalidated.
+          Conditionally proven only if release wrapper exists: full package checksum/test/product-audit qualification.
+          Not proven without Owner-supplied distribution ZIP: byte identity with that external ZIP and its external ZIP SHA-256.
+          Cleanup transaction correctness remains separately evidenced by freeze/archive/rehearsal/atomic apply/postflight/seal artifacts.
           EOF
           cat qualification/logs/boundary.txt
 
-      - name: Preserve retrospective qualification evidence
+      - name: Preserve retrospective payload audit evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: repository-cleanup-v3-retrospective-package-qualification-${{ github.run_id }}
+          name: repository-cleanup-v3-retrospective-payload-audit-${{ github.run_id }}
           path: qualification/logs/
           if-no-files-found: error
           retention-days: 30

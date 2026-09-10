@@ -2,7 +2,7 @@ name: World V0 Current Validation
 
 on:
   push:
-    branches: [main, world-v0-session-continuity-r1-exec, world-v0-foundation-stabilization-closure]
+    branches: [main, world-v0-session-continuity-r1-exec, world-v0-foundation-stabilization-closure, world-v0-foundation-polish-closure]
     paths:
       - .github/workflows/world-v0-current-validation.yml
       - .github/workflows/world-v0-closure-current-validation.yml
@@ -13,10 +13,14 @@ on:
       - public/world-v0/friend-ready.js
       - public/world-v0/public-room-entry.js
       - public/world-v0/session-continuity.js
+      - public/world-v0/authority-epoch-loss.js
+      - public/world-v0/join-failure-clarity.js
       - src/world-slice-entry.ts
       - src/world-v0-contract.ts
       - src/world-v0-shared-yard.ts
       - scripts/world-v0-session-continuity-smoke.mjs
+      - scripts/world-v0-authority-epoch-loss-classifier-smoke.mjs
+      - scripts/world-v0-join-failure-clarity-smoke.mjs
       - scripts/world-v0-cross-page-resume-browser-audit.mjs
       - scripts/world-v0-integration-i1-lifecycle-probe.mjs
       - scripts/world-v0-closure-all-drop-window-probe.mjs
@@ -69,10 +73,15 @@ jobs:
           grep -q 'schedulePreStartAmbiguityRetirement' src/world-v0-shared-yard.ts
           grep -q 'connectedPlayerCount() !== MAX_PLAYERS' src/world-v0-shared-yard.ts
           grep -q 'WORLD_V0_SESSION_CONTINUITY_REVISION' public/world-v0/session-continuity.js
+          grep -q 'world-v0-authority-epoch-loss-v1' public/world-v0/authority-epoch-loss.js
+          grep -q 'authority_epoch_lost_recovery' public/world-v0/app.js
+          grep -q 'world-v0-join-failure-clarity-v1' public/world-v0/join-failure-clarity.js
           grep -q 'takeWorldV0ResumeIntent' public/world-v0/app.js
           grep -q 'live-protected-reserved' src/world-slice-entry.ts
           grep -q 'live-soft-reserved' src/world-slice-entry.ts
           grep -q 'softReservedPlayers' src/world-v0-shared-yard.ts
+          grep -q 'WORLD_V0_AUTHORITY_EPOCH_LOSS_CLASSIFIER_PASS' world-v0-current-check.log
+          grep -q 'WORLD_V0_JOIN_FAILURE_CLARITY_SMOKE_PASS' world-v0-current-check.log
           test ! -e .github/workflows/world-v0-closure-prestart-ambiguity-repair.yml
           test ! -e .github/workflows/world-v0-closure-prestart-live-start-repair.yml
           test ! -e .github/workflows/world-v0-closure-prestart-partial-resume-falsifier.yml

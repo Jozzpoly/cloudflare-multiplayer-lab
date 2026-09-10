@@ -1,0 +1,70 @@
+name: World V0 Owner UI Regression
+
+on:
+  push:
+    branches: [world-v0-final-owner-ui-repair, world-v0-foundation-polish-closure]
+    paths:
+      - .github/workflows/world-v0-owner-ui-regression.yml
+      - public/world-v0/keyboard-focus-guard.js
+      - public/world-v0/control-surface-visibility.css
+      - public/world-v0/index.html
+      - scripts/world-v0-keyboard-focus-guard-smoke.mjs
+      - scripts/world-v0-control-surface-visibility-smoke.mjs
+      - scripts/world-v0-owner-ui-focus-browser-audit.mjs
+      - package.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-ui-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Canonical checks
+        run: |
+          set -euo pipefail
+          npm run check
+          node --check scripts/world-v0-owner-ui-focus-browser-audit.mjs
+      - name: Start isolated local Workerd
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-owner-ui-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-owner-ui.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo WORLD_V0_OWNER_UI_LOCAL_WORKER_READY
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-owner-ui-wrangler.log
+          exit 1
+      - name: Reproduce Diagnostics focus and pointer surface contract
+        env:
+          MW_WORLD_V0_OWNER_UI_BASE: http://127.0.0.1:8787
+        run: |
+          set -euo pipefail
+          timeout 90s node scripts/world-v0-owner-ui-focus-browser-audit.mjs | tee world-v0-owner-ui-browser.log
+          grep -q WORLD_V0_OWNER_UI_FOCUS_BROWSER_PASS world-v0-owner-ui-browser.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-owner-ui-regression-${{ github.run_id }}
+          path: |
+            world-v0-owner-ui-browser.log
+            world-v0-owner-ui-wrangler.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Stop local Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/world-v0-owner-ui.pid ]; then kill "$(cat /tmp/world-v0-owner-ui.pid)" 2>/dev/null || true; fi

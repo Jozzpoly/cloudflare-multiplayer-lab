@@ -1,9 +1,9 @@
 # Multi_World — Current State
 
-Status: **WORLD V0 2P BASELINE QUALIFIED / 167-REF PRUNE COMPLETE / TERMINAL REPOSITORY CLOSURE IN PREPARATION**  
-Grounded: **2026-09-10**
+Status: **WORLD V0 2P BASELINE QUALIFIED / REPOSITORY CLEANUP TERMINAL PASS / 2-BRANCH CANONICAL TOPOLOGY**  
+Grounded: **2026-09-11**
 
-This is the compact technical truth for continuation. Verify live GitHub state when it matters. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable product-intent document and is intentionally unchanged by repository cleanup.
+This is the compact technical truth for continuation. Verify live GitHub state when it matters. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable product-intent document and was intentionally unchanged by repository cleanup.
 
 ## 1. Product authority
 
@@ -41,13 +41,13 @@ Evidence established:
 - recovery rehearsal reconstructed **167/167** selected refs exactly after a self-contained bundle and aggressive Git GC;
 - Cleanup Kit seal run `34517285955` / job `103005756148` succeeded;
 - verified seal SHA `4d2fae1a18613f0c90c4b242edfa68eb26fd66a2`;
-- aggregate archive was later extended to `85378de39a5d41058805e6c887ee977d855d2749` to preserve the then-final runner history.
+- terminal recovery lineage was subsequently extended through the terminal-closure campaign and now ends at `186d7633fde739098d892491231c9e717da5f871`.
 
-The earlier two-helper retirement digest `36a281e7ea81b2e998d0c5169cae975817e541bd7132b314acb1f349e3331af0` is **obsolete and must not be authorized or executed**.
+Earlier terminal-preparation digests and tokens are historical evidence only and **must not be reused**.
 
 ## 3. Cleanup Kit v3 donor audit changed the closure model
 
-Owner later supplied the final v3.0.0 distribution ZIP. Its 32-file checksum set and official 47/47 tests pass, and all six runtime modules are byte-identical to the six modules actually executed in Multi_World. The earlier distribution-provenance gap is therefore closed for executed runtime source bytes.
+Owner supplied the final v3.0.0 distribution ZIP. Its 32-file checksum set and official 47/47 tests pass, and all six runtime modules are byte-identical to the six modules actually executed in Multi_World. The earlier distribution-provenance gap is therefore closed for executed runtime source bytes.
 
 The package is nevertheless not accepted as final authority. Adversarial testing found reproducible defects, including:
 
@@ -60,36 +60,66 @@ The package is nevertheless not accepted as final authority. Adversarial testing
 
 Multi_World was retrospectively checked against the safety-relevant history-wide gap: 443 unique historical commits / 867 blobs were scanned; **0 historical Git LFS pointers and 0 gitlinks/submodules** were found. The executed 167-ref prune therefore did not fall into that blind spot.
 
-The semantic gap is real in this repository: 20/167 retired refs contain transient-only paths missing from final net diffs; 59/167 have commits omitted by the five-recent-commit summary; three refs show `changedFileCount=0` despite real historical work. Final aggregate recovery must therefore include a history-aware semantic index.
+The semantic gap is real in this repository: 20/167 retired refs contain transient-only paths missing from final net diffs; 59/167 have commits omitted by the five-recent-commit summary; three refs show `changedFileCount=0` despite real historical work. Final aggregate recovery therefore includes a history-aware semantic index.
 
-## 4. Current live topology and intended terminal topology
+## 4. Terminal repository topology — complete
 
-Current live branch namespace remains seven refs until a new exact terminal transaction is prepared and separately authorized:
+Terminal closure transaction:
 
-- `main` — canonical live project line;
-- `archive/repository-cleanup-v3-2026-09-10` — aggregate browsable recovery lineage;
-- `archive/world-v0-qualified-2p-baseline-2026-09-10` — immutable checkpoint currently represented as a branch;
-- `archive/world-v0-final-delivery-2026-09-10` — immutable checkpoint currently represented as a branch;
-- `archive/pre-safe-stop-main-2026-09-10` — immutable checkpoint currently represented as a branch;
-- `maintenance/repository-cleanup-v3-2026-09-10` — temporary cleanup helper;
-- `maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10` — temporary cleanup runner/red-team line.
+`532e99c69fc72ff748b0303f9eae317a10fe10ae54907e4330495da6d77d1711`
 
-Topology review showed that the three named World V0 checkpoint branches are already ancestors of both current `main` and the aggregate recovery archive. They preserve names, not unique reachability. Current-best terminal model is therefore:
+Frozen terminal runner tip:
 
-- **two live branches:** `main` + aggregate recovery archive;
-- the three immutable World V0 checkpoints preserved as annotated tags before their branch names are retired;
-- cleanup helper and runner exact tips preserved in aggregate archive ancestry before their refs are retired;
-- final terminal archive checkpoint represented by an immutable tag if the execution path can create and verify it atomically.
+`f668e4aeeac0208bee7c49ac6e9c40d740dff21e`
 
-No branch retirement in this terminal set is authorized yet.
+Successful terminal execution: workflow run `34536413299`, attempt 3, job `103073656253` — **SUCCESS**.
 
-## 5. Platform-state interpretation
+Terminal evidence:
+
+- `PASS_GITHUB_TERMINAL_UPDATE_REFS_ATOMIC_CAS`;
+- `PASS_TERMINAL_ATOMIC_APPLY_AND_FRESH_MIRROR`;
+- independent terminal constraints passed;
+- fresh-mirror recovery verified **167/167** historical refs;
+- final aggregate archive: `186d7633fde739098d892491231c9e717da5f871`;
+- final live branch namespace contains exactly **two branches**:
+  - `main`;
+  - `archive/repository-cleanup-v3-2026-09-10`.
+
+Three immutable World V0 checkpoints formerly represented as branches are now annotated tags:
+
+- `world-v0-qualified-2p-baseline-2026-09-10` -> `7755a668d7488f04ecbf42a00fbc96fcb978d544`;
+- `world-v0-final-delivery-2026-09-10` -> `fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`;
+- `world-v0-pre-safe-stop-main-2026-09-10` -> `829deef82c71780d2d661e7a7e82685739d7b23d`.
+
+Terminal-consumption marker:
+
+- `repository-cleanup-terminal-2026-09-10` -> aggregate archive `186d7633fde739098d892491231c9e717da5f871`.
+
+Cleanup helper and terminal-runner branch refs were retired only after their exact tips were preserved in aggregate archive ancestry.
+
+## 5. Terminal-closure lessons / reusable process model
+
+The terminal campaign exposed a workflow-design lesson that should be reused in future repository automation without copying Multi_World-specific machinery.
+
+Owner authorization should bind to **semantic scope and invariants**, while execution digests remain provenance/evidence identities. Implementation-preserving changes and machine-proven authorization-equivalent retries should not repeatedly consume Owner attention. New Owner authorization is required only when destructive scope, protected identities, recovery guarantees or other material semantics change.
+
+A useful execution classification is:
+
+- **implementation-preserving** — technical repair, retry or transport change; no new Owner judgement;
+- **authorization-equivalent** — execution identity changes but machine-checkable destructive/protective semantics remain equivalent or stronger; authorization may carry forward with recorded evidence;
+- **authorization-changing** — material scope or safety semantics change; stop for Owner judgement.
+
+The campaign also established a capability-recovery rule: failure of one connector/tool path is not evidence that the action is impossible. Before escalating work to the Owner, classify the failure and check bounded alternative native capabilities. Escalate only when an actual capability, authority or Owner-judgement boundary is reached.
+
+These are donor principles for later projects such as `LLM Live NPC`; they are not a requirement to transplant this repository's cleanup implementation.
+
+## 6. Platform-state interpretation
 
 A read-only Actions registry audit found 183 registered workflows, with 171 historical non-main registrations still marked `active`, but **zero historical-residue executions after the bulk-prune cutoff**. Treat this primarily as GitHub registry/UI hygiene debt, not as evidence of 171 hidden active automations. Historical run/artifact evidence must remain preserved.
 
-Closure now distinguishes: destructive safety, recoverability, provenance, semantic discoverability, canonical-product integrity, platform execution state and UI hygiene. A cosmetic registry state is not allowed to masquerade as a safety blocker.
+Closure distinguishes: destructive safety, recoverability, provenance, semantic discoverability, canonical-product integrity, platform execution state and UI hygiene. Cosmetic registry state is not allowed to masquerade as a safety blocker.
 
-## 6. Baseline earned / not earned
+## 7. Baseline earned / not earned
 
 Within the fixed-two-player envelope, evidence supports the shared authoritative physical world, responsive browser simulation/prediction, scheduled canonical input, exact state guards, jump delivery persistence, ActorSession continuity, public Yard capacity semantics, bounded transport-loss recovery, and qualified desktop/mobile human entry.
 
@@ -104,20 +134,21 @@ Do not silently upgrade this into capabilities not demonstrated:
 - no guarantee through arbitrary permanent network loss;
 - fixed two-actor topology remains a known architectural constraint.
 
-## 7. Current execution order
+## 8. Current execution order
 
-1. keep product/runtime bytes frozen;
-2. refresh canonical docs and validate the resulting docs-only `main` descendant;
-3. enrich aggregate archive with history-aware semantic recovery information and the latest helper/runner ancestry;
-4. qualify one terminal runner that can prepare immutable checkpoint tags and an exact final transaction without changing itself afterward;
-5. stop before mutation and request a **new exact Owner authorization** bound to that terminal transaction;
-6. execute only after that authorization, then prove helper/checkpoint branches absent, tags/archive exact and final namespace/recovery stable;
-7. close issue #41 only after terminal evidence exists;
-8. then review Project Soul and open the next multiplayer architecture frontier.
+Repository cleanup is closed. Do not reopen cleanup work merely to preserve momentum.
 
-## 8. Deferred near-term product requirement
+Next:
 
-After repository closure, the next important product requirement is:
+1. keep the qualified World V0 product/runtime frozen until a new product frontier is deliberately opened;
+2. verify this docs-only post-cleanup `main` descendant through ordinary CI;
+3. close repository-cleanup issue #41 with terminal evidence;
+4. re-ground `MULTI_WORLD_PROJECT_SOUL.md` together with this current-state document;
+5. then deliberately frame the next multiplayer architecture frontier before implementation.
+
+## 9. Deferred near-term product requirement
+
+After repository closure, the next important product requirement remains:
 
 > A player should be able to enter a Yard alone, immediately inhabit and play in the physical world, and wait there for another player.
 
@@ -127,4 +158,4 @@ Design this together with:
 
 `world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
 
-Do not implement it inside repository closure.
+Do not treat this requirement alone as authorization for a broad persistent-world / 3+ / MMO redesign.

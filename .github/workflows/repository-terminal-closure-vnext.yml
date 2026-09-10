@@ -1,4 +1,4 @@
-name: Repository terminal closure vNext
+name: Repository terminal closure vNext authority qualification
 
 on:
   push:
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  terminal:
+  qualify-authority:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -28,14 +28,14 @@ jobs:
       TERMINAL_ISSUE_NUMBER: "41"
       TERMINAL_RUNNER_BRANCH: maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10
       TERMINAL_EXPECTED_MAIN: 5305d25c7b544ad5e891dd3530bd79f5dc92206d
-      TERMINAL_BASE_ARCHIVE: 85378de39a5d41058805e6c887ee977d855d2749
+      TERMINAL_BASE_ARCHIVE: 579dd72ee16e90c85e1b5c1f330ec6b1f6d4c7c1
       TERMINAL_EXPECTED_HELPER: feb2cea533dc227d078b01e13113a32634ca9f78
       TERMINAL_QUALIFIED_SHA: 7755a668d7488f04ecbf42a00fbc96fcb978d544
       TERMINAL_FINAL_DELIVERY_SHA: fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65
       TERMINAL_PRE_SAFE_STOP_SHA: 829deef82c71780d2d661e7a7e82685739d7b23d
       TERMINAL_PREPRUNE_TARGET: 61f202289f0dcbde26cb5d72de67e7a46397c159
       TERMINAL_PUBLISH_ARCHIVE: "true"
-      TERMINAL_ALLOW_APPLY: "true"
+      TERMINAL_ALLOW_APPLY: "false"
       TERMINAL_OUT_DIR: terminal-closure-out
     steps:
       - uses: actions/checkout@v4
@@ -52,22 +52,149 @@ jobs:
             '+refs/pull/*/head:refs/remotes/pull/*/head'
           git fsck --full
 
-      - name: Materialize exact dry-qualified terminal runtime
+      - name: Materialize and patch exact dry-qualified runtime
         shell: bash
         run: |
           set -euo pipefail
           echo '5f2f4ef44364e2dd955b3a08c6f0f354e0ac36811152d263a09660e956abc3af  .github/terminal/repository-terminal-closure-vnext.py.gz' | sha256sum -c -
           gzip -dc .github/terminal/repository-terminal-closure-vnext.py.gz > /tmp/repository-terminal-closure-vnext.py
           echo '12529e1065afe687f652b7c1a7de76f79e3f15da00fd82cb4cd5837e16066cc1  /tmp/repository-terminal-closure-vnext.py' | sha256sum -c -
-          python -m py_compile /tmp/repository-terminal-closure-vnext.py
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('/tmp/repository-terminal-closure-vnext.py')
+          text=p.read_text()
+          old="""def ensure_remote_annotated_tag_objects(tags):
+              if TEST_MODE:
+                  return [{'name':t['name'],'objectSha':t['objectSha'],'mode':'test-local-object'} for t in tags]
+              token=os.getenv('GITHUB_TOKEN','')
+              if not token: raise RuntimeError('GITHUB_TOKEN missing for annotated tag object preparation')
+              prepared=[]
+              for t in tags:
+                  # GitHub REST creates only the tag object, not refs/tags/*; therefore OWNER_STOP still has no tag ref mutation.
+                  ts=int(git('show','-s','--format=%ct',os.getenv('GITHUB_SHA') or git('rev-parse','HEAD').stdout.strip()).stdout.strip())
+                  date=datetime.fromtimestamp(ts,timezone.utc).isoformat().replace('+00:00','Z')
+                  payload={'tag':t['name'],'message':t['message'],'object':t['targetSha'],'type':'commit','tagger':{'name':'Repository Terminal Closure','email':'repository-terminal-closure@invalid.local','date':date}}
+                  _, row=http_json(f'{REST_API}/repos/{REPO}/git/tags',token=token,method='POST',payload=payload)
+                  got=(row or {}).get('sha')
+                  if got != t['objectSha']:
+                      raise RuntimeError(f'GitHub annotated tag object identity mismatch for {t[\"name\"]}: local={t[\"objectSha\"]} github={got}')
+                  prepared.append({'name':t['name'],'objectSha':got,'mode':'github-unreferenced-tag-object'})
+              return prepared
+          """.replace('          ','')
+          new="""def ensure_remote_annotated_tag_objects(tags):
+              if TEST_MODE:
+                  return [{**t,'localObjectSha':t.get('objectSha'),'mode':'test-local-object'} for t in tags]
+              token=os.getenv('GITHUB_TOKEN','')
+              if not token: raise RuntimeError('GITHUB_TOKEN missing for annotated tag object preparation')
+              prepared=[]
+              for t in tags:
+                  # GitHub REST is authoritative for annotated-tag object identity. It creates only the object, never refs/tags/*.
+                  ts=int(git('show','-s','--format=%ct',os.getenv('GITHUB_SHA') or git('rev-parse','HEAD').stdout.strip()).stdout.strip())
+                  date=datetime.fromtimestamp(ts,timezone.utc).isoformat().replace('+00:00','Z')
+                  payload={'tag':t['name'],'message':t['message'],'object':t['targetSha'],'type':'commit','tagger':{'name':'Repository Terminal Closure','email':'repository-terminal-closure@invalid.local','date':date}}
+                  _, row=http_json(f'{REST_API}/repos/{REPO}/git/tags',token=token,method='POST',payload=payload)
+                  got=(row or {}).get('sha')
+                  if not got: raise RuntimeError(f'GitHub annotated tag object creation returned no SHA for {t[\"name\"]}')
+                  prepared.append({**t,'localObjectSha':t.get('objectSha'),'objectSha':got,'mode':'github-unreferenced-tag-object'})
+              return prepared
+          """.replace('          ','')
+          if text.count(old)!=1: raise SystemExit(f'authority function patch count={text.count(old)}')
+          text=text.replace(old,new)
+          pattern=re.compile(r"    tags=prepare_tags\(candidate,runner_sha\)\n.*?    print\(f'PASS_TERMINAL_ATOMIC_APPLY_AND_FRESH_MIRROR transaction=\{digest\} archive=\{candidate\}'\)\n",re.S)
+          replacement="""    local_tags=prepare_tags(candidate,runner_sha)
 
-      - name: Prepare or execute exact terminal transaction
+              # Existing terminal tag is the single-use consumption marker. On replay, recover GitHub-authoritative OIDs from live tag refs.
+              terminal_obj, terminal_peeled = peel_remote_tag(TERMINAL_TAG)
+              if terminal_obj is not None:
+                  tags=[]
+                  for t in local_tags:
+                      obj,peeled=peel_remote_tag(t['name'])
+                      if obj is None or peeled != t['targetSha']: raise RuntimeError(f\"existing terminal tag set mismatch for {t['name']}: obj={obj} peeled={peeled}\")
+                      tags.append({**t,'localObjectSha':t.get('objectSha'),'objectSha':obj,'mode':'github-existing-tag-ref'})
+                  txn=transaction_obj(runner_sha,candidate,tags,idx_sha,idx_md_sha)
+                  txn_text=canonical_json(txn); digest=sha256_text(txn_text)
+                  auth=f'REPO_CLEANUP_TERMINAL_APPLY:{REPO}:{digest}'
+                  write_json(OUT/'terminal-transaction.json',txn); (OUT/'terminal-transaction.canonical.json').write_text(txn_text); (OUT/'authorization-token.txt').write_text(auth+'\\n')
+                  (OUT/'semantic-index.json').write_text(idx_text); (OUT/'semantic-index.md').write_text(idx_md); (OUT/'closure.md').write_text(closure)
+                  write_json(OUT/'prepared-tag-objects.json',local_tags); write_json(OUT/'remote-annotated-tag-objects.json',tags)
+                  prep={'schema':'repository-terminal-preparation-v2','runnerSha':runner_sha,'canonicalMainSha':EXPECTED_MAIN,'baseArchiveSha':BASE_ARCHIVE,'archiveCandidateSha':candidate,'transactionSha256':digest,'authorizationToken':auth,'semanticIndexSha256':idx_sha,'semanticIndexMarkdownSha256':idx_md_sha,'prePruneTag':preprune,'publishArchiveEnabled':PUBLISH_ARCHIVE,'applyEnabled':ALLOW_APPLY,'terminalAlreadyPresent':True,'authorizationPresent':False}
+                  write_json(OUT/'preparation.json',prep)
+                  if terminal_peeled != candidate: raise RuntimeError('terminal tag exists but does not point to this deterministic archive candidate')
+                  verdict=verify_terminal(txn,tags,runner_sha,fresh_mirror=True)
+                  verdict['transactionSha256']=digest; verdict['runnerSha']=runner_sha; verdict['archiveSha']=candidate; verdict['replay']=True
+                  write_json(OUT/'terminal-verification.json',verdict)
+                  print(f'ALREADY_TERMINAL_PASS transaction={digest} archive={candidate}')
+                  return
+
+              # Before archive publication all seven live heads must be exact; all four future tag refs must be absent.
+              verify_preparation_heads(runner_sha,candidate)
+              verify_tag_absence(local_tags)
+
+              if PUBLISH_ARCHIVE:
+                  state=publish_archive(candidate); print(f'ARCHIVE_{state.upper()} {candidate}')
+                  tags=ensure_remote_annotated_tag_objects(local_tags)
+                  write_json(OUT/'remote-annotated-tag-objects.json',tags)
+                  print(f'REMOTE_ANNOTATED_TAG_OBJECTS_PREPARED count={len(tags)}')
+              else:
+                  tags=local_tags
+                  print(f'DRY_PREP_ARCHIVE_NOT_PUBLISHED candidate={candidate}')
+
+              # The destructive transaction and Owner token are derived only now, after GitHub has supplied authoritative tag-object OIDs.
+              txn=transaction_obj(runner_sha,candidate,tags,idx_sha,idx_md_sha)
+              txn_text=canonical_json(txn); digest=sha256_text(txn_text)
+              auth=f'REPO_CLEANUP_TERMINAL_APPLY:{REPO}:{digest}'
+              write_json(OUT/'terminal-transaction.json',txn)
+              (OUT/'terminal-transaction.canonical.json').write_text(txn_text)
+              (OUT/'authorization-token.txt').write_text(auth+'\\n')
+              (OUT/'semantic-index.json').write_text(idx_text)
+              (OUT/'semantic-index.md').write_text(idx_md)
+              (OUT/'closure.md').write_text(closure)
+              write_json(OUT/'prepared-tag-objects.json',local_tags)
+              prep={'schema':'repository-terminal-preparation-v2','runnerSha':runner_sha,'canonicalMainSha':EXPECTED_MAIN,'baseArchiveSha':BASE_ARCHIVE,'archiveCandidateSha':candidate,'transactionSha256':digest,'authorizationToken':auth,'semanticIndexSha256':idx_sha,'semanticIndexMarkdownSha256':idx_md_sha,'prePruneTag':preprune,'publishArchiveEnabled':PUBLISH_ARCHIVE,'applyEnabled':ALLOW_APPLY,'terminalAlreadyPresent':False}
+              write_json(OUT/'preparation.json',prep)
+
+              archive_live = candidate if PUBLISH_ARCHIVE else BASE_ARCHIVE
+              verify_heads_exact(expected_heads_before(runner_sha, archive_live))
+              if PUBLISH_ARCHIVE:
+                  assert_ancestor(BASE_ARCHIVE,candidate); assert_ancestor(EXPECTED_MAIN,candidate); assert_ancestor(runner_sha,candidate); assert_ancestor(EXPECTED_HELPER,candidate)
+                  for _,sha,_,_ in ANCHORS: assert_ancestor(sha,candidate)
+
+              has_auth=auth_present(auth)
+              prep['authorizationPresent']=has_auth
+              write_json(OUT/'preparation.json',prep)
+              if not has_auth:
+                  print(f'OWNER_STOP transaction={digest}')
+                  print(auth)
+                  return
+              if not ALLOW_APPLY:
+                  print(f'AUTH_PRESENT_BUT_APPLY_DISABLED transaction={digest}')
+                  return
+              if not PUBLISH_ARCHIVE: raise RuntimeError('apply enabled but archive publication disabled')
+
+              verify_heads_exact(expected_heads_before(runner_sha,candidate)); verify_tag_absence(tags)
+              apply_github_atomic(txn,tags,runner_sha)
+              verdict=verify_terminal(txn,tags,runner_sha,fresh_mirror=True)
+              verdict['transactionSha256']=digest; verdict['runnerSha']=runner_sha; verdict['archiveSha']=candidate
+              write_json(OUT/'terminal-verification.json',verdict)
+              print(f'PASS_TERMINAL_ATOMIC_APPLY_AND_FRESH_MIRROR transaction={digest} archive={candidate}')
+          """.replace('          ','')
+          text,n=pattern.subn(replacement,text)
+          if n!=1: raise SystemExit(f'main authority reorder patch count={n}')
+          p.write_text(text)
+          PY
+          python -m py_compile /tmp/repository-terminal-closure-vnext.py
+          sha256sum /tmp/repository-terminal-closure-vnext.py | tee patched-runtime.sha256
+
+      - name: Exercise GitHub-authoritative preparation without destructive apply
         shell: bash
         run: |
           set -euo pipefail
           python /tmp/repository-terminal-closure-vnext.py | tee terminal-run.log
+          grep -q '^OWNER_STOP transaction=' terminal-run.log
+          grep -q '^REMOTE_ANNOTATED_TAG_OBJECTS_PREPARED count=4$' terminal-run.log
 
-      - name: Independently constrain terminal evidence
+      - name: Independently constrain qualification evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -75,43 +202,30 @@ jobs:
           import json
           from pathlib import Path
           out=Path('terminal-closure-out')
-          p=json.loads((out/'preparation.json').read_text())
-          t=json.loads((out/'terminal-transaction.json').read_text())
-          s=json.loads((out/'semantic-index.json').read_text())['summary']
-          assert p['publishArchiveEnabled'] is True
-          assert p['applyEnabled'] is True
-          assert t['schema']=='repository-terminal-transaction-v2'
-          assert t['transport']=='github-graphql-updateRefs-atomic-cas'
+          p=json.loads((out/'preparation.json').read_text()); t=json.loads((out/'terminal-transaction.json').read_text()); s=json.loads((out/'semantic-index.json').read_text())['summary']; ro=json.loads((out/'remote-annotated-tag-objects.json').read_text())
+          assert p['schema']=='repository-terminal-preparation-v2' and p['publishArchiveEnabled'] is True and p['applyEnabled'] is False and p['authorizationPresent'] is False
+          assert t['schema']=='repository-terminal-transaction-v2' and t['transport']=='github-graphql-updateRefs-atomic-cas'
           kinds={k:sum(u['kind']==k for u in t['refUpdates']) for k in {'DELETE','CREATE_ANNOTATED_TAG','RETAIN_ASSERT'}}
-          assert kinds=={'DELETE':5,'CREATE_ANNOTATED_TAG':4,'RETAIN_ASSERT':2}, kinds
-          assert len(t['refUpdates'])==11 and len({u['name'] for u in t['refUpdates']})==11
+          assert kinds=={'DELETE':5,'CREATE_ANNOTATED_TAG':4,'RETAIN_ASSERT':2} and len(t['refUpdates'])==11 and len({u['name'] for u in t['refUpdates']})==11
           assert all(u['beforeOid']==u['afterOid'] for u in t['refUpdates'] if u['kind']=='RETAIN_ASSERT')
+          assert len(ro)==4 and all(x['mode']=='github-unreferenced-tag-object' and len(x['objectSha'])==40 and x['objectSha']!=x.get('localObjectSha') for x in ro)
+          byref={x['ref']:x for x in ro}
+          for u in t['refUpdates']:
+              if u['kind']=='CREATE_ANNOTATED_TAG': assert u['afterOid']==byref[u['name']]['objectSha']
           expected={'historicalBranchCount':167,'distinctTipCount':144,'branchesWithAnyTransientOnlyPath':20,'branchesWithCommitsBeyondRecentFive':59,'netZeroBranchesWithHistoricalWork':3,'distinctTransientOnlyPathCount':167,'historyWideUniqueCommitCountScanned':443,'historyWideDistinctBlobCountScanned':867,'historyWideSmallBlobCountInspected':342,'historyWideGitlinkCount':0,'historyWideLfsPointerCount':0}
           for k,v in expected.items(): assert s[k]==v,(k,s[k],v)
-          remote_objects=out/'remote-annotated-tag-objects.json'
-          assert remote_objects.exists()
-          ro=json.loads(remote_objects.read_text())
-          assert len(ro)==4 and all(x['mode']=='github-unreferenced-tag-object' for x in ro)
-          if p.get('authorizationPresent'):
-              v=json.loads((out/'terminal-verification.json').read_text())
-              assert v['status']=='PASS'
-              assert v['freshMirror']['status']=='PASS' and v['freshMirror']['historicalRefsVerified']==167
-              assert 'PASS_GITHUB_TERMINAL_UPDATE_REFS_ATOMIC_CAS' in Path('terminal-run.log').read_text()
-          else:
-              assert not (out/'terminal-verification.json').exists()
-              log=Path('terminal-run.log').read_text()
-              assert 'OWNER_STOP transaction=' in log
-              assert p['authorizationToken'] in log
-          print('TERMINAL_EVIDENCE_CONSTRAINT_PASS',kinds,'authorized=',p.get('authorizationPresent'))
+          assert not (out/'terminal-verification.json').exists()
+          print('GITHUB_AUTHORITY_QUALIFICATION_PASS',kinds,'archive=',p['archiveCandidateSha'],'transaction=',p['transactionSha256'])
           PY
 
-      - name: Preserve terminal evidence
+      - name: Preserve authority qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: repository-terminal-vnext-${{ github.run_id }}-${{ github.run_attempt }}
+          name: repository-terminal-vnext-authority-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             terminal-closure-out/
             terminal-run.log
+            patched-runtime.sha256
           if-no-files-found: warn
           retention-days: 90

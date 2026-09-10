@@ -1,7 +1,8 @@
 # Multi_World — Current State
 
 Status: **WORLD V0 2P BASELINE QUALIFIED / REPOSITORY PRUNED / CLOSURE SEAL PENDING**  
-Grounded: **2026-09-10**
+Grounded: **2026-09-10**  
+Validation rule: the final canonical closure head must have ordinary repository CI PASS before Cleanup Kit v3 seal.
 
 This is the compact technical truth for continuation. Verify live GitHub state when it matters. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable product-intent document and is intentionally unchanged by repository cleanup.
 

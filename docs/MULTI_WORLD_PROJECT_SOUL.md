@@ -1,7 +1,7 @@
 # Multi_World — Project Soul
 
 Status: **CANONICAL HANDOFF INTENT / PRODUCT DIRECTION, NOT ARCHITECTURE**  
-Grounded: **2026-09-02**
+Grounded: **2026-09-11**
 
 ---
 
@@ -178,20 +178,30 @@ The project must remain operable even when a particular executor/tool is tempora
 
 ## Current stage boundary
 
-The project has already demonstrated:
+The project has now demonstrated and qualified a fixed-two-player Shared Yard baseline with:
 
-- a working server-authoritative physical substrate;
-- real shared-world networking plumbing;
-- a failed naïve owner/contact presentation baseline;
-- a smooth positive single-owner A2R local-physics reference.
+- one server-authoritative physical world shared by two real players;
+- responsive local browser simulation/prediction while retaining authoritative shared consequence;
+- scheduled canonical input and bounded transport-loss recovery;
+- ActorSession continuity across transport interruption;
+- qualified desktop/mobile human entry;
+- real-device Owner sanity on the final fixed-2P delivery.
 
-The next conceptual level is therefore not “make movement nicer” and not “add features.”
+That means the earlier frontier — preserving immediate local embodiment when another independently controlled player becomes a delayed physical cause — has been crossed **within the qualified fixed-2P envelope**. Do not keep treating it as the current unknown.
 
-It is:
+The next conceptual level is lifecycle independence:
 
-> **preserve immediate local embodiment when another independently controlled player becomes a delayed physical cause in the same world.**
+> **Can a Yard already exist as a playable physical world with one present actor, then admit a second actor into that same ongoing physical reality without treating the world's lifetime as identical to a fixed roster's lifetime?**
 
-That is the present research frontier, not a predetermined implementation plan.
+The immediate product-facing falsifier is deliberately small:
+
+> **A player can enter a Yard alone, move and interact with the physical world immediately, wait there, and later experience another player joining that same ongoing Yard.**
+
+Use this pressure to investigate the separation:
+
+`world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
+
+This is **not** authorization to build general persistence, arbitrary dynamic rosters, 3+ scalability or MMO infrastructure. The first job is to discover which assumptions in the fixed-2P lifecycle actually prevent the one-player-to-two-player experience, and falsify the smallest useful relaxation.
 
 ---
 

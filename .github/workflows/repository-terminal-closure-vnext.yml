@@ -1,0 +1,111 @@
+name: Repository terminal closure vNext dry qualification
+
+on:
+  push:
+    branches: [maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10]
+    paths:
+      - .github/terminal/repository-terminal-closure-vnext.py.gz
+      - .github/workflows/repository-terminal-closure-vnext.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: read
+  actions: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      TERMINAL_REPOSITORY: Jozzpoly/cloudflare-multiplayer-lab
+      TERMINAL_OWNER_LOGIN: Jozzpoly
+      TERMINAL_ISSUE_NUMBER: "41"
+      TERMINAL_RUNNER_BRANCH: maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10
+      TERMINAL_EXPECTED_MAIN: 5305d25c7b544ad5e891dd3530bd79f5dc92206d
+      TERMINAL_BASE_ARCHIVE: 85378de39a5d41058805e6c887ee977d855d2749
+      TERMINAL_EXPECTED_HELPER: feb2cea533dc227d078b01e13113a32634ca9f78
+      TERMINAL_QUALIFIED_SHA: 7755a668d7488f04ecbf42a00fbc96fcb978d544
+      TERMINAL_FINAL_DELIVERY_SHA: fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65
+      TERMINAL_PRE_SAFE_STOP_SHA: 829deef82c71780d2d661e7a7e82685739d7b23d
+      TERMINAL_PREPRUNE_TARGET: 61f202289f0dcbde26cb5d72de67e7a46397c159
+      TERMINAL_PUBLISH_ARCHIVE: "false"
+      TERMINAL_ALLOW_APPLY: "false"
+      TERMINAL_OUT_DIR: terminal-closure-out
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch complete retained Git graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force origin \
+            '+refs/heads/*:refs/remotes/origin/*' \
+            '+refs/tags/*:refs/tags/*' \
+            '+refs/pull/*/head:refs/remotes/pull/*/head'
+          git fsck --full
+
+      - name: Materialize and verify terminal closure prototype
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '5f2f4ef44364e2dd955b3a08c6f0f354e0ac36811152d263a09660e956abc3af  .github/terminal/repository-terminal-closure-vnext.py.gz' | sha256sum -c -
+          gzip -dc .github/terminal/repository-terminal-closure-vnext.py.gz > /tmp/repository-terminal-closure-vnext.py
+          echo '12529e1065afe687f652b7c1a7de76f79e3f15da00fd82cb4cd5837e16066cc1  /tmp/repository-terminal-closure-vnext.py' | sha256sum -c -
+          python -m py_compile /tmp/repository-terminal-closure-vnext.py
+
+      - name: Execute strict non-mutating preparation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python /tmp/repository-terminal-closure-vnext.py | tee terminal-dry.log
+          grep -q '^DRY_PREP_ARCHIVE_NOT_PUBLISHED candidate=' terminal-dry.log
+          grep -q '^OWNER_STOP transaction=' terminal-dry.log
+
+      - name: Independently constrain generated evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          out=Path('terminal-closure-out')
+          p=json.loads((out/'preparation.json').read_text())
+          t=json.loads((out/'terminal-transaction.json').read_text())
+          s=json.loads((out/'semantic-index.json').read_text())['summary']
+          assert p['publishArchiveEnabled'] is False
+          assert p['applyEnabled'] is False
+          assert p['authorizationPresent'] is False
+          assert t['schema']=='repository-terminal-transaction-v2'
+          assert t['transport']=='github-graphql-updateRefs-atomic-cas'
+          kinds={k:sum(u['kind']==k for u in t['refUpdates']) for k in {'DELETE','CREATE_ANNOTATED_TAG','RETAIN_ASSERT'}}
+          assert kinds=={'DELETE':5,'CREATE_ANNOTATED_TAG':4,'RETAIN_ASSERT':2}, kinds
+          assert len(t['refUpdates'])==11 and len({u['name'] for u in t['refUpdates']})==11
+          assert all(u['beforeOid']==u['afterOid'] for u in t['refUpdates'] if u['kind']=='RETAIN_ASSERT')
+          assert s['historicalBranchCount']==167
+          assert s['distinctTipCount']==144
+          assert s['branchesWithAnyTransientOnlyPath']==20
+          assert s['branchesWithCommitsBeyondRecentFive']==59
+          assert s['netZeroBranchesWithHistoricalWork']==3
+          assert s['distinctTransientOnlyPathCount']==167
+          assert s['historyWideUniqueCommitCountScanned']==443
+          assert s['historyWideDistinctBlobCountScanned']==867
+          assert s['historyWideSmallBlobCountInspected']==342
+          assert s['historyWideGitlinkCount']==0
+          assert s['historyWideLfsPointerCount']==0
+          print('TERMINAL_DRY_EVIDENCE_CONSTRAINT_PASS',kinds)
+          PY
+
+      - name: Preserve dry qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-terminal-vnext-dry-${{ github.run_id }}
+          path: |
+            terminal-closure-out/
+            terminal-dry.log
+          if-no-files-found: warn
+          retention-days: 90

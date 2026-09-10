@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect exact frozen runtime around transaction and terminal verification
+      - name: Inspect exact frozen runtime main tail
         shell: bash
         run: |
           set -euo pipefail
@@ -23,7 +23,5 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           lines=Path('/tmp/terminal.py').read_text().splitlines()
-          for lo,hi in [(326,430),(475,610)]:
-              print(f'=== SOURCE {lo}-{hi} ===')
-              for n in range(lo-1,min(hi,len(lines))): print(f'{n+1:04d}: {lines[n]}')
+          for n in range(583,min(690,len(lines))): print(f'{n+1:04d}: {lines[n]}')
           PY

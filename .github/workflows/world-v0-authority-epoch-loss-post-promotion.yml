@@ -1,0 +1,63 @@
+name: World V0 Authority Epoch Loss Post-Promotion
+
+on:
+  push:
+    branches: [world-v0-foundation-stabilization-closure]
+    paths:
+      - .github/workflows/world-v0-authority-epoch-loss-post-promotion.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Static promoted product checks
+        run: |
+          set -euo pipefail
+          test -f public/world-v0/authority-epoch-loss.js
+          grep -q 'WORLD_V0_AUTHORITY_EPOCH_LOSS_REVISION' public/world-v0/app.js
+          node --check public/world-v0/authority-epoch-loss.js
+          node --check public/world-v0/app.js
+          node scripts/world-v0-authority-epoch-loss-classifier-smoke.mjs
+          npm run check
+      - name: Recover two real browsers after authority process loss
+        env:
+          MW_WORLD_V0_AUTHORITY_RESET_EXPECT: recovered
+          MW_WORLD_V0_AUTHORITY_RESET_BROWSER_OUTPUT: world-v0-post-promotion-authority-reset.json
+        run: |
+          set -euo pipefail
+          timeout 150s node scripts/world-v0-authority-reset-browser-audit.mjs | tee world-v0-post-promotion-authority-reset.log
+          grep -q WORLD_V0_AUTHORITY_RESET_BROWSER_RECOVERED world-v0-post-promotion-authority-reset.log
+      - name: Preserve exact same-epoch recovery when authority survives
+        env:
+          MW_WORLD_V0_I4B_BASE: http://127.0.0.1:8796
+          MW_WORLD_V0_I4B_OFFLINE_MS: "14000"
+          MW_WORLD_V0_I4B_OUTPUT: world-v0-post-promotion-same-epoch.json
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8796 > world-v0-post-promotion-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-post-promotion.pid
+          trap 'kill "$(cat /tmp/world-v0-post-promotion.pid)" 2>/dev/null || true' EXIT
+          for i in {1..60}; do curl -fsS http://127.0.0.1:8796/api/ping >/dev/null && break; sleep 1; done
+          timeout 90s node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-post-promotion-same-epoch.log
+          grep -q WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS world-v0-post-promotion-same-epoch.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-authority-loss-post-promotion-${{ github.run_id }}
+          path: |
+            world-v0-post-promotion-*.json
+            world-v0-post-promotion-*.log
+          if-no-files-found: warn
+          retention-days: 30

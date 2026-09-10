@@ -62,7 +62,7 @@ def split_ensure_tag_refs(tags):
                 f'{REST_API}/repos/{REPO}/git/refs',
                 token=token,
                 method='POST',
-                payload={'ref':t['name'],'sha':t['objectSha']},
+                payload={'ref':f"refs/tags/{t['name']}",'sha':t['objectSha']},
             )
             obj,peeled=peel_remote_tag(t['name'])
         if obj != t['objectSha'] or peeled != t['targetSha']:

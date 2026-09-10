@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 20
     env:
       CANONICAL_SHA: 5224bea2d26fc0686f453a44c5143b05eb0fc537
+      QUALIFIED_PRODUCT_SHA: 7755a668d7488f04ecbf42a00fbc96fcb978d544
       RUNNER_REF: maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10
     steps:
       - uses: actions/checkout@v4
@@ -51,44 +52,38 @@ jobs:
           repository: ${{ github.repository }}
           run-id: 34511799800
 
-      - name: Require exact canonical head and successful ordinary CI
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Validate exact canonical closure head independently
         shell: bash
         run: |
           set -euo pipefail
           test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$CANONICAL_SHA"
-          node --input-type=module <<'NODE'
-          const repo = process.env.GITHUB_REPOSITORY;
-          const sha = process.env.CANONICAL_SHA;
-          const token = process.env.GH_TOKEN;
-          const deadline = Date.now() + 6 * 60 * 1000;
-          let last = null;
-          while (Date.now() < deadline) {
-            const url = `https://api.github.com/repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`;
-            const r = await fetch(url, {headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${token}`,'X-GitHub-Api-Version':'2022-11-28'}});
-            if (!r.ok) throw new Error(`CI lookup failed HTTP ${r.status}`);
-            const body = await r.json();
-            const runs = (body.workflow_runs || []).filter(x => x.name === 'CI');
-            const success = runs.find(x => x.status === 'completed' && x.conclusion === 'success');
-            const terminalBad = runs.find(x => x.status === 'completed' && x.conclusion && x.conclusion !== 'success');
-            last = runs.map(x => ({id:x.id,status:x.status,conclusion:x.conclusion,head_sha:x.head_sha}));
-            if (success) {
-              console.log(`CANONICAL_CI_PASS run=${success.id} sha=${sha}`);
-              process.exit(0);
-            }
-            if (terminalBad) throw new Error(`Canonical CI terminal failure: ${JSON.stringify(last)}`);
-            await new Promise(r => setTimeout(r, 5000));
+          git fetch --no-tags origin "$CANONICAL_SHA"
+          git cat-file -e "$QUALIFIED_PRODUCT_SHA^{commit}"
+          git diff --quiet "$QUALIFIED_PRODUCT_SHA" "$CANONICAL_SHA" -- public/world-v0 src package.json package-lock.json || {
+            echo CANONICAL_RUNTIME_DRIFT
+            git diff --name-status "$QUALIFIED_PRODUCT_SHA" "$CANONICAL_SHA" -- public/world-v0 src package.json package-lock.json
+            exit 1
           }
-          throw new Error(`Canonical CI did not reach success before timeout: ${JSON.stringify(last)}`);
-          NODE
+          git worktree add --detach /tmp/canonical "$CANONICAL_SHA"
+          (
+            cd /tmp/canonical
+            test "$(git rev-parse HEAD)" = "$CANONICAL_SHA"
+            npm ci
+            npm run check
+          )
+          echo CANONICAL_EXACT_REPOSITORY_VALIDATION_PASS
+          echo CANONICAL_RUNTIME_BYTES_MATCH_QUALIFIED_PRODUCT
 
       - name: Assert exact post-prune namespace inputs
         shell: bash
         run: |
           set -euo pipefail
           test "$(git ls-remote --heads origin | wc -l)" -eq 7
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$CANONICAL_SHA"
           test "$(git ls-remote origin refs/heads/archive/repository-cleanup-v3-2026-09-10 | cut -f1)" = '61f202289f0dcbde26cb5d72de67e7a46397c159'
+          test "$(git ls-remote origin refs/heads/archive/world-v0-qualified-2p-baseline-2026-09-10 | cut -f1)" = "$QUALIFIED_PRODUCT_SHA"
+          test "$(git ls-remote origin refs/heads/archive/world-v0-final-delivery-2026-09-10 | cut -f1)" = 'fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65'
+          test "$(git ls-remote origin refs/heads/archive/pre-safe-stop-main-2026-09-10 | cut -f1)" = '829deef82c71780d2d661e7a7e82685739d7b23d'
           test "$(git ls-remote origin refs/heads/maintenance/repository-cleanup-v3-2026-09-10 | cut -f1)" = 'feb2cea533dc227d078b01e13113a32634ca9f78'
           test "$(git ls-remote origin refs/heads/$RUNNER_REF | cut -f1)" = "$GITHUB_SHA"
           test "$(git ls-remote origin 'refs/tags/repository-cleanup-v3-pre-prune-2026-09-10^{}' | cut -f1)" = '61f202289f0dcbde26cb5d72de67e7a46397c159'

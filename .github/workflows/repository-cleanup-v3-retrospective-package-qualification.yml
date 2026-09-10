@@ -1,0 +1,104 @@
+name: Repository cleanup v3 retrospective embedded-package qualification
+
+on:
+  push:
+    branches: [maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10]
+    paths:
+      - .github/workflows/repository-cleanup-v3-retrospective-package-qualification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Reconstruct exact embedded tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qualification/kit qualification/logs
+          cat .repo-cleanup/kit-payload/part-* > qualification/kit.b64
+          base64 -d qualification/kit.b64 > qualification/kit.tgz
+          actual="$(sha256sum qualification/kit.tgz | cut -d' ' -f1)"
+          expected='cb763dcbf6811bd0bcca6f62b474785831d6469050f4a1aada2aac10e156041c'
+          test "$actual" = "$expected"
+          tar -xzf qualification/kit.tgz -C qualification/kit
+          printf 'embeddedTarballSha256=%s\nrunnerSha=%s\n' "$actual" "$GITHUB_SHA" | tee qualification/logs/identity.txt
+
+      - name: Verify source-tree checksums and declared package identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qualification/kit
+          test -f CHECKSUMS.sha256
+          test -f package.json
+          test -f package-manifest.json
+          test -f FINAL_QUALIFICATION.md
+          sha256sum -c CHECKSUMS.sha256 | tee ../logs/checksums.log
+          grep -q 'FINAL_VALIDATED_READY_FOR_FRESH_AGENT_HANDOFF' FINAL_QUALIFICATION.md
+
+      - name: Run package automated tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qualification/kit
+          npm test | tee ../logs/npm-test.log
+
+      - name: Run package product audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qualification/kit
+          npm run audit:product | tee ../logs/product-audit.log
+
+      - name: Re-run module syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qualification/kit
+          count=0
+          for f in src/*.mjs tests/*.mjs; do
+            node --check "$f"
+            count=$((count+1))
+          done
+          echo "MODULE_SYNTAX_PASS count=$count" | tee ../logs/module-syntax.log
+
+      - name: Parse all package YAML independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qualification/kit
+          mapfile -t yamls < <(find . -type f \( -name '*.yml' -o -name '*.yaml' \) -print | sort)
+          test "${#yamls[@]}" -ge 2
+          ruby -e 'require "yaml"; ARGV.each { |f| YAML.load_file(f); puts "YAML_PARSE_PASS #{f}" }' "${yamls[@]}" | tee ../logs/yaml-parse.log
+
+      - name: State exact evidentiary boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > qualification/logs/boundary.txt <<'EOF'
+          PASS scope: exact embedded source tarball used by the Multi_World cleanup runner.
+          NOT PROVEN: byte identity with the external distribution ZIP, because that ZIP was not supplied to this campaign.
+          NOT PROVEN: external ZIP SHA-256 identity.
+          EOF
+          cat qualification/logs/boundary.txt
+
+      - name: Preserve retrospective qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-cleanup-v3-retrospective-package-qualification-${{ github.run_id }}
+          path: qualification/logs/
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,160 @@
+name: Repository cleanup v3 historical external-payload red-team
+
+on:
+  push:
+    branches: [maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10]
+    paths:
+      - .github/workflows/repository-cleanup-v3-historical-external-payload-redteam.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch full retained graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force origin \
+            '+refs/heads/*:refs/remotes/origin/*' \
+            '+refs/pull/*/head:refs/remotes/pull/*/head'
+          git fsck --full
+
+      - name: Recover frozen 167-ref manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p historical-payload-audit
+          git show 'refs/remotes/origin/archive/repository-cleanup-v3-2026-09-10:recovery-manifest.json' \
+            > historical-payload-audit/recovery-manifest.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const m=JSON.parse(fs.readFileSync('historical-payload-audit/recovery-manifest.json','utf8'));
+          if(m.schema!=='repository-cleanup-recovery-manifest-v3') throw new Error(`schema ${m.schema}`);
+          if(m.historicalBranchCount!==167 || m.historicalBranches?.length!==167) throw new Error(`historical count ${m.historicalBranches?.length}`);
+          const tips=[...new Set(m.historicalBranches.map(x=>x.expectedSha))];
+          if(tips.length!==m.historicalDistinctTipCount) throw new Error(`tip count ${tips.length} != ${m.historicalDistinctTipCount}`);
+          fs.writeFileSync('historical-payload-audit/tips.txt',tips.join('\n')+'\n');
+          fs.writeFileSync('historical-payload-audit/canonical.txt',m.canonicalSha+'\n');
+          console.log(`MANIFEST_PASS branches=${m.historicalBranchCount} distinctTips=${tips.length} canonical=${m.canonicalSha}`);
+          NODE
+          while read -r sha; do git cat-file -e "${sha}^{commit}"; done < historical-payload-audit/tips.txt
+
+      - name: Scan unique historical commit and object graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {execFileSync, spawnSync} from 'node:child_process';
+
+          const dir='historical-payload-audit';
+          const manifest=JSON.parse(fs.readFileSync(`${dir}/recovery-manifest.json`,'utf8'));
+          const tips=[...new Set(manifest.historicalBranches.map(x=>x.expectedSha))];
+          const canonical=manifest.canonicalSha;
+
+          const revInput=tips.join('\n')+'\n';
+          const commits=spawnSync('git',['rev-list','--stdin','--not',canonical],{input:revInput,encoding:'utf8',maxBuffer:128*1024*1024});
+          if(commits.status!==0) throw new Error(commits.stderr||`rev-list status ${commits.status}`);
+          const uniqueCommits=commits.stdout.trim()?commits.stdout.trim().split(/\n+/):[];
+          const commitSet=new Set(uniqueCommits);
+
+          const gitlinks=[];
+          const blobWitnesses=new Map();
+          for(const commit of uniqueCommits){
+            const tree=execFileSync('git',['ls-tree','-r',commit],{encoding:'utf8',maxBuffer:64*1024*1024});
+            for(const line of tree.split('\n')){
+              if(!line) continue;
+              const m=line.match(/^(\d+)\s+(\S+)\s+([0-9a-f]{40})\t(.*)$/);
+              if(!m) throw new Error(`unparsed ls-tree line ${line}`);
+              const [,mode,type,oid,path]=m;
+              if(mode==='160000') gitlinks.push({commit,path,targetCommit:oid});
+              if(type==='blob' && !blobWitnesses.has(oid)) blobWitnesses.set(oid,{commit,path});
+            }
+          }
+
+          const blobIds=[...blobWitnesses.keys()];
+          const checks=spawnSync('git',['cat-file','--batch-check=%(objectname) %(objecttype) %(objectsize)'],{input:blobIds.join('\n')+'\n',encoding:'utf8',maxBuffer:128*1024*1024});
+          if(checks.status!==0) throw new Error(checks.stderr||`cat-file status ${checks.status}`);
+          const small=[];
+          for(const line of checks.stdout.trim().split('\n')){
+            if(!line) continue;
+            const [oid,type,sizeRaw]=line.split(' ');
+            const size=Number(sizeRaw);
+            if(type==='blob' && size<=4096) small.push({oid,size});
+          }
+
+          const lfsPointers=[];
+          for(const {oid,size} of small){
+            const content=execFileSync('git',['cat-file','blob',oid],{encoding:'utf8',maxBuffer:8192});
+            if(!content.startsWith('version https://git-lfs.github.com/spec/v1\n')) continue;
+            const witness=blobWitnesses.get(oid);
+            const externalOid=(content.match(/^oid\s+sha256:([0-9a-f]{64})$/m)||[])[1]||null;
+            const declaredSize=Number((content.match(/^size\s+(\d+)$/m)||[])[1]||NaN);
+            lfsPointers.push({blobOid:oid,blobSize:size,...witness,externalOid,declaredSize:Number.isFinite(declaredSize)?declaredSize:null});
+          }
+
+          const tipCoverage=[];
+          for(const tip of tips){
+            const row=manifest.historicalBranches.find(x=>x.expectedSha===tip);
+            const count=Number(execFileSync('git',['rev-list','--count',tip,'--not',canonical],{encoding:'utf8'}).trim());
+            tipCoverage.push({tip,representativeRef:row?.ref||null,uniqueCommitCount:count});
+          }
+
+          const result={
+            schema:'multi-world-historical-external-payload-redteam-v1',
+            manifestFreezeSha256:manifest.freezeSha256,
+            frozenCanonicalSha:canonical,
+            historicalBranchCount:manifest.historicalBranchCount,
+            historicalDistinctTipCount:tips.length,
+            distinctUniqueCommitCount:commitSet.size,
+            distinctBlobCountScanned:blobIds.length,
+            smallBlobCountInspected:small.length,
+            historicalGitlinkCount:gitlinks.length,
+            historicalLfsPointerCount:lfsPointers.length,
+            gitlinks,
+            lfsPointers,
+            tipCoverage,
+            packageV3BlindSpotAddressed:'scan union of commits unique to deleted tips relative to frozen canonical, not only each tip tree'
+          };
+          fs.writeFileSync(`${dir}/historical-external-payload-audit.json`,JSON.stringify(result,null,2)+'\n');
+          console.log(`UNIQUE_COMMITS=${result.distinctUniqueCommitCount}`);
+          console.log(`BLOBS_SCANNED=${result.distinctBlobCountScanned} SMALL_BLOBS=${result.smallBlobCountInspected}`);
+          console.log(`HISTORICAL_GITLINKS=${result.historicalGitlinkCount}`);
+          console.log(`HISTORICAL_LFS_POINTERS=${result.historicalLfsPointerCount}`);
+          if(gitlinks.length) console.log('GITLINK_WITNESSES',JSON.stringify(gitlinks.slice(0,20),null,2));
+          if(lfsPointers.length) console.log('LFS_WITNESSES',JSON.stringify(lfsPointers.slice(0,20),null,2));
+          NODE
+
+      - name: Cross-check tip-only manifest claims against history-wide scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const d='historical-payload-audit';
+          const m=JSON.parse(fs.readFileSync(`${d}/recovery-manifest.json`,'utf8'));
+          const r=JSON.parse(fs.readFileSync(`${d}/historical-external-payload-audit.json`,'utf8'));
+          const manifestTipLfs=m.historicalBranches.reduce((n,x)=>n+(x.externalPayloads?.lfsPointers?.length||0),0);
+          const manifestTipGitlinks=m.historicalBranches.reduce((n,x)=>n+(x.externalPayloads?.gitlinks?.length||0),0);
+          const comparison={manifestTipLfsEntries:manifestTipLfs,manifestTipGitlinkEntries:manifestTipGitlinks,historyWideLfsPointers:r.historicalLfsPointerCount,historyWideGitlinks:r.historicalGitlinkCount,historyAddsRiskBeyondTipScan:r.historicalLfsPointerCount>0||r.historicalGitlinkCount>0};
+          fs.writeFileSync(`${d}/tip-vs-history-comparison.json`,JSON.stringify(comparison,null,2)+'\n');
+          console.log(JSON.stringify(comparison));
+          NODE
+          (cd historical-payload-audit && sha256sum *.json *.txt > SHA256SUMS.txt)
+
+      - name: Preserve red-team evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-cleanup-v3-historical-external-payload-redteam-${{ github.run_id }}
+          path: historical-payload-audit/
+          if-no-files-found: error
+          retention-days: 90

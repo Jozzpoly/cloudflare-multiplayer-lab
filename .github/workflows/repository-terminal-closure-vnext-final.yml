@@ -5,6 +5,7 @@ on:
     branches: [maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10]
     paths:
       - .github/workflows/repository-terminal-closure-vnext-final.yml
+      - .github/terminal/repository-terminal-split-transport-patch.py
   workflow_dispatch:
 
 permissions:
@@ -68,6 +69,9 @@ jobs:
           python /tmp/authority-patch.py /tmp/repository-terminal-closure-vnext.py
           python -m py_compile /tmp/repository-terminal-closure-vnext.py
           echo '14a485d990724ef621e3ae5395e24a6bede7b9e554da7e74e70b9381f770b9cb  /tmp/repository-terminal-closure-vnext.py' | sha256sum -c -
+          python .github/terminal/repository-terminal-split-transport-patch.py /tmp/repository-terminal-closure-vnext.py
+          python -m py_compile /tmp/repository-terminal-closure-vnext.py
+          sha256sum /tmp/repository-terminal-closure-vnext.py | tee split-runtime.sha256
 
       - name: Prepare or execute exact terminal transaction
         shell: bash
@@ -90,11 +94,19 @@ jobs:
           log=Path('terminal-run.log').read_text()
           assert p['schema']=='repository-terminal-preparation-v2'
           assert p['publishArchiveEnabled'] is True and p['applyEnabled'] is True
-          assert t['schema']=='repository-terminal-transaction-v2' and t['transport']=='github-graphql-updateRefs-atomic-cas'
+          assert t['schema']=='repository-terminal-transaction-v3-split-transport'
+          assert t['transport']=='github-rest-annotated-tag-refs-then-graphql-updateRefs-atomic-cas'
           kinds={k:sum(u['kind']==k for u in t['refUpdates']) for k in {'DELETE','CREATE_ANNOTATED_TAG','RETAIN_ASSERT'}}
           assert kinds=={'DELETE':5,'CREATE_ANNOTATED_TAG':4,'RETAIN_ASSERT':2}
           assert len(t['refUpdates'])==11 and len({u['name'] for u in t['refUpdates']})==11
+          atomic=t['atomicRefUpdates']
+          akinds={k:sum(u['kind']==k for u in atomic) for k in {'DELETE','RETAIN_ASSERT'}}
+          assert len(atomic)==7 and akinds=={'DELETE':5,'RETAIN_ASSERT':2}
+          assert not any(u['kind']=='CREATE_ANNOTATED_TAG' for u in atomic)
+          assert len(t['tagRefUpdates'])==4 and all(u['kind']=='CREATE_ANNOTATED_TAG' for u in t['tagRefUpdates'])
           assert all(u['beforeOid']==u['afterOid'] for u in t['refUpdates'] if u['kind']=='RETAIN_ASSERT')
+          assert t['preconditions']['terminalStateRequiresMarkerAndExactTwoHeadTopology'] is True
+          assert t['preconditions']['createdTagsMayPreexistAtExactObjectOnRetry'] is True
           assert len(ro)==4 and all(len(x['objectSha'])==40 for x in ro)
           byref={x['ref']:x for x in ro}
           for u in t['refUpdates']:
@@ -121,5 +133,6 @@ jobs:
           path: |
             terminal-closure-out/
             terminal-run.log
+            split-runtime.sha256
           if-no-files-found: warn
           retention-days: 90

@@ -1,169 +1,105 @@
 # Multi_World — Current State
 
-Status: **WORLD V0 2P BASELINE QUALIFIED / DELIBERATE SAFE STOP**  
-Grounded: **2026-09-10**  
-Safe-stop branch: `world-v0-safe-stop-closure`  
-Exact qualified product: `7755a668d7488f04ecbf42a00fbc96fcb978d544`
+Status: **WORLD V0 2P BASELINE QUALIFIED / REPOSITORY PRUNED / CLOSURE SEAL PENDING**  
+Grounded: **2026-09-10**
 
-This document is the compact technical truth for continuation. Newer live evidence wins over this file. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable product-intent document and will be reviewed only after repository cleanup.
+This is the compact technical truth for continuation. Verify live GitHub state when it matters. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable product-intent document and is intentionally unchanged by repository cleanup.
 
----
+## 1. Product state
 
-## 1. Fast state
-
-World V0 has earned a trustworthy **two-player Shared Yard multiplayer baseline**:
-
-- one server-authoritative Box3D physical world;
-- responsive browser-side simulation/prediction;
-- scheduled canonical input and exact f32 guards;
-- acknowledgement-driven discrete jump delivery;
-- same-profile ActorSession continuity and same-owner live rebound;
-- public Yard connected/protected/soft/vacant capacity semantics;
-- bounded recovery from transport loss and from positively proven authority-epoch loss;
-- desktop and mobile entry/control shells;
-- qualified ordinary human play on representative real devices.
-
-The final broad Owner verdict was **stable and smooth**. The last remaining UI/input defect around Diagnostics focus was repaired and causally/regression tested. The final tiny real-device sanity then passed **3/3**:
-
-1. desktop Diagnostics open/close -> immediate WASD: PASS;
-2. desktop fine-pointer touch controls absent: PASS;
-3. mobile joystick/gimbal/JUMP visible and usable: PASS.
-
-The active frontier is therefore **safe stop and repository cleanup**, not more reliability work and not new multiplayer features.
-
----
-
-## 2. Exact frozen anchors
-
-### Qualified product
+World V0 has a qualified fixed-two-player Shared Yard baseline. The exact qualified product remains:
 
 `7755a668d7488f04ecbf42a00fbc96fcb978d544`
 
-Final presentation/input identity:
-
-- browser UI `shared-yard-v0-browser-ui-v20-owner-ui-focus`;
-- keyboard focus guard `world-v0-keyboard-focus-guard-v2-semantic-ownership`.
-
-Simulation/network identity remains:
-
-- authority `shared-yard-v0-authority-v11-jump-delivery-persistence`;
-- browser sim `shared-yard-v0-browser-sim-v10-jump-delivery-persistence`;
-- protocol `shared-yard-v0-scheduled-input-v3-supersession`;
-- state guard `shared-yard-v0-f32-state-v1`;
-- SimBuild `shared-yard-v0-sim-cd8edc169f791a64`.
-
-### Final automated gates
-
-Focused Owner-UI causal run:
-
-- `34474057233` — **SUCCESS**;
-- artifact `10150740652`;
-- digest `sha256:62bb4b39cb70e46f280df7bfcae061a51bb5b72744a30817d456dc2c688df38d`.
-
-Full Current Validation on exact product:
-
-- `34474343862` — **SUCCESS**;
-- artifact `10151068683`;
-- digest `sha256:728f0f5c7dfa68a6fb5f11ab04a1fd7e8b6c55f8d63b6d123255fb54ffa4827d`.
-
-### Qualified-play delivery
-
-Delivery head:
+Final qualified delivery:
 
 `fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`
 
-Delivery run:
+Final delivery run `34475199474` — **SUCCESS**.  
+Cloudflare Version `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`.  
+Owner final real-device sanity after the bounded UI repair: **3/3 PASS**.
 
-- `34475199474` / job `102864191837` — **SUCCESS**;
-- Worker `cloudflare-multiplayer-lab-qualified-play`;
-- Cloudflare Version ID `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`;
-- artifact `10151181384`;
-- digest `sha256:4d0cdc5eb04bf3dcafdbad4ccd469b2db24f7d372f1549212d7e0321e3f49553`;
-- terminal marker `HUMAN_DURABLE_OBJECTS_UNTOUCHED_BY_WORKFLOW`.
+The cleanup campaign did not modify or redeploy the qualified World V0 product.
 
-Owner URL:
+## 2. Repository cleanup state
 
-`https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev/world-v0/`
+Repository Cleanup Kit v3.0.0 was used as the cleanup authority.
 
----
+Pre-prune reviewed audit:
 
-## 3. Recovery/archive anchors before cleanup
+`0907f987f86b521ebd44879878a27a50df5a28b21c8e21bf50a032dc88c1f168`
 
-The following refs are intentional recovery witnesses and must not be removed during routine branch cleanup:
+It covered 172 reviewed live branches / 147 unique tips, with zero LFS-pointer blockers and zero submodule/gitlink blockers on branch tips.
 
-- `archive/world-v0-qualified-2p-baseline-2026-09-10` -> exact product `7755a668...`;
-- `archive/world-v0-final-delivery-2026-09-10` -> final delivery `fa5e4559...`;
-- `archive/pre-safe-stop-main-2026-09-10` -> pre-integration `main@829deef...`.
+Formal recovery archive before destructive pruning:
 
-Issue #41 is the safe-stop / branch-archaeology tracker.
+- branch `archive/repository-cleanup-v3-2026-09-10`;
+- pre-prune archive commit `61f202289f0dcbde26cb5d72de67e7a46397c159`;
+- immutable tag `repository-cleanup-v3-pre-prune-2026-09-10`;
+- freeze `8f0776af0c5fca3437e1cb91c2964e042b919afc448087ad35ad485c94cecf22`;
+- manifest `a779e80273b434f5d1844aca5f4ce13e0a9d33dd4fc9b8779c1abbc0e9d68ee0`.
 
----
+Recovery rehearsal reconstructed **167/167** retirement refs exactly after self-contained bundle creation and aggressive Git GC.
 
-## 4. What the baseline has earned
+Owner-authorized destructive transaction:
 
-Within the fixed two-player envelope, evidence supports:
+`9d210a30fe06c823f5b66845b5cbb356c801018844c56ff0c4ab23614eb35d14`
 
-- deterministic `60 Hz / 4 substeps` Box3D authority;
-- shared dynamic props and coherent physical consequence;
-- responsive local movement with exact state comparison;
-- canonical scheduled input with bounded missing-input lease;
-- exact rebase from authority recordings;
-- jump delivery persistence across demonstrated recoverable transport degradation;
-- bounded pre-start and committed-start recovery;
-- same-profile room-list/direct-link Resume;
-- same-owner live F5/new-tab rebound without foreign-session theft;
-- protected -> soft reservation -> demand-driven epoch handoff;
-- dormant history not permanently owning scarce Yard capacity;
-- bounded fresh recovery when an in-memory authority epoch is positively proven gone;
-- usable desktop/mobile public entry and control presentation;
-- real human qualification after the September stabilization campaign.
+Successful guarded execution used run `34514964756`, final successful job `103000742955`. The kit reported `PASS_GITHUB_ATOMIC_APPLY_AND_POSTFLIGHT`; an independent postflight confirmed exactly seven live branch refs immediately after pruning.
 
----
+The first authorized mutation attempt received a GitHub `502`; the kit independently confirmed `ZERO_CHANGE_CONFIRMED`. One controlled retry of the same exact transaction then succeeded atomically.
 
-## 5. Explicit boundaries
+## 3. Deliberate live spine before final seal/helper retirement
 
-Do not silently upgrade the baseline into capabilities it has not earned:
+The post-prune branch namespace is intentionally small:
 
-- no durable reconstruction of a lost Box3D WorldEpoch;
+- `main` — canonical product/project continuation;
+- `archive/repository-cleanup-v3-2026-09-10` — formal aggregate recovery archive;
+- `archive/world-v0-qualified-2p-baseline-2026-09-10` — exact qualified product anchor;
+- `archive/world-v0-final-delivery-2026-09-10` — final delivery anchor;
+- `archive/pre-safe-stop-main-2026-09-10` — pre-safe-stop recovery anchor;
+- `maintenance/repository-cleanup-v3-2026-09-10` — temporary qualified cleanup helper;
+- `maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10` — temporary guarded destructive runner.
+
+The two maintenance refs are cleanup apparatus, not long-term project branches. Their history must be preserved before any separate retirement transaction.
+
+## 4. Baseline earned / not earned
+
+Within the fixed-two-player envelope, evidence supports the shared authoritative physical world, responsive browser simulation/prediction, scheduled canonical input, exact state guards, jump delivery persistence, ActorSession continuity, public Yard capacity semantics, bounded transport-loss recovery, and qualified desktop/mobile human entry.
+
+Do not silently upgrade this into capabilities not demonstrated:
+
+- no durable reconstruction of a lost physical WorldEpoch;
 - no account/cloud identity or cross-device private-session transfer;
 - no persistent continuously-open world;
 - no arbitrary dynamic roster mutation inside one epoch;
-- no 3+ player scalability yet;
+- no 3+ scalability yet;
 - no seamless MMO-style actor succession;
 - no guarantee through arbitrary permanent network loss;
-- no claim that every mobile OS/radio suspension matches tested browser transport cases;
-- no final character controller / coyote time / landing buffer;
 - fixed two-actor topology remains a known architectural constraint.
 
-A soft-reservation replacement currently rotates the WorldEpoch and loses the old physical history. This is accepted baseline debt, not a closure patch.
+## 5. Deferred near-term product requirement
 
----
-
-## 6. Near-term post-cleanup product requirement
-
-Important Owner direction, **deferred until safe-stop cleanup is complete**:
+After repository cleanup is fully sealed, the next important product requirement is:
 
 > A player should be able to enter a Yard alone, immediately inhabit and play in the physical world, and wait there for another player.
 
-The current pre-start `Waiting in this Yard` shell is therefore a temporary fixed-2P lifecycle limitation, not the desired near-term experience.
+The current pre-start `Waiting in this Yard` shell is therefore a frozen fixed-2P lifecycle limitation, not the desired next experience.
 
-This requirement should be designed together with the broader next-era separation:
+Design this together with:
 
 `world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
 
-Do not implement this requirement opportunistically during repository cleanup.
+Do not implement it inside repository closure.
 
----
+## 6. Current execution order
 
-## 7. Current execution order
+1. finish canonical semantic cleanup without touching qualified runtime bytes;
+2. validate the resulting `main` descendant;
+3. run Cleanup Kit v3 `seal → publish-seal → verify` against the successful 167-ref prune;
+4. preserve transient helper/runner history in the final recovery lineage;
+5. prepare a separate exact retirement transaction for cleanup-only maintenance refs and require a separate Owner destructive authorization;
+6. close issue #41 only after the final namespace/recovery state is verified;
+7. then review Project Soul and open the next multiplayer architecture frontier.
 
-1. preserve frozen product/delivery/pre-integration recovery anchors;
-2. reconcile the small canonical documentation spine;
-3. classify workflows, branches and PRs by authority/provenance value;
-4. remove consumed one-shot apparatus and redundant refs only after recovery is established;
-5. integrate the linear qualified history into `main` through evidence-preserving fast-forward/descendant commits;
-6. leave a compact recovery map and clean takeover path;
-7. then review `MULTI_WORLD_PROJECT_SOUL.md` and formalize the next multiplayer era;
-8. only then open new architecture work such as solo-inhabited waiting, persistent-world lifetime separation and eventually 3+ players.
-
-No new broad reliability campaign is justified unless new evidence contradicts the frozen baseline.
+Historical branch names inside provenance documents may remain historically truthful. They are not live refs or startup requirements.

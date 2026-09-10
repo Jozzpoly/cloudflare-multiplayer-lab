@@ -1,16 +1,10 @@
 # World V0 — Safe Stop / Recovery Map — 2026-09-10
 
-Status: **ACTIVE CLOSURE CONTRACT**
+Status: **POST-PRUNE CLOSURE / RECOVERY CONTRACT ACTIVE**
 
-## Purpose
+## Frozen product authority
 
-World V0 has passed its final two-player qualification. This document defines how to clean the repository without losing product authority, reproducibility or useful provenance before the next multiplayer era begins.
-
-The cleanup is intentionally conservative: branch count reduction is useful, but preservation of unique evidence and simple recovery matters more than reaching an aesthetically minimal number of refs.
-
-## Frozen anchors
-
-### Exact qualified product
+Exact qualified product:
 
 `7755a668d7488f04ecbf42a00fbc96fcb978d544`
 
@@ -18,7 +12,7 @@ Permanent recovery ref:
 
 `archive/world-v0-qualified-2p-baseline-2026-09-10`
 
-### Exact final delivery/provenance
+Final delivery:
 
 `fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`
 
@@ -26,7 +20,7 @@ Permanent recovery ref:
 
 `archive/world-v0-final-delivery-2026-09-10`
 
-### Pre-safe-stop main
+Pre-safe-stop main:
 
 `829deef82c71780d2d661e7a7e82685739d7b23d`
 
@@ -34,117 +28,84 @@ Recovery ref:
 
 `archive/pre-safe-stop-main-2026-09-10`
 
-The exact qualified product is 139 commits ahead of the pre-safe-stop `main` and 0 behind. Therefore the qualified history is linearly integrable without a merge rewrite.
+Repository cleanup did not modify or redeploy the qualified product.
 
-## Evidence anchors
+## Cleanup Kit v3 recovery system
 
-Final focused Owner-UI causal gate:
+Reviewed native audit:
 
-- run `34474057233` — SUCCESS;
-- artifact `10150740652`;
-- digest `sha256:62bb4b39cb70e46f280df7bfcae061a51bb5b72744a30817d456dc2c688df38d`.
+`0907f987f86b521ebd44879878a27a50df5a28b21c8e21bf50a032dc88c1f168`
 
-Final Current Validation:
+Formal pre-prune aggregate archive:
 
-- run `34474343862` — SUCCESS;
-- artifact `10151068683`;
-- digest `sha256:728f0f5c7dfa68a6fb5f11ab04a1fd7e8b6c55f8d63b6d123255fb54ffa4827d`.
+- branch: `archive/repository-cleanup-v3-2026-09-10`;
+- commit: `61f202289f0dcbde26cb5d72de67e7a46397c159`;
+- immutable tag: `repository-cleanup-v3-pre-prune-2026-09-10`;
+- freeze: `8f0776af0c5fca3437e1cb91c2964e042b919afc448087ad35ad485c94cecf22`;
+- manifest: `a779e80273b434f5d1844aca5f4ce13e0a9d33dd4fc9b8779c1abbc0e9d68ee0`.
 
-Final qualified-play delivery:
+The self-contained recovery bundle plus archive lineage restored **167/167** selected retirement refs exactly after aggressive Git GC. No external payload refs were required.
 
-- run `34475199474` / job `102864191837` — SUCCESS;
-- Cloudflare Version `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`;
-- artifact `10151181384`;
-- digest `sha256:4d0cdc5eb04bf3dcafdbad4ccd469b2db24f7d372f1549212d7e0321e3f49553`.
+## Destructive prune evidence
 
-Owner qualification:
+Authorized transaction:
 
-- broad ordinary-play verdict: stable and smooth;
-- final post-repair real-device sanity: 3/3 PASS.
+`9d210a30fe06c823f5b66845b5cbb356c801018844c56ff0c4ab23614eb35d14`
 
-## Cleanup classification
+Guarded runner:
 
-Every branch/workflow candidate should be classified into one of four buckets before deletion:
+`maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10`
 
-### A — canonical/live
+Execution run:
 
-Required for current operation, current docs or near-term continuation. Keep.
+`34514964756`
 
-### B — archive/evidence witness
+Final successful job:
 
-Not active development, but the ref uniquely improves recovery, evidence interpretation, or an important historical donor. Keep under a small explicit archive namespace when practical.
+`103000742955`
 
-### C — redundant/consumed
+The first authorized attempt returned GitHub `502 Bad Gateway`; Cleanup Kit v3 completed its failure postcheck and reported `ZERO_CHANGE_CONFIRMED`, proving no partial mutation. One controlled retry of the identical plan then reported `PASS_GITHUB_ATOMIC_APPLY_AND_POSTFLIGHT`.
 
-Temporary materialize/probe/audit/delivery branches or one-shot workflows whose useful commits are already ancestors of the frozen product/archived delivery or whose result is fully anchored by immutable run/artifact/checkpoint references. Safe deletion candidate.
+An independent namespace postflight confirmed all 167 DELETE refs absent, all retained assertions exact, the runner unchanged, and exactly seven live branch refs after the prune.
 
-### D — uncertain
+## Post-prune live spine
 
-Any ref whose unique commits, external deployment meaning, evidence attachment or future donor value has not been established. Do not delete until resolved.
+Before final seal/helper retirement the deliberate live branch set is:
 
-## Destructive-cleanup rules
+- `main`;
+- `archive/repository-cleanup-v3-2026-09-10`;
+- `archive/world-v0-qualified-2p-baseline-2026-09-10`;
+- `archive/world-v0-final-delivery-2026-09-10`;
+- `archive/pre-safe-stop-main-2026-09-10`;
+- `maintenance/repository-cleanup-v3-2026-09-10`;
+- `maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10`.
 
-Before deleting a ref, establish at least one of:
+The maintenance refs are temporary apparatus. Do not delete them until their history has been preserved in the final recovery lineage and a separate exact destructive retirement has been authorized.
 
-- its head is reachable from a retained canonical/archive ref; or
-- its unique evidence is represented by retained immutable GitHub run/artifact/checkpoint references and its code is not needed as a donor; or
-- an explicit replacement archive ref preserves the unique commit(s).
+## Platform/evidence boundaries
 
-Do not bulk-delete based only on branch age or naming.
+Git history recovery and GitHub platform history are distinct. Historical Actions runs and issue checkpoints remain evidence even when their old workflow/branch refs are absent.
 
-Do not alter or redeploy `cloudflare-multiplayer-lab-qualified-play` as part of repository hygiene.
+The cleanup audit observed no LFS pointers or submodule/gitlink blockers on branch tips. Some repository-administration surfaces were not observable through the available token; do not overstate cleanup as a full audit of every GitHub administrative setting.
 
-Do not force-update `main`.
+## Closure rules
 
-## Workflow policy
+1. qualified runtime/product bytes remain outside the cleanup frontier;
+2. current `main` may advance only through ordinary descendant commits for docs/repository hygiene;
+3. after all frozen DELETE refs are absent, create the Cleanup Kit v3 closure seal;
+4. publish the seal by exact leased fast-forward of the formal archive branch while leaving the pre-prune tag immutable;
+5. verify final live namespace, canonical/archive/tag identities and exact historical recoverability;
+6. preserve cleanup helper and runner histories before separately retiring their branch refs;
+7. keep issue #41 as the human execution/evidence ledger.
 
-Retain reusable regression/qualification gates that still answer a live question cheaply and clearly.
+## Deferred next-era seed
 
-Delete consumed one-shot materializers, delivery workflows and narrow falsifiers from the current canonical branch when:
-
-- their decisive run/artifact is anchored;
-- rerunning them would be unsafe, misleading or unnecessary;
-- their implementation is recoverable through Git history/archive refs if later archaeology is required.
-
-Historical workflow runs remain evidence even after their YAML is removed from the current branch.
-
-## Main integration policy
-
-The qualified runtime history is a descendant of the current `main`; no merge rewrite is needed.
-
-Preferred closure shape:
-
-1. finish docs/apparatus cleanup on `world-v0-safe-stop-closure` as descendants of final delivery/product history;
-2. validate that protected runtime/product paths remain byte-identical to `7755a668...`;
-3. run ordinary repository validation on the closure head;
-4. fast-forward `main` to the validated closure descendant;
-5. verify live `main` and archive anchors;
-6. only then delete redundant active-looking working refs.
-
-The canonical branch may therefore contain later documentation/apparatus-only commits while the qualified product authority remains exactly `7755a668...`.
-
-## Scope guard
-
-Safe stop is not permission to redesign multiplayer.
-
-No implementation of 3+, persistence, authentication, roster replacement or solo waiting should enter this cleanup branch.
-
-## Next-era seed intentionally retained
-
-After cleanup, a high-priority near-term product change is:
+After repository closure, the important near-term product requirement is:
 
 > A player can enter a Yard alone, immediately inhabit and play in the physical world, and wait there for another player.
 
-This is materially different from merely keeping a lobby/session reservation alive. It implies that the world can already exist as a playable world with one connected human and later admit another participant without treating the second connection as the event that creates gameplay itself.
-
-It should be designed together with the known lifetime separation:
+Design it together with:
 
 `world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
 
-This is a seed for post-cleanup architecture work, not a hidden extension of the frozen fixed-2P baseline.
-
-## Active tracker
-
-GitHub issue #41: `World V0 safe stop / repository archaeology and cleanup`.
-
-When cleanup completes, this document should remain as the recovery map while transient closure branches may be retired.
+No solo-waiting, persistence, authentication, dynamic roster or 3+ implementation belongs inside this cleanup closure.

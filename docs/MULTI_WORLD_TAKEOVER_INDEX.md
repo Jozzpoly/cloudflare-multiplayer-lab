@@ -1,22 +1,22 @@
 # Multi_World — Takeover Index
 
-Status: **QUALIFIED SAFE-STOP ENTRYPOINT — VERIFY LIVE**  
+Status: **POST-PRUNE CLOSURE ENTRYPOINT — VERIFY LIVE**  
 Updated: **2026-09-10**
 
-This index is intentionally short. A fresh continuation should not reconstruct historical World V0 branches unless a concrete question requires them.
+A fresh continuation should start from the small canonical spine below. Do not reconstruct the retired branch forest unless a concrete recovery or historical question requires it.
 
 ## Canonical reading order
 
-1. `MULTI_WORLD_PROJECT_SOUL.md` — durable intent; review after cleanup, do not silently rewrite during closure.
-2. `MULTI_WORLD_CURRENT_STATE.md` — current technical truth and exact frozen anchors.
-3. `WORLD_V0_SAFE_STOP_2026-09-10.md` — cleanup/recovery contract.
-4. `WORLD_V0_QUALIFIED_BASELINE_GATE.md` — final qualification record.
-5. GitHub issue #41 — active branch/workflow archaeology tracker.
-6. GitHub issue #8 — detailed historical evidence/checkpoints when needed.
+1. `MULTI_WORLD_PROJECT_SOUL.md` — durable product intent; unchanged by cleanup.
+2. `MULTI_WORLD_CURRENT_STATE.md` — current technical/project truth.
+3. `WORLD_V0_SAFE_STOP_2026-09-10.md` — cleanup and recovery map.
+4. `WORLD_V0_QUALIFIED_BASELINE_GATE.md` — final World V0 qualification record.
+5. GitHub issue #41 — repository-cleanup execution and closure evidence.
+6. GitHub issue #8 — detailed historical checkpoints only when needed.
 
-Older R0/R1/R2 and takeover documents are provenance, not startup requirements.
+Older takeover, grounding, probe and campaign documents are provenance, not startup requirements.
 
-## Exact frozen baseline
+## Frozen World V0 authority
 
 Qualified product:
 
@@ -27,77 +27,53 @@ Final delivery:
 `fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`
 
 Final delivery run `34475199474` — **SUCCESS**.  
-Cloudflare Version `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`.
+Cloudflare Version `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`.  
+Owner final real-device sanity: **3/3 PASS**.
 
-Owner final real-device sanity after the bounded UI repair: **3/3 PASS**.
+## Cleanup authority and recovery
 
-The final broad human verdict on ordinary play was **stable and smooth**.
+Repository Cleanup Kit v3 formal archive:
 
-## Archive/recovery witnesses
+`archive/repository-cleanup-v3-2026-09-10`
 
-Do not remove casually:
+Pre-prune archive anchor:
 
-- `archive/world-v0-qualified-2p-baseline-2026-09-10`;
-- `archive/world-v0-final-delivery-2026-09-10`;
-- `archive/pre-safe-stop-main-2026-09-10`.
+`61f202289f0dcbde26cb5d72de67e7a46397c159`
 
-Current cleanup branch:
+Immutable pre-prune tag:
 
-`world-v0-safe-stop-closure`
+`repository-cleanup-v3-pre-prune-2026-09-10`
 
-## What is closed
+The qualified recovery rehearsal restored **167/167** selected retirement refs exactly after aggressive GC.
 
-The September foundation campaign has closed to the frozen scope:
+Owner-authorized transaction:
 
-- callsign/gameplay keyboard ownership;
-- same-owner live F5/new-tab rebound;
-- protected vs soft reservation capacity semantics;
-- cross-Yard dormant-history capacity exhaustion;
-- fresh-epoch handoff under soft-reservation demand;
-- stale-token retirement after handoff;
-- join/lifecycle/transport error clarity;
-- bounded recovery when an in-memory authority WorldEpoch is positively proven gone;
-- final Diagnostics-focus keyboard regression;
-- desktop/mobile touch-control presentation split.
+`9d210a30fe06c823f5b66845b5cbb356c801018844c56ff0c4ab23614eb35d14`
 
-The fixed-2P topology itself is not being redesigned inside closure.
+Successful guarded apply/postflight: run `34514964756`, job `103000742955`.
+
+Immediately after the transaction the repository had seven live branch refs: canonical `main`, the formal aggregate archive, three explicit World V0 recovery/product anchors, and two temporary cleanup-maintenance refs.
 
 ## Current action
 
-**Do not open a new gameplay/network frontier.**
+Do not reopen old World V0 reliability work and do not start the next gameplay architecture yet.
 
-Continue safe stop:
+Current closure order:
 
-1. maintain exact recovery anchors;
-2. reconcile canonical docs;
-3. inventory/classify branches, workflows and PRs;
-4. remove consumed one-shot apparatus and redundant refs only when recoverability is established;
-5. integrate the qualified linear history into `main` without rewriting qualified product ancestry;
-6. leave a compact canonical/recovery spine;
-7. review Project Soul and repository role only after cleanup;
-8. then design the next multiplayer era.
+1. finish semantic/current-state cleanup on `main` without changing qualified runtime bytes;
+2. validate `main`;
+3. create, publish and verify the Cleanup Kit v3 post-prune closure seal;
+4. preserve cleanup helper/runner history;
+5. separately retire transient cleanup refs only after a new exact Owner authorization;
+6. verify the final compact namespace and close issue #41;
+7. only then review Project Soul and start the next era.
 
-## Important deferred near-term requirement
+## Deferred next-era requirement
 
-After cleanup, a player should be able to **enter a Yard alone, immediately inhabit/play in the world, and wait there for another player**. The current `Waiting in this Yard` pre-start shell is not the desired near-term experience.
+After closure, a player should be able to **enter a Yard alone, immediately inhabit/play in the world, and wait there for another player**.
 
-Treat this together with the architectural distinction:
+Treat this together with:
 
 `world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
 
-This is direction for the next era, not permission to patch the frozen baseline during cleanup.
-
-## Persistent evidence boundaries
-
-Still not established:
-
-- durable reconstruction of a lost physical WorldEpoch;
-- account/cloud identity;
-- persistent continuously-open-world semantics;
-- arbitrary dynamic membership;
-- 3+ scalability;
-- seamless MMO-style actor replacement;
-- universal mobile suspension/radio recovery;
-- final character controller.
-
-A fresh takeover should verify live refs and issue #41 first, then continue cleanup rather than reopening old reliability questions by default.
+This is the next architecture seed, not permission to modify the frozen baseline during cleanup.

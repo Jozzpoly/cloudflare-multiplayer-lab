@@ -1,4 +1,4 @@
-name: Repository cleanup v3 historical external-payload red-team
+name: Repository cleanup v3 historical red-team
 
 on:
   push:
@@ -55,18 +55,15 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import {execFileSync, spawnSync} from 'node:child_process';
-
           const dir='historical-payload-audit';
           const manifest=JSON.parse(fs.readFileSync(`${dir}/recovery-manifest.json`,'utf8'));
           const tips=[...new Set(manifest.historicalBranches.map(x=>x.expectedSha))];
           const canonical=manifest.canonicalSha;
-
           const revInput=tips.join('\n')+'\n';
           const commits=spawnSync('git',['rev-list','--stdin','--not',canonical],{input:revInput,encoding:'utf8',maxBuffer:128*1024*1024});
           if(commits.status!==0) throw new Error(commits.stderr||`rev-list status ${commits.status}`);
           const uniqueCommits=commits.stdout.trim()?commits.stdout.trim().split(/\n+/):[];
           const commitSet=new Set(uniqueCommits);
-
           const gitlinks=[];
           const blobWitnesses=new Map();
           for(const commit of uniqueCommits){
@@ -80,7 +77,6 @@ jobs:
               if(type==='blob' && !blobWitnesses.has(oid)) blobWitnesses.set(oid,{commit,path});
             }
           }
-
           const blobIds=[...blobWitnesses.keys()];
           const checks=spawnSync('git',['cat-file','--batch-check=%(objectname) %(objecttype) %(objectsize)'],{input:blobIds.join('\n')+'\n',encoding:'utf8',maxBuffer:128*1024*1024});
           if(checks.status!==0) throw new Error(checks.stderr||`cat-file status ${checks.status}`);
@@ -91,7 +87,6 @@ jobs:
             const size=Number(sizeRaw);
             if(type==='blob' && size<=4096) small.push({oid,size});
           }
-
           const lfsPointers=[];
           for(const {oid,size} of small){
             const content=execFileSync('git',['cat-file','blob',oid],{encoding:'utf8',maxBuffer:8192});
@@ -101,40 +96,81 @@ jobs:
             const declaredSize=Number((content.match(/^size\s+(\d+)$/m)||[])[1]||NaN);
             lfsPointers.push({blobOid:oid,blobSize:size,...witness,externalOid,declaredSize:Number.isFinite(declaredSize)?declaredSize:null});
           }
-
-          const tipCoverage=[];
-          for(const tip of tips){
-            const row=manifest.historicalBranches.find(x=>x.expectedSha===tip);
-            const count=Number(execFileSync('git',['rev-list','--count',tip,'--not',canonical],{encoding:'utf8'}).trim());
-            tipCoverage.push({tip,representativeRef:row?.ref||null,uniqueCommitCount:count});
-          }
-
-          const result={
-            schema:'multi-world-historical-external-payload-redteam-v1',
-            manifestFreezeSha256:manifest.freezeSha256,
-            frozenCanonicalSha:canonical,
-            historicalBranchCount:manifest.historicalBranchCount,
-            historicalDistinctTipCount:tips.length,
-            distinctUniqueCommitCount:commitSet.size,
-            distinctBlobCountScanned:blobIds.length,
-            smallBlobCountInspected:small.length,
-            historicalGitlinkCount:gitlinks.length,
-            historicalLfsPointerCount:lfsPointers.length,
-            gitlinks,
-            lfsPointers,
-            tipCoverage,
-            packageV3BlindSpotAddressed:'scan union of commits unique to deleted tips relative to frozen canonical, not only each tip tree'
-          };
+          const result={schema:'multi-world-historical-external-payload-redteam-v1',manifestFreezeSha256:manifest.freezeSha256,frozenCanonicalSha:canonical,historicalBranchCount:manifest.historicalBranchCount,historicalDistinctTipCount:tips.length,distinctUniqueCommitCount:commitSet.size,distinctBlobCountScanned:blobIds.length,smallBlobCountInspected:small.length,historicalGitlinkCount:gitlinks.length,historicalLfsPointerCount:lfsPointers.length,gitlinks,lfsPointers,packageV3BlindSpotAddressed:'scan union of commits unique to deleted tips relative to frozen canonical, not only each tip tree'};
           fs.writeFileSync(`${dir}/historical-external-payload-audit.json`,JSON.stringify(result,null,2)+'\n');
           console.log(`UNIQUE_COMMITS=${result.distinctUniqueCommitCount}`);
           console.log(`BLOBS_SCANNED=${result.distinctBlobCountScanned} SMALL_BLOBS=${result.smallBlobCountInspected}`);
           console.log(`HISTORICAL_GITLINKS=${result.historicalGitlinkCount}`);
           console.log(`HISTORICAL_LFS_POINTERS=${result.historicalLfsPointerCount}`);
-          if(gitlinks.length) console.log('GITLINK_WITNESSES',JSON.stringify(gitlinks.slice(0,20),null,2));
-          if(lfsPointers.length) console.log('LFS_WITNESSES',JSON.stringify(lfsPointers.slice(0,20),null,2));
           NODE
 
-      - name: Cross-check tip-only manifest claims against history-wide scan
+      - name: Measure semantic evidence hidden by net-tip summaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const dir='historical-payload-audit';
+          const m=JSON.parse(fs.readFileSync(`${dir}/recovery-manifest.json`,'utf8'));
+          const canonical=m.canonicalSha;
+          const cache=new Map();
+          const sh=(args)=>execFileSync('git',args,{encoding:'utf8',maxBuffer:64*1024*1024}).trim();
+          const lines=(s)=>s?s.split('\n').filter(Boolean):[];
+          for(const row of m.historicalBranches){
+            if(cache.has(row.expectedSha)) continue;
+            const commits=lines(sh(['log','--format=%H%x09%s',`${canonical}..${row.expectedSha}`])).map(line=>{const [sha,...rest]=line.split('\t');return {sha,subject:rest.join('\t')};});
+            const touched=[...new Set(lines(sh(['log','--format=','--name-only',`${canonical}..${row.expectedSha}`])))].sort();
+            cache.set(row.expectedSha,{commits,touched});
+          }
+          const rows=m.historicalBranches.map(row=>{
+            const h=cache.get(row.expectedSha);
+            const net=new Set(row.changedFiles||[]);
+            const recent=new Set((row.recentBranchOnlyCommits||[]).map(x=>x.sha));
+            const transientOnly=h.touched.filter(p=>!net.has(p));
+            const omittedCommits=h.commits.filter(c=>!recent.has(c.sha));
+            return {
+              ref:row.ref,expectedSha:row.expectedSha,proofClass:row.proofClass,
+              branchOnlyCommitCount:row.branchOnlyCommitCount,
+              manifestChangedFileCount:row.changedFileCount,
+              historyTouchedPathCount:h.touched.length,
+              transientOnlyPathCount:transientOnly.length,
+              transientOnlyPaths:transientOnly,
+              omittedCommitCount:omittedCommits.length,
+              omittedCommits,
+              netZeroButHistoricalWork:(row.changedFileCount===0 && h.touched.length>0),
+              historyTopLevelAreas:[...new Set(h.touched.map(p=>p.split('/')[0]).filter(Boolean))].sort(),
+              manifestTopLevelAreas:row.topLevelAreas||[]
+            };
+          });
+          const distinctByTip=[...cache.entries()].map(([tip,h])=>({tip,commitCount:h.commits.length,touchedPathCount:h.touched.length,touchedPaths:h.touched,commits:h.commits}));
+          const under=rows.filter(r=>r.transientOnlyPathCount>0||r.omittedCommitCount>0||r.netZeroButHistoricalWork);
+          const netZero=rows.filter(r=>r.netZeroButHistoricalWork);
+          const transientPathSet=[...new Set(rows.flatMap(r=>r.transientOnlyPaths))].sort();
+          const result={
+            schema:'multi-world-historical-semantic-redteam-v1',
+            frozenCanonicalSha:canonical,
+            historicalBranchCount:rows.length,
+            distinctTipCount:cache.size,
+            branchesWithAnyTransientOnlyPath:rows.filter(r=>r.transientOnlyPathCount>0).length,
+            branchesWithCommitsBeyondRecentFive:rows.filter(r=>r.omittedCommitCount>0).length,
+            netZeroBranchesWithHistoricalWork:netZero.length,
+            distinctTransientOnlyPathCount:transientPathSet.length,
+            distinctTransientOnlyPaths:transientPathSet,
+            rows,
+            distinctTipHistory:distinctByTip,
+            finding:'v3 net tip diff plus five recent commits can underdescribe transient historical work even when exact Git recovery remains intact'
+          };
+          fs.writeFileSync(`${dir}/historical-semantic-redteam.json`,JSON.stringify(result,null,2)+'\n');
+          console.log(`SEMANTIC_BRANCHES=${rows.length}`);
+          console.log(`BRANCHES_WITH_TRANSIENT_PATHS=${result.branchesWithAnyTransientOnlyPath}`);
+          console.log(`BRANCHES_WITH_OMITTED_COMMITS=${result.branchesWithCommitsBeyondRecentFive}`);
+          console.log(`NET_ZERO_WITH_HISTORICAL_WORK=${result.netZeroBranchesWithHistoricalWork}`);
+          console.log(`DISTINCT_TRANSIENT_PATHS=${result.distinctTransientOnlyPathCount}`);
+          console.log('TRANSIENT_PATH_SAMPLE',JSON.stringify(transientPathSet.slice(0,80)));
+          NODE
+
+      - name: Cross-check v3 tip-only claims against history-wide evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -143,9 +179,7 @@ jobs:
           const d='historical-payload-audit';
           const m=JSON.parse(fs.readFileSync(`${d}/recovery-manifest.json`,'utf8'));
           const r=JSON.parse(fs.readFileSync(`${d}/historical-external-payload-audit.json`,'utf8'));
-          const manifestTipLfs=m.historicalBranches.reduce((n,x)=>n+(x.externalPayloads?.lfsPointers?.length||0),0);
-          const manifestTipGitlinks=m.historicalBranches.reduce((n,x)=>n+(x.externalPayloads?.gitlinks?.length||0),0);
-          const comparison={manifestTipLfsEntries:manifestTipLfs,manifestTipGitlinkEntries:manifestTipGitlinks,historyWideLfsPointers:r.historicalLfsPointerCount,historyWideGitlinks:r.historicalGitlinkCount,historyAddsRiskBeyondTipScan:r.historicalLfsPointerCount>0||r.historicalGitlinkCount>0};
+          const comparison={manifestTipLfsEntries:m.historicalBranches.reduce((n,x)=>n+(x.externalPayloads?.lfsPointers?.length||0),0),manifestTipGitlinkEntries:m.historicalBranches.reduce((n,x)=>n+(x.externalPayloads?.gitlinks?.length||0),0),historyWideLfsPointers:r.historicalLfsPointerCount,historyWideGitlinks:r.historicalGitlinkCount,historyAddsExternalPayloadRisk:r.historicalLfsPointerCount>0||r.historicalGitlinkCount>0};
           fs.writeFileSync(`${d}/tip-vs-history-comparison.json`,JSON.stringify(comparison,null,2)+'\n');
           console.log(JSON.stringify(comparison));
           NODE
@@ -154,7 +188,7 @@ jobs:
       - name: Preserve red-team evidence
         uses: actions/upload-artifact@v4
         with:
-          name: repository-cleanup-v3-historical-external-payload-redteam-${{ github.run_id }}
+          name: repository-cleanup-v3-historical-redteam-${{ github.run_id }}
           path: historical-payload-audit/
           if-no-files-found: error
           retention-days: 90

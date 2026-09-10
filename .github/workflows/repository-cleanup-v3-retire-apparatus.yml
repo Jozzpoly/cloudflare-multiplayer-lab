@@ -1,0 +1,181 @@
+name: Repository cleanup v3 retire transient apparatus
+
+on:
+  push:
+    branches: [maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10]
+    paths:
+      - .github/workflows/repository-cleanup-v3-retire-apparatus.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: read
+
+jobs:
+  retire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CANONICAL_REF: refs/heads/main
+      CANONICAL_SHA: 5224bea2d26fc0686f453a44c5143b05eb0fc537
+      ARCHIVE_REF: refs/heads/archive/repository-cleanup-v3-2026-09-10
+      SEAL_SHA: 4d2fae1a18613f0c90c4b242edfa68eb26fd66a2
+      HELPER_REF: refs/heads/maintenance/repository-cleanup-v3-2026-09-10
+      HELPER_SHA: feb2cea533dc227d078b01e13113a32634ca9f78
+      RUNNER_REF: refs/heads/maintenance/repository-cleanup-v3-atomic-apply-runner-2026-09-10
+      FREEZE_SHA256: 8f0776af0c5fca3437e1cb91c2964e042b919afc448087ad35ad485c94cecf22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Reconstruct and verify qualified Cleanup Kit v3 transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .repo-cleanup/runtime-kit cleanup-evidence
+          cat .repo-cleanup/kit-payload/part-* > /tmp/kit.b64
+          base64 -d /tmp/kit.b64 > /tmp/kit.tgz
+          echo 'cb763dcbf6811bd0bcca6f62b474785831d6469050f4a1aada2aac10e156041c  /tmp/kit.tgz' | sha256sum -c -
+          tar -xzf /tmp/kit.tgz -C .repo-cleanup/runtime-kit
+          echo 'b6c9042a8d2d30652e4a72578cedf59fd86108d8c4eaad9ed66e5ae9cd828c37  .repo-cleanup/runtime-kit/src/core.mjs' | sha256sum -c -
+          echo '2c4a21211a535a142b0d2eb99def24def51e3497d971f261158b95788685d988  .repo-cleanup/runtime-kit/src/github.mjs' | sha256sum -c -
+
+      - name: Require exact five-retained plus two-transient live namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          git ls-remote --heads origin > /tmp/live-heads
+          test "$(wc -l < /tmp/live-heads)" -eq 7
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const rows = readFileSync('/tmp/live-heads','utf8').trim().split('\n').filter(Boolean).map(x => { const [sha,ref] = x.split(/\s+/); return {sha,ref}; });
+          const live = new Map(rows.map(x => [x.ref,x.sha]));
+          const expected = new Map([
+            [process.env.CANONICAL_REF, process.env.CANONICAL_SHA],
+            ['refs/heads/archive/world-v0-qualified-2p-baseline-2026-09-10','7755a668d7488f04ecbf42a00fbc96fcb978d544'],
+            ['refs/heads/archive/world-v0-final-delivery-2026-09-10','fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65'],
+            ['refs/heads/archive/pre-safe-stop-main-2026-09-10','829deef82c71780d2d661e7a7e82685739d7b23d'],
+            [process.env.HELPER_REF, process.env.HELPER_SHA],
+            [process.env.RUNNER_REF, process.env.GITHUB_SHA],
+          ]);
+          for (const [ref,sha] of expected) if (live.get(ref) !== sha) throw new Error(`Exact live ref mismatch ${ref}: ${live.get(ref)} != ${sha}`);
+          if (!live.has(process.env.ARCHIVE_REF)) throw new Error('Formal archive missing');
+          const allowed = new Set([...expected.keys(), process.env.ARCHIVE_REF]);
+          const unexpected = [...live.keys()].filter(x => !allowed.has(x));
+          if (unexpected.length) throw new Error(`Unexpected live refs: ${JSON.stringify(unexpected)}`);
+          NODE
+
+      - name: Require helper and final runner history preserved by archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_sha="$(git ls-remote origin "$ARCHIVE_REF" | cut -f1)"
+          git fetch --no-tags origin "$archive_sha" "$GITHUB_SHA" "$HELPER_SHA" "$SEAL_SHA"
+          git merge-base --is-ancestor "$SEAL_SHA" "$archive_sha"
+          git merge-base --is-ancestor "$HELPER_SHA" "$archive_sha"
+          git merge-base --is-ancestor "$GITHUB_SHA" "$archive_sha"
+          echo APPARATUS_HISTORY_PRESERVED_BY_ARCHIVE
+
+      - name: Build exact two-delete transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { writeFileSync } from 'node:fs';
+          import { sha256, validateTransactionPlan, authorizationFor } from './.repo-cleanup/runtime-kit/src/core.mjs';
+          import { zeroOid } from './.repo-cleanup/runtime-kit/src/github.mjs';
+          const out = execFileSync('git',['ls-remote','--heads','origin'],{encoding:'utf8'}).trim();
+          const live = new Map(out.split('\n').filter(Boolean).map(line => { const [sha,ref]=line.split(/\s+/); return [ref,sha]; }));
+          const hardDenyRefs = [
+            'refs/heads/archive/world-v0-qualified-2p-baseline-2026-09-10',
+            'refs/heads/archive/world-v0-final-delivery-2026-09-10',
+            'refs/heads/archive/pre-safe-stop-main-2026-09-10',
+          ];
+          const retained = [process.env.CANONICAL_REF, process.env.ARCHIVE_REF, ...hardDenyRefs];
+          const updates = [
+            {name:process.env.HELPER_REF,beforeOid:process.env.HELPER_SHA,afterOid:zeroOid(),kind:'DELETE'},
+            {name:process.env.RUNNER_REF,beforeOid:process.env.GITHUB_SHA,afterOid:zeroOid(),kind:'DELETE'},
+            ...retained.map(name => ({name,beforeOid:live.get(name),afterOid:live.get(name),kind:'RETAIN_ASSERT'})),
+          ].sort((a,b) => a.name.localeCompare(b.name));
+          const base = {
+            schema:'repository-cleanup-transaction-v3',
+            repository:process.env.GITHUB_REPOSITORY,
+            canonicalRef:process.env.CANONICAL_REF,
+            freezeSha256:process.env.FREEZE_SHA256,
+            hardDenyRefs,
+            unknownRefsAtPlan:[],
+            updates,
+          };
+          const plan = {...base, transactionSha256:sha256(base)};
+          validateTransactionPlan(plan);
+          const authorization = authorizationFor(plan);
+          writeFileSync('cleanup-evidence/apparatus-retirement-plan.json',JSON.stringify(plan,null,2)+'\n');
+          writeFileSync('cleanup-evidence/OWNER_STOP.txt',authorization+'\n');
+          writeFileSync('cleanup-evidence/apparatus-retirement-context.json',JSON.stringify({phase:'post-seal-transient-apparatus-retirement',sealSha:process.env.SEAL_SHA,archiveSha:live.get(process.env.ARCHIVE_REF),helperSha:process.env.HELPER_SHA,runnerSha:process.env.GITHUB_SHA,deleteCount:2,retainedCount:5,transactionSha256:plan.transactionSha256},null,2)+'\n');
+          console.log(`OWNER_STOP=${authorization}`);
+          NODE
+
+      - name: Resolve separate exact Owner authorization from issue 41
+        id: auth
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync, writeFileSync } from 'node:fs';
+          const expected = readFileSync('cleanup-evidence/OWNER_STOP.txt','utf8').trim();
+          const owner = process.env.GITHUB_REPOSITORY_OWNER;
+          const url = `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/issues/41/comments?per_page=100`;
+          const r = await fetch(url,{headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${process.env.GH_TOKEN}`,'X-GitHub-Api-Version':'2022-11-28'}});
+          if (!r.ok) throw new Error(`Authorization lookup failed HTTP ${r.status}`);
+          const comments = await r.json();
+          const matches = comments.filter(c => c?.user?.login === owner && String(c.body ?? '').split(/\r?\n/).map(x=>x.trim()).includes(expected));
+          const authorized = matches.length === 1;
+          writeFileSync('cleanup-evidence/authorization-check.json',JSON.stringify({authorized,owner,matchingCommentIds:matches.map(x=>x.id),requiredExactMatches:1},null,2)+'\n');
+          appendFileSync(process.env.GITHUB_OUTPUT,`authorized=${authorized?'true':'false'}\n`);
+          console.log(authorized ? `OWNER_AUTHORIZATION_MATCH comment=${matches[0].id}` : `HELPER_STOP no exact unique authorization; matches=${matches.length}`);
+          NODE
+
+      - name: Apply exact atomic apparatus retirement
+        if: steps.auth.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' | tee cleanup-evidence/apply.log
+          import { readFileSync } from 'node:fs';
+          import { applyGithubTransaction } from './.repo-cleanup/runtime-kit/src/github.mjs';
+          const plan = JSON.parse(readFileSync('cleanup-evidence/apparatus-retirement-plan.json','utf8'));
+          const authorization = readFileSync('cleanup-evidence/OWNER_STOP.txt','utf8').trim();
+          const result = await applyGithubTransaction({token:process.env.GH_TOKEN,plan,authorization});
+          console.log(JSON.stringify(result));
+          NODE
+
+      - name: Independent final five-head postflight
+        if: steps.auth.outputs.authorized == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git ls-remote --heads origin > /tmp/final-heads
+          test "$(wc -l < /tmp/final-heads)" -eq 5
+          ! grep -q "$HELPER_REF" /tmp/final-heads
+          ! grep -q "$RUNNER_REF" /tmp/final-heads
+          grep -q "$CANONICAL_SHA[[:space:]]$CANONICAL_REF" /tmp/final-heads
+          echo FINAL_FIVE_HEAD_NAMESPACE_PASS
+
+      - name: Preserve retirement evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-cleanup-v3-apparatus-retirement-${{ github.run_id }}-${{ github.run_attempt }}
+          path: cleanup-evidence/
+          if-no-files-found: warn
+          retention-days: 30

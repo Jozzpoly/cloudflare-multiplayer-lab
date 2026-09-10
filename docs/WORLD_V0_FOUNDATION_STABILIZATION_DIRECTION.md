@@ -1,151 +1,186 @@
 # World V0 — Foundation Stabilization Direction
 
-Status: **FINAL POLISH / PRE-OWNER REQUALIFICATION**  
+Status: **OWNER CORE PASS / FINAL UI SANITY BEFORE SAFE STOP**  
 Updated: **2026-09-10**  
-Product anchor under polish: `fef4a2a4b6007c3e42cbd3b430cb9943343cc970`  
+Exact final candidate: `7755a668d7488f04ecbf42a00fbc96fcb978d544`  
 Polish branch: `world-v0-foundation-polish-closure`
 
 ## Execution order
 
-Do not skip forward:
+The current closure order is now:
 
-1. **Stabilize the current two-player multiplayer foundation.**
-2. **Challenge it broadly and independently.**
-3. **Polish, repair, clean and update the canonical project spine.**
-4. **Run final representative Owner qualification.**
-5. **Reach a deliberate safe stop.**
-6. **Only then perform broader repository/branch consolidation and formalize the next long-horizon Multi_World direction.**
+1. stabilize the fixed two-player foundation;
+2. challenge it broadly and independently;
+3. polish, repair and reconcile validation/documentation debt;
+4. run representative Owner desktop/mobile qualification;
+5. repair only a concrete defect found by that Owner run;
+6. perform one tiny sanity check of that repair;
+7. freeze and enter deliberate safe stop;
+8. only then perform broader branch/workflow archaeology and formalize the next multiplayer era.
 
-New gameplay/product features are not the current frontier.
+Steps 1–5 are complete. Step 6 is the only current gate.
 
-## What the September stabilization campaign found and closed
+New gameplay/product architecture is not the current frontier.
 
-The hostile Owner tests exposed real foundation debt. The following items are now repaired and causally requalified rather than merely planned.
+## Stabilization work already closed
 
-### 1. Dormant reservations no longer own public capacity indefinitely — CLOSED
+### Dormant capacity ownership — CLOSED
 
-Current public-Yard semantics distinguish connected capacity, protected reconnect reservations, soft/replaceable reservations and fully vacant resumable epochs.
+Public Yard state distinguishes connected capacity, protected reconnect reservations, soft/replaceable reservations and fully vacant resumable epochs. Dormant history may retain private Resume authority while unused but does not own scarce public capacity indefinitely.
 
-A dormant ActorSession may retain private resume authority while unused, but it cannot indefinitely prevent unrelated people from using the Yard. Because the current simulation topology is fixed at two actors, replacement is performed by an explicit WorldEpoch handoff rather than unsafe in-epoch actor mutation.
+### Same-owner live rebound — CLOSED
 
-### 2. Same-owner refresh/live rebound — CLOSED
+The exact private ActorSession token may atomically supersede that same actor's older transport. Foreign profiles cannot claim the ActorSession without the token.
 
-Possession of the exact private ActorSession token can atomically supersede that same actor's older transport. A foreign profile without the token cannot claim it.
+### Cross-Yard capacity exhaustion — CLOSED
 
-### 3. Cross-Yard capacity exhaustion — CLOSED
+Retained history across Yard 1/2/3 was explicitly challenged without permanently exhausting public capacity.
 
-Repeated retained history across Yard 1/2/3 no longer permanently exhausts the public room pool. The broad adversarial campaign explicitly accumulated history across all three Yards and kept capacity recoverable.
+### Text-entry keyboard ownership — CLOSED
 
-### 4. Gameplay keyboard stealing text input — CLOSED
+Callsign fields retain physical W/A/S/D as text and do not leak those keys into gameplay.
 
-Focused UI controls own their keyboard events before gameplay WASD/Space handlers. Real Chromium physical-key input was verified with `wasdWASD` remaining intact in the callsign field.
+### Join/lifecycle/network error clarity — CLOSED TO CURRENT SCOPE
 
-### 5. Join/lifecycle/network failure copy — CLOSED TO CURRENT SCOPE
+Capacity, reconnect protection, unavailable Yard, transport/handshake and unknown-state failures are materially distinguished rather than collapsed into one generic message.
 
-The entry shell now classifies capacity-full, protected lifecycle state, unavailable Yard, connection/handshake failure and unknown room state separately instead of collapsing them into one generic network message.
+### Authority WorldEpoch loss — CLOSED AT CURRENT FOUNDATION SCOPE
 
-### 6. Authority-process / WorldEpoch loss — CLOSED AT AUTOMATED CAUSAL LEVEL
+On abnormal active loss the browser first attempts exact ActorSession Resume. Same-epoch or uncertain authority evidence preserves that path. Only positive reachable evidence that the old epoch is gone permits stale-token retirement and fresh re-entry into the same logical Yard.
 
-The Owner recording exposed a fatal dual-`1006` path where both clients could keep retrying an ActorSession that no longer existed and eventually reach `actor_session_resume_exhausted`.
+This prevents a dead ActorSession token from exhausting into a fatal foundation failure when the in-memory authority epoch genuinely disappeared.
 
-The promoted product now:
+## Broad verification before the latest Owner run
 
-- first tries exact private ActorSession resume;
-- keeps that path when the old epoch is still alive or authority evidence is uncertain;
-- only when reachable authority proves the source epoch is gone, clears the stale token and fresh-joins the same logical Yard;
-- allows both peers to converge on one replacement epoch.
+Decisive automated evidence includes:
 
-Product commit: `fef4a2a4b6007c3e42cbd3b430cb9943343cc970`.
+- authority-loss post-promotion focused gate `34426373914` — **SUCCESS**;
+- full Current Validation `34426331772` — **SUCCESS**;
+- broad adversarial campaign `34428181101` — **SUCCESS / 8 of 8 jobs**;
+- near-simultaneous Resume-vs-fresh race `34428538218` — **SUCCESS**.
 
-## Verification completed after the last Owner failure
+Those campaigns covered repeated authority loss, background-hidden recovery, retained history across all public Yards, fresh remote Cloudflare Durable Objects, same-owner live rebound, physical keyboard ownership, soft/vacant handoffs and exact Resume controls.
 
-The frozen product was challenged beyond its normal regression suite before polish began.
+Additional resumed-stayer causal work reproduced the previously suspicious lifecycle composition successfully locally and repeatedly on fresh remote Durable Objects. The earlier fatal dual-`1006` signature was instead reproduced by controlled loss of the in-memory authority process, which motivated the bounded authority-epoch-loss recovery above.
 
-Broad adversarial run `34428181101` completed **SUCCESS / 8 of 8 jobs**. It covered:
+## Owner broad human qualification — PASS WITH ONE LOCAL UI DEFECT
 
-- three consecutive authority losses in the same live browser pair;
-- authority loss with one peer background-hidden;
-- retained-history pressure across all public Yards;
-- four fresh remote Cloudflare Durable Objects;
-- same-owner live rebound;
-- physical keyboard ownership;
-- soft reservation and automatic handoff;
-- zero-online capacity semantics;
-- resumed-stayer composition;
-- direct-link exact Resume;
-- directory-outage fail-closed Resume.
+The 2026-09-10 Owner recordings produced the important human result:
 
-Separate race run `34428538218` completed **SUCCESS** and exercised near-simultaneous private Resume versus unrelated fresh admission. Both legal winner orders occurred without split-brain or double authority.
+> ordinary gameplay was stable and smooth.
 
-No new product blocker was found in these passes.
+No broad netcode/reliability failure was reproduced. The dominant concrete defect was local input ownership:
 
-## Current polish findings
+- clicking/opening/closing Diagnostics could leave focus on the `<summary>` element;
+- the old keyboard guard then swallowed WASD because it treated every focused interactive control like an editable field;
+- movement only returned after another gameplay/touch surface was clicked;
+- desktop also unnecessarily displayed touch control surfaces.
 
-The polish phase has already found real non-runtime debt:
+This was classified as a bounded UI/input freeze blocker, not a reason to reopen the multiplayer core.
 
-- canonical `npm run check` did not include the new authority-epoch-loss and join-failure-clarity modules/smokes; this has been repaired on the polish branch;
-- `npm audit --omit=dev` reports **0 production vulnerabilities**;
-- three high-severity npm findings exist only in the dev toolchain through `wrangler -> miniflare -> sharp`;
-- isolated upgrade from Wrangler `4.127.1` to `4.130.0` passed the full repository check but did **not** remove those alerts, so no cosmetic toolchain churn is justified yet;
-- several canonical documents were materially stale and are being refreshed in this phase.
+## Final Owner UI repair — CLOSED AUTOMATICALLY / HUMAN SANITY PENDING
 
-## Current product identity
+Exact product source:
 
-Physics/simulation provenance remains intentionally unchanged by admission/lifecycle repairs:
+`7755a668d7488f04ecbf42a00fbc96fcb978d544`
+
+Repair:
+
+- editables still own all keyboard input;
+- `summary`, buttons and links own activation keys (`Space` / `Enter`) but no longer swallow unrelated gameplay WASD simply because they retain focus;
+- ownership is symmetric across keydown/keyup;
+- joystick, camera gimbal and JUMP are hidden for primary fine-pointer desktop and shown for coarse-pointer/mobile;
+- browser UI revision advanced to `shared-yard-v0-browser-ui-v20-owner-ui-focus`;
+- keyboard guard revision advanced to `world-v0-keyboard-focus-guard-v2-semantic-ownership`.
+
+Physics/simulation/server authority/protocol remain unchanged.
+
+Focused real-Chromium gate:
+
+- run `34474057233` — **SUCCESS**;
+- artifact `10150740652`;
+- digest `sha256:62bb4b39cb70e46f280df7bfcae061a51bb5b72744a30817d456dc2c688df38d`.
+
+Full Current Validation on exact `7755a668...`:
+
+- run `34474343862` — **SUCCESS**;
+- artifact `10151068683`;
+- digest `sha256:728f0f5c7dfa68a6fb5f11ab04a1fd7e8b6c55f8d63b6d123255fb54ffa4827d`.
+
+All historical lifecycle/prestart/cross-page/all-drop/exact-rebase/dual-browser/human-entry gates remained green.
+
+## Final delivered Owner candidate
+
+URL:
+
+`https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev/world-v0/`
+
+Delivery:
+
+- branch `world-v0-foundation-final-delivery`;
+- delivery head `fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`;
+- run `34475199474` / job `102864191837` — **SUCCESS**;
+- Cloudflare Version ID `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`;
+- artifact `10151181384`;
+- digest `sha256:4d0cdc5eb04bf3dcafdbad4ccd469b2db24f7d372f1549212d7e0321e3f49553`;
+- protected product bytes matched exact `7755a668...`;
+- static convergence passed;
+- `HUMAN_DURABLE_OBJECTS_UNTOUCHED_BY_WORKFLOW`.
+
+## Exact current identities
+
+Unchanged simulation/physics identity:
 
 - contract `shared-yard-v0-contract-v14-jump-delivery-persistence`;
 - authority `shared-yard-v0-authority-v11-jump-delivery-persistence`;
 - browser sim `shared-yard-v0-browser-sim-v10-jump-delivery-persistence`;
-- browser UI `shared-yard-v0-browser-ui-v19-jump-delivery-persistence`;
 - protocol `shared-yard-v0-scheduled-input-v3-supersession`;
 - state guard `shared-yard-v0-f32-state-v1`;
 - SimBuild `shared-yard-v0-sim-cd8edc169f791a64`.
 
-Admission/session shell identity:
+Final presentation/lifecycle shell:
 
+- browser UI `shared-yard-v0-browser-ui-v20-owner-ui-focus`;
+- keyboard focus guard `world-v0-keyboard-focus-guard-v2-semantic-ownership`;
+- session continuity `world-v0-session-continuity-r3-live-rebind`;
 - public room entry `world-v0-public-room-entry-r3-presence-capacity`;
 - public room directory `world-v0-public-room-directory-r4-vacant-capacity`;
-- session continuity `world-v0-session-continuity-r3-live-rebind`;
 - join failure clarity `world-v0-join-failure-clarity-v1`;
 - authority epoch-loss recovery `world-v0-authority-epoch-loss-v1`.
 
-## Delivered Owner candidate
+## Accepted boundary for later architecture work
 
-The current qualified-play Owner candidate is deployed to:
+The fixed two-player topology still rotates to a fresh WorldEpoch when a soft-reserved actor is replaced by a new player. This intentionally discards the old epoch's shared physical history rather than attempting unsafe in-epoch actor replacement.
 
-`https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev/world-v0/`
+That behavior is acceptable for this baseline, but it is **not** the intended architecture for a persistent co-op sandbox or mini-MMO. Later work must explicitly reconsider:
 
-Delivery run `34426803131` / job `102713664761` — **SUCCESS**.  
-Cloudflare Version ID: `d62c2e72-c4d9-4124-8847-85815d715ff1`.
+`world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
 
-The delivery workflow verified protected product bytes against `fef4a2a4...` and ended with `HUMAN_DURABLE_OBJECTS_UNTOUCHED_BY_WORKFLOW`.
+Do not open that redesign until after safe stop and repository cleanup.
 
 ## Remaining blocker before safe stop
 
-One gate remains deliberately human:
+Only a small human sanity check remains:
 
-> representative Owner adversarial play of this exact delivered candidate, including desktop×desktop and mobile use.
+1. desktop Diagnostics open/close must no longer interrupt WASD;
+2. desktop touch controls must be absent on normal fine-pointer desktop;
+3. mobile/coarse-pointer touch controls must remain present and usable.
 
-The important natural behaviors are ordinary play/smoothness, F5/live takeover, close/reopen Resume, Yard cycling/capacity pressure, text-entry ownership, error clarity, background/return and recovery if a real transport/authority event occurs.
-
-Small bounded jump/contact feel imperfections remain debt, not automatically a reliability-front reopening unless they again dominate human play.
+No new broad reliability campaign is justified unless this final sanity test reveals conflicting evidence.
 
 ## Safe-stop requirement
 
-If the final Owner qualification passes, stop before opening 3+ players or another major architecture frontier.
+If the sanity check passes:
 
-The safe stop should then include:
-
-- frozen exact product/runtime and delivery anchors;
-- refreshed Current State / takeover spine;
-- preservation of decisive evidence and issue #8 checkpoints;
-- classification of workflows into retained reusable gates versus consumed one-shot apparatus;
-- controlled branch archaeology and cleanup — no mass deletion;
-- explicit preservation of evidence/archive/donor provenance;
-- only after that, formal review of Project Soul and the longer-term role of this repository as a multiplayer systems laboratory / reusable core.
-
-The previously observed branch count was already well above 150. Branch reduction is therefore a real post-freeze task, but destructive cleanup remains deferred until the final Owner gate establishes the baseline we are preserving.
+- freeze exact product `7755a668...` and Cloudflare Version `1cc9a0fd...`;
+- preserve final Owner verdict/evidence;
+- stop product expansion;
+- inventory/classify workflows and >150 branches before deletion;
+- preserve archive/evidence/donor provenance;
+- reconcile the stabilized baseline with the long-lived canonical branch deliberately;
+- review Project Soul / repository role only after cleanup;
+- only then open the next multiplayer frontier, with 3+ players an early desired capability.
 
 ## Guardrail
 
-The goal is not perfection. Stabilization ends when the two-player foundation is trustworthy enough that remaining imperfections are bounded debt rather than reasons to distrust the multiplayer core. The broad adversarial campaign has reached that automated stop condition. Final human qualification is now the remaining factual gate before safe stop.
+The goal is not perfection. The current foundation has reached the point where remaining architectural limitations are identifiable future work rather than evidence that the basic two-player multiplayer core is untrustworthy. The only open factual question in this closure is whether the final delivered UI repair behaves correctly on the Owner's real devices.

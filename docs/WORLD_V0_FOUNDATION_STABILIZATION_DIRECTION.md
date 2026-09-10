@@ -1,111 +1,151 @@
 # World V0 — Foundation Stabilization Direction
 
-Status: **PRELIMINARY OWNER DIRECTION / ACTIVE STABILIZATION**  
-Recorded: **2026-09-09**  
-Working branch: `world-v0-foundation-stabilization-closure`  
-Starting point: `world-v0-qualified-baseline-prep@3fdb87fbefc5cf8721979e43f82f8299cb3eefd9`
-
-## Why this document exists
-
-This is a working execution contract for the current transition. It intentionally does **not** rewrite the canonical Project Soul yet. The Owner wants the new direction kept continuously in view while the present 2-player multiplayer foundation is stabilized, then cleaned and consolidated before longer-horizon development resumes.
+Status: **FINAL POLISH / PRE-OWNER REQUALIFICATION**  
+Updated: **2026-09-10**  
+Product anchor under polish: `fef4a2a4b6007c3e42cbd3b430cb9943343cc970`  
+Polish branch: `world-v0-foundation-polish-closure`
 
 ## Execution order
 
 Do not skip forward:
 
-1. **Stabilize the current 2-player multiplayer foundation.**
-2. **Reach a deliberate safe stop.**
-3. **Clean and consolidate repository / branch / documentation / workflow debt.**
-4. **Only then formalize the longer-term Multi_World direction and plan the next fundamental multiplayer stages.**
+1. **Stabilize the current two-player multiplayer foundation.**
+2. **Challenge it broadly and independently.**
+3. **Polish, repair, clean and update the canonical project spine.**
+4. **Run final representative Owner qualification.**
+5. **Reach a deliberate safe stop.**
+6. **Only then perform broader repository/branch consolidation and formalize the next long-horizon Multi_World direction.**
 
-New product features are not the current frontier.
+New gameplay/product features are not the current frontier.
 
-## Current stabilization objective
+## What the September stabilization campaign found and closed
 
-Earn a solid ordinary 2-player baseline that survives hostile natural use, not just synthetic qualification.
+The hostile Owner tests exposed real foundation debt. The following items are now repaired and causally requalified rather than merely planned.
 
-The baseline should retain the gains already demonstrated:
+### 1. Dormant reservations no longer own public capacity indefinitely — CLOSED
 
-- representative low-latency Owner-first Durable Object placement;
-- smooth ordinary two-player foreground play;
-- exact-state integrity;
-- reliable enough jump delivery;
-- full-tab close -> ordinary entry -> same ActorSession resume;
-- protection against another browser stealing a private resumable identity.
+Current public-Yard semantics distinguish connected capacity, protected reconnect reservations, soft/replaceable reservations and fully vacant resumable epochs.
 
-The September 9 Owner stress test exposed additional foundation debt that must be resolved before the baseline is frozen.
+A dormant ActorSession may retain private resume authority while unused, but it cannot indefinitely prevent unrelated people from using the Yard. Because the current simulation topology is fixed at two actors, replacement is performed by an explicit WorldEpoch handoff rather than unsafe in-epoch actor mutation.
 
-## Critical stabilization debt
+### 2. Same-owner refresh/live rebound — CLOSED
 
-### 1. Reservation semantics are coupled incorrectly to room capacity
+Possession of the exact private ActorSession token can atomically supersede that same actor's older transport. A foreign profile without the token cannot claim it.
 
-A preserved resumable identity/state should not indefinitely consume a scarce public room slot.
+### 3. Cross-Yard capacity exhaustion — CLOSED
 
-Working direction:
+Repeated retained history across Yard 1/2/3 no longer permanently exhausts the public room pool. The broad adversarial campaign explicitly accumulated history across all three Yards and kept capacity recoverable.
 
-- **active player**: connected and consumes capacity;
-- **short reconnect grace**: temporarily protects continuity across transient disconnect / refresh overlap;
-- **dormant resumable identity/state**: may be recoverable later but does **not** block another player from using room capacity.
+### 4. Gameplay keyboard stealing text input — CLOSED
 
-Returning to a dormant state should be possible only when capacity permits; returning must not evict an active player.
+Focused UI controls own their keyboard events before gameplay WASD/Space handlers. Real Chromium physical-key input was verified with `wasdWASD` remaining intact in the callsign field.
 
-A browser having resumable history in several Yards is not automatically a defect. The defect is treating dormant history as live room capacity.
+### 5. Join/lifecycle/network failure copy — CLOSED TO CURRENT SCOPE
 
-### 2. Refresh / same-session takeover semantics are incomplete
+The entry shell now classifies capacity-full, protected lifecycle state, unavailable Yard, connection/handshake failure and unknown room state separately instead of collapsing them into one generic network message.
 
-A page refresh or overlapping old/new runtime can collide with its own still-live ActorSession and surface as a generic join failure. A same-owner resume authority must have an explicit, bounded lifecycle policy rather than depending on the old socket disappearing first.
+### 6. Authority-process / WorldEpoch loss — CLOSED AT AUTOMATED CAUSAL LEVEL
 
-Do not weaken cross-browser ownership protection while solving this.
+The Owner recording exposed a fatal dual-`1006` path where both clients could keep retrying an ActorSession that no longer existed and eventually reach `actor_session_resume_exhausted`.
 
-### 3. Public-room occupancy can be artificially exhausted
+The promoted product now:
 
-Stress testing demonstrated that a small number of real clients can accumulate persistent reservations across the fixed public Yards. This is a capacity leak under the current semantics and is a baseline blocker.
+- first tries exact private ActorSession resume;
+- keeps that path when the old epoch is still alive or authority evidence is uncertain;
+- only when reachable authority proves the source epoch is gone, clears the stale token and fresh-joins the same logical Yard;
+- allows both peers to converge on one replacement epoch.
 
-### 4. Gameplay keyboard routing leaks into text entry
+Product commit: `fef4a2a4b6007c3e42cbd3b430cb9943343cc970`.
 
-Confirmed on current runtime: global movement handlers intercept `KeyW`, `KeyA`, `KeyS`, `KeyD` (and other gameplay keys) without excluding editable controls, causing callsign text input to lose those characters.
+## Verification completed after the last Owner failure
 
-Required direction: gameplay input ownership must explicitly ignore editable elements (`input`, `textarea`, `select`, contenteditable or equivalent focus ownership), rather than patching individual letters.
+The frozen product was challenged beyond its normal regression suite before polish began.
 
-### 5. Join / lifecycle / network errors are conflated
+Broad adversarial run `34428181101` completed **SUCCESS / 8 of 8 jobs**. It covered:
 
-The current user-facing message can represent room-full, own-session overlap, or actual network/unreachability. Stabilization should make these causes distinguishable enough for both users and evidence collection.
+- three consecutive authority losses in the same live browser pair;
+- authority loss with one peer background-hidden;
+- retained-history pressure across all public Yards;
+- four fresh remote Cloudflare Durable Objects;
+- same-owner live rebound;
+- physical keyboard ownership;
+- soft reservation and automatic handoff;
+- zero-online capacity semantics;
+- resumed-stayer composition;
+- direct-link exact Resume;
+- directory-outage fail-closed Resume.
 
-### 6. Final representative qualification remains required
+Separate race run `34428538218` completed **SUCCESS** and exercised near-simultaneous private Resume versus unrelated fresh admission. Both legal winner orders occurred without split-brain or double authority.
 
-After repairs, repeat natural Owner stress testing. A final baseline should include representative desktop and mobile evidence before safe stop.
+No new product blocker was found in these passes.
 
-## Preliminary longer-term project direction
+## Current polish findings
 
-Keep this direction in view during stabilization, but do not prematurely redesign the current runtime around an imagined MMO.
+The polish phase has already found real non-runtime debt:
 
-The Owner currently sees this repository increasingly as a **long-lived multiplayer systems laboratory / reusable multiplayer core**, rather than the repository in which the eventual mini-MMO itself must be built.
+- canonical `npm run check` did not include the new authority-epoch-loss and join-failure-clarity modules/smokes; this has been repaired on the polish branch;
+- `npm audit --omit=dev` reports **0 production vulnerabilities**;
+- three high-severity npm findings exist only in the dev toolchain through `wrangler -> miniflare -> sharp`;
+- isolated upgrade from Wrangler `4.127.1` to `4.130.0` passed the full repository check but did **not** remove those alerts, so no cosmetic toolchain churn is justified yet;
+- several canonical documents were materially stale and are being refreshed in this phase.
 
-Likely consequences after safe stop:
+## Current product identity
 
-- future game repositories may consume validated multiplayer systems from this project;
-- a future mini-MMO may begin in a new repository;
-- map, gameplay and toy mechanics remain important here primarily because they create realistic pressure on multiplayer systems;
-- this project should still stay playable enough for natural human testing instead of collapsing into synthetic infrastructure benchmarks;
-- **3+ players is an early desired capability** in the next broader multiplayer era and should challenge assumptions that currently encode exactly `self + one peer`;
-- identity/account systems, persistence, world transitions and larger social topology may become later multiplayer research frontiers, but are not authorized by this document.
+Physics/simulation provenance remains intentionally unchanged by admission/lifecycle repairs:
 
-## Safe-stop requirement after stabilization
+- contract `shared-yard-v0-contract-v14-jump-delivery-persistence`;
+- authority `shared-yard-v0-authority-v11-jump-delivery-persistence`;
+- browser sim `shared-yard-v0-browser-sim-v10-jump-delivery-persistence`;
+- browser UI `shared-yard-v0-browser-ui-v19-jump-delivery-persistence`;
+- protocol `shared-yard-v0-scheduled-input-v3-supersession`;
+- state guard `shared-yard-v0-f32-state-v1`;
+- SimBuild `shared-yard-v0-sim-cd8edc169f791a64`.
 
-Once the 2-player foundation is genuinely stable, stop before opening the next large architecture frontier.
+Admission/session shell identity:
 
-The safe stop should include:
+- public room entry `world-v0-public-room-entry-r3-presence-capacity`;
+- public room directory `world-v0-public-room-directory-r4-vacant-capacity`;
+- session continuity `world-v0-session-continuity-r3-live-rebind`;
+- join failure clarity `world-v0-join-failure-clarity-v1`;
+- authority epoch-loss recovery `world-v0-authority-epoch-loss-v1`.
 
-- frozen qualified baseline and reproducible evidence;
-- canonical current-state / takeover documentation refresh;
-- workflow and validation apparatus review;
-- branch archaeology and controlled cleanup;
-- explicit preservation of provenance/evidence/donor branches before deletion;
-- consolidation of active branches to a small comprehensible set;
-- formal review of Project Soul / project role only after evidence and cleanup are complete.
+## Delivered Owner candidate
 
-Live branch inventory on 2026-09-09: **155 branches**. Do not mass-delete them. Classify first: canonical active, evidence/archive, superseded, disposable apparatus, unknown.
+The current qualified-play Owner candidate is deployed to:
+
+`https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev/world-v0/`
+
+Delivery run `34426803131` / job `102713664761` — **SUCCESS**.  
+Cloudflare Version ID: `d62c2e72-c4d9-4124-8847-85815d715ff1`.
+
+The delivery workflow verified protected product bytes against `fef4a2a4...` and ended with `HUMAN_DURABLE_OBJECTS_UNTOUCHED_BY_WORKFLOW`.
+
+## Remaining blocker before safe stop
+
+One gate remains deliberately human:
+
+> representative Owner adversarial play of this exact delivered candidate, including desktop×desktop and mobile use.
+
+The important natural behaviors are ordinary play/smoothness, F5/live takeover, close/reopen Resume, Yard cycling/capacity pressure, text-entry ownership, error clarity, background/return and recovery if a real transport/authority event occurs.
+
+Small bounded jump/contact feel imperfections remain debt, not automatically a reliability-front reopening unless they again dominate human play.
+
+## Safe-stop requirement
+
+If the final Owner qualification passes, stop before opening 3+ players or another major architecture frontier.
+
+The safe stop should then include:
+
+- frozen exact product/runtime and delivery anchors;
+- refreshed Current State / takeover spine;
+- preservation of decisive evidence and issue #8 checkpoints;
+- classification of workflows into retained reusable gates versus consumed one-shot apparatus;
+- controlled branch archaeology and cleanup — no mass deletion;
+- explicit preservation of evidence/archive/donor provenance;
+- only after that, formal review of Project Soul and the longer-term role of this repository as a multiplayer systems laboratory / reusable core.
+
+The previously observed branch count was already well above 150. Branch reduction is therefore a real post-freeze task, but destructive cleanup remains deferred until the final Owner gate establishes the baseline we are preserving.
 
 ## Guardrail
 
-The current goal is **not** perfection and not endless reliability work. Stabilization ends when the 2-player foundation is solid enough that further defects are bounded debt rather than blockers to trusting the core. At that point, stop, clean the project, formalize the new direction, and only then expand the multiplayer frontier.
+The goal is not perfection. Stabilization ends when the two-player foundation is trustworthy enough that remaining imperfections are bounded debt rather than reasons to distrust the multiplayer core. The broad adversarial campaign has reached that automated stop condition. Final human qualification is now the remaining factual gate before safe stop.

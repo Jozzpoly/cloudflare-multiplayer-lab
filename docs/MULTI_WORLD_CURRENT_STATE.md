@@ -1,89 +1,83 @@
 # Multi_World — Current State
 
-Status: **CURRENT STABILIZATION TRUTH / FINAL OWNER GATE PENDING**  
+Status: **FINAL STABILIZATION CANDIDATE / OWNER CORE PASS / UI SANITY PENDING**  
 Grounded: **2026-09-10**  
-Current product anchor: `fef4a2a4b6007c3e42cbd3b430cb9943343cc970`  
+Current product anchor: `7755a668d7488f04ecbf42a00fbc96fcb978d544`  
 Polish branch: `world-v0-foundation-polish-closure`
 
-This document answers **what is true now**. It does not replace [`MULTI_WORLD_PROJECT_SOUL.md`](MULTI_WORLD_PROJECT_SOUL.md), which remains the durable statement of project intent. During this stabilization closure, exact product/evidence anchors and newer issue #8 checkpoints outrank older main-branch documentation.
+This document answers **what is true now**. It does not replace [`MULTI_WORLD_PROJECT_SOUL.md`](MULTI_WORLD_PROJECT_SOUL.md), which remains unchanged until the deliberate safe-stop review.
 
 ---
 
 ## 1. Fast state
 
-Multi_World currently has a strong, heavily challenged **two-player Shared Yard multiplayer foundation**:
+Multi_World now has a heavily challenged **two-player Shared Yard multiplayer foundation** with:
 
-- one server-authoritative Box3D physical world;
-- responsive browser-side prediction/replay;
-- scheduled canonical input;
-- exact f32 state guards;
-- acknowledgement-driven jump delivery;
-- same-browser-profile ActorSession continuity;
-- public Yard directory with connected/protected/soft/vacant capacity semantics;
+- server-authoritative Box3D world;
+- browser prediction/replay and exact f32 state guards;
+- scheduled canonical input and acknowledgement-driven jump delivery;
+- ActorSession continuity independent of WebSocket lifetime;
 - same-owner live F5/new-tab rebound;
+- connected / protected / soft / vacant public-capacity semantics;
 - demand-driven fresh-epoch handoff when dormant capacity is needed;
-- bounded automatic recovery when the in-memory authority WorldEpoch is positively proven gone;
-- browser and mobile-oriented entry/control shell;
-- clearer separation of capacity/lifecycle/transport join failures.
+- bounded fresh recovery when reachable authority proves an in-memory WorldEpoch is gone;
+- clearer join/lifecycle/transport failure classification;
+- mobile/coarse-pointer controls and desktop keyboard controls.
 
-The active goal is **not another feature**. We are in final polish and documentation cleanup before one representative Owner requalification. If that passes, the project should reach a deliberate safe stop.
+The broad Owner desktop/mobile run on 2026-09-10 judged the game **stable and smooth** and did not reproduce a broad multiplayer/reliability failure. It exposed one local UI blocker: clicking Diagnostics left focus on the `<summary>` control and prevented WASD movement until another gameplay surface was clicked. Desktop also unnecessarily showed touch controls.
 
----
-
-## 2. Hierarchy of truth during this closure
-
-Use this order:
-
-1. exact product source `fef4a2a4b6007c3e42cbd3b430cb9943343cc970` and its successful qualification evidence;
-2. latest issue #8 stabilization checkpoints — especially authority-loss checkpoint `5611456843` and broad adversarial checkpoint `5611643968`;
-3. this Current State document;
-4. `MULTI_WORLD_PROJECT_SOUL.md` for durable intent;
-5. `MULTI_WORLD_TAKEOVER_INDEX.md` for compact operational startup;
-6. older R0/R1/R2/handoff documents as provenance only.
-
-`main` still contains the older integrated R2-era canonical history. It must not silently override the newer unmerged stabilization product simply because it is the default branch. A future safe-stop integration decision will reconcile that deliberately.
+That UI issue has now been repaired, causally validated in real Chromium, fully regression-tested and delivered. Only a short Owner sanity check of that exact repair remains before freezing the baseline and entering safe stop.
 
 ---
 
-## 3. Exact current product and delivery anchors
+## 2. Exact current candidate
 
 ### Product source
 
-`fef4a2a4b6007c3e42cbd3b430cb9943343cc970`
+`7755a668d7488f04ecbf42a00fbc96fcb978d544`
 
 Message:
 
-`Recover public Yard after lost authority epoch`
+`Rev World V0 browser UI for final owner focus repair`
 
-The authority-loss promotion changed browser recovery behavior only. Server physics, deterministic topology and SimBuild identity did not change.
+This is the exact product source currently delivered for the final sanity check.
 
-### Current qualified-play Owner candidate
+### Current qualified-play delivery
 
 URL:
 
 `https://cloudflare-multiplayer-lab-qualified-play.jozzpoly.workers.dev/world-v0/`
 
-Delivery:
+Final delivery:
 
-- run `34426803131` / job `102713664761` — **SUCCESS**;
-- Cloudflare Version ID `d62c2e72-c4d9-4124-8847-85815d715ff1`;
-- artifact `10132969847`;
-- digest `sha256:0abc40bf613c7e503d4084f2eeac08475b56404dee5d66b0e617ec948fdf4639`;
-- delivery ended with `HUMAN_DURABLE_OBJECTS_UNTOUCHED_BY_WORKFLOW`.
+- delivery branch `world-v0-foundation-final-delivery`;
+- delivery head `fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`;
+- run `34475199474` / job `102864191837` — **SUCCESS**;
+- Cloudflare Version ID `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`;
+- artifact `10151181384`;
+- digest `sha256:4d0cdc5eb04bf3dcafdbad4ccd469b2db24f7d372f1549212d7e0321e3f49553`;
+- protected product bytes matched `7755a668...`;
+- static convergence passed;
+- `HUMAN_DURABLE_OBJECTS_UNTOUCHED_BY_WORKFLOW`.
 
 ### Runtime identity
 
-Simulation/physics identity remains:
+Physics/simulation identity remains unchanged:
 
 - contract `shared-yard-v0-contract-v14-jump-delivery-persistence`;
 - authority `shared-yard-v0-authority-v11-jump-delivery-persistence`;
 - browser sim `shared-yard-v0-browser-sim-v10-jump-delivery-persistence`;
-- browser UI `shared-yard-v0-browser-ui-v19-jump-delivery-persistence`;
 - protocol `shared-yard-v0-scheduled-input-v3-supersession`;
 - state guard `shared-yard-v0-f32-state-v1`;
 - SimBuild `shared-yard-v0-sim-cd8edc169f791a64`.
 
-Current admission/lifecycle shell identity:
+Presentation/input identity now distinguishes the final repair:
+
+- browser UI `shared-yard-v0-browser-ui-v20-owner-ui-focus`;
+- keyboard focus guard `world-v0-keyboard-focus-guard-v2-semantic-ownership`;
+- desktop touch controls `hidden-for-primary-fine-pointer-v1`.
+
+Admission/lifecycle shell remains:
 
 - session continuity `world-v0-session-continuity-r3-live-rebind`;
 - public room entry `world-v0-public-room-entry-r3-presence-capacity`;
@@ -93,198 +87,117 @@ Current admission/lifecycle shell identity:
 
 ---
 
+## 3. Final Owner UI repair
+
+The Owner recording isolated a local input-focus defect, not a network/simulation failure.
+
+Repair semantics:
+
+- editable controls (`input`, `textarea`, `select`, contenteditable) still own keyboard input and protect text entry from gameplay;
+- interactive controls such as `summary`, buttons and links own their activation keys (`Space` / `Enter`) but no longer swallow unrelated gameplay WASD merely because they retain focus;
+- keydown/keyup ownership is symmetric;
+- touch joystick, camera gimbal and JUMP are hidden for primary fine-pointer desktop and shown for coarse-pointer/mobile surfaces.
+
+Focused real-Chromium gate:
+
+- run `34474057233` — **SUCCESS**;
+- artifact `10150740652`;
+- digest `sha256:62bb4b39cb70e46f280df7bfcae061a51bb5b72744a30817d456dc2c688df38d`;
+- with Diagnostics `<summary>` still focused, physical `W` reached gameplay (`raw z = -1`);
+- `Space` remained owned by Diagnostics and did not leak to gameplay;
+- physical `w` in callsign remained text and did not reach gameplay;
+- desktop controls were hidden; coarse-pointer/mobile controls were visible.
+
+Full Current Validation on exact `7755a668...`:
+
+- run `34474343862` — **SUCCESS**;
+- artifact `10151068683`;
+- digest `sha256:728f0f5c7dfa68a6fb5f11ab04a1fd7e8b6c55f8d63b6d123255fb54ffa4827d`;
+- all historical lifecycle, prestart, cross-page, all-drop, exact-rebase, dual-browser and human-entry steps passed.
+
+---
+
 ## 4. What the two-player foundation has earned
 
-Within the current fixed-2P envelope, evidence supports:
+Within the fixed-2P envelope, evidence supports:
 
-- `60 Hz / 4 substeps` deterministic Box3D simulation;
-- two player actors plus shared dynamic props;
-- exact state comparison across authority/client prediction;
-- canonical scheduled input with a 36-tick actor-local missing-input lease;
-- bounded prediction history and exact authority recording rebase;
-- acknowledgement-driven discrete jump delivery instead of a fixed temporal jump window;
-- same-WorldEpoch / same-ActorSession recovery for recoverable transport failures;
-- bounded pre-start ambiguity recovery;
-- committed-start recovery when one browser misses the start transition;
-- same-profile room-list and direct-link Resume;
-- same-owner live rebound while the old socket is still connected;
-- foreign profiles cannot claim another ActorSession without its private token;
-- public presence distinguishes connected, protected reserved, soft reserved and fully vacant resumable states;
-- dormant histories no longer permanently own public capacity;
-- fresh demand against a soft reservation rotates the fixed deterministic epoch instead of mutating one actor in place;
-- the still-connected old peer automatically re-enters the same logical Yard as a fresh actor after that handoff;
-- retired old-epoch tokens fail closed;
-- fully vacant assembled epochs remain resumable to a valid private token, but a fresh outsider may claim the unused public capacity first;
-- near-simultaneous Resume-versus-fresh races resolve to one authority-valid winner without split-brain;
-- if an abnormal transport loss occurs but authority still reports the same epoch, exact ActorSession resume remains the path;
-- if exact resume fails and reachable authority positively proves the source epoch is gone, canonical public-Yard clients fresh-recover into one replacement epoch instead of exhausting a dead token;
-- if authority evidence is unavailable/uncertain, continuity is not destroyed merely because of uncertainty;
-- W/A/S/D text input ownership is protected from gameplay handlers;
-- join failure copy can distinguish capacity, lifecycle protection, unavailable Yard, transport/handshake and unknown-state cases.
+- deterministic shared physics and exact-state integrity;
+- responsive ordinary foreground play;
+- same-WorldEpoch / same-ActorSession recovery when authority still exists;
+- bounded pre-start and committed-start recovery;
+- same-owner live takeover without weakening foreign-profile protection;
+- no permanent public-capacity ownership by dormant history;
+- protected -> soft -> demand-driven handoff semantics;
+- safe Resume-vs-fresh races with one authority-valid winner;
+- stale old-epoch token rejection;
+- bounded recovery from positively confirmed authority-epoch loss;
+- fail-closed behavior when authority state is uncertain;
+- keyboard text ownership and final semantic UI/gameplay keyboard ownership;
+- desktop/mobile control-surface separation.
+
+The 2026-09-10 Owner recording is human evidence that ordinary desktop play was stable and smooth and that the remaining visible defect was local UI/input ownership rather than broad multiplayer instability.
 
 ---
 
-## 5. Current lifecycle and capacity contract
+## 5. Important architectural boundary retained deliberately
 
-### Actor transport versus ActorSession
+The current implementation still uses a fixed deterministic two-actor topology. Therefore when one actor becomes replaceable and a new player needs the seat, the safe stabilization behavior is to rotate to a **fresh WorldEpoch** rather than mutate the roster inside the old epoch.
 
-WebSocket transport lifetime and ActorSession lifetime are separate. A private resume token owns only its exact ActorSession.
+This means shared physical history in the old epoch is lost on that replacement handoff.
 
-### Active all-transport grace
+That is an accepted limitation of the current baseline, **not the intended long-term semantics** for a persistent co-op sandbox or mini-MMO. The future architecture must separate at least:
 
-When an active two-player epoch loses all transports, the authority keeps the neutralized in-memory epoch alive for approximately 20 seconds (`20 * 60` ticks). Historical cartography still establishes preservation through 19 s and retirement after roughly 21 s.
+`world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
 
-### One-player waiting room
-
-A pure one-player pre-start waiting room remains fail-closed on disconnect. It does not hold a long-lived ambiguous two-player commitment.
-
-### Fully assembled pre-start ambiguity
-
-Once both ActorSessions exist, a bounded ambiguity window allows exact Resume because authority cannot know whether the final browser `ready` intent was successfully delivered before transport loss. Protocol start still requires both players ready and both transports live.
-
-### Protected reservation
-
-After one active actor disconnects, its private session remains protected through the existing recovery horizon. A stranger cannot preempt that seat yet.
-
-### Soft reservation
-
-After that protected horizon, the dormant exact session may still resume while unused, but it no longer has the right to block unrelated demand indefinitely.
-
-### Demand-driven handoff
-
-A fresh outsider requesting a soft-only active Yard retires the old fixed-2P WorldEpoch with a recoverable handoff and starts a fresh epoch for the same logical Yard. This avoids unsafe in-epoch dynamic roster replacement.
-
-### Fully vacant resumable epoch
-
-If both assembled actors are disconnected, there are zero active humans. Private Resume remains valid if it wins the race, but dormant history does not own public capacity. A fresh admission may retire the unused epoch and become the first actor in a fresh one.
-
-### Authority-process / epoch loss
-
-For canonical public Yards only:
-
-1. abnormal active transport loss first attempts exact ActorSession Resume;
-2. if authority still reports the same source epoch, exact Resume continues;
-3. if authority state is uncertain, exact Resume remains fail-closed and the token is retained;
-4. only positive reachable evidence that the source epoch is gone allows stale-token retirement;
-5. the browser then fresh-joins the same logical Yard;
-6. both recovering peers converge on one replacement epoch.
-
-The old physical world is not reconstructed.
+Do not implement that redesign during the current closure. Preserve it as a next-era architecture question after safe stop and repository cleanup.
 
 ---
 
-## 6. Latest qualification and adversarial evidence
+## 6. Explicit nonclaims
 
-### Authority-loss promotion
+The current foundation does not establish:
 
-- broad ephemeral candidate regression `34424103275` — **SUCCESS**;
-- promotion `34426170055` / job `102711755735` — **SUCCESS**;
-- promoted product `fef4a2a4...`.
+- durable reconstruction of a lost Box3D WorldEpoch;
+- a world that persists unchanged for hours with nobody online;
+- account/human identity spanning devices;
+- arbitrary dynamic membership inside one deterministic epoch;
+- 3+ player scalability;
+- seamless MMO-style actor succession;
+- guaranteed recovery through every mobile OS/radio suspension pattern;
+- a final character controller or perfect jump feel.
 
-### Post-promotion verification
-
-- focused post-promotion run `34426373914` — **SUCCESS**;
-- full Current Validation `34426331772` — **SUCCESS**.
-
-### Broad adversarial campaign
-
-Run `34428181101` — **SUCCESS / 8 of 8 jobs**.
-
-It included:
-
-- three repeated authority losses in one persistent browser pair;
-- authority loss while one peer was background-hidden;
-- retained history across all three public Yards without capacity exhaustion;
-- four fresh remote Cloudflare Durable Objects;
-- same-owner live rebound;
-- real keyboard text ownership;
-- soft reservation automatic handoff;
-- zero-online capacity release;
-- resumed-stayer composition;
-- direct-link exact Resume;
-- directory-outage fail-closed Resume.
-
-A separate authority race run `34428538218` — **SUCCESS** — observed both legal winner orders for private Resume versus unrelated fresh admission and no split-brain.
-
-This broad phase reached its automated stop condition: additional combinations stopped producing new product failure classes.
+The client still assumes exactly `self + one remote`.
 
 ---
 
-## 7. Current polish findings
+## 7. Current decision and next move
 
-### Canonical validation coverage
+Broad synthetic reliability expansion is stopped.
 
-The standard `npm run check` previously omitted the new authority-epoch-loss and join-failure-clarity modules/smokes. The polish branch now includes them in `check:client`, so the ordinary repository-green signal again covers the current stabilization product.
+The remaining current-stage action is a **small Owner sanity check** of the newly delivered UI v20 candidate:
 
-### Dependency/toolchain security
+1. on desktop, open and close Diagnostics several times and confirm WASD keeps working immediately without clicking a touch control or refreshing;
+2. confirm desktop no longer shows joystick/gimbal/JUMP;
+3. on mobile, confirm joystick/gimbal/JUMP still appear and work.
 
-`npm audit --omit=dev` reports **0 production vulnerabilities**.
+If those three observations pass, freeze `7755a668...` / Cloudflare Version `1cc9a0fd...` as the two-player stabilization baseline and enter deliberate safe stop.
 
-Three high-severity alerts remain in the development toolchain through:
+After that:
 
-`wrangler -> miniflare -> sharp`
-
-Current graph:
-
-- Wrangler `4.127.1`;
-- Miniflare `5.20260828.0-alpha`;
-- sharp `0.35.2`.
-
-An isolated upgrade to Wrangler `4.130.0` passed the complete repository validation but retained the same three dev-only findings (`sharp 0.35.2`). Therefore no toolchain change is being made merely to move a version number; this remains bounded dev-dependency debt pending an upstream graph that actually removes the advisories.
-
-### Documentation
-
-The old Current State, baseline gate and authority-loss design documents had become materially stale. They are being refreshed in the polish branch before Owner requalification.
+1. preserve exact evidence/provenance anchors;
+2. prepare and execute controlled branch/workflow archaeology and cleanup — no mass deletion;
+3. reconcile the stabilized baseline with the long-lived canonical repository branch;
+4. review Project Soul / repository role only after cleanup;
+5. only then open the next multiplayer architecture frontier, with 3+ players an early desired capability.
 
 ---
 
-## 8. Explicit nonclaims / remaining boundaries
+## 8. Fresh takeover order
 
-Do not promote these into capabilities:
-
-- no durable reconstruction of a lost Box3D WorldEpoch;
-- no account/cloud identity or cross-device private session transfer;
-- no persistent continuously-open-world architecture;
-- no arbitrary dynamic membership inside one epoch;
-- no 3+ player scalability yet;
-- no seamless MMO-style actor succession;
-- no guarantee through arbitrary permanent network loss;
-- no guarantee that every mobile OS/radio suspension pattern matches desktop transport tests;
-- no coyote time / landing buffer / broad character-controller forgiveness;
-- no final Owner qualification of the latest delivered `fef4...` candidate yet;
-- no broad repository branch deletion yet.
-
-The current client still assumes the fixed two-actor topology (`self + one remote`). That assumption is deliberately retained until the later 3+ architecture frontier.
-
----
-
-## 9. Current project decision
-
-The automated foundation campaign is strong enough to stop expanding by momentum.
-
-Current posture:
-
-> **The two-player multiplayer core is technically strong, broadly adversarially requalified and in final polish. One representative Owner desktop/mobile adversarial run remains before freeze.**
-
-If that human run passes:
-
-1. freeze exact baseline/provenance;
-2. enter deliberate safe stop;
-3. consolidate validation/workflow debt;
-4. classify and clean branches without losing provenance;
-5. refresh final takeover/current-state docs;
-6. only then formally review Project Soul and the longer-horizon role of Multi_World;
-7. only after that open the next multiplayer frontier, with 3+ players an early desired capability.
-
-If the Owner run finds a reproducible foundation failure, classify and repair that specific falsifier before safe stop instead.
-
----
-
-## 10. Fresh takeover reading order
-
-1. `MULTI_WORLD_PROJECT_SOUL.md` — durable purpose;
-2. **this file** — current technical/project truth;
-3. `WORLD_V0_FOUNDATION_STABILIZATION_DIRECTION.md` — current closure order and remaining gate;
-4. `WORLD_V0_QUALIFIED_BASELINE_GATE.md` — exact Owner qualification target;
-5. newest issue #8 checkpoint when detailed provenance matters;
-6. historical R0/R1/R2 docs only when a concrete question requires their evidence.
+1. `MULTI_WORLD_PROJECT_SOUL.md` — durable intent, intentionally not yet rewritten;
+2. **this file** — current factual state;
+3. `WORLD_V0_STABILIZATION_POLISH_LEDGER.md` — what was challenged/cleaned and preserved;
+4. `WORLD_V0_FOUNDATION_STABILIZATION_DIRECTION.md` — closure order;
+5. `WORLD_V0_QUALIFIED_BASELINE_GATE.md` — final human gate history;
+6. newest issue #8 checkpoint for exact provenance;
+7. older R0/R1/R2 docs only for a concrete historical question.

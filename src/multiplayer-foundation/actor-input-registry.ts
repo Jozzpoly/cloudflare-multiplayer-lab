@@ -1,7 +1,10 @@
+import { foundationCheckpointDigest } from "./checkpoint-digest.ts";
 import type {
   FoundationActorId,
   FoundationRosterSnapshot,
 } from "./roster-machine.ts";
+
+export const FOUNDATION_INPUT_CHECKPOINT_REVISION = "multiplayer-foundation-input-checkpoint-v1";
 
 export interface FoundationActorIntent {
   actorId: FoundationActorId;
@@ -32,10 +35,37 @@ type ActorInputChannel = {
   pendingByTick: Map<number, { x: number; z: number }>;
 };
 
+export interface FoundationActorInputCheckpoint {
+  revision: typeof FOUNDATION_INPUT_CHECKPOINT_REVISION;
+  worldEpoch: string;
+  maxFutureTicks: number;
+  rosterRevision: number;
+  channels: Array<{
+    actorId: FoundationActorId;
+    actorSessionId: string;
+    pending: Array<{
+      targetTick: number;
+      x: number;
+      z: number;
+    }>;
+  }>;
+  stateDigest: string;
+}
+
 function assertTick(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${label} must be a non-negative safe integer`);
   }
+}
+
+function assertNonEmpty(value: string, label: string): void {
+  if (value.length === 0) throw new Error(`${label} must be non-empty`);
+}
+
+function assertActorId(value: string, label: string): asserts value is FoundationActorId {
+  if (!/^actor:\d+$/.test(value)) throw new Error(`${label} must be a canonical actor:<ordinal> id`);
+  const ordinal = Number(value.slice("actor:".length));
+  if (!Number.isSafeInteger(ordinal) || ordinal < 0) throw new Error(`${label} contains an invalid actor ordinal`);
 }
 
 function normalizeIntent(x: number, z: number): [number, number] {
@@ -45,6 +75,19 @@ function normalizeIntent(x: number, z: number): [number, number] {
   const length = Math.hypot(x, z);
   if (length <= 1 || length < 1e-12) return [x, z];
   return [x / length, z / length];
+}
+
+function assertNormalizedIntent(x: number, z: number): void {
+  if (!Number.isFinite(x) || !Number.isFinite(z)) {
+    throw new Error("checkpoint actor input must be finite");
+  }
+  if (Math.hypot(x, z) > 1 + 1e-12) {
+    throw new Error("checkpoint actor input must already be normalized");
+  }
+}
+
+function actorOrdinal(actorId: FoundationActorId): number {
+  return Number(actorId.slice("actor:".length));
 }
 
 function sameOwnership(
@@ -73,6 +116,70 @@ export class FoundationActorInputRegistry {
     }
     this.worldEpoch = worldEpoch;
     this.maxFutureTicks = maxFutureTicks;
+  }
+
+  static fromCheckpoint(
+    checkpoint: FoundationActorInputCheckpoint,
+    roster: FoundationRosterSnapshot,
+  ): FoundationActorInputRegistry {
+    if (checkpoint.revision !== FOUNDATION_INPUT_CHECKPOINT_REVISION) {
+      throw new Error(`unsupported input checkpoint revision ${String(checkpoint.revision)}`);
+    }
+    assertNonEmpty(checkpoint.worldEpoch, "checkpoint worldEpoch");
+    if (!Number.isSafeInteger(checkpoint.maxFutureTicks) || checkpoint.maxFutureTicks < 1) {
+      throw new Error("checkpoint maxFutureTicks must be a positive safe integer");
+    }
+    assertTick(checkpoint.rosterRevision, "checkpoint rosterRevision");
+    if (!Array.isArray(checkpoint.channels)) throw new Error("checkpoint channels must be an array");
+    assertNonEmpty(checkpoint.stateDigest, "checkpoint stateDigest");
+    if (checkpoint.worldEpoch !== roster.worldEpoch) {
+      throw new Error("input checkpoint WorldEpoch does not match restored roster");
+    }
+    if (checkpoint.rosterRevision !== roster.topologyRevision) {
+      throw new Error("input checkpoint roster revision does not match restored roster topology revision");
+    }
+
+    const restored = new FoundationActorInputRegistry(checkpoint.worldEpoch, checkpoint.maxFutureTicks);
+    restored.syncRoster(roster);
+
+    const seenActorIds = new Set<FoundationActorId>();
+    for (const channelState of checkpoint.channels) {
+      assertActorId(channelState.actorId, "checkpoint actorId");
+      assertNonEmpty(channelState.actorSessionId, "checkpoint actorSessionId");
+      if (!Array.isArray(channelState.pending)) throw new Error("checkpoint pending inputs must be an array");
+      if (seenActorIds.has(channelState.actorId)) {
+        throw new Error(`checkpoint input channel ${channelState.actorId} is duplicated`);
+      }
+      seenActorIds.add(channelState.actorId);
+
+      const channel = restored.channels.get(channelState.actorId);
+      if (!channel) throw new Error(`checkpoint input channel ${channelState.actorId} is not active in restored roster`);
+      if (channel.actorSessionId !== channelState.actorSessionId) {
+        throw new Error(`checkpoint input owner mismatch for ${channelState.actorId}`);
+      }
+
+      const seenTicks = new Set<number>();
+      for (const pending of channelState.pending) {
+        assertTick(pending.targetTick, "checkpoint pending targetTick");
+        assertNormalizedIntent(pending.x, pending.z);
+        if (seenTicks.has(pending.targetTick)) {
+          throw new Error(`checkpoint input channel ${channelState.actorId} duplicates tick ${pending.targetTick}`);
+        }
+        seenTicks.add(pending.targetTick);
+        channel.pendingByTick.set(pending.targetTick, { x: pending.x, z: pending.z });
+      }
+    }
+    if (seenActorIds.size !== roster.actors.length) {
+      throw new Error("checkpoint input channels do not cover every active actor");
+    }
+
+    const rebuilt = restored.checkpoint();
+    if (rebuilt.stateDigest !== checkpoint.stateDigest) {
+      throw new Error(
+        `input checkpoint digest mismatch: restored ${rebuilt.stateDigest}, expected ${checkpoint.stateDigest}`,
+      );
+    }
+    return restored;
   }
 
   syncRoster(roster: FoundationRosterSnapshot): void {
@@ -157,7 +264,30 @@ export class FoundationActorInputRegistry {
 
   activeOwnership(): Array<{ actorId: FoundationActorId; actorSessionId: string }> {
     return [...this.channels.values()]
-      .sort((a, b) => Number(a.actorId.slice("actor:".length)) - Number(b.actorId.slice("actor:".length)))
+      .sort((a, b) => actorOrdinal(a.actorId) - actorOrdinal(b.actorId))
       .map(({ actorId, actorSessionId }) => ({ actorId, actorSessionId }));
+  }
+
+  checkpoint(): FoundationActorInputCheckpoint {
+    const channels = [...this.channels.values()]
+      .sort((a, b) => actorOrdinal(a.actorId) - actorOrdinal(b.actorId))
+      .map((channel) => ({
+        actorId: channel.actorId,
+        actorSessionId: channel.actorSessionId,
+        pending: [...channel.pendingByTick.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([targetTick, intent]) => ({ targetTick, x: intent.x, z: intent.z })),
+      }));
+    const checkpointBase = {
+      revision: FOUNDATION_INPUT_CHECKPOINT_REVISION,
+      worldEpoch: this.worldEpoch,
+      maxFutureTicks: this.maxFutureTicks,
+      rosterRevision: this.rosterRevision,
+      channels,
+    } as const;
+    return {
+      ...checkpointBase,
+      stateDigest: foundationCheckpointDigest(checkpointBase),
+    };
   }
 }

@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "multi-world-foundation-checkpoint-local-test",
+  "main": "src/multiplayer-foundation/checkpoint-store-test-worker.ts",
+  "compatibility_date": "2026-09-13",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "FOUNDATION_CHECKPOINT_TEST",
+        "class_name": "FoundationCheckpointTest"
+      }
+    ]
+  },
+  "exports": {
+    "FoundationCheckpointTest": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}

@@ -95,6 +95,16 @@ assert.equal(machine.snapshot().nextActorOrdinal, 7);
 assert.equal(machine.snapshot().topologyRevision, 8);
 assert.equal(machine.actorHistory().find((actor) => actor.actorId === "actor:2")?.retiredAtTick, 30);
 
+const reusedRetiredSession = join("reuse-retired-session", 31, "session-c");
+assert.equal(machine.queue(reusedRetiredSession), "queued");
+assert.equal(
+  machine.advanceTo(31)[0]?.status,
+  "rejected_duplicate_session",
+  "retirement is terminal for one ActorSession identity inside the WorldEpoch",
+);
+assert.equal(machine.snapshot().topologyRevision, 8, "reusing a retired ActorSession must not mutate topology");
+assert.equal(machine.snapshot().nextActorOrdinal, 7, "reusing a retired ActorSession must not consume actor identity");
+
 const duplicate = join("join-idempotent", 40, "session-h");
 assert.equal(machine.queue(duplicate), "queued");
 assert.equal(machine.queue({ ...duplicate }), "idempotent", "an exact retry must not enqueue twice");
@@ -123,6 +133,8 @@ replay.queue(rejectedAtCapacity);
 replay.advanceTo(21);
 queueAll(replay, replacementMutations);
 replay.advanceTo(30);
+replay.queue(reusedRetiredSession);
+replay.advanceTo(31);
 replay.queue(duplicate);
 replay.advanceTo(40);
 assert.deepEqual(
@@ -150,5 +162,5 @@ assert.deepEqual(
 );
 
 console.log(
-  "MULTIPLAYER FOUNDATION ROSTER SMOKE PASS · dynamic 1→6 late join + capacity + transport rebind + monotonic actor ids + churn + deterministic replay",
+  "MULTIPLAYER FOUNDATION ROSTER SMOKE PASS · dynamic 1→6 late join + terminal ActorSession identity + capacity + transport rebind + monotonic actor ids + churn + deterministic replay",
 );

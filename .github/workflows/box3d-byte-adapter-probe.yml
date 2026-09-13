@@ -212,11 +212,29 @@ jobs:
           cd "$RUNNER_TEMP/box3d-js"
           node byte-probe.mjs
 
+      - name: Install foundation runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          npm ci
+
       - name: Exercise full authority recovery in a fresh Node/WASM process
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/node_modules"
-          ln -s "$RUNNER_TEMP/box3d-js" "$GITHUB_WORKSPACE/node_modules/box3d.js"
           cd "$GITHUB_WORKSPACE"
+          rm -rf node_modules/box3d.js
+          ln -s "$RUNNER_TEMP/box3d-js" node_modules/box3d.js
           node --experimental-strip-types scripts/multiplayer-foundation-authority-byte-process-smoke.ts "$RUNNER_TEMP/authority-envelope.json"
+
+      - name: Carry full authority envelope through SQLite restart and consume again
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          node scripts/multiplayer-foundation-sqlite-payload-restart-smoke.mjs \
+            "$RUNNER_TEMP/authority-envelope.json" \
+            "$RUNNER_TEMP/authority-envelope-sqlite-recovered.json"
+          node --experimental-strip-types scripts/multiplayer-foundation-authority-byte-process-smoke.ts \
+            --consume "$RUNNER_TEMP/authority-envelope-sqlite-recovered.json"

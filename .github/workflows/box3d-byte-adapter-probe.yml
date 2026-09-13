@@ -219,6 +219,14 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           npm ci
 
+      - name: Exercise byte-capable Box3D inside workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          cp "$RUNNER_TEMP/box3d-js/dist/box3d.inline.mjs" scripts/fixtures/box3d-byte-probe.generated.mjs
+          node scripts/multiplayer-foundation-box3d-workerd-runtime-smoke.mjs
+
       - name: Exercise full authority recovery in a fresh Node/WASM process
         shell: bash
         run: |

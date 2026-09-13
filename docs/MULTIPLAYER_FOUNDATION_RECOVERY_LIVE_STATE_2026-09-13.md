@@ -2,7 +2,7 @@
 
 Date: 2026-09-13
 
-Status: **Gate 4A PASS / Gate 4B PASS / Gate 4C ACTIVE with L1–L3 PASS / not product-qualified**
+Status: **Gate 4A PASS / Gate 4B PASS / Gate 4C local stack L1–L4b PASS / not product-qualified**
 
 This document is the current recovery/persistence source of truth for the `research/multiplayer-foundation-v1-2026-09-13` branch. It narrows claims to executed evidence and intentionally does not redefine the long-horizon architecture.
 
@@ -57,7 +57,7 @@ Gate 4B establishes process-boundary recovery for this scoped specimen. It does 
 
 ### Gate 4C — durable storage / authority constructor restart
 
-**ACTIVE. Three lower layers are now PASS; actual authority-constructor recovery remains open.**
+**PASS through L4b for the scoped local Wrangler/workerd stack. Real deployed Cloudflare edge eviction remains unproven.**
 
 #### Gate 4C-L1 — transactional checkpoint-store model
 
@@ -136,18 +136,72 @@ Results:
 
 This proves that the current durable storage transport and restart path preserve the already-qualified authority checkpoint exactly.
 
-#### Gate 4C-L4 — authority reconstruction inside a fresh Durable Object constructor
+#### Gate 4C-L4a — byte-capable Box3D inside workerd
 
-**ACTIVE / unproven.**
+**PASS / scoped Workers-runtime capability specimen.**
 
-The remaining qualitative boundary is not another byte-copy test. The authority runtime itself must recover inside the Workers/Durable Object execution environment from durable storage after memory loss.
+Run `34786781239` rebuilt the same pinned Box3D/box3d.js source and established the minimum workerd-compatible packaging profile.
 
-This requires two things that are not yet established:
+Observed platform constraints:
 
-1. the exact byte-capable Box3D build must be loadable and operational inside the Workers runtime rather than only in Node,
-2. the authority recovery logic must have a Worker-compatible runtime path instead of living only in the Node probe script.
+- runtime Wasm generation / inline-Wasm assumptions are not suitable for workerd; the working path uses a statically imported precompiled `.wasm` module,
+- the generated Emscripten loader required its `_scriptName.startsWith(...)` environment check to tolerate an undefined script name in this runtime,
+- pinned Emscripten `6.0.2` required `-sDYNAMIC_EXECUTION=0` so Embind did not use runtime `new Function`,
+- the `box3d.js` facade independently used runtime code generation in `makeOutParamReader`; the isolated Workers build replaces that optimization with a CSP-safe closure/loop implementation while still reading the live heap after the raw call,
+- pinned Box3D bounds body names at `B3_BODY_NAME_LENGTH = 18`; recovery identity therefore needs bounded unique engine rebind tokens rather than unconstrained semantic IDs.
 
-Gate 4C must not be declared complete until a fresh authority constructor reconstructs semantic state + physics from SQLite and resumes canonical execution. Actual Cloudflare edge eviction remains a later independent qualification even after a local constructor specimen passes.
+Executed result:
+
+- Recording bytes copied: `8451`,
+- source Recording/world destroyed before reconstruction,
+- RecPlayer restored from bytes inside workerd,
+- active-contact future remained exact for 90 ticks.
+
+Result:
+
+`MULTIPLAYER FOUNDATION BOX3D WORKERD RUNTIME PASS`
+
+This qualifies the runtime capability for the pinned research build. It does not yet qualify a production distribution/package for the custom adapter.
+
+#### Gate 4C-L4b — full authority reconstruction in a fresh Durable Object constructor
+
+**PASS / scoped local Wrangler/workerd specimen.**
+
+Final run `34788380888` composed the already-defended SQLite store, the L4a Workers-compatible Box3D build, and the Gate 4B authority envelope into an actual fresh-constructor recovery path.
+
+Executed path:
+
+`live authority → serialized authority envelope → chunked SQLite publication in DO #1 → full Wrangler/workerd process death → DO #2 fresh constructor → blockConcurrencyWhile durable recovery → envelope validation → roster/input/topology reconstruction → Box3D RecPlayer reconstruction → semantic rebind → request handling enabled → exact canonical continuation through tick 329`
+
+The restart harness required all of the following:
+
+- the first constructor had `restoreState = empty`,
+- publishing the envelope did not mutate that in-memory constructor into a fake restored state,
+- the entire Wrangler/workerd process was killed,
+- the second constructor nonce differed from the first,
+- the second constructor reported `restoreState = restored` and the recovered boundary before `/resume` was allowed to exercise future ticks,
+- the restored boundary was generation `1`, canonical tick `260`, with physics payload `41829` bytes,
+- post-restore future remained exact through tick `329`, including the retire/replacement churn.
+
+Final deterministic cross-runtime specimen:
+
+- envelope bytes: `279033`,
+- physics bytes: `41829`,
+- fresh Node/WASM Gate 4B verification: PASS before the constructor test,
+- fresh DO constructor recovery: PASS,
+- exact future through tick `329`.
+
+Result:
+
+`MULTIPLAYER FOUNDATION AUTHORITY CONSTRUCTOR RESTART PASS`
+
+##### Diagnostic boundary discovered before the final PASS
+
+The first constructor specimen restored successfully but diverged at tick `268`. Instrumentation then showed that the **only** differing top-level field was `inputCheckpointDigest`; `guardPacked`, roster, topology, outcomes, and their digests remained exact. The divergence appeared after the physical step while the test generated the next synthetic input with `Math.cos/Math.sin` in Node versus workerd.
+
+The qualification rerun therefore did **not** weaken exact comparisons or add numerical tolerance. Instead, the cross-runtime test driver replaced that synthetic transcendental-input branch with exact cardinal inputs chosen from integer state in both producer and constructor consumer. Gate 4B was re-run first with the same deterministic driver and passed, then L4b passed end-to-end.
+
+The supported claim is therefore: **the recovered authority state and pinned physics runtime can continue exactly across the tested Node→workerd boundary when the cross-runtime test stimulus itself is exactly representable.** Bit-identical results of arbitrary host-JS transcendental math (`Math.sin`, `Math.cos`, etc.) across different runtimes are not qualified and are not part of the recovery contract.
 
 ## Defended recovery findings
 
@@ -157,11 +211,11 @@ Position, rotation, linear/angular velocity and awake state can reproduce free f
 
 ### Box3D seed snapshots can continue as live worlds
 
-A Recording started and stopped immediately at a step boundary can produce a seed-only snapshot with zero recorded future frames. Its restored world accepts new mutations and continues simulation. This has now survived in-process, fresh-process, and durable-storage composition specimens.
+A Recording started and stopped immediately at a step boundary can produce a seed-only snapshot with zero recorded future frames. Its restored world accepts new mutations and continues simulation. This has now survived in-process, fresh-process, durable-storage composition, direct workerd, and fresh-DO-constructor specimens.
 
 ### Historical source creation ordinals are not durable semantic identity
 
-Pre-checkpoint destroyed bodies are compacted out of the restored seed domain. Historical source creation ordinal therefore cannot be a durable entity key. The current scoped rebind uses unique persisted semantic Box3D body names and fail-closed restored-domain validation.
+Pre-checkpoint destroyed bodies are compacted out of the restored seed domain. Historical source creation ordinal therefore cannot be a durable entity key. The current scoped rebind uses unique bounded engine tokens derived from the semantic domain and fail-closed restored-domain validation. The pinned Box3D body-name carrier is limited to 18 bytes.
 
 ### Portable authority state has its own checkpoint contract
 
@@ -174,9 +228,14 @@ Current evidence supports a layered model:
 1. durable semantic/authority state with explicit versioned contracts,
 2. engine-specific exact runtime state for solver continuity,
 3. provenance-checked envelope binding both to the same canonical boundary,
-4. transactional durable publication that treats the envelope as opaque bytes.
+4. transactional durable publication that treats the envelope as opaque bytes,
+5. platform-specific runtime adapters that reconstruct the same authority contract after process/memory loss.
 
 Raw Box3D Recording bytes are build-specific recovery material, not the universal world/save format.
+
+### Exact cross-runtime tests need deterministic host-side stimuli
+
+The L4b diagnostic demonstrated that exact authority validation can be confounded by host-runtime differences in synthetic JS math even when the restored physics/semantic state itself is still exact. Cross-runtime qualification should therefore use stimuli with an explicitly deterministic representation or separately qualify the numeric function/runtime pair being compared. This is a testing boundary, not a reason to weaken state equality.
 
 ## Storage model boundaries
 
@@ -190,10 +249,10 @@ The store intentionally does not silently fall back to an older generation when 
 
 The following remain unproven:
 
-- actual authority reconstruction inside a fresh Durable Object constructor,
-- survival of a real Cloudflare edge eviction/restart,
-- production packaging/distribution of the custom Box3D byte bridge,
+- survival and correct recovery after a real Cloudflare edge eviction/restart rather than a local Wrangler/workerd process restart,
+- production packaging/distribution and upgrade policy for the custom Box3D byte bridge / CSP-safe Workers build,
 - stable runtime-checkpoint compatibility across Box3D/box3d.js builds,
+- arbitrary cross-runtime bit identity for host-JS transcendental math,
 - acceptable checkpoint size/cadence for large complex worlds,
 - checkpoint garbage-collection policy under long-running production churn,
 - rollback networking,
@@ -205,6 +264,6 @@ The following remain unproven:
 
 ## Current next move
 
-The immediate frontier is **Gate 4C-L4: Worker/Durable Object authority-constructor recovery**.
+The local L1–L4b recovery stack is now defended for this scoped research specimen. The next qualitative durability boundary is **deployed Cloudflare qualification**: preserve the same fail-closed envelope/store/constructor contracts while testing real platform lifecycle behavior rather than adding another local persistence abstraction.
 
-Do not add another persistence abstraction. Reuse the now-defended chunk/manifest/HEAD store. First qualify that the byte-capable Box3D build itself can execute in a Workers runtime; then move only the minimum recovery core needed to restore the existing authority envelope inside a fresh Durable Object constructor. Keep the custom engine adapter isolated until that evidence justifies a packaging decision.
+Before treating that as product capability, separately decide how the custom Workers-compatible Box3D build is packaged, versioned, fingerprinted and upgraded. A successful local constructor restart is strong architecture evidence, but it is not permission to silently promote the research adapter or claim real edge-eviction survival.

@@ -60,9 +60,11 @@ assert.equal(fullSnapshot.topologyRevision, 6);
 assert.equal(fullSnapshot.nextActorOrdinal, 6);
 assert.equal(fullSnapshot.topologyKey, "actor:0,actor:1,actor:2,actor:3,actor:4,actor:5");
 
-assert.equal(machine.queue(join("join-g-capacity", 21, "session-g")), "queued");
+const rejectedAtCapacity = join("join-g-capacity", 21, "session-g");
+assert.equal(machine.queue(rejectedAtCapacity), "queued");
 const capacityOutcome = machine.advanceTo(21);
 assert.equal(capacityOutcome[0]?.status, "rejected_capacity");
+assert.equal(machine.queue({ ...rejectedAtCapacity }), "idempotent", "an exact retry stays idempotent after execution");
 assert.equal(machine.snapshot().topologyRevision, 6, "capacity rejection must not mutate topology");
 assert.equal(machine.snapshot().nextActorOrdinal, 6, "a rejected join must not consume an actor ordinal");
 
@@ -104,10 +106,11 @@ assert.throws(
 
 // The room is still full, so the idempotent mutation is deterministically rejected.
 assert.equal(machine.advanceTo(40)[0]?.status, "rejected_capacity");
+assert.equal(machine.queue({ ...duplicate }), "idempotent", "execution must not destroy retry idempotency");
 assert.throws(
   () => machine.queue(join("past", 40, "session-past")),
   /future canonical tick/,
-  "membership mutations cannot rewrite canonical history",
+  "new membership mutations cannot rewrite canonical history",
 );
 assert.throws(() => machine.advanceTo(39), /cannot move backwards/);
 
@@ -116,7 +119,7 @@ assert.throws(() => machine.advanceTo(39), /cannot move backwards/);
 const replay = new FoundationRosterMachine({ worldEpoch: WORLD_EPOCH, capacity: CAPACITY });
 queueAll(replay, firstWave);
 replay.advanceTo(20);
-replay.queue(join("join-g-capacity", 21, "session-g"));
+replay.queue(rejectedAtCapacity);
 replay.advanceTo(21);
 queueAll(replay, replacementMutations);
 replay.advanceTo(30);

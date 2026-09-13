@@ -64,14 +64,16 @@ const player = b3.b3RecPlayer_CreateFromRecording(recording, 1);
 assert(player, "recording player creation failed");
 assert.equal(b3.b3RecPlayer_GetFrameCount(player), recordedFrames, "recording frame count drift");
 
+// Box3D's contract is `while (StepFrame())`: the final call returns false when
+// it consumes the end-of-recording boundary. `IsAtEnd` is therefore verified
+// after the loop rather than used as a precondition for every successful step.
 let replayedFrames = 0;
-while (!b3.b3RecPlayer_IsAtEnd(player)) {
-  const stepped = b3.b3RecPlayer_StepFrame(player);
-  assert.equal(stepped, true, "replay player reached an unexpected non-step before end-of-recording");
+while (b3.b3RecPlayer_StepFrame(player)) {
   replayedFrames += 1;
 }
 
 assert.equal(replayedFrames, recordedFrames, "replay did not execute every recorded frame");
+assert.equal(b3.b3RecPlayer_IsAtEnd(player), true, "replay must finish at end-of-recording");
 assert.equal(b3.b3RecPlayer_HasDiverged(player), false, "Box3D recording replay diverged from its embedded state hashes");
 assert.equal(b3.b3RecPlayer_GetDivergeFrame(player), -1, "non-diverged replay must not report a diverge frame");
 

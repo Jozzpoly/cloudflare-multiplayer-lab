@@ -59,7 +59,7 @@ function canonicalTopologyPayload(
   });
 }
 
-function sameEntityTopology(a: FoundationTopologyEntity[], b: FoundationTopologyEntity[]): boolean {
+function sameEntityBinding(a: FoundationTopologyEntity[], b: FoundationTopologyEntity[]): boolean {
   if (a.length !== b.length) return false;
   for (let index = 0; index < a.length; index += 1) {
     const left = a[index];
@@ -68,6 +68,7 @@ function sameEntityTopology(a: FoundationTopologyEntity[], b: FoundationTopology
       left.netEntityId !== right.netEntityId
       || left.kind !== right.kind
       || left.actorOrdinal !== right.actorOrdinal
+      || left.actorSessionId !== right.actorSessionId
     ) {
       return false;
     }
@@ -140,8 +141,8 @@ export class FoundationEntityTopology {
     }
 
     const nextEntities = [...actorEntities, ...this.worldEntities];
-    if (roster.topologyRevision === this.lastRosterRevision && !sameEntityTopology(nextEntities, this.lastEntities)) {
-      throw new Error("entity topology changed without a roster topology revision");
+    if (roster.topologyRevision === this.lastRosterRevision && !sameEntityBinding(nextEntities, this.lastEntities)) {
+      throw new Error("entity topology or actor binding changed without a roster topology revision");
     }
 
     this.lastRosterRevision = roster.topologyRevision;

@@ -111,28 +111,31 @@ jobs:
           end = facade_source.index(end_marker, start)
           original = facade_source[start:end]
           assert 'return new Function(' in original, 'expected facade runtime codegen not found'
-          replacement = '''\tconst makeOutParamReader = ( rawInto, sizes, trailing ) =>
-\t{
-\t\tlet byteOff = 0;
-\t\tconst slotPtrs = sizes.map( ( n ) => { const p = SCRATCH + byteOff; byteOff += n * 4; return p; } );
-\t\tlet elemOff = 0;
-\t\tconst elemBases = sizes.map( ( n ) => { const base = SCRATCH_F32 + elemOff; elemOff += n; return base; } );
-
-\t\treturn ( ...args ) =>
-\t\t{
-\t\t\tconst outs = args.slice( 0, sizes.length );
-\t\t\tconst trail = args.slice( sizes.length, sizes.length + trailing );
-\t\t\trawInto( ...slotPtrs, ...trail );
-\t\t\tconst h = getF32();
-\t\t\tfor ( let i = 0; i < sizes.length; i++ )
-\t\t\t{
-\t\t\t\tconst out = outs[ i ];
-\t\t\t\tconst base = elemBases[ i ];
-\t\t\t\tfor ( let k = 0; k < sizes[ i ]; k++ ) out[ k ] = h[ base + k ];
-\t\t\t}
-\t\t\treturn outs.length === 1 ? outs[ 0 ] : outs;
-\t\t};
-\t};'''
+          replacement_lines = [
+              '\tconst makeOutParamReader = ( rawInto, sizes, trailing ) =>',
+              '\t{',
+              '\t\tlet byteOff = 0;',
+              '\t\tconst slotPtrs = sizes.map( ( n ) => { const p = SCRATCH + byteOff; byteOff += n * 4; return p; } );',
+              '\t\tlet elemOff = 0;',
+              '\t\tconst elemBases = sizes.map( ( n ) => { const base = SCRATCH_F32 + elemOff; elemOff += n; return base; } );',
+              '',
+              '\t\treturn ( ...args ) =>',
+              '\t\t{',
+              '\t\t\tconst outs = args.slice( 0, sizes.length );',
+              '\t\t\tconst trail = args.slice( sizes.length, sizes.length + trailing );',
+              '\t\t\trawInto( ...slotPtrs, ...trail );',
+              '\t\t\tconst h = getF32();',
+              '\t\t\tfor ( let i = 0; i < sizes.length; i++ )',
+              '\t\t\t{',
+              '\t\t\t\tconst out = outs[ i ];',
+              '\t\t\t\tconst base = elemBases[ i ];',
+              '\t\t\t\tfor ( let k = 0; k < sizes[ i ]; k++ ) out[ k ] = h[ base + k ];',
+              '\t\t\t}',
+              '\t\t\treturn outs.length === 1 ? outs[ 0 ] : outs;',
+              '\t\t};',
+              '\t};',
+          ]
+          replacement = '\n'.join(replacement_lines)
           facade_source = facade_source[:start] + replacement + facade_source[end:]
           assert 'return new Function(' not in facade_source, 'facade runtime codegen remains after CSP patch'
           facade_path.write_text(facade_source)

@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "multi-world-foundation-checkpoint-local-test",
   "main": "src/multiplayer-foundation/checkpoint-store-test-worker.ts",
-  "compatibility_date": "2026-09-13",
+  "compatibility_date": "2026-08-29",
   "durable_objects": {
     "bindings": [
       {

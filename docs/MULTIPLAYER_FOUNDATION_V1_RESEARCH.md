@@ -36,14 +36,34 @@ Existing project evidence supports a useful baseline:
 
 This research branch must not silently invalidate those achievements.
 
+### Newly earned on this research branch
+
+Headless foundation evidence now covers:
+
+- canonical dynamic roster mutation through 1–6 active actors in one `WorldEpoch`;
+- capacity rejection without consuming actor identity;
+- transport loss/rebind without topology mutation;
+- monotonic actor ordinals with no identity reuse after retirement;
+- deterministic same-tick retirement/join ordering and mutation idempotency;
+- dynamic actor + persistent-world entity topology with revision/digest identity;
+- deterministic spawn selection that does not couple physical spawn position to actor identity;
+- variable-width exact float32 state guards bound to topology identity;
+- full repository CI compatibility for the combined foundation seams.
+
+Primary full-suite execution checkpoint for Gate 1 + Gate 2 core:
+
+- research head `540109717d642aa892785bbba5ef4302557e2dab`;
+- GitHub Actions run `34773206868`;
+- result: `completed / success`.
+
 ### Not earned yet
 
 The following remain research claims until independently certified:
 
-- arbitrary dynamic roster mutation;
 - 3–6 player product behavior;
-- late join into an active physical simulation;
-- dynamic client replica topology;
+- late join into an **active Box3D** physical simulation;
+- dynamic scheduled-input ownership integrated with the authority runtime;
+- dynamic browser replica topology;
 - durable reconstruction of the authoritative physical world after Durable Object restart/eviction/deployment;
 - acceptable CPU/bandwidth behavior at six active players;
 - donor portability into a second consumer;
@@ -135,14 +155,23 @@ This rule is intentionally exposed to falsification. It is not yet a frozen publ
 
 Static props may remain statically defined, but actors are dynamic.
 
-The next protocol/guard model should therefore carry or derive:
+The research contract now proves headlessly that topology can carry:
 
 - monotonically changing `topologyRevision`;
 - canonical active actor/entity order;
-- a topology key/digest;
+- a topology digest;
+- exact entity coverage checks;
 - state guards comparable only when topology identity is compatible.
 
 `simBuildId` remains code/config/schema identity. It must not be overloaded with current roster identity.
+
+### 5.5 Spawn is policy, not identity
+
+A physical entry point is not an actor slot.
+
+The current research seam deterministically selects the first safe candidate position from canonical policy order and current blockers. A later `actor:6` may therefore reuse a physical location once occupied by retired `actor:2` without reusing `actor:2` identity.
+
+This seam is intentionally replaceable by a more advanced spawn policy later.
 
 ## 6. Client consequence
 
@@ -157,7 +186,7 @@ Target client abstraction:
 - per-actor relayed canonical inputs where prediction needs them;
 - no assumption that the world begins only after a full fixed roster exists.
 
-This does **not** authorize a client rewrite yet. The headless topology contract must earn confidence first.
+This does **not** authorize a client rewrite yet. The headless authority physics contract must earn confidence first.
 
 ## 7. Recovery is a separate hard problem
 
@@ -228,17 +257,19 @@ A layer may advance only when the previous layer has enough evidence to make the
 
 ### Gate 0 — Boundary / live-truth audit
 
-Status: **ADEQUATE to begin isolated research**.
+Status: **ADEQUATE**.
 
-Required understanding already established:
+Evidence:
 
-- fixed-2P couplings were located across contract, authority orchestration, state guard, protocol start conditions, and browser client;
+- fixed-2P couplings located across contract, authority orchestration, state guard, protocol start conditions, and browser client;
 - current qualified World V0 remains untouched on `main`;
-- this research is isolated on a dedicated branch.
+- research isolated on a dedicated branch and draft PR.
 
 ### Gate 1 — Headless roster/lifecycle contract
 
-Required:
+Status: **PASS for the current research contract**.
+
+Proven by executable smoke + full repository CI:
 
 - 1→2→3→6 late joins in one `WorldEpoch`;
 - capacity rejection without identity consumption;
@@ -246,29 +277,49 @@ Required:
 - retirement and same-tick replacement;
 - no actor ordinal reuse;
 - deterministic same-tick competition;
-- exact mutation retry idempotency;
-- replay of identical canonical mutation log reproduces identical roster state/outcomes;
-- strict TypeScript + repository CI PASS.
+- exact mutation retry idempotency, including after execution;
+- replay of identical canonical mutation log reproduces identical roster state/outcomes.
 
-Current implementation candidate:
+Implementation/evidence:
 
 - `src/multiplayer-foundation/roster-machine.ts`
 - `scripts/multiplayer-foundation-roster-smoke.ts`
-
-Status: **IMPLEMENTED CANDIDATE / AWAITING EXECUTION EVIDENCE**.
+- full-suite checkpoint `540109717d642aa892785bbba5ef4302557e2dab`
+- Actions `34773206868` → `completed / success`
 
 ### Gate 2 — Dynamic entity/topology contract
 
-Required before client integration:
+Status: **CORE PASS / ADEQUATE TO ENTER HEADLESS PHYSICS INTEGRATION**.
 
-- static props + dynamic actor registry;
+Proven by executable smokes + full repository CI:
+
+- persistent world entities + dynamic actor registry;
 - topology revision/digest semantics;
-- generalized state guard;
-- deterministic spawn allocation policy;
-- scheduled-input ownership for dynamic actors;
-- dynamic join/retire incorporated without world reset.
+- exact entity coverage validation;
+- generalized variable-width float32 state guard bound to topology identity;
+- deterministic six-candidate spawn allocation policy;
+- actor identity remains independent from reusable physical spawn position;
+- stale/forged topology rejection;
+- transport-only changes do not invalidate topology/state-guard identity.
 
-Status: **NOT STARTED**.
+Implementation/evidence:
+
+- `src/multiplayer-foundation/entity-topology.ts`
+- `src/multiplayer-foundation/spawn-policy.ts`
+- `src/multiplayer-foundation/state-guard.ts`
+- `scripts/multiplayer-foundation-topology-smoke.ts`
+- `scripts/multiplayer-foundation-spawn-smoke.ts`
+- `scripts/multiplayer-foundation-state-guard-smoke.ts`
+- full-suite checkpoint `540109717d642aa892785bbba5ef4302557e2dab`
+- Actions `34773206868` → `completed / success`
+
+Still open inside the wider Gate 2/3 boundary:
+
+- dynamic scheduled-input ownership attached to real authority actors;
+- actual Box3D body creation/destruction on canonical roster mutations;
+- proof that topology/state guards remain coherent through physical churn.
+
+Those are intentionally moved into the headless authority integration experiment rather than being declared solved by abstract state machines.
 
 ### Gate 3 — Authority physics integration
 
@@ -276,10 +327,12 @@ Required:
 
 - Box3D authority can start with one actor;
 - 2nd–6th actors can enter a running simulation on canonical ticks;
-- churn does not corrupt entity ordering or input ownership;
+- retirement/replacement can remove/add physical actor bodies without corrupting the world;
+- dynamic scheduled-input ownership remains attached to the correct ActorSession/NetEntityId;
+- topology state guards cover the actual live Box3D entity set;
 - deterministic/bounded-repeatable headless scenarios.
 
-Status: **NOT STARTED**.
+Status: **NEXT ACTIVE FRONTIER / NOT YET PROVEN**.
 
 ### Gate 4 — Recovery / restart experiment
 
@@ -341,13 +394,13 @@ Status: **NOT STARTED**.
 
 ## 11. Near-term execution order
 
-1. Finish and execute Gate 1; fix semantic flaws before extending it.
-2. Add dynamic `NetEntityRegistry` / topology model and falsification tests.
-3. Decide spawn allocation semantics for 1–6 without reintroducing identity=slot coupling.
-4. Integrate the isolated roster/topology model into a headless Box3D authority fixture, not the product UI.
-5. Run the physical reconstruction experiment before promising persistent-world continuity.
-6. Only then cut a product-integration branch or phase for dynamic browser replicas and real 3–6 sessions.
-7. Preserve fixed-2P World V0 as a regression/reference specimen until the new line earns stronger evidence.
+1. Build a bounded headless Box3D authority fixture that starts with one actor and applies canonical joins through six while the world is already advancing.
+2. Add retirement/replacement churn and dynamic per-actor input ownership to that physical fixture.
+3. Bind actual live Box3D entity coverage to the dynamic topology/state guard and falsify stale/wrong ownership cases.
+4. Only after Gate 3 is credible, run the physical reconstruction experiment before promising persistent-world continuity.
+5. Then design the dynamic browser replica and late-join bootstrap path from earned authority semantics, rather than rewriting the client speculatively.
+6. Preserve fixed-2P World V0 as a regression/reference specimen until the new line earns stronger evidence.
+7. Qualify donor claims only with a second consumer/fixture, not folder structure or intention.
 
 ## 12. Decision rule
 

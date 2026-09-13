@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -12,11 +12,43 @@ const PORT = 8810;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const CONFIG = resolve("wrangler.foundation-authority-constructor-test.jsonc");
 const WRANGLER_BIN = resolve("node_modules/wrangler/bin/wrangler.js");
+const WORKER_FIXTURE = resolve("scripts/fixtures/multiplayer-foundation-authority-constructor-worker.mjs");
 const OBJECT = "gate-4c-authority-constructor";
 const PERSIST_DIR = mkdtempSync(join(tmpdir(), "multi-world-authority-constructor-"));
 const envelopeBytes = readFileSync(envelopePath);
 const envelope = JSON.parse(envelopeBytes.toString("utf8"));
 const envelopeSha256 = createHash("sha256").update(envelopeBytes).digest("hex");
+
+function instrumentDivergenceDiagnostics() {
+  const source = readFileSync(WORKER_FIXTURE, "utf8");
+  const needle = "          requireCondition(sameJson(actual, expected), `fresh-constructor authority divergence at tick ${expected.tick}`);";
+  assert.equal(source.split(needle).length - 1, 1, "constructor divergence diagnostic insertion point drifted");
+  const replacement = [
+    "          if (!sameJson(actual, expected)) {",
+    "            const differingKeys = Object.keys(expected).filter((key) => JSON.stringify(actual[key]) !== JSON.stringify(expected[key]));",
+    "            const details = differingKeys.map((key) => {",
+    "              const actualValue = actual[key];",
+    "              const expectedValue = expected[key];",
+    "              if (key === 'guardPacked' && typeof actualValue === 'string' && typeof expectedValue === 'string') {",
+    "                const limit = Math.min(actualValue.length, expectedValue.length);",
+    "                let firstDiff = -1;",
+    "                for (let index = 0; index < limit; index += 1) {",
+    "                  if (actualValue[index] !== expectedValue[index]) { firstDiff = index; break; }",
+    "                }",
+    "                if (firstDiff === -1 && actualValue.length !== expectedValue.length) firstDiff = limit;",
+    "                const start = Math.max(0, firstDiff - 32);",
+    "                const end = firstDiff < 0 ? 64 : firstDiff + 64;",
+    "                return `guardPacked:firstDiff=${firstDiff}:actualLength=${actualValue.length}:expectedLength=${expectedValue.length}:actualAround=${JSON.stringify(actualValue.slice(start, end))}:expectedAround=${JSON.stringify(expectedValue.slice(start, end))}`;",
+    "              }",
+    "              return `${key}:actual=${JSON.stringify(actualValue)}:expected=${JSON.stringify(expectedValue)}`;",
+    "            });",
+    "            throw new Error(`fresh-constructor authority divergence at tick ${expected.tick}; differingKeys=${differingKeys.join(',')}; ${details.join(' | ')}`);",
+    "          }",
+  ].join("\n");
+  writeFileSync(WORKER_FIXTURE, source.replace(needle, replacement));
+}
+
+instrumentDivergenceDiagnostics();
 
 function sleep(ms) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));

@@ -6,8 +6,11 @@ import {
 } from "../src/multiplayer-foundation/checkpoint-store.ts";
 
 class SimulatedCrash extends Error {
-  constructor(readonly operation: number) {
+  operation: number;
+
+  constructor(operation: number) {
     super(`simulated crash before persistent mutation ${operation}`);
+    this.operation = operation;
   }
 }
 
@@ -152,8 +155,6 @@ assert.equal(recovered1.head.generation, 1);
 assert.equal(recovered1.head.canonicalTick, 260);
 assertPayloadEqual(recovered1.payload, payload1, "generation 1 recovery");
 
-// First learn the exact number of persistent mutations required by a successful
-// generation-2 publication from the generation-1 durable state.
 const successfulProbe = generation1Store.clone();
 successfulProbe.clearFailureInjection();
 await publishFoundationCheckpoint(successfulProbe, {
@@ -172,8 +173,6 @@ assert.equal(recovered2.head.generation, 2);
 assert.equal(recovered2.head.canonicalTick, 300);
 assertPayloadEqual(recovered2.payload, payload2, "generation 2 recovery");
 
-// Crash before every durable mutation in a generation-2 publication. No point
-// before atomic HEAD publication is allowed to change the recoverable truth.
 for (let failBefore = 1; failBefore <= generation2PersistentMutations; failBefore += 1) {
   const trial = generation1Store.clone();
   trial.failBeforePersistentMutation(failBefore);
@@ -195,16 +194,12 @@ for (let failBefore = 1; failBefore <= generation2PersistentMutations; failBefor
   assertPayloadEqual(recovered.payload, payload1, `crash ${failBefore} recovery`);
 }
 
-// A process/runtime restart after successful HEAD publication sees only durable
-// data and must recover generation 2 exactly.
 const freshRuntimeStore = successfulGeneration2.clone();
 const freshRuntimeRecovered = await recoverFoundationCheckpoint(freshRuntimeStore);
 assert(freshRuntimeRecovered);
 assert.equal(freshRuntimeRecovered.head.generation, 2);
 assertPayloadEqual(freshRuntimeRecovered.payload, payload2, "fresh runtime generation 2");
 
-// Published corruption is never silently rolled back to an older generation.
-// The current generation must fail closed instead.
 const missingChunkStore = successfulGeneration2.clone();
 const currentForMissing = await recoverFoundationCheckpoint(missingChunkStore);
 assert(currentForMissing);
@@ -248,8 +243,6 @@ await assert.rejects(
   /checkpoint HEAD and manifest boundary mismatch/,
 );
 
-// Stale or duplicate generations cannot move the live truth backwards or
-// overwrite a current generation.
 await assert.rejects(
   () => publishFoundationCheckpoint(successfulGeneration2.clone(), {
     generation: 2,
@@ -271,8 +264,6 @@ await assert.rejects(
   /is not newer than 2/,
 );
 
-// A newer generation may reuse identical content-addressed chunks without
-// mutating them. Only the new manifest and HEAD need new durable mutations.
 const generation3Store = successfulGeneration2.clone();
 const immutableBeforeGeneration3 = generation3Store.immutableEntryCount();
 generation3Store.clearFailureInjection();
@@ -291,8 +282,6 @@ assert.equal(recovered3.head.generation, 3);
 assert.equal(recovered3.head.canonicalTick, 340);
 assertPayloadEqual(recovered3.payload, payload2, "generation 3 recovery");
 
-// Interrupted publication of N+1 may leak immutable orphan material, but it
-// cannot damage the already-published generation N.
 const generation4Payload = deterministicPayload(0x44444444, 350_123);
 const interruptedGeneration4 = generation3Store.clone();
 interruptedGeneration4.failBeforePersistentMutation(4);

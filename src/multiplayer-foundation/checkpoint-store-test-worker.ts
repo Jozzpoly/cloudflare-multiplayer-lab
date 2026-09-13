@@ -35,6 +35,10 @@ function json(payload: unknown, status = 200): Response {
   return Response.json(payload, { status, headers: { "cache-control": "no-store" } });
 }
 
+function ownedArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.slice().buffer as ArrayBuffer;
+}
+
 export class FoundationCheckpointTest extends DurableObject<CheckpointTestEnv> {
   private readonly checkpointStorage: FoundationCheckpointSqliteStorage;
   private readonly instanceNonce = crypto.randomUUID();
@@ -75,6 +79,37 @@ export class FoundationCheckpointTest extends DurableObject<CheckpointTestEnv> {
         });
       }
 
+      if (url.pathname === "/publish-bytes") {
+        if (request.method !== "POST") return json({ ok: false, error: "post_required" }, 405);
+        const generation = integerParam(url, "generation", 0, Number.MAX_SAFE_INTEGER);
+        const canonicalTick = integerParam(url, "tick", 0, Number.MAX_SAFE_INTEGER);
+        const chunkBytes = url.searchParams.has("chunk")
+          ? integerParam(url, "chunk", 1, MAX_TEST_PAYLOAD_BYTES)
+          : DEFAULT_CHUNK_BYTES;
+        const payload = new Uint8Array(await request.arrayBuffer());
+        if (payload.byteLength <= 0 || payload.byteLength > MAX_TEST_PAYLOAD_BYTES) {
+          throw new Error("invalid_payload_byte_length");
+        }
+        const head = await publishFoundationCheckpoint(this.checkpointStorage, {
+          generation,
+          worldEpoch: WORLD_EPOCH,
+          canonicalTick,
+          payload,
+          chunkBytes,
+        });
+        const recovered = await recoverFoundationCheckpoint(this.checkpointStorage);
+        if (!recovered) throw new Error("checkpoint_missing_immediately_after_publish");
+        return json({
+          ok: true,
+          instanceNonce: this.instanceNonce,
+          head,
+          payloadSha256: recovered.manifest.payloadSha256,
+          payloadByteLength: recovered.payload.byteLength,
+          chunkCount: recovered.manifest.chunks.length,
+          stats: this.checkpointStorage.stats(),
+        });
+      }
+
       if (url.pathname === "/recover") {
         const recovered = await recoverFoundationCheckpoint(this.checkpointStorage);
         return json({
@@ -91,6 +126,22 @@ export class FoundationCheckpointTest extends DurableObject<CheckpointTestEnv> {
               }
             : null,
           stats: this.checkpointStorage.stats(),
+        });
+      }
+
+      if (url.pathname === "/recover-bytes") {
+        const recovered = await recoverFoundationCheckpoint(this.checkpointStorage);
+        if (!recovered) return json({ ok: false, error: "checkpoint_not_found" }, 404);
+        return new Response(ownedArrayBuffer(recovered.payload), {
+          status: 200,
+          headers: {
+            "cache-control": "no-store",
+            "content-type": "application/octet-stream",
+            "x-foundation-generation": String(recovered.head.generation),
+            "x-foundation-canonical-tick": String(recovered.head.canonicalTick),
+            "x-foundation-payload-sha256": recovered.manifest.payloadSha256,
+            "x-foundation-instance-nonce": this.instanceNonce,
+          },
         });
       }
 

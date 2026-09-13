@@ -49,32 +49,35 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import os
 
-          path = Path(__import__('os').environ['RUNNER_TEMP']) / 'box3d-js' / 'src' / 'bindings.cpp'
+          path = Path(os.environ['RUNNER_TEMP']) / 'box3d-js' / 'src' / 'bindings.cpp'
           source = path.read_text()
-          needle = '''\tfunction( "b3RecPlayer_CreateFromRecording(recording, workerCount)", +[]( uintptr_t rec, int workerCount ) -> uintptr_t\n\t{\n\t\tb3Recording* r = reinterpret_cast<b3Recording*>( rec );\n\t\treturn reinterpret_cast<uintptr_t>( b3RecPlayer_Create( b3Recording_GetData( r ), b3Recording_GetSize( r ), workerCount ) );\n\t} );'''
+          needle = '\tfunction( "b3RecPlayer_CreateFromRecording(recording, workerCount)", +[]( uintptr_t rec, int workerCount ) -> uintptr_t\n\t{\n\t\tb3Recording* r = reinterpret_cast<b3Recording*>( rec );\n\t\treturn reinterpret_cast<uintptr_t>( b3RecPlayer_Create( b3Recording_GetData( r ), b3Recording_GetSize( r ), workerCount ) );\n\t} );'
           assert needle in source, 'exact recording helper insertion point drifted'
-          bridge = needle + r'''
-
-	ret_function( "b3Recording_CopyBytes(recording): Uint8Array", +[]( uintptr_t rec ) -> val
-	{
-		b3Recording* r = reinterpret_cast<b3Recording*>( rec );
-		const uint8_t* data = b3Recording_GetData( r );
-		int size = b3Recording_GetSize( r );
-		if ( data == nullptr || size <= 0 ) return val::global( "Uint8Array" ).new_( 0 );
-		val view = val( typed_memory_view( (size_t)size, data ) );
-		return val::global( "Uint8Array" ).new_( view );
-	} );
-
-	function( "b3RecPlayer_CreateFromBytes(bytes, workerCount)", +[]( val bytes, int workerCount ) -> uintptr_t
-	{
-		int size = bytes["byteLength"].as<int>();
-		if ( size <= 0 ) return 0;
-		std::vector<uint8_t> copy( (size_t)size );
-		val view = val( typed_memory_view( (size_t)size, copy.data() ) );
-		view.call<void>( "set", bytes );
-		return reinterpret_cast<uintptr_t>( b3RecPlayer_Create( copy.data(), size, workerCount ) );
-	} );'''
+          bridge_lines = [
+              '',
+              '\tret_function( "b3Recording_CopyBytes(recording): Uint8Array", +[]( uintptr_t rec ) -> val',
+              '\t{',
+              '\t\tb3Recording* r = reinterpret_cast<b3Recording*>( rec );',
+              '\t\tconst uint8_t* data = b3Recording_GetData( r );',
+              '\t\tint size = b3Recording_GetSize( r );',
+              '\t\tif ( data == nullptr || size <= 0 ) return val::global( "Uint8Array" ).new_( 0 );',
+              '\t\tval view = val( typed_memory_view( (size_t)size, data ) );',
+              '\t\treturn val::global( "Uint8Array" ).new_( view );',
+              '\t} );',
+              '',
+              '\tfunction( "b3RecPlayer_CreateFromBytes(bytes, workerCount)", +[]( val bytes, int workerCount ) -> uintptr_t',
+              '\t{',
+              '\t\tint size = bytes["byteLength"].as<int>();',
+              '\t\tif ( size <= 0 ) return 0;',
+              '\t\tstd::vector<uint8_t> copy( (size_t)size );',
+              '\t\tval view = val( typed_memory_view( (size_t)size, copy.data() ) );',
+              '\t\tview.call<void>( "set", bytes );',
+              '\t\treturn reinterpret_cast<uintptr_t>( b3RecPlayer_Create( copy.data(), size, workerCount ) );',
+              '\t} );',
+          ]
+          bridge = needle + '\n' + '\n'.join(bridge_lines)
           path.write_text(source.replace(needle, bridge))
           PY
 

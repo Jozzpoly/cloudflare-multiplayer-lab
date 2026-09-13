@@ -75,7 +75,7 @@ Final deterministic cross-runtime envelope: `279033` bytes. Gate 4B was re-run f
 
 Result: `MULTIPLAYER FOUNDATION AUTHORITY CONSTRUCTOR RESTART PASS`.
 
-A second full qualification run was triggered after hardening deterministic-driver assertions; `34788380888` remains sufficient primary evidence independently of that repeat.
+Confirming evidence: run `34788569624` repeated the entire hardened qualification pipeline successfully, including deterministic-driver assertions, independent fresh Node/WASM Gate 4B verification and fresh-constructor L4b recovery. Both full post-confounder qualification runs are green.
 
 ## L4b diagnostic boundary
 

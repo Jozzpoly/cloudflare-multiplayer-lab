@@ -1,4 +1,8 @@
+import { foundationCheckpointDigest } from "./checkpoint-digest.ts";
+
 export type FoundationActorId = `actor:${number}`;
+
+export const FOUNDATION_ROSTER_CHECKPOINT_REVISION = "multiplayer-foundation-roster-checkpoint-v1";
 
 export interface FoundationRosterConfig {
   worldEpoch: string;
@@ -69,6 +73,21 @@ export interface FoundationRosterSnapshot {
   actors: FoundationRosterActorView[];
 }
 
+export interface FoundationRosterCheckpoint {
+  revision: typeof FOUNDATION_ROSTER_CHECKPOINT_REVISION;
+  worldEpoch: string;
+  currentTick: number;
+  capacity: number;
+  topologyRevision: number;
+  nextActorOrdinal: number;
+  knownMutations: FoundationRosterMutation[];
+  transportConnectedBySession: Array<{
+    actorSessionId: string;
+    connected: boolean;
+  }>;
+  stateDigest: string;
+}
+
 function assertNonEmpty(value: string, label: string): void {
   if (value.length === 0) {
     throw new Error(`${label} must be non-empty`);
@@ -81,8 +100,22 @@ function assertTick(tick: number, label: string): void {
   }
 }
 
+function assertActorId(actorId: string, label: string): asserts actorId is FoundationActorId {
+  if (!/^actor:\d+$/.test(actorId)) {
+    throw new Error(`${label} must be a canonical actor:<ordinal> id`);
+  }
+  const ordinal = Number(actorId.slice("actor:".length));
+  if (!Number.isSafeInteger(ordinal) || ordinal < 0) {
+    throw new Error(`${label} contains an invalid actor ordinal`);
+  }
+}
+
 function actorIdForOrdinal(ordinal: number): FoundationActorId {
   return `actor:${ordinal}`;
+}
+
+function cloneMutation(mutation: FoundationRosterMutation): FoundationRosterMutation {
+  return { ...mutation };
 }
 
 function mutationSignature(mutation: FoundationRosterMutation): string {
@@ -105,6 +138,20 @@ function compareMutations(a: FoundationRosterMutation, b: FoundationRosterMutati
   return a.effectiveTick - b.effectiveTick
     || mutationPhase(a) - mutationPhase(b)
     || compareCanonicalStrings(a.mutationId, b.mutationId);
+}
+
+function assertMutationShape(mutation: FoundationRosterMutation): void {
+  assertNonEmpty(mutation.mutationId, "mutationId");
+  assertTick(mutation.effectiveTick, "effectiveTick");
+  if (mutation.kind === "join") {
+    assertNonEmpty(mutation.actorSessionId, "actorSessionId");
+    return;
+  }
+  if (mutation.kind === "retire") {
+    assertActorId(mutation.actorId, "actorId");
+    return;
+  }
+  throw new Error("roster mutation kind is invalid");
 }
 
 export class FoundationRosterMachine {
@@ -132,6 +179,81 @@ export class FoundationRosterMachine {
     this.capacity = config.capacity;
   }
 
+  static fromCheckpoint(checkpoint: FoundationRosterCheckpoint): FoundationRosterMachine {
+    if (checkpoint.revision !== FOUNDATION_ROSTER_CHECKPOINT_REVISION) {
+      throw new Error(`unsupported roster checkpoint revision ${String(checkpoint.revision)}`);
+    }
+    assertNonEmpty(checkpoint.worldEpoch, "checkpoint worldEpoch");
+    assertTick(checkpoint.currentTick, "checkpoint currentTick");
+    assertTick(checkpoint.topologyRevision, "checkpoint topologyRevision");
+    assertTick(checkpoint.nextActorOrdinal, "checkpoint nextActorOrdinal");
+    if (!Number.isSafeInteger(checkpoint.capacity) || checkpoint.capacity < 1) {
+      throw new Error("checkpoint capacity must be a positive safe integer");
+    }
+    if (!Array.isArray(checkpoint.knownMutations)) {
+      throw new Error("checkpoint knownMutations must be an array");
+    }
+    if (!Array.isArray(checkpoint.transportConnectedBySession)) {
+      throw new Error("checkpoint transportConnectedBySession must be an array");
+    }
+    assertNonEmpty(checkpoint.stateDigest, "checkpoint stateDigest");
+
+    const restored = new FoundationRosterMachine({
+      worldEpoch: checkpoint.worldEpoch,
+      capacity: checkpoint.capacity,
+    });
+
+    for (const mutation of checkpoint.knownMutations) {
+      assertMutationShape(mutation);
+      restored.queue(cloneMutation(mutation));
+    }
+    restored.advanceTo(checkpoint.currentTick);
+
+    const expectedSessions = new Map(
+      restored.snapshot().actors.map((actor) => [actor.actorSessionId, actor] as const),
+    );
+    const seenTransportSessions = new Set<string>();
+    for (const entry of checkpoint.transportConnectedBySession) {
+      assertNonEmpty(entry.actorSessionId, "checkpoint transport actorSessionId");
+      if (typeof entry.connected !== "boolean") {
+        throw new Error("checkpoint transport connected must be boolean");
+      }
+      if (seenTransportSessions.has(entry.actorSessionId)) {
+        throw new Error(`checkpoint transport session ${entry.actorSessionId} is duplicated`);
+      }
+      seenTransportSessions.add(entry.actorSessionId);
+      if (!expectedSessions.has(entry.actorSessionId)) {
+        throw new Error(`checkpoint transport session ${entry.actorSessionId} is not an active actor`);
+      }
+      const applied = restored.setTransportConnected(entry.actorSessionId, entry.connected);
+      if (!applied) {
+        throw new Error(`checkpoint transport session ${entry.actorSessionId} failed to restore`);
+      }
+    }
+    if (seenTransportSessions.size !== expectedSessions.size) {
+      throw new Error("checkpoint transport state does not cover every active ActorSession");
+    }
+
+    if (restored.topologyRevision !== checkpoint.topologyRevision) {
+      throw new Error(
+        `roster checkpoint topology revision mismatch: restored ${restored.topologyRevision}, expected ${checkpoint.topologyRevision}`,
+      );
+    }
+    if (restored.nextActorOrdinal !== checkpoint.nextActorOrdinal) {
+      throw new Error(
+        `roster checkpoint next actor ordinal mismatch: restored ${restored.nextActorOrdinal}, expected ${checkpoint.nextActorOrdinal}`,
+      );
+    }
+
+    const rebuilt = restored.checkpoint();
+    if (rebuilt.stateDigest !== checkpoint.stateDigest) {
+      throw new Error(
+        `roster checkpoint digest mismatch: restored ${rebuilt.stateDigest}, expected ${checkpoint.stateDigest}`,
+      );
+    }
+    return restored;
+  }
+
   get currentTick(): number {
     return this.currentTickValue;
   }
@@ -145,11 +267,7 @@ export class FoundationRosterMachine {
   }
 
   queue(mutation: FoundationRosterMutation): "queued" | "idempotent" {
-    assertNonEmpty(mutation.mutationId, "mutationId");
-    assertTick(mutation.effectiveTick, "effectiveTick");
-    if (mutation.kind === "join") {
-      assertNonEmpty(mutation.actorSessionId, "actorSessionId");
-    }
+    assertMutationShape(mutation);
 
     const signature = mutationSignature(mutation);
     const knownSignature = this.knownMutationSignatureById.get(mutation.mutationId);
@@ -165,7 +283,7 @@ export class FoundationRosterMachine {
     }
 
     this.knownMutationSignatureById.set(mutation.mutationId, signature);
-    this.pendingByMutationId.set(mutation.mutationId, mutation);
+    this.pendingByMutationId.set(mutation.mutationId, cloneMutation(mutation));
     return "queued";
   }
 
@@ -229,6 +347,35 @@ export class FoundationRosterMachine {
       topologyKey: actors.map((actor) => actor.actorId).join(","),
       nextActorOrdinal: this.nextActorOrdinalValue,
       actors,
+    };
+  }
+
+  checkpoint(): FoundationRosterCheckpoint {
+    const knownMutations = [...this.knownMutationSignatureById.values()]
+      .map((signature) => JSON.parse(signature) as FoundationRosterMutation)
+      .sort(compareMutations)
+      .map(cloneMutation);
+    const transportConnectedBySession = this.snapshot().actors.map((actor) => ({
+      actorSessionId: actor.actorSessionId,
+      connected: actor.transportConnected,
+    }));
+    const checkpointBase = {
+      revision: FOUNDATION_ROSTER_CHECKPOINT_REVISION,
+      worldEpoch: this.worldEpoch,
+      currentTick: this.currentTickValue,
+      capacity: this.capacity,
+      topologyRevision: this.topologyRevisionValue,
+      nextActorOrdinal: this.nextActorOrdinalValue,
+      knownMutations,
+      transportConnectedBySession,
+    } as const;
+
+    return {
+      ...checkpointBase,
+      stateDigest: foundationCheckpointDigest({
+        ...checkpointBase,
+        canonicalState: this.canonicalStateForReplay(),
+      }),
     };
   }
 

@@ -167,7 +167,7 @@ This qualifies the runtime capability for the pinned research build. It does not
 
 **PASS / scoped local Wrangler/workerd specimen.**
 
-Final run `34788380888` composed the already-defended SQLite store, the L4a Workers-compatible Box3D build, and the Gate 4B authority envelope into an actual fresh-constructor recovery path.
+Run `34788380888` composed the already-defended SQLite store, the L4a Workers-compatible Box3D build, and the Gate 4B authority envelope into an actual fresh-constructor recovery path.
 
 Executed path:
 
@@ -215,7 +215,7 @@ A Recording started and stopped immediately at a step boundary can produce a see
 
 ### Historical source creation ordinals are not durable semantic identity
 
-Pre-checkpoint destroyed bodies are compacted out of the restored seed domain. Historical source creation ordinal therefore cannot be a durable entity key. The current scoped rebind uses unique bounded engine tokens derived from the semantic domain and fail-closed restored-domain validation. The pinned Box3D body-name carrier is limited to 18 bytes.
+Pre-checkpoint destroyed bodies are compacted out of the restored seed domain. Historical source creation ordinal therefore cannot be a durable entity key. The current scoped rebind uses unique bounded engine tokens from the semantic domain and fail-closed restored-domain validation. The pinned Box3D body-name carrier is limited to 18 bytes.
 
 ### Portable authority state has its own checkpoint contract
 

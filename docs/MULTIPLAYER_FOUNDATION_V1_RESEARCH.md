@@ -1,30 +1,38 @@
 # Multi_World Multiplayer Foundation v1 — research contract
 
-Status: **RESEARCH / NOT PRODUCT QUALIFIED / DO NOT MERGE AS A CLAIM OF READINESS**  
+Status: **RESEARCH / GATE 3 HEADLESS AUTHORITY PASS / NOT PRODUCT QUALIFIED**  
 Date: 2026-09-13  
 Research branch: `research/multiplayer-foundation-v1-2026-09-13`  
 Grounding base: `main@031c092d38430c73ecf033c5244f62545db204e2`
 
-## 1. Why this frontier exists
+Long-horizon donor/architecture program:
 
-The qualified fixed-2P Shared Yard remains valuable evidence, but its current topology is not the intended long-term multiplayer abstraction.
+- [`MULTIPLAYER_FOUNDATION_LONG_HORIZON.md`](MULTIPLAYER_FOUNDATION_LONG_HORIZON.md)
 
-The next product frontier is not "change 2 to 6". It is to earn a multiplayer foundation that:
+This document remains the **bounded executable 1–6 physical-world campaign**. The long-horizon document records cross-project requirements and architecture hypotheses. Neither is permission to merge the research branch as a claim of product readiness.
 
-- runs naturally with **1–6 concurrently active actors** in one shared authoritative physical world;
-- allows actors to join an already-running `WorldEpoch` without resetting that world;
-- distinguishes world lifetime, actor membership lifetime, ActorSession lifetime, and transport binding lifetime;
-- preserves the useful authority / scheduled-input / prediction / reconciliation / identity lessons already qualified in World V0;
-- is architected so the reusable multiplayer semantics can later be extracted as a donor rather than remaining inseparable from one Multi_World yard;
-- stays narrow enough to falsify before we build accounts, MMO infrastructure, distributed physics, or other speculative layers.
+## 1. Frontier
 
-The qualified World V0 implementation is therefore a **reference specimen and donor of earned evidence**, not source code that must be generalized line-by-line.
+The qualified fixed-2P Shared Yard remains valuable reference evidence, but its fixed topology is not the intended long-term multiplayer abstraction.
 
-## 2. Evidence already earned vs. evidence not yet earned
+The bounded v1 frontier must prove that one authoritative physical world can:
 
-### Earned by the existing World V0 line
+- run naturally with 1–6 concurrently active actors;
+- accept actors after the world has already started;
+- retire and replace actors without recreating the world;
+- keep world, membership, ActorSession and transport lifetimes distinct;
+- preserve exact ownership between scheduled intent and physical actor;
+- generalize dynamic topology/state guards beyond `actor:0 + actor:1`;
+- remain compatible with the qualified World V0 line while research stays isolated;
+- provide evidence useful to a future portable core without pretending that the current Box3D/tick model is universal.
 
-Existing project evidence supports a useful baseline:
+The qualified World V0 implementation is a **reference specimen and donor of earned evidence**, not code that must be generalized line-by-line.
+
+## 2. Evidence truth
+
+### Existing World V0 evidence
+
+The accepted line already supports:
 
 - one server-authoritative shared physical world;
 - scheduled canonical input;
@@ -32,378 +40,275 @@ Existing project evidence supports a useful baseline:
 - epoch/build identity guards;
 - ActorSession continuity and bounded reconnect semantics;
 - bounded transport-loss handling;
-- Owner-qualified fixed-2P product behavior.
+- Owner-qualified fixed-2P behavior.
 
 This research branch must not silently invalidate those achievements.
 
-### Newly earned on this research branch
+### Gate-1/2 execution evidence
 
-Headless foundation evidence now covers:
+Headless foundation evidence covers:
 
 - canonical dynamic roster mutation through 1–6 active actors in one `WorldEpoch`;
 - capacity rejection without consuming actor identity;
 - transport loss/rebind without topology mutation;
+- terminal ActorSession identity inside one epoch;
 - monotonic actor ordinals with no identity reuse after retirement;
-- deterministic same-tick retirement/join ordering and mutation idempotency;
+- deterministic same-tick retirement/join ordering;
+- mutation idempotency, including retry after execution;
 - dynamic actor + persistent-world entity topology with revision/digest identity;
-- deterministic spawn selection that does not couple physical spawn position to actor identity;
-- variable-width exact float32 state guards bound to topology identity;
-- full repository CI compatibility for the combined foundation seams.
+- deterministic spawn selection independent from actor identity;
+- variable-width exact float32 state guards bound to topology identity.
 
-Primary full-suite execution checkpoint for Gate 1 + Gate 2 core:
+Earlier full-suite checkpoint:
 
-- research head `540109717d642aa892785bbba5ef4302557e2dab`;
-- GitHub Actions run `34773206868`;
+- `540109717d642aa892785bbba5ef4302557e2dab`;
+- Actions `34773206868`;
+- `completed / success`.
+
+### Gate-3 execution evidence — 2026-09-13
+
+The decisive headless authority fixture is now part of the normal repository `npm run check` path.
+
+Execution checkpoint:
+
+- research head `44745053e88fa4603693ea5cba77c5c6e779ab08`;
+- GitHub Actions run `34775518201`;
+- job `103772805970`;
 - result: `completed / success`.
+
+The executed log contains PASS results for:
+
+- roster;
+- topology;
+- spawn policy;
+- dynamic state guard;
+- input ownership;
+- live Box3D authority physics;
+- existing World V0 regressions;
+- A2R forecast check;
+- TypeScript;
+- Worker dry-run validation.
+
+The physical smoke specifically demonstrated:
+
+- one Box3D world survives the entire scenario;
+- physical membership changes `0→1→2→3→4→5→6` while that world is advancing;
+- per-ActorSession scheduled input drives the correct physical actor;
+- wrong ownership is rejected by the input seam;
+- `actor:2` retires and its actual Box3D body is destroyed;
+- replacement `actor:6` enters in the same `WorldEpoch` without actor-ID reuse;
+- final exact state guard covers 18 live entities: six actors + twelve props;
+- a second complete run produces the same topology digest, final exact float32 guard and checkpoint guards.
+
+This is **Gate-3 PASS for the scoped headless authority specimen**.
+
+It is not evidence for browser `self + N`, six-human product feel, Durable Object restart continuity or production scale.
 
 ### Not earned yet
 
-The following remain research claims until independently certified:
+The following remain unproven:
 
-- 3–6 player product behavior;
-- late join into an **active Box3D** physical simulation;
-- dynamic scheduled-input ownership integrated with the authority runtime;
-- dynamic browser replica topology;
-- durable reconstruction of the authoritative physical world after Durable Object restart/eviction/deployment;
-- acceptable CPU/bandwidth behavior at six active players;
-- donor portability into a second consumer;
-- continuous-world / MMO semantics.
+- 3–6 player browser product behavior;
+- dynamic browser replica topology and late-join bootstrap;
+- durable reconstruction of the physical world after runtime/DO loss;
+- real storage checkpoint/recovery semantics;
+- acceptable CPU/network behavior under real/synthetic multi-client load;
+- resilience under controlled latency/jitter/loss/duplicate/reorder;
+- hidden/private recipient projection as a portable capability;
+- non-physics canonical ordering semantics;
+- donor portability into independent consumers;
+- interest management, world partition, authority migration or MMO-scale semantics.
 
-## 3. Platform conclusion — provisional but evidence-backed
+## 3. Platform conclusion — current scope
 
-For the 1–6 player frontier, **one authoritative Cloudflare Durable Object per world/room remains the default architecture**.
+For the present small-room physical frontier, **one authoritative Cloudflare Durable Object per world/room remains current-best**.
 
-This is not a claim that one Durable Object scales to every future Multi_World ambition. It is a scoped conclusion for this frontier:
+This is a scoped deployment choice, not the portable multiplayer architecture.
 
-- Cloudflare explicitly positions Durable Objects as a single coordination point for multiple clients, including multiplayer games;
-- the Hibernation WebSocket API permits far more connections than this frontier needs (platform maximum 32,768 per Durable Object, with practical CPU/memory limits applying earlier);
-- SQLite-backed Durable Object storage is transactional and strongly consistent;
-- Durable Object in-memory state is lost on eviction/restart and must not be treated as durable truth.
+Current platform facts relevant to the decision:
 
-Therefore the immediate scaling risk is **simulation/lifecycle/recovery design**, not a six-WebSocket platform ceiling.
+- Durable Objects are intended to coordinate multiple clients, including multiplayer workloads;
+- Hibernation WebSockets can keep client connections while the DO is not resident in memory;
+- the documented per-DO WebSocket ceiling is far beyond this experiment, while CPU/memory workload remains the practical constraint;
+- SQLite-backed DO storage is available but does not make in-memory Box3D state durable by itself;
+- eviction/restart can destroy in-memory runtime state;
+- a DO currently remains at its creation location, so future geographic placement/migration is a distinct scaling concern.
 
-Official sources checked 2026-09-13:
+Therefore Gate 4 is about **recovery semantics**, not merely writing something to SQLite.
 
-- https://developers.cloudflare.com/durable-objects/best-practices/websockets/
-- https://developers.cloudflare.com/durable-objects/api/state/
-- https://developers.cloudflare.com/durable-objects/reference/in-memory-state/
-- https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/
-- https://developers.cloudflare.com/durable-objects/concepts/durable-object-lifecycle/
-- https://developers.cloudflare.com/durable-objects/platform/limits/
+## 4. Bounded architecture seams
 
-## 4. Architectural boundary
-
-The intended foundation should separate these concepts even if early implementation keeps some of them in one process/class:
+For the current real-time physical profile, keep these responsibilities distinct even if implementation remains compact:
 
 | Boundary | Responsibility |
 | --- | --- |
-| `WorldIdentity / WorldEpoch` | identity of one canonical physical-world run |
-| `ActorSession` | logical playable actor continuity inside that world |
-| `TransportBinding` | currently attached WebSocket/device connection; replaceable |
-| `RosterState` | active memberships and canonical join/retire history |
-| `AuthorityRuntime` | canonical tick and physical simulation |
-| `NetEntityRegistry` | dynamic actor entities plus world/static entities |
-| `WorldCheckpoint` | durable reconstruction material, still unqualified |
-| `ReplicationProtocol` | snapshots, inputs, topology changes, rebase |
-| product policy | capacity, spawn policy, retention policy, UX |
+| `WorldIdentity / WorldEpoch` | identity of one canonical physical-world continuity run |
+| `ActorSession` | logical actor continuity inside that epoch |
+| `TransportBinding` | replaceable socket/device attachment |
+| `RosterState` | canonical membership and join/retire history |
+| `ActorInputRegistry` | ActorSession → ActorId scheduled-intent ownership |
+| `AuthorityRuntime` | canonical fixed-step physical simulation |
+| `EntityTopology` | current dynamic physical/entity membership + revision/digest |
+| `SpawnPolicy` | physical placement policy, explicitly not actor identity |
+| `StateGuard` | exact scoped authority evidence bound to topology identity |
+| `WorldCheckpoint` | candidate durable reconstruction material; not qualified yet |
+| `ReplicationProtocol` | future bootstrap/state/topology/input/rebase semantics |
+| product policy | capacity, retention, spawn UX, room rules, visibility |
 
-A future donor should expose the semantics above without requiring Multi_World-specific yard layout or UI and without hard-coding Cloudflare APIs into the portable core.
+The cross-project architecture must later generalize only the semantics that survive non-physics falsifiers. In particular, do **not** promote `effectiveTick` into a universal API before a transaction/revision fixture proves what the shared canonical-order contract actually is.
 
-## 5. Core invariants for the first executable foundation
+## 5. Earned invariants
 
-These are active hypotheses being converted into executable checks.
+### 5.1 Membership mutation
 
-### 5.1 Canonical membership mutation
+For the physical profile, join/retire are canonical mutations effective at canonical ticks.
 
-A join or retirement is a **canonical world event effective at a canonical tick**.
+A socket opening/closing is not itself a topology mutation.
 
-A WebSocket opening/closing by itself is not a topology mutation.
-
-This means:
+Consequences:
 
 - transport loss does not retire an actor;
-- reconnect/rebind to the same ActorSession does not allocate a new actor;
-- fresh membership enters at an explicit future tick;
-- retirement enters at an explicit future tick;
-- canonical history cannot be rewritten by scheduling a new mutation in the past.
+- reconnect/rebind does not allocate a replacement actor;
+- new membership/retirement cannot rewrite past canonical history;
+- exact mutation retries are idempotent;
+- one `mutationId` cannot alias different payloads.
 
-### 5.2 Stable actor identity
+### 5.2 Actor identity
 
-Within one `WorldEpoch`:
+Inside one `WorldEpoch`:
 
-- actors receive monotonically increasing `actorOrdinal` values;
-- actor NetEntityId is initially `actor:<actorOrdinal>`;
-- ordinals are never reused after retirement;
-- capacity counts active memberships, not the highest ordinal ever allocated.
+- actor ordinals increase monotonically;
+- actor IDs are not reused after retirement;
+- ActorSession identity is terminal after it has owned an actor;
+- capacity counts active memberships rather than historical ordinal range;
+- physical spawn locations can be reused independently of identity.
 
-This deliberately removes the current coupling `slot = players.size = actor identity`.
-
-### 5.3 Deterministic same-tick ordering
-
-Membership mutations sharing a tick need a deterministic cross-runtime order.
+### 5.3 Same-tick ordering
 
 Current research rule:
 
-1. retirements execute before joins at the same tick, allowing deterministic same-tick replacement;
-2. within one phase, mutations are ordered by explicit byte/code-unit lexical `mutationId` ordering, not locale-sensitive comparison;
-3. an exact repeated `mutationId` + payload is idempotent even after execution;
-4. reusing a `mutationId` for a different payload is invalid.
+1. retirement before join;
+2. lexical canonical `mutationId` ordering within a phase;
+3. exact idempotent retries;
+4. conflicting mutation-ID reuse rejected.
 
-This rule is intentionally exposed to falsification. It is not yet a frozen public protocol.
+This is a tested physical-profile rule, not a frozen universal protocol.
 
-### 5.4 Dynamic topology
+### 5.4 Dynamic physical topology
 
-Static props may remain statically defined, but actors are dynamic.
+The headless specimen supports:
 
-The research contract now proves headlessly that topology can carry:
+- dynamic actor body creation/destruction;
+- persistent props;
+- topology revision + digest;
+- exact live-entity coverage checks;
+- topology-bound exact state guards;
+- runtime churn without recreating the world.
 
-- monotonically changing `topologyRevision`;
-- canonical active actor/entity order;
-- a topology digest;
-- exact entity coverage checks;
-- state guards comparable only when topology identity is compatible.
+`simBuildId` remains code/config/schema identity and is not overloaded with current roster identity.
 
-`simBuildId` remains code/config/schema identity. It must not be overloaded with current roster identity.
+### 5.5 Input ownership
 
-### 5.5 Spawn is policy, not identity
+Scheduled physical intent is bound to `(ActorId, ActorSession)`.
 
-A physical entry point is not an actor slot.
+- another ActorSession cannot steer that actor;
+- retired actors lose their input channel;
+- replacement actors get fresh ownership;
+- transport detach/rebind does not change actor ownership;
+- malformed temporal ownership cannot silently retarget a body.
 
-The current research seam deterministically selects the first safe candidate position from canonical policy order and current blockers. A later `actor:6` may therefore reuse a physical location once occupied by retired `actor:2` without reusing `actor:2` identity.
+## 6. Recovery — Gate 4
 
-This seam is intentionally replaceable by a more advanced spawn policy later.
+SQLite storage exists, but physical continuity is still unproven.
 
-## 6. Client consequence
+First bounded reconstruction experiment:
 
-The existing singular `self + remote` client shape cannot be the long-term foundation.
-
-Target client abstraction:
-
-- one local controlled actor;
-- `0..N` remote actor replicas keyed by stable NetEntityId;
-- dynamic add/remove visuals and simulation bodies;
-- rebase against a dynamic entity registry/topology revision;
-- per-actor relayed canonical inputs where prediction needs them;
-- no assumption that the world begins only after a full fixed roster exists.
-
-This does **not** authorize a client rewrite yet. The headless authority physics contract must earn confidence first.
-
-## 7. Recovery is a separate hard problem
-
-SQLite-backed Durable Object storage exists in the current deployment configuration, but the live Box3D runtime is currently in-memory and is not thereby durable.
-
-The foundation must explicitly decide what a dormant/restarted world means.
-
-First bounded experiment:
-
-1. run authoritative Box3D to canonical tick `T`;
-2. capture candidate reconstruction material (`recording`/canonical state + required metadata);
-3. destroy the in-memory simulation;
-4. construct a clean authority runtime;
-5. restore at `T`;
-6. replay an identical scheduled-input suffix;
-7. compare canonical guards over a bounded horizon;
-8. measure checkpoint size, restore latency, divergence, and write frequency/cost.
+1. start a live authority scenario and advance to canonical tick `T`;
+2. capture candidate reconstruction material plus exact epoch/build/topology/provenance metadata;
+3. destroy the entire in-memory Box3D authority runtime;
+4. construct a clean runtime;
+5. restore at the intended continuity boundary;
+6. apply the same canonical input/mutation suffix;
+7. compare exact state guards at restoration and across a bounded future horizon;
+8. measure checkpoint size, encode/decode cost, restore latency and divergence;
+9. intentionally corrupt/stale/incompatibly version checkpoint material and require fail-closed rejection.
 
 Possible outcomes:
 
-- **A — exact/bounded-exact reconstruction:** recording/state checkpoint becomes a viable recovery primitive;
-- **B — reproducible but non-exact:** define an explicit recovery discontinuity or stronger canonical serialization strategy;
-- **C — unstable/too expensive:** reject the approach before product integration.
+- **A — exact reconstruction:** checkpoint + bounded suffix can represent continuity for the scoped runtime;
+- **B — deterministic but discontinuous reconstruction:** define an explicit recovery/rebase/new-epoch contract;
+- **C — unstable or impractical:** reject the checkpoint strategy and test a different boundary.
 
-Until this experiment passes, "durable world" is **not proven**.
+A restart may never silently impersonate continuity that the reconstruction evidence does not support.
 
-For the near term, a dormant world may legitimately freeze when no active players remain. Simulating elapsed offscreen time is a separate product feature, not a hidden infrastructure requirement.
+After the pure runtime experiment, repeat through real Durable Object storage/lifecycle apparatus.
 
-## 8. Performance and scaling policy
+## 7. Browser consequence — Gate 5
 
-For 1–6 actors, prefer measurement over premature infrastructure.
+The current fixed `self + remote` client is not the target.
 
-Do not introduce binary protocols, interest management, multi-DO distributed physics, regional shards, or custom compression merely because they may be useful at future scale.
+Required dynamic browser model:
 
-Measure first at 1 / 2 / 3 / 6 players:
+- one local controlled actor;
+- `0..N` remote replicas keyed by stable actor/entity identity;
+- dynamic add/remove;
+- topology-aware bootstrap and rebase;
+- late join into an already-running world;
+- reconnect/resume semantics derived from Gate-4 continuity rules;
+- existing prediction/reconciliation behavior preserved or deliberately replaced with stronger evidence.
 
-- authority CPU time per simulation step and per wall-clock second;
-- catch-up loops / dropped or late ticks;
-- inbound/outbound WebSocket messages per second;
-- bytes per client per second and aggregate bytes per room;
-- snapshot serialization size/time;
-- client simulation/reconciliation cost;
-- disconnect/reconnect behavior under artificial loss;
-- Durable Object duration/storage behavior once durable recovery is introduced.
+Do not rewrite the browser merely because Gate 3 is green. Recovery/bootstrap semantics should first tell the client exactly what state continuity means.
 
-An `O(N²)` relay is not automatically a defect at `N <= 6`; it becomes a defect when measured cost or future donor requirements justify replacement.
+## 8. Resilience and scaling — Gate 6+
 
-## 9. Deliberate non-goals for this frontier
+Initial measured points remain 1 / 2 / 3 / 6, followed by an upward sweep until a real bottleneck appears.
 
-Do not expand current implementation scope into:
+Measure:
 
-- accounts / passwords / global player identity;
-- inventory/economy persistence;
-- seamless MMO actor succession;
-- multi-region simulation of one physical world;
-- splitting one small physical room across several authority processes;
-- hundreds/thousands of actors in one simulation;
-- production matchmaking;
-- final anti-cheat/security architecture;
-- final binary network protocol;
-- arbitrary continuous offline world time.
+- authority CPU per tick and wall-clock second;
+- catch-up/overrun behavior;
+- memory;
+- input/snapshot/topology serialization time and size;
+- messages and bytes per client/room;
+- browser simulation/reconciliation cost;
+- reconnect and late-join cost;
+- checkpoint write/restore cost;
+- controlled latency, jitter, loss, duplicate and reorder;
+- failure diagnostics.
 
-Extension seams are welcome. Speculative implementation is not.
+Do not introduce binary encoding, interest management, spatial partitioning, distributed physics or regional shards merely because they may be useful later.
 
-## 10. Certification ladder
+The long-horizon architecture deliberately preserves seams for them so measured evidence can introduce the correct mechanism at the correct layer.
 
-A layer may advance only when the previous layer has enough evidence to make the next test informative.
+## 9. Certification ladder
 
-### Gate 0 — Boundary / live-truth audit
+| Gate | Scope | Status |
+| --- | --- | --- |
+| 0 | fixed-2 coupling / live-truth boundary audit | **ADEQUATE** |
+| 1 | roster + membership lifecycle | **PASS** |
+| 2 | dynamic topology + spawn + state guard | **PASS / scoped** |
+| 3 | live headless Box3D 0→6 + ownership + churn + repeatability | **PASS / scoped authority specimen** |
+| 4 | physical reconstruction + restart/storage semantics | **ACTIVE NEXT FRONTIER / UNPROVEN** |
+| 5 | dynamic browser `self + N`, bootstrap, late join, resume | **UNPROVEN** |
+| 6 | deterministic network faults + synthetic load + scale sweep | **UNPROVEN** |
+| 7 | real 3–6 human Owner/friend sessions | **UNPROVEN** |
+| 8 | independent donor consumers / cross-domain portability | **UNPROVEN** |
 
-Status: **ADEQUATE**.
+Gate 8 is expanded in the long-horizon program: a physics-only second fixture is insufficient for a claim of broad portfolio portability. At least one non-physics semantic falsifier and one authored-world/assembly falsifier should eventually challenge the proposed shared core.
 
-Evidence:
+## 10. Current execution order
 
-- fixed-2P couplings located across contract, authority orchestration, state guard, protocol start conditions, and browser client;
-- current qualified World V0 remains untouched on `main`;
-- research isolated on a dedicated branch and draft PR.
+1. Keep fixed-2P World V0 untouched as qualified reference/regression evidence.
+2. Reconcile Gate-3 PASS into PR/project truth.
+3. Execute Gate-4 pure physical reconstruction falsifier.
+4. Run a small cross-domain research thread on canonical order/command/projection without changing the physical runtime API prematurely.
+5. After recovery semantics are grounded, build dynamic browser bootstrap/replicas.
+6. Build deterministic network impairment + N-client load apparatus before asking the Owner to act as routine QA.
+7. Put real humans into the system only when automation has removed avoidable infrastructure uncertainty.
+8. Promote donor claims only when materially different consumers prove the boundaries are genuinely portable.
 
-### Gate 1 — Headless roster/lifecycle contract
+## 11. Quality rule
 
-Status: **PASS for the current research contract**.
+Move aggressively on **isolated reversible falsifiers** and slowly on **claims, public contracts, migration and irreversible architecture**.
 
-Proven by executable smoke + full repository CI:
-
-- 1→2→3→6 late joins in one `WorldEpoch`;
-- capacity rejection without identity consumption;
-- reconnect/transport loss without topology mutation;
-- retirement and same-tick replacement;
-- no actor ordinal reuse;
-- deterministic same-tick competition;
-- exact mutation retry idempotency, including after execution;
-- replay of identical canonical mutation log reproduces identical roster state/outcomes.
-
-Implementation/evidence:
-
-- `src/multiplayer-foundation/roster-machine.ts`
-- `scripts/multiplayer-foundation-roster-smoke.ts`
-- full-suite checkpoint `540109717d642aa892785bbba5ef4302557e2dab`
-- Actions `34773206868` → `completed / success`
-
-### Gate 2 — Dynamic entity/topology contract
-
-Status: **CORE PASS / ADEQUATE TO ENTER HEADLESS PHYSICS INTEGRATION**.
-
-Proven by executable smokes + full repository CI:
-
-- persistent world entities + dynamic actor registry;
-- topology revision/digest semantics;
-- exact entity coverage validation;
-- generalized variable-width float32 state guard bound to topology identity;
-- deterministic six-candidate spawn allocation policy;
-- actor identity remains independent from reusable physical spawn position;
-- stale/forged topology rejection;
-- transport-only changes do not invalidate topology/state-guard identity.
-
-Implementation/evidence:
-
-- `src/multiplayer-foundation/entity-topology.ts`
-- `src/multiplayer-foundation/spawn-policy.ts`
-- `src/multiplayer-foundation/state-guard.ts`
-- `scripts/multiplayer-foundation-topology-smoke.ts`
-- `scripts/multiplayer-foundation-spawn-smoke.ts`
-- `scripts/multiplayer-foundation-state-guard-smoke.ts`
-- full-suite checkpoint `540109717d642aa892785bbba5ef4302557e2dab`
-- Actions `34773206868` → `completed / success`
-
-Still open inside the wider Gate 2/3 boundary:
-
-- dynamic scheduled-input ownership attached to real authority actors;
-- actual Box3D body creation/destruction on canonical roster mutations;
-- proof that topology/state guards remain coherent through physical churn.
-
-Those are intentionally moved into the headless authority integration experiment rather than being declared solved by abstract state machines.
-
-### Gate 3 — Authority physics integration
-
-Required:
-
-- Box3D authority can start with one actor;
-- 2nd–6th actors can enter a running simulation on canonical ticks;
-- retirement/replacement can remove/add physical actor bodies without corrupting the world;
-- dynamic scheduled-input ownership remains attached to the correct ActorSession/NetEntityId;
-- topology state guards cover the actual live Box3D entity set;
-- deterministic/bounded-repeatable headless scenarios.
-
-Status: **NEXT ACTIVE FRONTIER / NOT YET PROVEN**.
-
-### Gate 4 — Recovery / restart experiment
-
-Required:
-
-- authoritative reconstruction experiment described above;
-- deliberate process/DO restart or eviction-oriented validation;
-- storage schema and failure semantics;
-- evidence that a restart cannot silently masquerade as continuity when physical state was lost.
-
-Status: **NOT STARTED**.
-
-### Gate 5 — Dynamic browser replica certification
-
-Required:
-
-- self + N peers;
-- live add/remove;
-- generalized rebase;
-- late join snapshot/bootstrap;
-- existing prediction/reconciliation quality not silently regressed.
-
-Status: **NOT STARTED**.
-
-### Gate 6 — synthetic 1/2/3/6 resilience + load
-
-Required:
-
-- repeatable six-client harness;
-- latency/loss/reconnect stimulus;
-- CPU/network metrics;
-- failure diagnostics and no hidden fixed-2 assumptions.
-
-Status: **NOT STARTED**.
-
-### Gate 7 — Owner / human multiplayer qualification
-
-Required only after automation makes the build worth human attention:
-
-- real 3–6 player sessions;
-- mixed desktop/mobile where useful;
-- gameplay feel and visibility of peers;
-- reconnection and late-join behavior observed as a person, not inferred from headless PASS.
-
-Status: **NOT STARTED**.
-
-### Gate 8 — donor qualification
-
-A foundation is not "donor-grade" because it lives in a folder named foundation.
-
-Required evidence:
-
-- a second deliberately small consumer/fixture uses the core without importing Multi_World yard/UI policy;
-- platform-specific adapters are separable from portable semantics;
-- extraction does not require copying hidden assumptions from World V0;
-- donor documentation states exactly what is portable and what remains product-specific.
-
-Status: **NOT STARTED**.
-
-## 11. Near-term execution order
-
-1. Build a bounded headless Box3D authority fixture that starts with one actor and applies canonical joins through six while the world is already advancing.
-2. Add retirement/replacement churn and dynamic per-actor input ownership to that physical fixture.
-3. Bind actual live Box3D entity coverage to the dynamic topology/state guard and falsify stale/wrong ownership cases.
-4. Only after Gate 3 is credible, run the physical reconstruction experiment before promising persistent-world continuity.
-5. Then design the dynamic browser replica and late-join bootstrap path from earned authority semantics, rather than rewriting the client speculatively.
-6. Preserve fixed-2P World V0 as a regression/reference specimen until the new line earns stronger evidence.
-7. Qualify donor claims only with a second consumer/fixture, not folder structure or intention.
-
-## 12. Decision rule
-
-Move fast on **reversible isolated experiments** and slowly on **claims, migrations, and irreversible architecture**.
-
-The research branch may change aggressively. `main` and the qualified product should move only when a bounded body of evidence demonstrates that the new foundation preserves what matters and actually removes the fixed-2P constraints it claims to remove.
+A green CI run is evidence only for checks that actually executed. Owner time is used for multiplayer feel and product judgement after machine-verifiable lifecycle, authority, recovery and resilience claims have been pushed as far as practical by automation.

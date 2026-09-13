@@ -211,3 +211,12 @@ jobs:
           JS
           cd "$RUNNER_TEMP/box3d-js"
           node byte-probe.mjs
+
+      - name: Exercise full authority recovery in a fresh Node/WASM process
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/node_modules"
+          ln -s "$RUNNER_TEMP/box3d-js" "$GITHUB_WORKSPACE/node_modules/box3d.js"
+          cd "$GITHUB_WORKSPACE"
+          node --experimental-strip-types scripts/multiplayer-foundation-authority-byte-process-smoke.ts "$RUNNER_TEMP/authority-envelope.json"

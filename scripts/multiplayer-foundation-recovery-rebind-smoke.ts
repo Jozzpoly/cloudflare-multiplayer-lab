@@ -8,7 +8,7 @@ type BodyId = ReturnType<typeof b3.b3CreateBody>;
 
 type ManifestEntry = {
   semanticId: string;
-  creationOrdinal: number;
+  sourceCreationOrdinal: number;
   expectedActive: boolean;
 };
 
@@ -31,7 +31,7 @@ function createBox(world: WorldId, name: string, position: [number, number, numb
 }
 
 const sourceWorld = createWorld();
-let nextOrdinal = 0;
+let nextSourceOrdinal = 0;
 const manifest: ManifestEntry[] = [];
 
 const createManifestBody = (
@@ -39,9 +39,9 @@ const createManifestBody = (
   position: [number, number, number],
   dynamic: boolean,
 ): BodyId => {
-  const creationOrdinal = nextOrdinal;
-  nextOrdinal += 1;
-  manifest.push({ semanticId, creationOrdinal, expectedActive: true });
+  const sourceCreationOrdinal = nextSourceOrdinal;
+  nextSourceOrdinal += 1;
+  manifest.push({ semanticId, sourceCreationOrdinal, expectedActive: true });
   return createBox(sourceWorld, semanticId, position, dynamic);
 };
 
@@ -85,38 +85,38 @@ createBox(spoilerWorld, "spoiler", [20, 20, 20], true);
 const player = b3.b3RecPlayer_CreateFromRecording(recording, 1);
 assert(player, "seed-only recording must create a replay player");
 assert.equal(b3.b3RecPlayer_GetFrameCount(player), 0, "identity checkpoint must remain seed-only");
-assert.equal(b3.b3RecPlayer_GetBodyCount(player), nextOrdinal, "creation-ordinal domain must survive recovery");
 
+const activeManifest = manifest.filter((entry) => entry.expectedActive);
+const restoredBodyCount = b3.b3RecPlayer_GetBodyCount(player);
+assert.equal(restoredBodyCount, activeManifest.length, "seed snapshot must expose exactly the bodies active at checkpoint time");
+assert.equal(nextSourceOrdinal, 5, "fixture must create five source bodies across churn");
+assert.equal(restoredBodyCount, 4, "destroyed pre-checkpoint body must not occupy a recovered body ordinal");
+
+// Important recovery boundary: RecPlayer ordinals are valid creation ordinals
+// inside the reconstructed seed/replay world, but a seed snapshot compacts away
+// bodies destroyed before recording starts. Historical source ordinals therefore
+// cannot be used as durable semantic identity. Rebind once by persisted body name.
 const rebound = new Map<string, BodyId>();
-for (const entry of manifest) {
-  const restored = b3.b3RecPlayer_GetBodyId(player, entry.creationOrdinal);
-  if (!entry.expectedActive) {
-    assert.equal(
-      b3.b3Body_IsValid(restored),
-      false,
-      `destroyed creation ordinal ${entry.creationOrdinal} (${entry.semanticId}) must remain unresolved after restore`,
-    );
-    continue;
-  }
-
-  assert.equal(
-    b3.b3Body_IsValid(restored),
-    true,
-    `active creation ordinal ${entry.creationOrdinal} (${entry.semanticId}) failed to rebind`,
-  );
-  assert.equal(
-    b3.b3Body_GetName(restored),
-    entry.semanticId,
-    `creation ordinal ${entry.creationOrdinal} rebound to the wrong semantic body`,
-  );
-  rebound.set(entry.semanticId, restored);
+for (let restoredOrdinal = 0; restoredOrdinal < restoredBodyCount; restoredOrdinal += 1) {
+  const restored = b3.b3RecPlayer_GetBodyId(player, restoredOrdinal);
+  assert.equal(b3.b3Body_IsValid(restored), true, `restored body ordinal ${restoredOrdinal} must be valid`);
+  const semanticId = b3.b3Body_GetName(restored);
+  assert(semanticId.length > 0, `restored body ordinal ${restoredOrdinal} must carry a semantic body name`);
+  assert.equal(rebound.has(semanticId), false, `duplicate restored semantic body name ${semanticId}`);
+  rebound.set(semanticId, restored);
 }
 
+assert.equal(rebound.has("actor:1"), false, "retired pre-checkpoint actor must not reappear after restore");
 assert.deepEqual(
-  [...rebound.keys()],
-  ["world:ground", "actor:0", "prop:0", "actor:2"],
-  "recovery manifest must expose exactly the active semantic identities",
+  [...rebound.keys()].sort(),
+  activeManifest.map((entry) => entry.semanticId).sort(),
+  "recovered semantic body-name domain must match the checkpoint's active manifest exactly",
 );
+for (const entry of activeManifest) {
+  const restored = rebound.get(entry.semanticId);
+  assert(restored, `active semantic body ${entry.semanticId} failed to rebind by persisted name`);
+  assert.equal(b3.b3Body_GetName(restored), entry.semanticId);
+}
 
 const restoredWorld = b3.b3RecPlayer_GetWorldId(player);
 const restoredActor0 = rebound.get("actor:0")!;
@@ -136,5 +136,5 @@ b3.b3DestroyRecording(recording);
 b3.b3DestroyWorld(spoilerWorld);
 
 console.log(
-  "MULTIPLAYER FOUNDATION RECOVERY REBIND SMOKE PASS · semantic identity rebound through public Box3D creation ordinals + persisted body-name guards · destroyed ordinal remained invalid · post-restore mutation remained live",
+  "MULTIPLAYER FOUNDATION RECOVERY REBIND SMOKE PASS · pre-checkpoint churn compacted replay ordinals as expected · active semantic identity rebound by persisted unique Box3D body names · retired identity stayed absent · post-restore mutation remained live",
 );

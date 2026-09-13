@@ -1,0 +1,6 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "multi-world-foundation-box3d-workerd-test",
+  "main": "scripts/fixtures/multiplayer-foundation-box3d-workerd-probe.mjs",
+  "compatibility_date": "2026-08-29"
+}

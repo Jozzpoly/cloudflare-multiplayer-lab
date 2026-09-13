@@ -1,0 +1,210 @@
+name: Box3D byte adapter probe
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-v1-2026-09-13
+    paths:
+      - .github/workflows/box3d-byte-adapter-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  byte-adapter-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout foundation repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install pinned Emscripten
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 6.0.2
+          "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.2
+
+      - name: Checkout exact box3d.js source and Box3D submodule
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/isaac-mason/box3d.js.git "$RUNNER_TEMP/box3d-js"
+          cd "$RUNNER_TEMP/box3d-js"
+          git checkout 5d5a3af049cccd9948b2b55bac4342414af0ef64
+          git submodule update --init --recursive
+          test "$(git rev-parse HEAD)" = "5d5a3af049cccd9948b2b55bac4342414af0ef64"
+          test "$(git -C vendor/box3d rev-parse HEAD)" = "8441b4a06d6d09dcfb0b0f704df4d847d1437b92"
+
+      - name: Add minimal recording byte bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path(__import__('os').environ['RUNNER_TEMP']) / 'box3d-js' / 'src' / 'bindings.cpp'
+          source = path.read_text()
+          needle = '''\tfunction( "b3RecPlayer_CreateFromRecording(recording, workerCount)", +[]( uintptr_t rec, int workerCount ) -> uintptr_t\n\t{\n\t\tb3Recording* r = reinterpret_cast<b3Recording*>( rec );\n\t\treturn reinterpret_cast<uintptr_t>( b3RecPlayer_Create( b3Recording_GetData( r ), b3Recording_GetSize( r ), workerCount ) );\n\t} );'''
+          assert needle in source, 'exact recording helper insertion point drifted'
+          bridge = needle + r'''
+
+	ret_function( "b3Recording_CopyBytes(recording): Uint8Array", +[]( uintptr_t rec ) -> val
+	{
+		b3Recording* r = reinterpret_cast<b3Recording*>( rec );
+		const uint8_t* data = b3Recording_GetData( r );
+		int size = b3Recording_GetSize( r );
+		if ( data == nullptr || size <= 0 ) return val::global( "Uint8Array" ).new_( 0 );
+		val view = val( typed_memory_view( (size_t)size, data ) );
+		return val::global( "Uint8Array" ).new_( view );
+	} );
+
+	function( "b3RecPlayer_CreateFromBytes(bytes, workerCount)", +[]( val bytes, int workerCount ) -> uintptr_t
+	{
+		int size = bytes["byteLength"].as<int>();
+		if ( size <= 0 ) return 0;
+		std::vector<uint8_t> copy( (size_t)size );
+		val view = val( typed_memory_view( (size_t)size, copy.data() ) );
+		view.call<void>( "set", bytes );
+		return reinterpret_cast<uintptr_t>( b3RecPlayer_Create( copy.data(), size, workerCount ) );
+	} );'''
+          path.write_text(source.replace(needle, bridge))
+          PY
+
+      - name: Build exact source with byte bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh" >/dev/null
+          corepack enable
+          corepack prepare pnpm@10.32.1 --activate
+          cd "$RUNNER_TEMP/box3d-js"
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Exercise byte roundtrip and malformed-input gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/box3d-js/byte-probe.mjs" <<'JS'
+          import assert from 'node:assert/strict';
+          import Box3D from './dist/box3d.inline.mjs';
+
+          const b3 = await Box3D();
+          assert.equal(typeof b3.b3Recording_CopyBytes, 'function');
+          assert.equal(typeof b3.b3RecPlayer_CreateFromBytes, 'function');
+
+          const DT = 1 / 60;
+          const SUBSTEPS = 4;
+          const HORIZON = 120;
+
+          function createContactWorld() {
+            const worldDef = b3.b3DefaultWorldDef();
+            worldDef.gravity = [0, -10, 0];
+            const world = b3.b3CreateWorld(worldDef);
+
+            const groundDef = b3.b3DefaultBodyDef();
+            groundDef.position = [0, -0.5, 0];
+            const ground = b3.b3CreateBody(world, groundDef);
+            b3.b3Body_SetName(ground, 'ground');
+            const groundShape = b3.b3DefaultShapeDef();
+            groundShape.baseMaterial.friction = 0.8;
+            b3.b3CreateBoxShape(ground, groundShape, 20, 0.5, 20);
+
+            const bodyDef = b3.b3DefaultBodyDef();
+            bodyDef.type = b3.b3BodyType.b3_dynamicBody;
+            bodyDef.position = [0, 2.5, 0];
+            const body = b3.b3CreateBody(world, bodyDef);
+            b3.b3Body_SetName(body, 'semantic:test-body');
+            const shapeDef = b3.b3DefaultShapeDef();
+            shapeDef.density = 1;
+            shapeDef.baseMaterial.friction = 0.8;
+            b3.b3CreateBoxShape(body, shapeDef, 0.5, 0.5, 0.5);
+            return { world, body };
+          }
+
+          function state(body) {
+            const p = [0, 0, 0];
+            const q = [0, 0, 0, 1];
+            const lv = [0, 0, 0];
+            const av = [0, 0, 0];
+            b3.b3Body_GetPosition(p, body);
+            b3.b3Body_GetRotation(q, body);
+            b3.b3Body_GetLinearVelocity(lv, body);
+            b3.b3Body_GetAngularVelocity(av, body);
+            return [...p, ...q, ...lv, ...av, b3.b3Body_IsAwake(body)];
+          }
+
+          function mutate(body, tick) {
+            if (tick === 30) b3.b3Body_SetLinearVelocity(body, [-1.25, 0.5, 0.8]);
+            if (tick === 70) b3.b3Body_SetAngularVelocity(body, [0.15, -0.7, 0.35]);
+          }
+
+          const source = createContactWorld();
+          for (let tick = 0; tick < 180; tick += 1) b3.b3World_Step(source.world, DT, SUBSTEPS);
+          b3.b3Body_SetAwake(source.body, true);
+          b3.b3Body_SetLinearVelocity(source.body, [2, 0, 0.35]);
+          const checkpointState = state(source.body);
+
+          const recording = b3.b3CreateRecording(0);
+          b3.b3World_StartRecording(source.world, recording);
+          b3.b3World_StopRecording(source.world);
+          const recordedSize = b3.b3Recording_GetSize(recording);
+          const bytes = b3.b3Recording_CopyBytes(recording);
+          assert(bytes instanceof Uint8Array);
+          assert.equal(bytes.byteLength, recordedSize);
+          assert(bytes.byteLength > 0);
+
+          const baseline = [];
+          for (let tick = 1; tick <= HORIZON; tick += 1) {
+            mutate(source.body, tick);
+            b3.b3World_Step(source.world, DT, SUBSTEPS);
+            baseline.push(state(source.body));
+          }
+
+          b3.b3DestroyWorld(source.world);
+          b3.b3DestroyRecording(recording);
+
+          const player = b3.b3RecPlayer_CreateFromBytes(bytes, 1);
+          assert(player, 'copied bytes must create a replay player after source Recording destruction');
+          assert.equal(b3.b3RecPlayer_GetFrameCount(player), 0);
+          assert.equal(b3.b3RecPlayer_StepFrame(player), false);
+          const restoredWorld = b3.b3RecPlayer_GetWorldId(player);
+
+          let restoredBody = null;
+          for (let index = 0; index < b3.b3RecPlayer_GetBodyCount(player); index += 1) {
+            const candidate = b3.b3RecPlayer_GetBodyId(player, index);
+            if (b3.b3Body_IsValid(candidate) && b3.b3Body_GetName(candidate) === 'semantic:test-body') {
+              restoredBody = candidate;
+              break;
+            }
+          }
+          assert(restoredBody, 'semantic body name must survive byte import');
+          assert.deepEqual(state(restoredBody), checkpointState, 'byte-imported seed must match checkpoint boundary exactly');
+
+          for (let tick = 1; tick <= HORIZON; tick += 1) {
+            mutate(restoredBody, tick);
+            b3.b3World_Step(restoredWorld, DT, SUBSTEPS);
+            assert.deepEqual(state(restoredBody), baseline[tick - 1], `byte-imported future diverged at tick ${tick}`);
+          }
+          b3.b3RecPlayer_Destroy(player);
+
+          const tiny = bytes.slice(0, Math.min(8, bytes.length));
+          assert.equal(b3.b3RecPlayer_CreateFromBytes(tiny, 1), 0, 'tiny/truncated recording must fail closed');
+          const half = bytes.slice(0, Math.max(1, Math.floor(bytes.length / 2)));
+          assert.equal(b3.b3RecPlayer_CreateFromBytes(half, 1), 0, 'half-truncated recording must fail closed');
+          const corruptHeader = bytes.slice();
+          corruptHeader[0] ^= 0xff;
+          assert.equal(b3.b3RecPlayer_CreateFromBytes(corruptHeader, 1), 0, 'corrupted recording header must fail closed');
+
+          console.log(`BOX3D BYTE ADAPTER FEASIBILITY PASS · copiedBytes=${bytes.byteLength} · source Recording destroyed before import · active-contact future exact through ${HORIZON} ticks · malformed/truncated inputs rejected`);
+          JS
+          cd "$RUNNER_TEMP/box3d-js"
+          node byte-probe.mjs

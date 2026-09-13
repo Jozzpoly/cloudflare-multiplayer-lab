@@ -86,7 +86,23 @@ jobs:
           path.write_text(source.replace(needle, needle + '\n' + '\n'.join(bridge_lines)))
           PY
 
-      - name: Build exact byte-capable source
+      - name: Disable runtime JS code generation in workerd candidate build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          path = Path(os.environ['RUNNER_TEMP']) / 'box3d-js' / 'scripts' / 'build.mjs'
+          source = path.read_text()
+          needle = "\t'-sFILESYSTEM=0',\n"
+          assert source.count(needle) == 1, 'common Emscripten flags insertion point drifted'
+          source = source.replace(needle, needle + "\t'-sDYNAMIC_EXECUTION=0',\n", 1)
+          path.write_text(source)
+          PY
+
+      - name: Build exact byte-capable CSP-safe source
         shell: bash
         run: |
           set -euo pipefail

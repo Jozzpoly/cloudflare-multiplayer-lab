@@ -29,7 +29,7 @@ Evidence:
 
 ### Gate 4C-L1 — transactional checkpoint store
 
-**PASS / scoped fault campaign.** Run `34784584096` defended the contract:
+**PASS / scoped fault campaign.** Run `34784584096` defended:
 
 `immutable content-addressed chunks → immutable content-addressed manifest → atomic HEAD`
 
@@ -51,7 +51,7 @@ Durable envelope SHA-256: `0069f1d40cd6faeb08ec29e2d8e92e1e3d4a2efdbcdcc32775599
 
 ### Gate 4C-L4a — Box3D inside workerd
 
-**PASS / scoped Workers-runtime capability specimen.** Run `34786781239` established the working pinned profile:
+**PASS / scoped Workers-runtime capability specimen.** Run `34786781239` established:
 
 - statically imported precompiled `.wasm`,
 - loader path tolerant of undefined `_scriptName`,
@@ -69,16 +69,7 @@ Executed path:
 
 `live authority → serialized envelope → SQLite publication in DO #1 → full Wrangler/workerd death → DO #2 fresh constructor → blockConcurrencyWhile recovery → envelope validation → roster/input/topology reconstruction → Box3D reconstruction → semantic rebind → request handling → exact future through tick 329`
 
-The harness required:
-
-- first constructor state `empty`,
-- publication not masquerading as in-memory recovery,
-- full process kill,
-- changed constructor nonce after restart,
-- second constructor state `restored` **before** `/resume`,
-- restored generation `1` at canonical tick `260`,
-- physics payload `41829` bytes,
-- exact continuation through tick `329`, including retire/replacement churn.
+The harness required first constructor state `empty`, full process kill, a changed constructor nonce, second constructor state `restored` before `/resume`, restored generation `1` at tick `260`, physics payload `41829` bytes, and exact post-restore continuation through tick `329` including retire/replacement churn.
 
 Final deterministic cross-runtime envelope: `279033` bytes. Gate 4B was re-run first with the same driver and passed before L4b.
 

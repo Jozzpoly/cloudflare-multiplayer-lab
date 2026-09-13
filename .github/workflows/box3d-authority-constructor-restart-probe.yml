@@ -181,6 +181,10 @@ jobs:
           PY
           cp "$RUNNER_TEMP/box3d-js/dist/box3d.wasm" scripts/fixtures/box3d-byte-probe.generated.wasm
 
+      # The original synthetic orbit used Math.cos/sin and exposed a host-JS
+      # Node↔workerd numeric confounder in input digests while restored physics,
+      # roster and topology were still exact. This qualification driver uses
+      # integer-selected cardinal inputs so the stimulus itself is bit-exact.
       - name: Make cross-runtime authority test inputs deterministic
         shell: bash
         run: |
@@ -208,7 +212,11 @@ jobs:
           for path in paths:
               source = path.read_text()
               assert source.count(old) == 1, f'deterministic-input insertion point drifted in {path}'
-              path.write_text(source.replace(old, new, 1))
+              patched = source.replace(old, new, 1)
+              assert old not in patched, f'original transcendental driver remains in {path}'
+              assert 'Math.cos(angle)' not in patched and 'Math.sin(angle)' not in patched, f'transcendental driver remains in {path}'
+              assert patched.count(new) == 1, f'deterministic-input replacement count wrong in {path}'
+              path.write_text(patched)
           PY
 
       - name: Generate and independently verify full authority envelope

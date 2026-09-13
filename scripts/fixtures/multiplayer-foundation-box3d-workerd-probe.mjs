@@ -4,6 +4,7 @@ import box3dWasmModule from "./box3d-byte-probe.generated.wasm";
 const DT = 1 / 60;
 const SUBSTEPS = 4;
 const HORIZON = 90;
+const SEMANTIC_BODY_NAME = "semantic:workerd-probe";
 let box3dPromise = null;
 
 function getBox3D() {
@@ -51,7 +52,7 @@ function createContactWorld(b3) {
   bodyDef.type = b3.b3BodyType.b3_dynamicBody;
   bodyDef.position = [0, 2.5, 0];
   const body = b3.b3CreateBody(world, bodyDef);
-  b3.b3Body_SetName(body, "semantic:workerd-probe");
+  b3.b3Body_SetName(body, SEMANTIC_BODY_NAME);
   const shapeDef = b3.b3DefaultShapeDef();
   shapeDef.density = 1;
   shapeDef.baseMaterial.friction = 0.8;
@@ -70,6 +71,11 @@ async function probe() {
   }
 
   const source = createContactWorld(b3);
+  const sourceName = b3.b3Body_GetName(source.body);
+  if (sourceName !== SEMANTIC_BODY_NAME) {
+    throw new Error(`workerd source body name mismatch before snapshot: value=${JSON.stringify(sourceName)} type=${typeof sourceName}`);
+  }
+
   for (let tick = 0; tick < 180; tick += 1) b3.b3World_Step(source.world, DT, SUBSTEPS);
   b3.b3Body_SetAwake(source.body, true);
   b3.b3Body_SetLinearVelocity(source.body, [2, 0, 0.35]);
@@ -96,15 +102,22 @@ async function probe() {
     throw new Error("workerd seed-only player unexpectedly contains future frames");
   }
   const restoredWorld = b3.b3RecPlayer_GetWorldId(player);
+  const bodyCount = b3.b3RecPlayer_GetBodyCount(player);
+  const restoredNames = [];
   let restoredBody = null;
-  for (let index = 0; index < b3.b3RecPlayer_GetBodyCount(player); index += 1) {
+  for (let index = 0; index < bodyCount; index += 1) {
     const candidate = b3.b3RecPlayer_GetBodyId(player, index);
-    if (b3.b3Body_IsValid(candidate) && b3.b3Body_GetName(candidate) === "semantic:workerd-probe") {
+    const valid = b3.b3Body_IsValid(candidate);
+    const name = valid ? b3.b3Body_GetName(candidate) : null;
+    restoredNames.push({ index, valid, name, nameType: typeof name });
+    if (valid && name === SEMANTIC_BODY_NAME) {
       restoredBody = candidate;
       break;
     }
   }
-  if (!restoredBody) throw new Error("workerd semantic body rebind failed");
+  if (!restoredBody) {
+    throw new Error(`workerd semantic body rebind failed: bodyCount=${bodyCount} restored=${JSON.stringify(restoredNames)}`);
+  }
   if (!equalState(state(b3, restoredBody), checkpointState)) throw new Error("workerd checkpoint boundary mismatch");
 
   for (let tick = 1; tick <= HORIZON; tick += 1) {
@@ -115,7 +128,7 @@ async function probe() {
     }
   }
   b3.b3RecPlayer_Destroy(player);
-  return { copiedBytes: bytes.byteLength, exactFutureTicks: HORIZON };
+  return { copiedBytes: bytes.byteLength, exactFutureTicks: HORIZON, restoredBodyCount: bodyCount };
 }
 
 export default {

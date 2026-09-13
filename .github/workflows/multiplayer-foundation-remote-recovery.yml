@@ -1,0 +1,119 @@
+name: Multiplayer Foundation Remote Recovery
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-recovery-remote
+    paths:
+      - foundation-recovery-remote-trigger.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multiplayer-foundation-remote-recovery
+  cancel-in-progress: false
+
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    outputs:
+      phase: ${{ steps.trigger.outputs.phase }}
+      campaign: ${{ steps.trigger.outputs.campaign }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - id: trigger
+        name: Validate campaign trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from "node:fs";
+          const trigger = JSON.parse(readFileSync("foundation-recovery-remote-trigger.json", "utf8"));
+          if (trigger.revision !== "multiplayer-foundation-remote-recovery-trigger-v1") throw new Error("trigger revision mismatch");
+          if (!["idle", "seed", "resume"].includes(trigger.phase)) throw new Error(`invalid phase ${trigger.phase}`);
+          if (typeof trigger.campaignId !== "string" || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(trigger.campaignId)) throw new Error("invalid campaignId");
+          if (trigger.phase === "idle" && (trigger.campaignId !== "unarmed" || trigger.expectedPreviousInstanceNonce !== null)) throw new Error("idle trigger drift");
+          if (trigger.phase === "seed" && (trigger.campaignId === "unarmed" || trigger.expectedPreviousInstanceNonce !== null)) throw new Error("seed trigger drift");
+          if (trigger.phase === "resume" && (trigger.campaignId === "unarmed" || typeof trigger.expectedPreviousInstanceNonce !== "string" || trigger.expectedPreviousInstanceNonce.length < 8)) throw new Error("resume trigger drift");
+          appendFileSync(process.env.GITHUB_OUTPUT, `phase=${trigger.phase}\ncampaign=${trigger.campaignId}\n`);
+          console.log("FOUNDATION_REMOTE_RECOVERY_TRIGGER_PASS", JSON.stringify(trigger));
+          NODE
+          node --check scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs
+          node --check scripts/fixtures/multiplayer-foundation-authority-constructor-remote-worker.mjs
+
+  idle:
+    if: needs.classify.outputs.phase == 'idle'
+    needs: classify
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "MULTIPLAYER_FOUNDATION_REMOTE_RECOVERY_IDLE"
+
+  seed:
+    if: needs.classify.outputs.phase == 'seed'
+    needs: classify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install repository dependencies
+        run: npm ci
+      - name: Rebuild exact byte-capable Box3D for independent producer
+        env:
+          FOUNDATION_RECOVERY_BUILD_ROOT: ${{ runner.temp }}/foundation-recovery-box3d
+        run: bash scripts/build-foundation-recovery-box3d.sh
+      - name: Generate and independently consume deterministic authority envelope
+        env:
+          FOUNDATION_RECOVERY_BUILD_ROOT: ${{ runner.temp }}/foundation-recovery-box3d
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/patch-foundation-recovery-deterministic-driver.py scripts/multiplayer-foundation-authority-byte-process-smoke.ts
+          rm -rf node_modules/box3d.js
+          ln -s "$FOUNDATION_RECOVERY_BUILD_ROOT/box3d-js" node_modules/box3d.js
+          node --experimental-strip-types scripts/multiplayer-foundation-authority-byte-process-smoke.ts "$RUNNER_TEMP/authority-envelope.json"
+      - name: Wait for exact deployed seed build and publish checkpoint
+        env:
+          MW_FOUNDATION_RECOVERY_EXPECTED_BUILD: ${{ github.sha }}
+          MW_FOUNDATION_RECOVERY_ENVELOPE: ${{ runner.temp }}/authority-envelope.json
+          MW_FOUNDATION_RECOVERY_OUTPUT: foundation-recovery-remote-seed-evidence.json
+        run: node scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs | tee foundation-recovery-remote-seed.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: foundation-recovery-remote-seed-${{ github.run_id }}
+          path: |
+            foundation-recovery-remote-seed-evidence.json
+            foundation-recovery-remote-seed.log
+          retention-days: 30
+
+  resume:
+    if: needs.classify.outputs.phase == 'resume'
+    needs: classify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Wait for exact redeployment and verify fresh constructor recovery
+        env:
+          MW_FOUNDATION_RECOVERY_EXPECTED_BUILD: ${{ github.sha }}
+          MW_FOUNDATION_RECOVERY_OUTPUT: foundation-recovery-remote-resume-evidence.json
+        run: node scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs | tee foundation-recovery-remote-resume.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: foundation-recovery-remote-resume-${{ github.run_id }}
+          path: |
+            foundation-recovery-remote-resume-evidence.json
+            foundation-recovery-remote-resume.log
+          retention-days: 30

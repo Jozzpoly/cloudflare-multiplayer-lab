@@ -20,8 +20,9 @@
     "test:world-v0-browser": "node --experimental-strip-types scripts/world-v0-browser-smoke.mjs",
     "test:world-v0-human-entry-core": "node scripts/world-v0-human-entry-core-smoke.mjs",
     "test:multiplayer-foundation-roster": "node --experimental-strip-types scripts/multiplayer-foundation-roster-smoke.ts",
+    "test:multiplayer-foundation-topology": "node --experimental-strip-types scripts/multiplayer-foundation-topology-smoke.ts",
     "validate:worker": "wrangler deploy --dry-run --env staging --outdir .wrangler/dry-run",
-    "check": "npm run validate:staging-contract && npm run test:staging-deploy-guard && npm run test:f5-protocol && npm run test:world-v0-protocol && npm run test:world-v0-browser && npm run test:world-v0-human-entry-core && npm run test:multiplayer-foundation-roster && npm run check:client && npm run check:a2r && npm run typecheck && npm run validate:worker"
+    "check": "npm run validate:staging-contract && npm run test:staging-deploy-guard && npm run test:f5-protocol && npm run test:world-v0-protocol && npm run test:world-v0-browser && npm run test:world-v0-human-entry-core && npm run test:multiplayer-foundation-roster && npm run test:multiplayer-foundation-topology && npm run check:client && npm run check:a2r && npm run typecheck && npm run validate:worker"
   },
   "dependencies": {
     "box3d.js": "0.1.1"

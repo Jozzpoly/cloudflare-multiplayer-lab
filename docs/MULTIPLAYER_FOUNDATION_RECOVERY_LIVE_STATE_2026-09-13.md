@@ -2,7 +2,7 @@
 
 Date: 2026-09-13
 
-Status: **Gate 4A PASS / Gate 4B ACTIVE / not product-qualified**
+Status: **Gate 4A PASS / Gate 4B PASS / Gate 4C ACTIVE / not product-qualified**
 
 This document is the current recovery/persistence source of truth for the `research/multiplayer-foundation-v1-2026-09-13` branch. It narrows claims to executed evidence and intentionally does not redefine the long-horizon architecture.
 
@@ -12,7 +12,7 @@ This document is the current recovery/persistence source of truth for the `resea
 
 **PASS / scoped headless specimen.**
 
-Executed evidence now demonstrates that a full headless authority runtime can be checkpointed, its source Box3D world destroyed, and then reconstructed from:
+Executed evidence demonstrates that a full headless authority runtime can be checkpointed, its source Box3D world destroyed, and then reconstructed from:
 
 - a Box3D seed-only recording containing zero recorded future frames,
 - a versioned JSON roster/event-log checkpoint,
@@ -52,30 +52,77 @@ Earlier supporting recovery evidence:
 - run `34776592833` — Box3D seed-only active-contact snapshot remained exact through 120 new future ticks with post-restore mutations,
 - run `34782697280` — semantic recovery rebind + portable roster/input checkpoint recovery PASS.
 
-### Gate 4B — durable byte/process/storage recovery
+### Gate 4B — exact recovery across a fresh process boundary
 
-**ACTIVE / not yet PASS.**
+**PASS / scoped isolated build specimen.**
 
-The official `box3d.js@0.1.1` runtime has no direct supported path for durable Recording bytes. Executed capability probe:
+The official `box3d.js@0.1.1` package does not expose a direct supported Recording byte export/import path. Executed capability probe:
 
-- full CI run `34783020413` — `completed / success`
+- run `34783020413` — `completed / success`
 - result: `NO_DIRECT_BYTE_PATH`
 - exposed: `b3Recording_GetSize`, `b3RecPlayer_CreateFromRecording`
 - not exposed: Recording data copy, create-player-from-bytes, raw `_b3...` exports, `HEAPU8`, `ccall`, `cwrap`.
 
 Therefore durable persistence must not rely on hidden Emscripten internals.
 
+An isolated exact-source build added only two experimental bindings:
+
+- copy `b3Recording` into an owned `Uint8Array`,
+- create a `b3RecPlayer` from a supplied `Uint8Array`.
+
+Byte-bridge feasibility evidence:
+
+- workflow run `34783226902` — `completed / success`
+- simple active-contact seed snapshot: `8451` physics bytes,
+- source Recording and source world destroyed before import,
+- imported bytes remained exact through 120 new future ticks,
+- tiny/truncated/half-truncated/corrupted-header recordings were rejected.
+
+Fresh-process authority evidence:
+
+- workflow run `34783461543` — `completed / success`
+- full authority producer used six actors + twelve props + statics + pre-checkpoint churn,
+- producer serialized host checkpoints + semantic body manifest + engine provenance + SHA-256 + copied Box3D seed bytes,
+- producer continued a baseline future and destroyed its source world/Recording,
+- a fresh Node process with a fresh WASM instance restored exclusively from the serialized envelope,
+- full-world physics payload: `41829` bytes,
+- probe envelope: `279068` bytes,
+- consumer remained exact through canonical tick `329`, including post-restore retire→replacement churn,
+- wrong engine fingerprint, wrong physics SHA-256 and wrong canonical boundary were rejected before Box3D restore,
+- log result: `MULTIPLAYER FOUNDATION AUTHORITY BYTE PROCESS SMOKE PASS`.
+
+This establishes exact process-boundary recovery for the scoped headless specimen. It does **not** yet establish durable database publication, Cloudflare eviction survival, or production packaging of the Box3D bridge.
+
+### Gate 4C — durable storage / authority constructor restart
+
+**ACTIVE / unproven.**
+
+The next frontier is to cross the durable-storage boundary without weakening the already-defended process recovery contract.
+
+Target properties:
+
+- immutable checkpoint generations,
+- chunkable physical payload rather than a single assumed-large database value,
+- manifest containing version/provenance, semantic state, content hashes and chunk inventory,
+- atomic publication of the current checkpoint only after all immutable material exists,
+- previous complete generation remains recoverable if publication of the next generation is interrupted,
+- missing/corrupt/incompatible chunks fail closed,
+- restore occurs through a fresh authority/Durable Object constructor runtime rather than through client-only reconnect,
+- crash/interruption points around persistence publication are explicitly falsified.
+
+Gate 4C must be proven in layers: deterministic transactional-store model first, SQLite-backed Durable Object apparatus second, then actual constructor/eviction-style recovery evidence.
+
 ## Exact Box3D build provenance under test
 
 Current foundation dependency is still the official `box3d.js@0.1.1`. No production dependency replacement has been made.
 
-For isolated byte-bridge feasibility work the exact pinned source is:
+For isolated byte-bridge work the exact pinned source is:
 
 - `box3d.js` source commit: `5d5a3af049cccd9948b2b55bac4342414af0ef64`
 - Box3D submodule commit: `8441b4a06d6d09dcfb0b0f704df4d847d1437b92`
 - Emscripten: `6.0.2`
 
-Any future raw physical checkpoint envelope must carry enough engine/build provenance to reject incompatible snapshots before passing bytes to Box3D.
+Any raw physical checkpoint envelope must carry enough engine/build provenance to reject incompatible snapshots before passing bytes to Box3D.
 
 ## Recovery findings that are now defended
 
@@ -87,7 +134,7 @@ The missing physical continuity includes engine-internal state such as contact/w
 
 ### Box3D seed snapshots can continue as live worlds
 
-A Recording can be started and stopped immediately at a step boundary, producing a seed-only snapshot with zero future frames. A replay world reconstructed from that seed can then accept new mutations and continue simulation. This has been demonstrated both on a contact fixture and on the full authority specimen.
+A Recording can be started and stopped immediately at a step boundary, producing a seed-only snapshot with zero future frames. A replay world reconstructed from that seed can then accept new mutations and continue simulation. This has been demonstrated on a contact fixture, on the full authority specimen in-process, and across a fresh Node/WASM process boundary after byte serialization.
 
 This is an engine-specific runtime checkpoint candidate, not a portable world format.
 
@@ -102,7 +149,7 @@ Current scoped rebind contract:
 - semantic names are used for a one-time fail-closed rebind,
 - retired pre-checkpoint names must remain absent.
 
-This contract survived pre-checkpoint churn and later post-restore topology mutation.
+This contract survived pre-checkpoint churn, fresh-process reconstruction and later post-restore topology mutation.
 
 ### Portable authority state needs its own checkpoint contract
 
@@ -118,62 +165,40 @@ Exact physics recovery alone is insufficient. The portable layer now has explici
 
 Restore is fail-closed for wrong revisions, ownership drift, boundary drift and digest mismatch.
 
-## Byte bridge feasibility already demonstrated
+### Runtime checkpoint and durable semantic truth remain distinct
 
-An isolated push-only workflow rebuilds the exact pinned `box3d.js` source with only two experimental binding additions:
+The current evidence supports a layered model:
 
-- copy `b3Recording` into an owned `Uint8Array`,
-- create a `b3RecPlayer` from a supplied `Uint8Array`.
+1. durable semantic/authority state with explicit versioned contracts,
+2. an engine-specific exact runtime snapshot for solver continuity,
+3. a provenance-checked envelope that binds them to the same canonical boundary.
 
-The first valid build probe passed:
+The raw Box3D snapshot must not become the universal save-game or long-term world format. It is version/build-specific recovery material and may remain replaceable.
 
-- workflow run `34783226902` — `completed / success`
-- simple active-contact seed snapshot: `8451` physics bytes,
-- source Recording and source world destroyed before import,
-- imported bytes remained exact through 120 new future ticks,
-- tiny/truncated/half-truncated/corrupted-header recordings were rejected.
+## Gate 4C storage constraints and intended model
 
-This establishes **byte-bridge feasibility**, not yet process-boundary authority recovery or production packaging.
+Cloudflare SQLite-backed Durable Objects impose a bounded per-value/BLOB size even though total per-object storage is much larger. Therefore the persistence design must not assume that an arbitrarily large future physics/world checkpoint fits safely in one database value.
 
-## Current active experiment
+Current candidate publication model:
 
-A stronger isolated workflow is now exercising a full authority checkpoint across an actual process boundary:
+`immutable chunks → immutable manifest → atomic HEAD publication`
 
-1. producer creates the six-actor / twelve-prop authority specimen,
-2. producer performs pre-checkpoint churn,
-3. producer creates portable roster/input checkpoints and copies Box3D seed bytes,
-4. producer records build fingerprint, semantic body manifest, byte length and SHA-256 in a probe envelope,
-5. producer continues a baseline future and destroys its source runtime,
-6. a fresh Node process with a fresh WASM instance reads the serialized envelope,
-7. consumer validates revision, engine fingerprint, canonical boundary and physics SHA-256 before restore,
-8. consumer reconstructs portable semantics + Box3D physics + semantic body bindings,
-9. consumer must reproduce the baseline exactly through a post-restore retire/replacement churn,
-10. separate fresh-process negatives must reject wrong engine fingerprint, wrong physics checksum and wrong canonical boundary.
+The model must prove at least these interruption boundaries:
 
-Current workflow run at the time of this checkpoint: `34783461543`.
+1. failure before any chunks are written,
+2. failure after only a prefix of chunks,
+3. all chunks written but manifest absent,
+4. manifest written but HEAD not advanced,
+5. HEAD advanced only to a fully valid generation,
+6. corrupt/missing chunk after publication,
+7. stale/incompatible generation at restore,
+8. interrupted publication of generation N+1 while generation N remains recoverable.
 
-Until that run completes successfully, **fresh-process authority recovery remains unproven**.
-
-## Durable-storage boundary after process recovery
-
-Only after fresh-process byte recovery is demonstrated should Gate 4B move to storage integration.
-
-The intended next sequence is:
-
-1. define a deliberately narrow checkpoint envelope contract from executed probe evidence,
-2. make physical bytes chunkable rather than assuming a single database BLOB,
-3. store immutable checkpoint chunks + manifest/provenance,
-4. publish a new current/head checkpoint atomically,
-5. validate missing/corrupt/incompatible chunks fail closed,
-6. restore through a fresh Durable Object constructor/runtime rather than through a client-only reconnect,
-7. test crash/interruption boundaries around checkpoint publication,
-8. only then classify durable authority recovery.
-
-The semantic durable world/save format remains conceptually distinct from any Box3D-internal snapshot. Engine snapshots are candidates for exact runtime recovery acceleration and may be replaceable/version-specific.
+Garbage collection of unreachable old chunks/generations is deliberately secondary to correctness. It must not be coupled to the transaction that publishes a new current checkpoint.
 
 ## Explicit non-claims
 
-The following are **not** established by Gate 4A or the current byte bridge:
+The following are **not** established by Gate 4A/4B:
 
 - production-safe Durable Object persistence,
 - survival of an actual Cloudflare eviction/restart,
@@ -188,4 +213,6 @@ The following are **not** established by Gate 4A or the current byte bridge:
 
 ## Current next move
 
-The immediate frontier is **Gate 4B fresh-process exact authority recovery**. Do not advance to SQLite/Durable Object storage until the current cross-process envelope experiment is green and its failure modes are understood.
+The immediate frontier is **Gate 4C transactional durable storage**.
+
+Do not jump directly to a production persistence implementation. First build a bounded deterministic store model around the already-proven serialized authority envelope and use it to falsify publication ordering, generation selection, missing/corrupt chunks and interrupted writes. Only after that model is green should the same contract be carried into SQLite-backed Durable Object storage and fresh-constructor recovery.

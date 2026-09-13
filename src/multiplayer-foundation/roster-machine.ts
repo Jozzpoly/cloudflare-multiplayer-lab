@@ -117,6 +117,7 @@ export class FoundationRosterMachine {
   private readonly historyByActorId = new Map<FoundationActorId, FoundationActorMembership>();
   private readonly activeActorIds = new Set<FoundationActorId>();
   private readonly activeActorIdBySession = new Map<string, FoundationActorId>();
+  private readonly actorIdByEverUsedSession = new Map<string, FoundationActorId>();
   private readonly transportConnectedBySession = new Map<string, boolean>();
   private readonly pendingByMutationId = new Map<string, FoundationRosterMutation>();
   private readonly knownMutationSignatureById = new Map<string, string>();
@@ -247,7 +248,11 @@ export class FoundationRosterMachine {
 
   private applyMutation(mutation: FoundationRosterMutation): FoundationMutationOutcome {
     if (mutation.kind === "join") {
-      if (this.activeActorIdBySession.has(mutation.actorSessionId)) {
+      // ActorSession is the continuity identity of one logical actor inside a
+      // WorldEpoch. Once that session has owned an actor, retirement is terminal:
+      // a later fresh actor must receive a fresh ActorSession rather than silently
+      // reincarnating the old continuity identity under a new actor ordinal.
+      if (this.actorIdByEverUsedSession.has(mutation.actorSessionId)) {
         return {
           status: "rejected_duplicate_session",
           mutationId: mutation.mutationId,
@@ -277,6 +282,7 @@ export class FoundationRosterMachine {
       this.historyByActorId.set(actorId, membership);
       this.activeActorIds.add(actorId);
       this.activeActorIdBySession.set(mutation.actorSessionId, actorId);
+      this.actorIdByEverUsedSession.set(mutation.actorSessionId, actorId);
       this.transportConnectedBySession.set(mutation.actorSessionId, true);
       this.topologyRevisionValue += 1;
       return {

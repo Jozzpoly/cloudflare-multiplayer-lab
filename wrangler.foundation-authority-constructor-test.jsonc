@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "multi-world-foundation-authority-constructor-local-test",
+  "main": "scripts/fixtures/multiplayer-foundation-authority-constructor-worker.mjs",
+  "compatibility_date": "2026-08-29",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "FOUNDATION_AUTHORITY_CONSTRUCTOR_TEST",
+        "class_name": "FoundationAuthorityConstructorTest"
+      }
+    ]
+  },
+  "exports": {
+    "FoundationAuthorityConstructorTest": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}

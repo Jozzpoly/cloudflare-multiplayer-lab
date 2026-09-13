@@ -97,11 +97,23 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
-      - name: Stage static JS and precompiled Wasm modules
+      - name: Stage workerd-compatible JS and precompiled Wasm modules
         shell: bash
         run: |
           set -euo pipefail
-          cp "$RUNNER_TEMP/box3d-js/dist/box3d.mjs" scripts/fixtures/box3d-byte-probe.generated.mjs
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          source_path = Path(os.environ['RUNNER_TEMP']) / 'box3d-js' / 'dist' / 'box3d.mjs'
+          destination = Path('scripts/fixtures/box3d-byte-probe.generated.mjs')
+          source = source_path.read_text()
+          needle = '_scriptName.startsWith('
+          count = source.count(needle)
+          assert count == 1, f'expected exactly one Emscripten _scriptName.startsWith guard, found {count}'
+          source = source.replace(needle, '_scriptName?.startsWith(', 1)
+          destination.write_text(source)
+          PY
           cp "$RUNNER_TEMP/box3d-js/dist/box3d.wasm" scripts/fixtures/box3d-byte-probe.generated.wasm
 
       - name: Exercise byte-capable Box3D inside workerd

@@ -6,11 +6,15 @@ const b3 = await Box3D();
 for (const api of [
   "b3CreateRecording",
   "b3DestroyRecording",
-  "b3Recording_GetData",
-  "b3Recording_GetSize",
   "b3World_StartRecording",
   "b3World_StopRecording",
-  "b3ValidateReplay",
+  "b3RecPlayer_CreateFromRecording",
+  "b3RecPlayer_GetFrameCount",
+  "b3RecPlayer_StepFrame",
+  "b3RecPlayer_IsAtEnd",
+  "b3RecPlayer_HasDiverged",
+  "b3RecPlayer_GetDivergeFrame",
+  "b3RecPlayer_Destroy",
 ]) {
   assert.equal(typeof (b3 as Record<string, unknown>)[api], "function", `box3d.js@0.1.1 must expose ${api}`);
 }
@@ -38,30 +42,42 @@ for (let i = 0; i < 45; i += 1) {
   b3.b3World_Step(world, dt, 4);
 }
 
-const recording = b3.b3CreateRecording(0);
+const recording = b3.b3CreateRecording(8 * 1024 * 1024);
 assert(recording, "recording allocation failed");
 b3.b3World_StartRecording(world, recording);
 
-for (let i = 0; i < 120; i += 1) {
+const recordedFrames = 120;
+for (let i = 0; i < recordedFrames; i += 1) {
   if (i === 10) b3.b3Body_SetLinearVelocity(body, [2.5, 1.5, -0.75]);
   if (i === 50) b3.b3Body_SetAngularVelocity(body, [0.25, 1.0, -0.5]);
   b3.b3World_Step(world, dt, 4);
 }
 
 b3.b3World_StopRecording(world);
-const byteLength = b3.b3Recording_GetSize(recording);
-const data = b3.b3Recording_GetData(recording);
-assert(byteLength > 0, "recording must contain bytes");
-assert(data, "recording data pointer must be non-null");
 
-// The recording buffer is explicitly documented to outlive its source world.
+// The recording owns the replay seed/log and is explicitly designed to outlive
+// the source world. The JS binding intentionally hides the raw recording bytes
+// and exposes a player constructed directly from the recording handle.
 b3.b3DestroyWorld(world);
 
-const replayValid = b3.b3ValidateReplay(data, byteLength, 1);
-assert.equal(replayValid, true, "Box3D recording replay must reproduce the recorded run exactly");
+const player = b3.b3RecPlayer_CreateFromRecording(recording, 1);
+assert(player, "recording player creation failed");
+assert.equal(b3.b3RecPlayer_GetFrameCount(player), recordedFrames, "recording frame count drift");
 
+let replayedFrames = 0;
+while (!b3.b3RecPlayer_IsAtEnd(player)) {
+  const stepped = b3.b3RecPlayer_StepFrame(player);
+  assert.equal(stepped, true, "replay player reached an unexpected non-step before end-of-recording");
+  replayedFrames += 1;
+}
+
+assert.equal(replayedFrames, recordedFrames, "replay did not execute every recorded frame");
+assert.equal(b3.b3RecPlayer_HasDiverged(player), false, "Box3D recording replay diverged from its embedded state hashes");
+assert.equal(b3.b3RecPlayer_GetDivergeFrame(player), -1, "non-diverged replay must not report a diverge frame");
+
+b3.b3RecPlayer_Destroy(player);
 b3.b3DestroyRecording(recording);
 
 console.log(
-  `MULTIPLAYER FOUNDATION BOX3D RECORDING SMOKE PASS · box3d.js exposes mid-session seed snapshot + exact replay validator · recordingBytes=${byteLength}`,
+  `MULTIPLAYER FOUNDATION BOX3D RECORDING SMOKE PASS · mid-session seed snapshot + ${recordedFrames}-frame exact replay through box3d.js binding`,
 );

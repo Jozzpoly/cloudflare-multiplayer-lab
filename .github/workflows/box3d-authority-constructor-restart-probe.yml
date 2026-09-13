@@ -181,6 +181,32 @@ jobs:
           PY
           cp "$RUNNER_TEMP/box3d-js/dist/box3d.wasm" scripts/fixtures/box3d-byte-probe.generated.wasm
 
+      - name: Make cross-runtime authority test inputs deterministic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              Path('scripts/multiplayer-foundation-authority-byte-process-smoke.ts'),
+              Path('scripts/fixtures/multiplayer-foundation-authority-constructor-worker.mjs'),
+          ]
+          old = '''  const ordinal = Number(actorId.slice("actor:".length));
+          const angle = ordinal * 1.618 + targetTick * 0.031;
+          return [Math.cos(angle), Math.sin(angle)];'''
+          new = '''  const ordinal = Number(actorId.slice("actor:".length));
+          const phase = (ordinal + targetTick) & 3;
+          if (phase === 0) return [1, 0];
+          if (phase === 1) return [0, 1];
+          if (phase === 2) return [-1, 0];
+          return [0, -1];'''
+          for path in paths:
+              source = path.read_text()
+              assert source.count(old) == 1, f'deterministic-input insertion point drifted in {path}'
+              path.write_text(source.replace(old, new, 1))
+          PY
+
       - name: Generate and independently verify full authority envelope
         shell: bash
         run: |

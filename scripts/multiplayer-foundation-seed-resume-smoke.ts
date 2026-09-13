@@ -100,7 +100,8 @@ b3.b3DestroyWorld(source.world);
 const player = b3.b3RecPlayer_CreateFromRecording(recording, 1);
 assert(player, "seed-only recording must create a replay player");
 assert.equal(b3.b3RecPlayer_GetFrameCount(player), 0, "seed-only checkpoint must contain zero recorded future frames");
-assert.equal(b3.b3RecPlayer_IsAtEnd(player), true, "zero-frame player should begin at end-of-recording");
+assert.equal(b3.b3RecPlayer_StepFrame(player), false, "zero-frame checkpoint must expose no replay frame");
+assert.equal(b3.b3RecPlayer_IsAtEnd(player), true, "zero-frame player must report end after consuming its end marker");
 assert.equal(b3.b3RecPlayer_HasDiverged(player), false);
 
 const restoredWorld = b3.b3RecPlayer_GetWorldId(player);

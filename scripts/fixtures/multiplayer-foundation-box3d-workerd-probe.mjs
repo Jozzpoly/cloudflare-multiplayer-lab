@@ -1,4 +1,5 @@
 import Box3D from "./box3d-byte-probe.generated.mjs";
+import box3dWasmModule from "./box3d-byte-probe.generated.wasm";
 
 const DT = 1 / 60;
 const SUBSTEPS = 4;
@@ -6,7 +7,13 @@ const HORIZON = 90;
 let box3dPromise = null;
 
 function getBox3D() {
-  box3dPromise ??= Box3D();
+  box3dPromise ??= Box3D({
+    instantiateWasm(imports, successCallback) {
+      const instance = new WebAssembly.Instance(box3dWasmModule, imports);
+      successCallback(instance, box3dWasmModule);
+      return instance.exports;
+    },
+  });
   return box3dPromise;
 }
 

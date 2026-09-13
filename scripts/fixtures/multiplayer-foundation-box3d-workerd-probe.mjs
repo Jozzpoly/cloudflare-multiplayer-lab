@@ -4,7 +4,9 @@ import box3dWasmModule from "./box3d-byte-probe.generated.wasm";
 const DT = 1 / 60;
 const SUBSTEPS = 4;
 const HORIZON = 90;
-const SEMANTIC_BODY_NAME = "semantic:workerd-probe";
+const BOX3D_BODY_NAME_MAX = 18;
+const SEMANTIC_BODY_NAME = "sem:wprobe";
+if (SEMANTIC_BODY_NAME.length > BOX3D_BODY_NAME_MAX) throw new Error("workerd probe rebind token exceeds pinned Box3D body-name limit");
 let box3dPromise = null;
 
 function getBox3D() {
@@ -128,7 +130,7 @@ async function probe() {
     }
   }
   b3.b3RecPlayer_Destroy(player);
-  return { copiedBytes: bytes.byteLength, exactFutureTicks: HORIZON, restoredBodyCount: bodyCount };
+  return { copiedBytes: bytes.byteLength, exactFutureTicks: HORIZON, restoredBodyCount: bodyCount, rebindToken: SEMANTIC_BODY_NAME };
 }
 
 export default {

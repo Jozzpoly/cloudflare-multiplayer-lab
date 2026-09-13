@@ -89,6 +89,12 @@ function mutationSignature(mutation: FoundationRosterMutation): string {
   return JSON.stringify(mutation);
 }
 
+function compareCanonicalStrings(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
 function mutationPhase(mutation: FoundationRosterMutation): number {
   // A retirement and a replacement join may share a canonical tick. Retirements
   // deterministically release capacity before joins compete for the freed slot.
@@ -98,7 +104,7 @@ function mutationPhase(mutation: FoundationRosterMutation): number {
 function compareMutations(a: FoundationRosterMutation, b: FoundationRosterMutation): number {
   return a.effectiveTick - b.effectiveTick
     || mutationPhase(a) - mutationPhase(b)
-    || a.mutationId.localeCompare(b.mutationId);
+    || compareCanonicalStrings(a.mutationId, b.mutationId);
 }
 
 export class FoundationRosterMachine {
@@ -140,9 +146,6 @@ export class FoundationRosterMachine {
   queue(mutation: FoundationRosterMutation): "queued" | "idempotent" {
     assertNonEmpty(mutation.mutationId, "mutationId");
     assertTick(mutation.effectiveTick, "effectiveTick");
-    if (mutation.effectiveTick <= this.currentTickValue) {
-      throw new Error(`mutation ${mutation.mutationId} must target a future canonical tick`);
-    }
     if (mutation.kind === "join") {
       assertNonEmpty(mutation.actorSessionId, "actorSessionId");
     }
@@ -154,6 +157,10 @@ export class FoundationRosterMachine {
         throw new Error(`mutationId ${mutation.mutationId} was reused with different payload`);
       }
       return "idempotent";
+    }
+
+    if (mutation.effectiveTick <= this.currentTickValue) {
+      throw new Error(`mutation ${mutation.mutationId} must target a future canonical tick`);
     }
 
     this.knownMutationSignatureById.set(mutation.mutationId, signature);
@@ -234,7 +241,7 @@ export class FoundationRosterMachine {
       activeActorIds: this.snapshot().actors.map((actor) => actor.actorId),
       actorHistory: this.actorHistory(),
       outcomes: [...this.outcomeByMutationId.entries()]
-        .sort(([a], [b]) => a.localeCompare(b)),
+        .sort(([a], [b]) => compareCanonicalStrings(a, b)),
     };
   }
 

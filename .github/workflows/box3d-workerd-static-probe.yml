@@ -1,0 +1,108 @@
+name: Box3D workerd static Wasm probe
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-v1-2026-09-13
+    paths:
+      - .github/workflows/box3d-workerd-static-probe.yml
+      - scripts/fixtures/multiplayer-foundation-box3d-workerd-probe.mjs
+      - scripts/multiplayer-foundation-box3d-workerd-runtime-smoke.mjs
+      - wrangler.foundation-box3d-workerd-test.jsonc
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-wasm-workerd-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout foundation repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install foundation dependencies
+        run: npm ci
+
+      - name: Install pinned Emscripten
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 6.0.2
+          "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.2
+
+      - name: Checkout exact box3d.js source and Box3D submodule
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/isaac-mason/box3d.js.git "$RUNNER_TEMP/box3d-js"
+          cd "$RUNNER_TEMP/box3d-js"
+          git checkout 5d5a3af049cccd9948b2b55bac4342414af0ef64
+          git submodule update --init --recursive
+          test "$(git rev-parse HEAD)" = "5d5a3af049cccd9948b2b55bac4342414af0ef64"
+          test "$(git -C vendor/box3d rev-parse HEAD)" = "8441b4a06d6d09dcfb0b0f704df4d847d1437b92"
+
+      - name: Add minimal recording byte bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          path = Path(os.environ['RUNNER_TEMP']) / 'box3d-js' / 'src' / 'bindings.cpp'
+          source = path.read_text()
+          needle = '\tfunction( "b3RecPlayer_CreateFromRecording(recording, workerCount)", +[]( uintptr_t rec, int workerCount ) -> uintptr_t\n\t{\n\t\tb3Recording* r = reinterpret_cast<b3Recording*>( rec );\n\t\treturn reinterpret_cast<uintptr_t>( b3RecPlayer_Create( b3Recording_GetData( r ), b3Recording_GetSize( r ), workerCount ) );\n\t} );'
+          assert needle in source, 'exact recording helper insertion point drifted'
+          bridge_lines = [
+              '',
+              '\tret_function( "b3Recording_CopyBytes(recording): Uint8Array", +[]( uintptr_t rec ) -> val',
+              '\t{',
+              '\t\tb3Recording* r = reinterpret_cast<b3Recording*>( rec );',
+              '\t\tconst uint8_t* data = b3Recording_GetData( r );',
+              '\t\tint size = b3Recording_GetSize( r );',
+              '\t\tif ( data == nullptr || size <= 0 ) return val::global( "Uint8Array" ).new_( 0 );',
+              '\t\tval view = val( typed_memory_view( (size_t)size, data ) );',
+              '\t\treturn val::global( "Uint8Array" ).new_( view );',
+              '\t} );',
+              '',
+              '\tfunction( "b3RecPlayer_CreateFromBytes(bytes, workerCount)", +[]( val bytes, int workerCount ) -> uintptr_t',
+              '\t{',
+              '\t\tint size = bytes["byteLength"].as<int>();',
+              '\t\tif ( size <= 0 ) return 0;',
+              '\t\tstd::vector<uint8_t> copy( (size_t)size );',
+              '\t\tval view = val( typed_memory_view( (size_t)size, copy.data() ) );',
+              '\t\tview.call<void>( "set", bytes );',
+              '\t\treturn reinterpret_cast<uintptr_t>( b3RecPlayer_Create( copy.data(), size, workerCount ) );',
+              '\t} );',
+          ]
+          path.write_text(source.replace(needle, needle + '\n' + '\n'.join(bridge_lines)))
+          PY
+
+      - name: Build exact byte-capable source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh" >/dev/null
+          corepack enable
+          corepack prepare pnpm@10.32.1 --activate
+          cd "$RUNNER_TEMP/box3d-js"
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Stage static JS and precompiled Wasm modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$RUNNER_TEMP/box3d-js/dist/box3d.mjs" scripts/fixtures/box3d-byte-probe.generated.mjs
+          cp "$RUNNER_TEMP/box3d-js/dist/box3d.wasm" scripts/fixtures/box3d-byte-probe.generated.wasm
+
+      - name: Exercise byte-capable Box3D inside workerd
+        run: node scripts/multiplayer-foundation-box3d-workerd-runtime-smoke.mjs

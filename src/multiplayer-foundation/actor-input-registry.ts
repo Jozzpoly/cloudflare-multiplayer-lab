@@ -40,6 +40,7 @@ export interface FoundationActorInputCheckpoint {
   worldEpoch: string;
   maxFutureTicks: number;
   rosterRevision: number;
+  boundaryTick: number;
   channels: Array<{
     actorId: FoundationActorId;
     actorSessionId: string;
@@ -130,6 +131,7 @@ export class FoundationActorInputRegistry {
       throw new Error("checkpoint maxFutureTicks must be a positive safe integer");
     }
     assertTick(checkpoint.rosterRevision, "checkpoint rosterRevision");
+    assertTick(checkpoint.boundaryTick, "checkpoint boundaryTick");
     if (!Array.isArray(checkpoint.channels)) throw new Error("checkpoint channels must be an array");
     assertNonEmpty(checkpoint.stateDigest, "checkpoint stateDigest");
     if (checkpoint.worldEpoch !== roster.worldEpoch) {
@@ -137,6 +139,9 @@ export class FoundationActorInputRegistry {
     }
     if (checkpoint.rosterRevision !== roster.topologyRevision) {
       throw new Error("input checkpoint roster revision does not match restored roster topology revision");
+    }
+    if (checkpoint.boundaryTick !== roster.currentTick) {
+      throw new Error("input checkpoint boundary tick does not match restored roster canonical tick");
     }
 
     const restored = new FoundationActorInputRegistry(checkpoint.worldEpoch, checkpoint.maxFutureTicks);
@@ -173,7 +178,7 @@ export class FoundationActorInputRegistry {
       throw new Error("checkpoint input channels do not cover every active actor");
     }
 
-    const rebuilt = restored.checkpoint();
+    const rebuilt = restored.checkpoint(roster);
     if (rebuilt.stateDigest !== checkpoint.stateDigest) {
       throw new Error(
         `input checkpoint digest mismatch: restored ${rebuilt.stateDigest}, expected ${checkpoint.stateDigest}`,
@@ -268,7 +273,17 @@ export class FoundationActorInputRegistry {
       .map(({ actorId, actorSessionId }) => ({ actorId, actorSessionId }));
   }
 
-  checkpoint(): FoundationActorInputCheckpoint {
+  checkpoint(roster: FoundationRosterSnapshot): FoundationActorInputCheckpoint {
+    if (roster.worldEpoch !== this.worldEpoch) {
+      throw new Error("cannot checkpoint input registry against a different WorldEpoch");
+    }
+    if (roster.topologyRevision !== this.rosterRevision) {
+      throw new Error("cannot checkpoint input registry against a different roster revision");
+    }
+    if (!sameOwnership(this.channels, roster)) {
+      throw new Error("cannot checkpoint input registry with ownership drift");
+    }
+
     const channels = [...this.channels.values()]
       .sort((a, b) => actorOrdinal(a.actorId) - actorOrdinal(b.actorId))
       .map((channel) => ({
@@ -283,6 +298,7 @@ export class FoundationActorInputRegistry {
       worldEpoch: this.worldEpoch,
       maxFutureTicks: this.maxFutureTicks,
       rosterRevision: this.rosterRevision,
+      boundaryTick: roster.currentTick,
       channels,
     } as const;
     return {

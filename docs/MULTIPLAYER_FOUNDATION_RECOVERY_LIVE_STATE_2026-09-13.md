@@ -195,6 +195,8 @@ Result:
 
 `MULTIPLAYER FOUNDATION AUTHORITY CONSTRUCTOR RESTART PASS`
 
+A second full qualification run has been triggered after hardening the deterministic-driver assertions. Until it completes, `34788380888` is the primary L4b PASS evidence; the gate claim does not depend on the repeat run.
+
 ##### Diagnostic boundary discovered before the final PASS
 
 The first constructor specimen restored successfully but diverged at tick `268`. Instrumentation then showed that the **only** differing top-level field was `inputCheckpointDigest`; `guardPacked`, roster, topology, outcomes, and their digests remained exact. The divergence appeared after the physical step while the test generated the next synthetic input with `Math.cos/Math.sin` in Node versus workerd.

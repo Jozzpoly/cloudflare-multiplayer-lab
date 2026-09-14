@@ -24,6 +24,12 @@ import {
   type FoundationReplicationLiveMode,
 } from "./replication-live-checkpoint.ts";
 import {
+  assertFoundationReplicationProgressOverlayMatchesBase,
+  createFoundationReplicationProgressOverlay,
+  type FoundationReplicationProgressOverlay,
+} from "./replication-progress-overlay.ts";
+import { FoundationReplicationProgressSqliteStorage } from "./replication-progress-sqlite-storage.ts";
+import {
   FoundationReplicationPhysicsRuntime,
   type FoundationReplicationPhysicsActorBinding,
 } from "./replication-physics-runtime.ts";
@@ -133,6 +139,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
   private readonly constructorNonce = crypto.randomUUID();
   private readonly constructorBornAtMs = Date.now();
   private readonly checkpointStorage: FoundationCheckpointSqliteStorage;
+  private readonly progressStorage: FoundationReplicationProgressSqliteStorage;
   private roster = new FoundationRosterMachine({ worldEpoch: WORLD_EPOCH, capacity: CAPACITY });
   private topology = new FoundationEntityTopology(WORLD_EPOCH, PERSISTENT_WORLD);
   private inputs = new FoundationActorInputRegistry(WORLD_EPOCH, MAX_FUTURE_TICKS);
@@ -147,6 +154,8 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
   private checkpointPublishes = 0;
   private checkpointPayloadBytes = 0;
   private restoredCheckpointTick: number | null = null;
+  private progressSequence = 0;
+  private progressPayloadBytes = 0;
   private recoveredSocketBindings = 0;
   private worldId: string | null = null;
   private mode: FoundationReplicationLiveMode = "neutral";
@@ -168,6 +177,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
   constructor(ctx: DurableObjectState, env: PhysicsReplicationEnv) {
     super(ctx, env);
     this.checkpointStorage = new FoundationCheckpointSqliteStorage(ctx.storage);
+    this.progressStorage = new FoundationReplicationProgressSqliteStorage(ctx.storage);
     ctx.blockConcurrencyWhile(async () => {
       try {
         const recovered = await recoverFoundationCheckpoint(this.checkpointStorage);
@@ -181,7 +191,16 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
         const checkpoint = decodeFoundationReplicationLiveCheckpoint(recovered.payload);
         if (recovered.head.worldEpoch !== checkpoint.worldEpoch) throw new Error("live checkpoint HEAD WorldEpoch mismatch");
         if (recovered.head.canonicalTick !== checkpoint.canonicalTick) throw new Error("live checkpoint HEAD canonical tick mismatch");
-        this.restoreLiveCheckpoint(checkpoint, recovered.head.generation, recovered.payload.byteLength);
+        const progressOverlay = this.progressStorage.readForBase(recovered.head.generation);
+        if (progressOverlay) {
+          assertFoundationReplicationProgressOverlayMatchesBase(progressOverlay, checkpoint, recovered.head.generation);
+        }
+        this.restoreLiveCheckpoint(
+          checkpoint,
+          recovered.head.generation,
+          recovered.payload.byteLength,
+          progressOverlay,
+        );
         this.restoreState = "restored";
       } catch (error) {
         this.restoreState = "failed";
@@ -248,6 +267,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       }
       if (message.runtimeDigest !== binding.expectedRuntimeDigest) return this.closePolicy(socket, "runtime_digest_mismatch");
       binding.readyTopologyRevision = binding.lastTopologyRevision;
+      this.publishProgressOverlay();
       this.persistSocketAttachment(binding);
       return;
     }
@@ -276,6 +296,18 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       return { actorId: acceptance.actorId, targetTick: acceptance.targetTick, status: acceptance.status };
     });
     binding.inputBatches += 1;
+
+    const commitRecipients = this.usesCanonicalInputCommits() && committedRecords.length > 0
+      ? [...this.bindingBySession.values()].filter((recipient) =>
+          this.isCurrentTransportConnected(recipient) && recipient.socket !== null
+        )
+      : [];
+    if (committedRecords.length > 0 && this.usesCanonicalInputCommits()) {
+      this.committedInputRecords += committedRecords.length;
+      this.inputCommitsSent += commitRecipients.length;
+    }
+
+    this.publishProgressOverlay();
     this.persistSocketAttachment(binding);
     this.send(socket, foundationReplicationInputResult({
       worldId: this.worldId!,
@@ -285,10 +317,9 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       batchSeq: message.batchSeq,
       records,
     }));
-    if (this.usesCanonicalInputCommits() && committedRecords.length > 0) {
-      this.committedInputRecords += committedRecords.length;
-      for (const recipient of this.bindingBySession.values()) {
-        if (!this.isCurrentTransportConnected(recipient) || !recipient.socket) continue;
+    if (committedRecords.length > 0 && this.usesCanonicalInputCommits()) {
+      for (const recipient of commitRecipients) {
+        if (!recipient.socket) continue;
         this.send(recipient.socket, foundationReplicationInputCommit({
           worldId: this.worldId!,
           worldEpoch: WORLD_EPOCH,
@@ -300,7 +331,6 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
           authorityBoundaryTick,
           records: committedRecords,
         }));
-        this.inputCommitsSent += 1;
       }
     }
     await this.maybeAdvanceContinuation();
@@ -444,6 +474,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     this.syncsSent += 1;
     if (reason === "correction") this.correctionSyncs += 1;
     if (reason === "resume") this.resumeSyncs += 1;
+    this.publishProgressOverlay();
     this.persistSocketAttachment(binding);
     this.send(binding.socket, foundationReplicationRuntimeSync({
       syncId,
@@ -485,6 +516,46 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       ...bindingState(binding),
     };
     binding.socket.serializeAttachment(attachment);
+  }
+
+  private publishProgressOverlay(): void {
+    if (this.mode !== "reconnect" || !this.worldId) return;
+    if (this.checkpointGeneration < 1 || this.restoredCheckpointTick === null) return;
+    const roster = this.roster.snapshot();
+    if (roster.currentTick !== this.restoredCheckpointTick) return;
+    const topology = this.topology.snapshot();
+    const nextSequence = this.progressSequence + 1;
+    const overlay = createFoundationReplicationProgressOverlay({
+      worldId: this.worldId,
+      worldEpoch: WORLD_EPOCH,
+      baseCheckpointGeneration: this.checkpointGeneration,
+      baseCanonicalTick: this.restoredCheckpointTick,
+      topologyRevision: topology.topologyRevision,
+      topologyDigest: topology.topologyDigest,
+      progressSequence: nextSequence,
+      inputCheckpoint: this.inputs.checkpoint(roster),
+      workerState: {
+        syncSequence: this.syncSequence,
+        syncsSent: this.syncsSent,
+        correctionSyncs: this.correctionSyncs,
+        resumeSyncs: this.resumeSyncs,
+        inputCommitsSent: this.inputCommitsSent,
+        committedInputRecords: this.committedInputRecords,
+        acceptedInputRecords: this.acceptedInputRecords,
+        invalidMessages: this.invalidMessages,
+        staleReady: this.staleReady,
+        resumedSessions: [...this.resumedSessions].sort(),
+        bindings: [...this.bindingBySession.values()]
+          .sort((a, b) => Number(a.actorId.slice("actor:".length)) - Number(b.actorId.slice("actor:".length)))
+          .map(bindingState),
+      },
+    });
+    const result = this.progressStorage.write(overlay);
+    if (result.progressSequence !== nextSequence || result.baseCheckpointGeneration !== this.checkpointGeneration) {
+      throw new Error("progress overlay durable sequence verification failed");
+    }
+    this.progressSequence = nextSequence;
+    this.progressPayloadBytes = result.byteLength;
   }
 
   private usesCanonicalInputCommits(): boolean {
@@ -618,12 +689,15 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     this.checkpointPublishes += 1;
     this.checkpointPayloadBytes = payload.byteLength;
     this.restoredCheckpointTick = roster.currentTick;
+    this.progressSequence = 0;
+    this.progressPayloadBytes = 0;
   }
 
   private restoreLiveCheckpoint(
     checkpoint: FoundationReplicationLiveCheckpoint,
     generation: number,
     payloadBytes: number,
+    progressOverlay: FoundationReplicationProgressOverlay | null,
   ): void {
     if (checkpoint.worldEpoch !== WORLD_EPOCH) throw new Error("live checkpoint WorldEpoch mismatch");
     if (!checkpoint.worldId.startsWith("foundation-physics-replication-reconnect-")) {
@@ -635,7 +709,8 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     const rosterSnapshot = roster.snapshot();
     if (rosterSnapshot.currentTick !== checkpoint.canonicalTick) throw new Error("restored roster tick mismatch");
     if (rosterSnapshot.topologyRevision !== checkpoint.topologyRevision) throw new Error("restored roster topology revision mismatch");
-    const inputs = FoundationActorInputRegistry.fromCheckpoint(structuredClone(checkpoint.inputCheckpoint), rosterSnapshot);
+    const restoredInputCheckpoint = progressOverlay?.inputCheckpoint ?? checkpoint.inputCheckpoint;
+    const inputs = FoundationActorInputRegistry.fromCheckpoint(structuredClone(restoredInputCheckpoint), rosterSnapshot);
     const topology = new FoundationEntityTopology(WORLD_EPOCH, PERSISTENT_WORLD);
     const topologySnapshot = topology.syncRoster(rosterSnapshot);
     if (topologySnapshot.topologyRevision !== checkpoint.topologyRevision) throw new Error("restored topology revision mismatch");
@@ -657,21 +732,22 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       throw new Error("restored physics guard does not match durable checkpoint boundary");
     }
 
+    const progressWorkerState = progressOverlay?.workerState ?? checkpoint.workerState;
     this.roster = roster;
     this.inputs = inputs;
     this.topology = topology;
     this.physics = physics;
     this.worldId = checkpoint.worldId;
     this.mode = checkpoint.mode;
-    this.syncSequence = checkpoint.workerState.syncSequence;
-    this.syncsSent = checkpoint.workerState.syncsSent;
-    this.correctionSyncs = checkpoint.workerState.correctionSyncs;
-    this.resumeSyncs = checkpoint.workerState.resumeSyncs;
-    this.inputCommitsSent = checkpoint.workerState.inputCommitsSent;
-    this.committedInputRecords = checkpoint.workerState.committedInputRecords;
-    this.acceptedInputRecords = checkpoint.workerState.acceptedInputRecords;
-    this.invalidMessages = checkpoint.workerState.invalidMessages;
-    this.staleReady = checkpoint.workerState.staleReady;
+    this.syncSequence = progressWorkerState.syncSequence;
+    this.syncsSent = progressWorkerState.syncsSent;
+    this.correctionSyncs = progressWorkerState.correctionSyncs;
+    this.resumeSyncs = progressWorkerState.resumeSyncs;
+    this.inputCommitsSent = progressWorkerState.inputCommitsSent;
+    this.committedInputRecords = progressWorkerState.committedInputRecords;
+    this.acceptedInputRecords = progressWorkerState.acceptedInputRecords;
+    this.invalidMessages = progressWorkerState.invalidMessages;
+    this.staleReady = progressWorkerState.staleReady;
     this.completedContinuationTicks = checkpoint.workerState.completedContinuationTicks;
     this.finalGuardPacked = checkpoint.workerState.finalGuardPacked;
     this.finalSeedBytes = checkpoint.workerState.finalSeedBytes;
@@ -680,11 +756,11 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     this.propStartXZ.clear();
     for (const entry of checkpoint.workerState.propStartXZ) this.propStartXZ.set(entry.entityId, [entry.x, entry.z]);
     this.resumedSessions.clear();
-    for (const session of checkpoint.workerState.resumedSessions) this.resumedSessions.add(session);
+    for (const session of progressWorkerState.resumedSessions) this.resumedSessions.add(session);
 
     this.bindingBySession.clear();
     this.sessionBySocket.clear();
-    for (const state of checkpoint.workerState.bindings) {
+    for (const state of progressWorkerState.bindings) {
       const actor = rosterSnapshot.actors.find((candidate) => candidate.actorSessionId === state.actorSessionId);
       if (!actor || actor.actorId !== state.actorId) throw new Error(`restored binding identity mismatch for ${state.actorSessionId}`);
       if (state.lastTopologyRevision !== checkpoint.topologyRevision) throw new Error(`restored binding topology mismatch for ${state.actorSessionId}`);
@@ -735,6 +811,8 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     this.checkpointGeneration = generation;
     this.checkpointPayloadBytes = payloadBytes;
     this.restoredCheckpointTick = checkpoint.canonicalTick;
+    this.progressSequence = progressOverlay?.progressSequence ?? 0;
+    this.progressPayloadBytes = progressOverlay ? this.progressStorage.stats().byteLength : 0;
   }
 
   private status() {
@@ -753,8 +831,11 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       checkpointPublishes: this.checkpointPublishes,
       checkpointPayloadBytes: this.checkpointPayloadBytes,
       restoredCheckpointTick: this.restoredCheckpointTick,
+      progressSequence: this.progressSequence,
+      progressPayloadBytes: this.progressPayloadBytes,
       recoveredSocketBindings: this.recoveredSocketBindings,
       checkpointStorage: this.checkpointStorage.stats(),
+      progressStorage: this.progressStorage.stats(),
       hibernationWebSockets: this.ctx.getWebSockets().length,
       mode: this.mode,
       worldId: this.worldId,

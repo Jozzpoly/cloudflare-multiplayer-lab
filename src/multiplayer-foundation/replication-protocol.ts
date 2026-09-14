@@ -328,9 +328,10 @@ function parseInputCommit(
   if (!isNonNegativeSafeInteger(record.topologyRevision)) return null;
   if (!isPositiveSafeInteger(record.batchSeq)) return null;
   if (!isNonNegativeSafeInteger(record.authorityBoundaryTick)) return null;
+  const authorityBoundaryTick = record.authorityBoundaryTick;
   const records = parseInputRecords(record.records);
   if (!records) return null;
-  if (records.some((entry) => entry.targetTick < record.authorityBoundaryTick)) return null;
+  if (records.some((entry) => entry.targetTick < authorityBoundaryTick)) return null;
   return {
     type: "foundation_input_commit",
     revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
@@ -341,7 +342,7 @@ function parseInputCommit(
     actorId: record.actorId,
     topologyRevision: record.topologyRevision,
     batchSeq: record.batchSeq,
-    authorityBoundaryTick: record.authorityBoundaryTick,
+    authorityBoundaryTick,
     records,
   };
 }

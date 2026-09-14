@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "multi-world-foundation-replication-local-test",
+  "main": "src/multiplayer-foundation/replication-test-worker.ts",
+  "compatibility_date": "2026-09-01",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "FOUNDATION_REPLICATION_TEST",
+        "class_name": "FoundationReplicationTestWorld"
+      }
+    ]
+  },
+  "exports": {
+    "FoundationReplicationTestWorld": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}

@@ -10,6 +10,7 @@ on:
       - foundation-recovery-remote-trigger.json
       - scripts/build-foundation-recovery-box3d.sh
       - scripts/build-foundation-recovery-remote.sh
+      - scripts/deploy-foundation-recovery-remote.sh
       - scripts/patch-foundation-recovery-deterministic-driver.py
       - scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs
       - scripts/fixtures/multiplayer-foundation-authority-constructor-remote-worker.mjs
@@ -38,19 +39,21 @@ jobs:
           python -m py_compile scripts/patch-foundation-recovery-deterministic-driver.py
           bash -n scripts/build-foundation-recovery-box3d.sh
           bash -n scripts/build-foundation-recovery-remote.sh
+          bash -n scripts/deploy-foundation-recovery-remote.sh
           node --check scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs
           node --check scripts/fixtures/multiplayer-foundation-authority-constructor-remote-worker.mjs
-      - name: Dry-run exact remote Worker deployment bundle
+      - name: Dry-run exact Workers Builds deploy command
         env:
           FOUNDATION_RECOVERY_BUILD_ROOT: ${{ runner.temp }}/foundation-recovery-box3d
+          FOUNDATION_RECOVERY_REMOTE_DRY_RUN: "1"
+          FOUNDATION_RECOVERY_REMOTE_DRY_RUN_OUTDIR: ${{ runner.temp }}/foundation-recovery-remote-dry-run
+          WORKERS_CI: "1"
+          WRANGLER_CI_OVERRIDE_NAME: cloudflare-multiplayer-lab-foundation-recovery
+          WORKERS_CI_COMMIT_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler deploy \
-            --dry-run \
-            --config wrangler.foundation-authority-constructor-remote.jsonc \
-            --outdir "$RUNNER_TEMP/foundation-recovery-remote-dry-run" \
-            | tee foundation-recovery-remote-dry-run.log
+          bash scripts/deploy-foundation-recovery-remote.sh | tee foundation-recovery-remote-dry-run.log
           test -s scripts/fixtures/box3d-byte-probe.generated.mjs
           test -s scripts/fixtures/box3d-byte-probe.generated.wasm
           test -s scripts/fixtures/foundation-recovery-remote-build.generated.mjs

@@ -19,6 +19,7 @@
     "src/multiplayer-foundation/client-replica-model.ts",
     "src/multiplayer-foundation/client-runtime-bootstrap.ts",
     "src/multiplayer-foundation/entity-topology.ts",
+    "src/multiplayer-foundation/replication-protocol.ts",
     "src/multiplayer-foundation/roster-machine.ts",
     "src/multiplayer-foundation/state-guard.ts"
   ]

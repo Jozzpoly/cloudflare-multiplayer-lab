@@ -6,22 +6,14 @@ on:
       - research/multiplayer-foundation-v1-2026-09-13
     paths:
       - .github/workflows/multiplayer-foundation-physics-transport-probe.yml
+      - package.json
+      - package-lock.json
       - scripts/multiplayer-foundation-local-physics-transport-smoke.mjs
       - scripts/fixtures/multiplayer-foundation-browser-physics-transport-client.mjs
+      - public/world-v0/box3d-i4/**
       - src/box3d-runtime.ts
       - src/world-v0-contract.ts
-      - src/multiplayer-foundation/replication-physics-runtime.ts
-      - src/multiplayer-foundation/replication-physics-test-worker.ts
-      - src/multiplayer-foundation/replication-protocol.ts
-      - src/multiplayer-foundation/client-bootstrap.ts
-      - src/multiplayer-foundation/client-runtime-bootstrap.ts
-      - src/multiplayer-foundation/client-box3d-runtime.ts
-      - src/multiplayer-foundation/client-input-ledger.ts
-      - src/multiplayer-foundation/client-replica-model.ts
-      - src/multiplayer-foundation/entity-topology.ts
-      - src/multiplayer-foundation/roster-machine.ts
-      - src/multiplayer-foundation/actor-input-registry.ts
-      - src/multiplayer-foundation/state-guard.ts
+      - src/multiplayer-foundation/**
       - tsconfig.multiplayer-foundation-browser.json
       - wrangler.foundation-replication-physics-test.jsonc
   workflow_dispatch:

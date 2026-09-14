@@ -1,8 +1,8 @@
 # Multiplayer Foundation — Recovery Live State
 
-Date: 2026-09-13
+Date: 2026-09-14
 
-Status: **Gate 4A PASS / Gate 4B PASS / Gate 4C local stack L1–L4b PASS / not product-qualified**
+Status: **Gate 4A PASS / Gate 4B PASS / Gate 4C local stack L1–L4b PASS / remote deployment-restart gate READY but UNEXECUTED / not product-qualified**
 
 This document is the recovery/persistence source of truth for the `research/multiplayer-foundation-v1-2026-09-13` branch. Claims are limited to executed evidence.
 
@@ -77,6 +77,44 @@ Result: `MULTIPLAYER FOUNDATION AUTHORITY CONSTRUCTOR RESTART PASS`.
 
 Confirming evidence: run `34788569624` repeated the entire hardened qualification pipeline successfully, including deterministic-driver assertions, independent fresh Node/WASM Gate 4B verification and fresh-constructor L4b recovery. Both full post-confounder qualification runs are green.
 
+### Gate 4C-R1 — deployed Cloudflare deployment-restart recovery
+
+**READY / UNEXECUTED.** This is the next gate; no remote PASS is claimed yet.
+
+The apparatus is isolated from `staging`, `reliability_play`, `qualified_play` and the production/root Worker. Its dedicated target is:
+
+- deployment branch: `research/multiplayer-foundation-recovery-remote`
+- Worker: `cloudflare-multiplayer-lab-foundation-recovery`
+- Durable Object binding: `FOUNDATION_AUTHORITY_CONSTRUCTOR_TEST`
+- storage: SQLite
+- workers.dev only; no custom route
+
+The intended executed path is deliberately two deployments of the same Worker/DO namespace:
+
+`deploy A → fresh constructor empty → independently generated exact envelope → generation-1 SQLite publication → deploy B → fresh constructor nonce → constructor restores generation 1 before /resume → exact continuation through tick 329`
+
+Repository safeguards:
+
+- `scripts/deploy-foundation-recovery-remote.sh` refuses execution unless it is running under Workers Builds, the Cloudflare Worker override name is exactly the dedicated recovery Worker, the Workers Builds commit SHA is valid, and the checked-out HEAD is that exact SHA.
+- The deployment wrapper builds the pinned byte-capable/CSP-safe Box3D adapter itself and invokes Wrangler with only `wrangler.foundation-authority-constructor-remote.jsonc`; it cannot fall through to the root `wrangler.jsonc` deployment path.
+- `foundation-recovery-remote-trigger.json` is fail-closed across `idle`, `seed`, and `resume`; the dedicated branch currently remains `idle / unarmed`.
+- Both remote audit phases wait until `/build` reports the exact expected Git commit before accepting evidence.
+- `seed` independently rebuilds Gate 4B producer/consumer material before publishing the remote checkpoint.
+- `resume` requires a changed constructor nonce, `restoreState = restored` before `/resume`, restored generation `1` at tick `260`, `41829` physics bytes, and exact continuation through tick `329` including post-checkpoint churn.
+
+Executed apparatus evidence:
+
+- run `34789275755` — first full remote bundle dry-run PASS.
+- run `34789277298` — ordinary CI on the same head PASS.
+- run `34792201941` — dedicated remote branch classification PASS in `idle`; `seed` and `resume` correctly skipped.
+- run `34792311322` — exact fail-closed Workers Builds deploy command, including pinned Box3D rebuild and `wrangler deploy --dry-run` against the dedicated config, PASS.
+- run `34792313249` — ordinary CI on the hardened deploy-command head PASS.
+- dedicated deployment branch is synchronized to validated head `e6592462f35eeaec73099b1362167191baf92e72` and remains unarmed.
+
+External prerequisite still pending: create/connect the dedicated Cloudflare Worker to that deployment branch with Workers Builds and set its deploy command to `bash scripts/deploy-foundation-recovery-remote.sh`. Until that account-side setup exists and both `seed` and `resume` execute remotely, Gate 4C-R1 remains UNEXECUTED.
+
+This gate qualifies a **real Cloudflare code-deployment restart boundary**. It must not be relabeled as spontaneous edge eviction, hibernation, failover, or migration evidence.
+
 ## L4b diagnostic boundary
 
 The first constructor specimen restored successfully but diverged at tick `268`. Instrumentation showed that **only `inputCheckpointDigest` differed**; physics `guardPacked`, roster, topology, outcomes and their digests remained exact. The mismatch appeared after the physical step when a synthetic future-input branch used `Math.cos/Math.sin` in Node versus workerd.
@@ -103,7 +141,8 @@ The store chunks payloads rather than assuming one arbitrarily large SQLite BLOB
 
 Still unproven:
 
-- recovery after a real deployed Cloudflare edge eviction/platform lifecycle event,
+- recovery across a real Cloudflare code deployment (Gate 4C-R1 apparatus is ready but not yet executed),
+- recovery after spontaneous real deployed Cloudflare eviction, hibernation, platform restart/failover or migration,
 - production packaging/distribution and upgrade policy for the custom Workers-compatible Box3D build,
 - runtime-checkpoint compatibility across Box3D/box3d.js builds,
 - arbitrary cross-runtime bit identity for host-JS transcendental math,
@@ -117,6 +156,8 @@ Still unproven:
 
 ## Current next move
 
-The scoped **local recovery stack is defended through a fresh Durable Object constructor**. The next qualitative durability boundary is deployed Cloudflare qualification: preserve the same fail-closed envelope/store/constructor contracts and test real platform lifecycle behavior rather than adding another local persistence abstraction.
+The scoped **local recovery stack is defended through a fresh Durable Object constructor**, and the isolated remote deployment-restart apparatus is validated but unexecuted. The next qualitative durability boundary is to connect the dedicated Worker to `research/multiplayer-foundation-recovery-remote`, leave it unarmed until the exact Worker/branch/deploy-command configuration is verified, then execute the controlled two-deployment `seed → resume` campaign.
+
+A successful R1 would establish recovery across an intentional real Cloudflare code-deployment restart only. Natural eviction/hibernation/failover remains a separate later question and must be evidenced independently.
 
 Separately, production use requires an explicit packaging/versioning/fingerprint/upgrade policy for the custom Workers-compatible Box3D adapter. Local constructor recovery is strong architecture evidence; it is not a real-edge or product-readiness claim.

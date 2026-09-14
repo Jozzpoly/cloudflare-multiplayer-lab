@@ -11,6 +11,7 @@ import { FoundationEntityTopology } from "../src/multiplayer-foundation/entity-t
 import { FoundationRosterMachine } from "../src/multiplayer-foundation/roster-machine.ts";
 import {
   FOUNDATION_REPLICATION_PROTOCOL_REVISION,
+  foundationReplicationInputCommit,
   foundationReplicationInputResult,
   foundationReplicationRuntimeSync,
   parseFoundationReplicationClientMessage,
@@ -179,6 +180,27 @@ const parsedResult = parseFoundationReplicationServerMessage(JSON.stringify(inpu
 assert(parsedResult?.message.type === "foundation_input_result");
 assert.equal(parsedResult.message.records[0].status, "accepted");
 
+const inputCommit = foundationReplicationInputCommit({
+  worldId: WORLD_ID,
+  worldEpoch: WORLD_EPOCH,
+  recipientActorSessionId: SELF_SESSION,
+  sourceActorSessionId: "session-peer",
+  actorId: "actor:1",
+  topologyRevision: topology.topologyRevision,
+  batchSeq: 7,
+  authorityBoundaryTick: 2,
+  records: [
+    { targetTick: 3, x: -0.5, z: 0.25 },
+    { targetTick: 4, x: 0, z: -1 },
+  ],
+});
+const parsedCommit = parseFoundationReplicationServerMessage(JSON.stringify(inputCommit), expectation);
+assert(parsedCommit?.message.type === "foundation_input_commit");
+assert.equal(parsedCommit.message.recipientActorSessionId, SELF_SESSION);
+assert.equal(parsedCommit.message.sourceActorSessionId, "session-peer");
+assert.equal(parsedCommit.message.actorId, "actor:1");
+assert.equal(parsedCommit.message.records.length, 2);
+
 const wrongRevision = { ...join, revision: "wrong-revision" };
 assert.equal(parseFoundationReplicationClientMessage(JSON.stringify(wrongRevision)), null);
 assert.equal(parseFoundationReplicationClientMessage("not-json"), null);
@@ -224,6 +246,29 @@ const wrongResultStatus = JSON.parse(JSON.stringify(inputResult));
 wrongResultStatus.records[0].status = "silently_accepted";
 assert.equal(parseFoundationReplicationServerMessage(JSON.stringify(wrongResultStatus), expectation), null);
 
+assert.equal(
+  parseFoundationReplicationServerMessage(JSON.stringify({
+    ...inputCommit,
+    recipientActorSessionId: "session-peer",
+  }), expectation),
+  null,
+);
+assert.equal(
+  parseFoundationReplicationServerMessage(JSON.stringify({
+    ...inputCommit,
+    authorityBoundaryTick: 4,
+    records: [{ targetTick: 3, x: 0, z: 0 }],
+  }), expectation),
+  null,
+);
+assert.equal(
+  parseFoundationReplicationServerMessage(JSON.stringify({
+    ...inputCommit,
+    sourceActorSessionId: "bad source session",
+  }), expectation),
+  null,
+);
+
 console.log("MULTIPLAYER_FOUNDATION_REPLICATION_PROTOCOL_PASS", JSON.stringify({
   revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
   worldId: WORLD_ID,
@@ -234,6 +279,6 @@ console.log("MULTIPLAYER_FOUNDATION_REPLICATION_PROTOCOL_PASS", JSON.stringify({
   seedBytes: seedBytes.byteLength,
   actors: rosterSnapshot.actors.length,
   clientMessages: ["join", "runtime_ready", "input_batch"],
-  serverMessages: ["runtime_sync", "input_result"],
-  malformedCases: 11,
+  serverMessages: ["runtime_sync", "input_result", "input_commit"],
+  malformedCases: 14,
 }));

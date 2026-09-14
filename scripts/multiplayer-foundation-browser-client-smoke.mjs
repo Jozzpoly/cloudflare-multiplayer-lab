@@ -110,16 +110,42 @@ async function waitForDebugger(port) {
   }
   throw new Error(`Chrome debugger unavailable: ${last}`);
 }
-async function stopBrowser(child) {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  await new Promise((resolvePromise) => {
-    const timer = setTimeout(resolvePromise, 3000);
-    child.once("exit", () => {
+async function waitForProcessExit(child, timeoutMs) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return true;
+  return await new Promise((resolvePromise) => {
+    const timer = setTimeout(() => {
+      child.removeListener("exit", onExit);
+      resolvePromise(false);
+    }, timeoutMs);
+    const onExit = () => {
       clearTimeout(timer);
-      resolvePromise();
-    });
-    child.kill("SIGKILL");
+      resolvePromise(true);
+    };
+    child.once("exit", onExit);
   });
+}
+async function stopBrowser(cdp, child) {
+  if (!child) return;
+  if (child.exitCode === null && child.signalCode === null && cdp) {
+    try { await cdp.call("Browser.close"); } catch { /* browser may close the CDP socket first */ }
+  }
+  if (await waitForProcessExit(child, 5000)) return;
+  try { child.kill("SIGKILL"); } catch { /* cleanup fallback */ }
+  await waitForProcessExit(child, 3000);
+}
+async function removeTreeBestEffort(path, label, attempts = 20, delayMs = 150) {
+  if (!path) return;
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      rmSync(path, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await sleep(delayMs);
+    }
+  }
+  console.warn(`${label} cleanup warning: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 }
 class Cdp {
   constructor(url) {
@@ -262,9 +288,9 @@ try {
   console.log("MULTIPLAYER_FOUNDATION_BROWSER_TOPOLOGY_REBOOTSTRAP_PASS", JSON.stringify(topology));
   await cdp.call("Target.closeTarget", { targetId: topologyRun.targetId });
 } finally {
+  await stopBrowser(cdp, browser);
   cdp?.close();
-  await stopBrowser(browser);
   if (server) await new Promise((resolvePromise) => server.close(resolvePromise));
-  if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-  rmSync(DIST_ROOT, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  await removeTreeBestEffort(profile, "Chrome profile");
+  await removeTreeBestEffort(DIST_ROOT, "foundation browser dist", 10, 100);
 }

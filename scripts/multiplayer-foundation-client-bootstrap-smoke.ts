@@ -67,7 +67,8 @@ assert.deepEqual([...hydrated30.stateByNetEntityId.keys()], topology30.entityOrd
 assert.equal(hydrated30.inputLedger.activeOwners().length, 6);
 const tick31 = hydrated30.inputLedger.resolveTick(31);
 assert.equal(tick31.actors.length, 6);
-assert.equal(tick31.actors.find((actor) => actor.actorSessionId === "session-d")?.z, -0.2);
+assert.equal(tick31.actors.find((actor) => actor.actorSessionId === "session-d")?.x, 0.2);
+assert.equal(tick31.actors.find((actor) => actor.actorSessionId === "session-d")?.z, 0);
 assert.equal(tick31.actors.find((actor) => actor.actorSessionId === "session-b")?.jumpTrigger, false, "boundary jump baseline must not retrigger after bootstrap");
 
 assert.throws(

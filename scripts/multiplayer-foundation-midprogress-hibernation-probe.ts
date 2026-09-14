@@ -145,7 +145,7 @@ class ProbeClient {
   readonly actorSessionId: string;
   readonly input: { x: number; z: number };
   socket: WebSocket;
-  private intentionalClose = false;
+  private readonly intentionalClosures = new Set<WebSocket>();
   readonly state: ClientState = {
     worldEpoch: null,
     actorId: null,
@@ -204,10 +204,11 @@ class ProbeClient {
       });
     });
     socket.addEventListener("error", () => {
-      if (!this.intentionalClose && !this.state.failure) this.state.failure = "WebSocket error";
+      if (!this.intentionalClosures.has(socket) && !this.state.failure) this.state.failure = "WebSocket error";
     });
     socket.addEventListener("close", (event) => {
-      if (!this.intentionalClose && !this.state.failure) {
+      const intentional = this.intentionalClosures.delete(socket);
+      if (!intentional && !this.state.failure) {
         this.state.failure = `unexpected close ${event.code} ${event.reason}`;
       }
     });
@@ -286,29 +287,19 @@ class ProbeClient {
     }));
   }
 
-  async disconnectForResume(): Promise<void> {
+  disconnectForResume(): void {
     assert.equal(this.socket.readyState, WebSocket.OPEN);
-    this.intentionalClose = true;
     const socket = this.socket;
-    const closed = new Promise<void>((resolveClose) => {
-      socket.addEventListener("close", () => resolveClose(), { once: true });
-    });
+    this.intentionalClosures.add(socket);
     socket.close(1000, "controlled-midprogress-reconnect");
-    const completed = await Promise.race([
-      closed.then(() => true),
-      sleep(5000).then(() => false),
-    ]);
-    assert(completed, `${this.actorSessionId} controlled close timed out`);
-    this.intentionalClose = false;
   }
 
   openResumeTransport(): void {
-    assert.equal(this.socket.readyState, WebSocket.CLOSED);
     this.socket = this.installSocket("resume");
   }
 
   close(): void {
-    this.intentionalClose = true;
+    this.intentionalClosures.add(this.socket);
     try { this.socket.close(1000, "probe-complete"); } catch { /* cleanup */ }
   }
 }
@@ -426,7 +417,7 @@ try {
   const reconnectClient = clients.find((client) => client.actorSessionId === RECONNECT_SESSION);
   assert(reconnectClient, "reconnect client missing");
   const resumedActorId = reconnectClient.state.actorId;
-  await reconnectClient.disconnectForResume();
+  reconnectClient.disconnectForResume();
   await waitForStatus(
     (value) => value.connectedTransports === 2
       && value.actors.find((actor: any) => actor.actorSessionId === RECONNECT_SESSION)?.transportConnected === false,

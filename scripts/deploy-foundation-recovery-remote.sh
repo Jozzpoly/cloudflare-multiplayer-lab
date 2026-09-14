@@ -5,33 +5,8 @@ EXPECTED_WORKER="cloudflare-multiplayer-lab-foundation-recovery"
 EXPECTED_BRANCH="research/multiplayer-foundation-recovery-remote"
 RECOVERY_CONFIG="workers/foundation-recovery-remote/wrangler.jsonc"
 ROOT_RECOVERY_CONFIG_TEMPLATE="workers/foundation-recovery-remote/wrangler.repository-root.jsonc"
-ENTRY_PROBE_SENTINEL="foundation-recovery-workers-build-entry-probe.json"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
-
-if [[ -f "$ENTRY_PROBE_SENTINEL" ]]; then
-  node --input-type=module <<'NODE'
-import { readFileSync } from "node:fs";
-const probe = JSON.parse(readFileSync("foundation-recovery-workers-build-entry-probe.json", "utf8"));
-if (probe.revision !== "multiplayer-foundation-workers-build-entry-probe-v1" || probe.enabled !== true) {
-  throw new Error("invalid Workers Builds entry probe sentinel");
-}
-NODE
-  if [[ "${WORKERS_CI:-}" != "1" ]]; then
-    echo "Refusing Workers Builds entry probe: WORKERS_CI=1 is required." >&2
-    exit 1
-  fi
-  if [[ "${WRANGLER_CI_OVERRIDE_NAME:-}" != "$EXPECTED_WORKER" ]]; then
-    echo "Refusing Workers Builds entry probe: target '${WRANGLER_CI_OVERRIDE_NAME:-<missing>}' != '$EXPECTED_WORKER'." >&2
-    exit 1
-  fi
-  if [[ "${WORKERS_CI_BRANCH:-}" != "$EXPECTED_BRANCH" ]]; then
-    echo "Refusing Workers Builds entry probe: branch '${WORKERS_CI_BRANCH:-<missing>}' != '$EXPECTED_BRANCH'." >&2
-    exit 1
-  fi
-  echo "FOUNDATION_RECOVERY_WORKERS_BUILDS_ENTRY_PROBE_PASS commit=${WORKERS_CI_COMMIT_SHA:-<missing>}"
-  exit 0
-fi
 
 if [[ "${WORKERS_CI:-}" != "1" ]]; then
   echo "Refusing foundation recovery remote deploy: WORKERS_CI=1 is required." >&2

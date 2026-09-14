@@ -25,7 +25,10 @@ jobs:
         env:
           MW_FOUNDATION_RECOVERY_EXPECTED_BUILD: ${{ github.sha }}
           MW_FOUNDATION_RECOVERY_OUTPUT: foundation-recovery-remote-idle-evidence.json
-        run: node scripts/multiplayer-foundation-remote-idle-smoke.mjs | tee foundation-recovery-remote-idle.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/multiplayer-foundation-remote-idle-smoke.mjs | tee foundation-recovery-remote-idle.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:

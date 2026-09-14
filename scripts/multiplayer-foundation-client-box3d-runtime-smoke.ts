@@ -37,13 +37,17 @@ const PROFILE: FoundationClientExecutionProfile = {
   stateSchemaId: "shared-yard-rigidbody-f32-13-v1",
 };
 
+// Six actors begin just outside the central barricade faces. The capsule radius
+// and prop half-extents leave a narrow positive gap rather than an initial overlap,
+// then the deterministic inward intent drives a genuine actor→prop contact-rich
+// checkpoint instead of relying on incidental settling.
 const ACTOR_STARTS: ReadonlyArray<readonly [number, number, number]> = [
-  [-2.4, 0.82, -0.7],
-  [2.4, 0.82, -0.7],
-  [-2.4, 0.82, 0.7],
-  [2.4, 0.82, 0.7],
-  [-0.7, 0.82, -2.5],
-  [0.7, 0.82, 2.5],
+  [-1.80, 0.82, -0.48],
+  [1.80, 0.82, -0.48],
+  [-1.80, 0.82, 0.48],
+  [1.80, 0.82, 0.48],
+  [0, 0.82, -1.32],
+  [0, 0.82, 1.32],
 ];
 
 type WorldId = ReturnType<typeof b3.b3CreateWorld>;

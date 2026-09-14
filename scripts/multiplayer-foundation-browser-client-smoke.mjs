@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 const DIST_ROOT = resolve(".foundation-browser-dist");
 const FIXTURE_PATH = resolve("scripts/fixtures/multiplayer-foundation-browser-client.mjs");
 const TOPOLOGY_FIXTURE_PATH = resolve("scripts/fixtures/multiplayer-foundation-browser-topology-rebootstrap.mjs");
+const LATE_JOIN_FIXTURE_PATH = resolve("scripts/fixtures/multiplayer-foundation-browser-late-join-perspective.mjs");
 const BOX3D_ROOT = resolve("public/world-v0/box3d-i4");
 const DEBUG_PORT = 9688;
 const TIMEOUT_MS = 45_000;
@@ -56,8 +57,12 @@ function startFixtureServer() {
   const server = createServer((request, response) => {
     try {
       const url = new URL(request.url || "/", "http://127.0.0.1");
-      if (url.pathname === "/" || url.pathname === "/topology") {
-        const fixtureSrc = url.pathname === "/topology" ? "/topology-fixture.mjs" : "/fixture.mjs";
+      if (url.pathname === "/" || url.pathname === "/topology" || url.pathname === "/late-join") {
+        const fixtureSrc = url.pathname === "/topology"
+          ? "/topology-fixture.mjs"
+          : url.pathname === "/late-join"
+            ? "/late-join-fixture.mjs"
+            : "/fixture.mjs";
         response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         response.end(`<!doctype html><meta charset=utf-8><title>Foundation browser smoke</title><script type=module src=${fixtureSrc}></script>`);
         return;
@@ -65,6 +70,7 @@ function startFixtureServer() {
       let path = null;
       if (url.pathname === "/fixture.mjs") path = FIXTURE_PATH;
       else if (url.pathname === "/topology-fixture.mjs") path = TOPOLOGY_FIXTURE_PATH;
+      else if (url.pathname === "/late-join-fixture.mjs") path = LATE_JOIN_FIXTURE_PATH;
       else if (url.pathname.startsWith("/runtime/")) path = safeChild(DIST_ROOT, url.pathname.slice("/runtime/".length));
       else if (url.pathname.startsWith("/box3d/")) path = safeChild(BOX3D_ROOT, url.pathname.slice("/box3d/".length));
       if (!path) {
@@ -287,6 +293,28 @@ try {
   assert(topology.churn?.contacts > 0, "browser topology churn contact state missing");
   console.log("MULTIPLAYER_FOUNDATION_BROWSER_TOPOLOGY_REBOOTSTRAP_PASS", JSON.stringify(topology));
   await cdp.call("Target.closeTarget", { targetId: topologyRun.targetId });
+
+  const lateJoinRun = await createFixtureTarget(
+    cdp,
+    `${fixture.url}late-join`,
+    "__multiplayerFoundationLateJoinPerspectiveEvidence",
+    "MULTIPLAYER_FOUNDATION_BROWSER_LATE_JOIN_PERSPECTIVE_PASS",
+    "MULTIPLAYER_FOUNDATION_BROWSER_LATE_JOIN_PERSPECTIVE_FAIL",
+  );
+  const lateJoin = lateJoinRun.evidence;
+  assert(lateJoin.environment === "chromium", `unexpected late-join browser environment ${lateJoin.environment}`);
+  assert(lateJoin.activeActors === 6, `late-join active actor count ${lateJoin.activeActors}`);
+  assert(lateJoin.exactSharedTicks === 30, `late-join exact shared ticks ${lateJoin.exactSharedTicks}`);
+  assert(lateJoin.contacts > 0, "late-join contact-rich checkpoint missing");
+  assert(lateJoin.seedBytes > 0 && /^[0-9a-f]{8}$/.test(lateJoin.seedFnv1a32), "late-join byte seed evidence invalid");
+  assert(lateJoin.primary?.selfSessionId === "session-self" && lateJoin.primary?.selfActorId === "actor:0", "primary late-join perspective identity failed");
+  assert(lateJoin.primary?.remoteActors === 5, `primary late-join remote count ${lateJoin.primary?.remoteActors}`);
+  assert(lateJoin.lateJoin?.selfSessionId === "session-d" && lateJoin.lateJoin?.selfActorId === "actor:4", "alternate late-join perspective identity failed");
+  assert(lateJoin.lateJoin?.remoteActors === 5, `alternate late-join remote count ${lateJoin.lateJoin?.remoteActors}`);
+  assert(lateJoin.primary?.projectionDigest !== lateJoin.lateJoin?.projectionDigest, "late-join projection digests must differ by self perspective");
+  assert(lateJoin.primary?.runtimeDigest !== lateJoin.lateJoin?.runtimeDigest, "late-join runtime digests must differ by self perspective");
+  console.log("MULTIPLAYER_FOUNDATION_BROWSER_LATE_JOIN_PERSPECTIVE_PASS", JSON.stringify(lateJoin));
+  await cdp.call("Target.closeTarget", { targetId: lateJoinRun.targetId });
 } finally {
   await stopBrowser(cdp, browser);
   cdp?.close();

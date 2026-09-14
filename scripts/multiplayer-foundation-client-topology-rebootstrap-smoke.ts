@@ -467,8 +467,8 @@ destroyFoundationBox3DClientRuntime(joined.client.runtime);
 const churned = buildClientState(source, churnTick, churnGuard);
 assert.equal(churned.evidence.activeActors, 6);
 assert.equal(churned.evidence.remoteActors, 5);
-assert(churned.hydrated.projection.remotes.some((actor) => actor.netEntityId === "actor:6"));
-assert(!churned.hydrated.projection.remotes.some((actor) => actor.netEntityId === "actor:2"));
+assert(churned.client.hydrated.projection.remotes.some((actor) => actor.netEntityId === "actor:6"));
+assert(!churned.client.hydrated.projection.remotes.some((actor) => actor.netEntityId === "actor:2"));
 assert.notEqual(churned.evidence.projectionDigest, joined.evidence.projectionDigest);
 
 const finalTick = churnTick + 30;

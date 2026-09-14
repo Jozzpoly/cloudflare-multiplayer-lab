@@ -39,6 +39,18 @@ if [[ ! -f "$RECOVERY_CONFIG" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$ROOT_RECOVERY_CONFIG_TEMPLATE" ]]; then
+  echo "Refusing foundation recovery remote deploy: repository-root recovery config template is missing." >&2
+  exit 1
+fi
+
+if [[ "${FOUNDATION_RECOVERY_REMOTE_DRY_RUN:-}" != "1" ]]; then
+  if [[ ! -f wrangler.jsonc ]] || ! cmp -s wrangler.jsonc "$ROOT_RECOVERY_CONFIG_TEMPLATE"; then
+    echo "Refusing foundation recovery remote deploy: repository-root wrangler.jsonc is not the qualified recovery config." >&2
+    exit 1
+  fi
+fi
+
 npm ci
 bash scripts/build-foundation-recovery-remote.sh
 
@@ -55,7 +67,7 @@ fi
 
 npx wrangler "${WRANGLER_ARGS[@]}"
 
-if [[ "${FOUNDATION_RECOVERY_REMOTE_DRY_RUN:-}" == "1" && -f "$ROOT_RECOVERY_CONFIG_TEMPLATE" ]]; then
+if [[ "${FOUNDATION_RECOVERY_REMOTE_DRY_RUN:-}" == "1" ]]; then
   ROOT_CONFIG_BACKUP="$(mktemp)"
   cp wrangler.jsonc "$ROOT_CONFIG_BACKUP"
   restore_root_config() {

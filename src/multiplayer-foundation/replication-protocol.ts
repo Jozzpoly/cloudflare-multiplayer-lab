@@ -10,7 +10,7 @@ import type {
   FoundationClientExecutionProfile,
 } from "./client-bootstrap.ts";
 
-export const FOUNDATION_REPLICATION_PROTOCOL_REVISION = "multiplayer-foundation-replication-v1";
+export const FOUNDATION_REPLICATION_PROTOCOL_REVISION = "multiplayer-foundation-replication-v2-input-commit";
 export const FOUNDATION_REPLICATION_MAX_INPUT_RECORDS = 16;
 export const FOUNDATION_REPLICATION_MAX_CLIENT_MESSAGE_BYTES = 64 * 1024;
 export const FOUNDATION_REPLICATION_MAX_SERVER_MESSAGE_BYTES = 2 * 1024 * 1024;
@@ -88,9 +88,24 @@ export interface FoundationReplicationInputResult {
   records: FoundationReplicationInputResultRecord[];
 }
 
+export interface FoundationReplicationInputCommit {
+  type: "foundation_input_commit";
+  revision: typeof FOUNDATION_REPLICATION_PROTOCOL_REVISION;
+  worldId: string;
+  worldEpoch: string;
+  recipientActorSessionId: string;
+  sourceActorSessionId: string;
+  actorId: FoundationActorId;
+  topologyRevision: number;
+  batchSeq: number;
+  authorityBoundaryTick: number;
+  records: FoundationReplicationInputRecord[];
+}
+
 export type FoundationReplicationServerMessage =
   | FoundationReplicationRuntimeSync
-  | FoundationReplicationInputResult;
+  | FoundationReplicationInputResult
+  | FoundationReplicationInputCommit;
 
 export interface FoundationReplicationServerExpectation {
   worldId: string;
@@ -106,7 +121,7 @@ export type FoundationParsedServerMessage =
       hydratedRuntimeBootstrap: FoundationHydratedClientRuntimeBootstrap;
     }
   | {
-      message: FoundationReplicationInputResult;
+      message: FoundationReplicationInputResult | FoundationReplicationInputCommit;
       hydratedRuntimeBootstrap?: undefined;
     };
 
@@ -300,6 +315,37 @@ function parseInputResult(record: Record<string, unknown>): FoundationReplicatio
   };
 }
 
+function parseInputCommit(
+  record: Record<string, unknown>,
+  expectation: FoundationReplicationServerExpectation,
+): FoundationReplicationInputCommit | null {
+  if (!isIdentityString(record.worldId) || record.worldId !== expectation.worldId) return null;
+  if (!isIdentityString(record.worldEpoch)) return null;
+  if (expectation.worldEpoch !== undefined && record.worldEpoch !== expectation.worldEpoch) return null;
+  if (!isIdentityString(record.recipientActorSessionId) || record.recipientActorSessionId !== expectation.actorSessionId) return null;
+  if (!isIdentityString(record.sourceActorSessionId)) return null;
+  if (!isActorId(record.actorId)) return null;
+  if (!isNonNegativeSafeInteger(record.topologyRevision)) return null;
+  if (!isPositiveSafeInteger(record.batchSeq)) return null;
+  if (!isNonNegativeSafeInteger(record.authorityBoundaryTick)) return null;
+  const records = parseInputRecords(record.records);
+  if (!records) return null;
+  if (records.some((entry) => entry.targetTick < record.authorityBoundaryTick)) return null;
+  return {
+    type: "foundation_input_commit",
+    revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
+    worldId: record.worldId,
+    worldEpoch: record.worldEpoch,
+    recipientActorSessionId: record.recipientActorSessionId,
+    sourceActorSessionId: record.sourceActorSessionId,
+    actorId: record.actorId,
+    topologyRevision: record.topologyRevision,
+    batchSeq: record.batchSeq,
+    authorityBoundaryTick: record.authorityBoundaryTick,
+    records,
+  };
+}
+
 function parseRuntimeSync(
   record: Record<string, unknown>,
   expectation: FoundationReplicationServerExpectation,
@@ -358,6 +404,10 @@ export function parseFoundationReplicationServerMessage(
     return null;
   }
   if (record.type === "foundation_runtime_sync") return parseRuntimeSync(record, expectation);
+  if (record.type === "foundation_input_commit") {
+    const message = parseInputCommit(record, expectation);
+    return message ? { message } : null;
+  }
   if (record.type !== "foundation_input_result") return null;
   const message = parseInputResult(record);
   if (!message) return null;
@@ -381,6 +431,16 @@ export function foundationReplicationInputResult(
 ): FoundationReplicationInputResult {
   return {
     type: "foundation_input_result",
+    revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
+    ...input,
+  };
+}
+
+export function foundationReplicationInputCommit(
+  input: Omit<FoundationReplicationInputCommit, "type" | "revision">,
+): FoundationReplicationInputCommit {
+  return {
+    type: "foundation_input_commit",
     revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
     ...input,
   };

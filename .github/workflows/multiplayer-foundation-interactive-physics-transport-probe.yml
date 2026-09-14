@@ -5,7 +5,7 @@ on:
     branches:
       - research/multiplayer-foundation-v1-2026-09-13
     paths:
-      - .github/workflows/multiplayer-foundation-interactive-physics-transport-probe.yml
+      - .github/workflows/multiplayer-foundation-*-physics-transport-probe.yml
       - package.json
       - package-lock.json
       - scripts/multiplayer-foundation-local-physics-transport-smoke.mjs

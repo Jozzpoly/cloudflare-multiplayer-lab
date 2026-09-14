@@ -13,6 +13,7 @@ import { FoundationEntityTopology } from "./entity-topology.ts";
 import { FoundationReplicationPhysicsRuntime } from "./replication-physics-runtime.ts";
 import {
   FOUNDATION_REPLICATION_PROTOCOL_REVISION,
+  foundationReplicationInputCommit,
   foundationReplicationInputResult,
   foundationReplicationRuntimeSync,
   parseFoundationReplicationClientMessage,
@@ -23,8 +24,10 @@ import { FoundationRosterMachine } from "./roster-machine.ts";
 
 const WORLD_EPOCH = "foundation-local-physics-epoch-1";
 const CAPACITY = 3;
-const MAX_FUTURE_TICKS = 40;
-const CONTINUATION_TICKS = 30;
+const MAX_FUTURE_TICKS = 80;
+const NEUTRAL_CONTINUATION_TICKS = 30;
+const INTERACTIVE_CONTINUATION_TICKS = 60;
+const INPUT_BATCH_TICKS = 15;
 const RUN_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
 const PROFILE: FoundationClientExecutionProfile = {
   profileId: "shared-yard-foundation-client-v1",
@@ -71,10 +74,14 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
   private readonly physics = new FoundationReplicationPhysicsRuntime();
   private readonly bindingBySession = new Map<string, ClientBinding>();
   private readonly sessionBySocket = new Map<WebSocket, string>();
+  private readonly propStartXZ = new Map<string, readonly [number, number]>();
   private worldId: string | null = null;
+  private interactive = false;
   private syncSequence = 0;
   private syncsSent = 0;
   private correctionSyncs = 0;
+  private inputCommitsSent = 0;
+  private committedInputRecords = 0;
   private acceptedInputRecords = 0;
   private invalidMessages = 0;
   private staleReady = 0;
@@ -82,6 +89,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
   private finalGuardPacked: string | null = null;
   private finalSeedBytes = 0;
   private finalSeedFnv1a32: string | null = null;
+  private maxPropHorizontalDisplacement = 0;
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -91,7 +99,10 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     if (this.worldId !== null && this.worldId !== requestedWorldId) {
       return json({ ok: false, error: "world_id_mismatch" }, 409);
     }
-    this.worldId ??= requestedWorldId;
+    if (this.worldId === null) {
+      this.worldId = requestedWorldId;
+      this.interactive = run.startsWith("interactive-");
+    }
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return json(this.status());
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server, ["foundation-replication-physics-test"]);
@@ -139,6 +150,8 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     }
     if (binding.readyTopologyRevision !== topology.topologyRevision) return this.closePolicy(socket, "input_before_runtime_ready");
 
+    const authorityBoundaryTick = this.roster.snapshot().currentTick;
+    const committedRecords: Array<{ targetTick: number; x: number; z: number }> = [];
     const records = message.records.map((record) => {
       const acceptance = this.inputs.schedule({
         actorId: binding.actorId,
@@ -146,8 +159,11 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
         targetTick: record.targetTick,
         x: record.x,
         z: record.z,
-      }, this.roster.snapshot().currentTick);
-      if (acceptance.status === "accepted" || acceptance.status === "superseded") this.acceptedInputRecords += 1;
+      }, authorityBoundaryTick);
+      if (acceptance.status === "accepted" || acceptance.status === "superseded") {
+        this.acceptedInputRecords += 1;
+        committedRecords.push({ targetTick: record.targetTick, x: record.x, z: record.z });
+      }
       return { actorId: acceptance.actorId, targetTick: acceptance.targetTick, status: acceptance.status };
     });
     binding.inputBatches += 1;
@@ -159,6 +175,23 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       batchSeq: message.batchSeq,
       records,
     }));
+    if (this.interactive && committedRecords.length > 0) {
+      this.committedInputRecords += committedRecords.length;
+      for (const recipient of this.bindingBySession.values()) {
+        this.send(recipient.socket, foundationReplicationInputCommit({
+          worldId: this.worldId!,
+          worldEpoch: WORLD_EPOCH,
+          recipientActorSessionId: recipient.actorSessionId,
+          sourceActorSessionId: binding.actorSessionId,
+          actorId: binding.actorId,
+          topologyRevision: topology.topologyRevision,
+          batchSeq: message.batchSeq,
+          authorityBoundaryTick,
+          records: committedRecords,
+        }));
+        this.inputCommitsSent += 1;
+      }
+    }
     this.maybeAdvanceContinuation();
   }
 
@@ -213,6 +246,12 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     };
     this.bindingBySession.set(binding.actorSessionId, binding);
     this.sessionBySocket.set(socket, binding.actorSessionId);
+    if (this.bindingBySession.size === CAPACITY && this.propStartXZ.size === 0) {
+      for (const propId of PERSISTENT_WORLD) {
+        const state = this.physics.entityState(propId);
+        this.propStartXZ.set(propId, [state[0], state[2]]);
+      }
+    }
     this.broadcastRuntimeSync(binding.actorSessionId, previousTopologyRevision, false);
   }
 
@@ -280,13 +319,22 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     }
   }
 
+  private continuationTicks(): number {
+    return this.interactive ? INTERACTIVE_CONTINUATION_TICKS : NEUTRAL_CONTINUATION_TICKS;
+  }
+
+  private requiredInputBatches(): number {
+    return this.continuationTicks() / INPUT_BATCH_TICKS;
+  }
+
   private maybeAdvanceContinuation(): void {
+    const continuationTicks = this.continuationTicks();
     if (this.advancedContinuation || this.bindingBySession.size !== CAPACITY) return;
-    if (![...this.bindingBySession.values()].every((binding) => binding.inputBatches === 2)) return;
-    if (this.acceptedInputRecords !== CAPACITY * CONTINUATION_TICKS) return;
+    if (![...this.bindingBySession.values()].every((binding) => binding.inputBatches === this.requiredInputBatches())) return;
+    if (this.acceptedInputRecords !== CAPACITY * continuationTicks) return;
     this.advancedContinuation = true;
     const startTick = this.roster.snapshot().currentTick;
-    for (let targetTick = startTick + 1; targetTick <= startTick + CONTINUATION_TICKS; targetTick += 1) {
+    for (let targetTick = startTick + 1; targetTick <= startTick + continuationTicks; targetTick += 1) {
       const outcomes = this.roster.advanceTo(targetTick);
       if (outcomes.length !== 0) throw new Error("unexpected topology mutation during physics continuation");
       const roster = this.roster.snapshot();
@@ -296,8 +344,19 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
         const input = this.inputs.consume(actor.actorId, targetTick);
         return { actorId: actor.actorId, x: input.x, z: input.z };
       }));
-      if (targetTick === startTick + CONTINUATION_TICKS) {
+      if (targetTick === startTick + continuationTicks) {
         this.finalGuardPacked = this.physics.captureGuard(topology).packed;
+      }
+    }
+    if (this.interactive) {
+      for (const propId of PERSISTENT_WORLD) {
+        const start = this.propStartXZ.get(propId);
+        if (!start) throw new Error(`interactive prop baseline missing ${propId}`);
+        const state = this.physics.entityState(propId);
+        this.maxPropHorizontalDisplacement = Math.max(
+          this.maxPropHorizontalDisplacement,
+          Math.hypot(state[0] - start[0], state[2] - start[1]),
+        );
       }
     }
     this.broadcastRuntimeSync(null, this.topology.snapshot().topologyRevision, true);
@@ -308,9 +367,10 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     const topology = this.topology.snapshot();
     return {
       ok: true,
-      revision: "foundation-local-physics-transport-worker-v1",
+      revision: "foundation-local-physics-transport-worker-v2-input-commit",
       protocolRevision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
       box3dBuild: this.physics.buildId,
+      mode: this.interactive ? "interactive" : "neutral",
       worldId: this.worldId,
       worldEpoch: WORLD_EPOCH,
       boundaryTick: roster.currentTick,
@@ -321,12 +381,15 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       readyCurrentTopology: [...this.bindingBySession.values()].filter((binding) => binding.readyTopologyRevision === topology.topologyRevision).length,
       inputBatches: [...this.bindingBySession.values()].reduce((sum, binding) => sum + binding.inputBatches, 0),
       acceptedInputRecords: this.acceptedInputRecords,
+      committedInputRecords: this.committedInputRecords,
+      inputCommitsSent: this.inputCommitsSent,
       syncsSent: this.syncsSent,
       correctionSyncs: this.correctionSyncs,
-      continuationTicks: this.advancedContinuation ? CONTINUATION_TICKS : 0,
+      continuationTicks: this.advancedContinuation ? this.continuationTicks() : 0,
       finalGuardPacked: this.finalGuardPacked,
       finalSeedBytes: this.finalSeedBytes,
       finalSeedFnv1a32: this.finalSeedFnv1a32,
+      maxPropHorizontalDisplacement: this.maxPropHorizontalDisplacement,
       staleReady: this.staleReady,
       invalidMessages: this.invalidMessages,
     };
@@ -354,7 +417,7 @@ export default {
   async fetch(request: Request, env: PhysicsReplicationEnv): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/health") {
-      return json({ ok: true, revision: "foundation-local-physics-transport-worker-v1" });
+      return json({ ok: true, revision: "foundation-local-physics-transport-worker-v2-input-commit" });
     }
     if (url.pathname !== "/foundation-physics/ws" && url.pathname !== "/foundation-physics/status") {
       return new Response("not found", { status: 404 });

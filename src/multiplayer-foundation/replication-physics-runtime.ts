@@ -45,9 +45,19 @@ export type FoundationReplicationPhysicsInput = {
   z: number;
 };
 
+export type FoundationReplicationPhysicsActorBinding = {
+  actorId: `actor:${number}`;
+  actorSessionId: string;
+};
+
 type ActorPhysical = {
   body: any;
   actorSessionId: string;
+};
+
+type RestoredWorld = {
+  world: any;
+  player: any;
 };
 
 function encodeBase64(bytes: Uint8Array): string {
@@ -57,6 +67,13 @@ function encodeBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize)));
   }
   return btoa(binary);
+}
+
+function decodeBase64(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
 
 function u32Hex(value: number): string {
@@ -86,16 +103,39 @@ function bodyValues(body: any): number[] {
   return values;
 }
 
+function assertSeedShape(seed: FoundationReplicationPhysicsSeed): void {
+  if (seed.formatId !== FOUNDATION_BOX3D_RECORDING_SEED_FORMAT) throw new Error("physics replication seed format mismatch");
+  if (!seed.worldEpoch) throw new Error("physics replication seed WorldEpoch is empty");
+  if (!Number.isSafeInteger(seed.canonicalTick) || seed.canonicalTick < 0) throw new Error("physics replication seed tick is invalid");
+  if (!Number.isSafeInteger(seed.topologyRevision) || seed.topologyRevision < 0) throw new Error("physics replication seed topology revision is invalid");
+  if (!seed.topologyDigest) throw new Error("physics replication seed topology digest is empty");
+  if (!Array.isArray(seed.bodyNames) || seed.bodyNames.length < 1) throw new Error("physics replication seed body domain is empty");
+  if (new Set(seed.bodyNames).size !== seed.bodyNames.length || seed.bodyNames.some((name) => !name)) {
+    throw new Error("physics replication seed body domain is invalid");
+  }
+  if (!Number.isSafeInteger(seed.byteLength) || seed.byteLength <= 0) throw new Error("physics replication seed byte length is invalid");
+  if (!/^[0-9a-f]{8}$/.test(seed.fnv1a32)) throw new Error("physics replication seed checksum is invalid");
+  if (!seed.bytesBase64) throw new Error("physics replication seed payload is empty");
+}
+
 export class FoundationReplicationPhysicsRuntime {
   readonly buildId = BOX3D_RUNTIME.build;
   readonly stateComponents = [...WORLD_V0_STATE_COMPONENTS];
 
   private readonly world: any;
+  private readonly recordingPlayer: any | null;
   private readonly staticNames: string[] = [];
   private readonly actors = new Map<`actor:${number}`, ActorPhysical>();
   private readonly props = new Map<string, any>();
 
-  constructor() {
+  constructor(restored: RestoredWorld | null = null) {
+    if (restored) {
+      this.world = restored.world;
+      this.recordingPlayer = restored.player;
+      return;
+    }
+
+    this.recordingPlayer = null;
     const worldDef = b3.b3DefaultWorldDef();
     worldDef.gravity = [...WORLD_V0_ARENA.gravity];
     this.world = b3.b3CreateWorld(worldDef);
@@ -130,6 +170,76 @@ export class FoundationReplicationPhysicsRuntime {
         WORLD_V0_PROP_PHYSICS.halfExtents[2],
       );
       this.props.set(prop.id, body);
+    }
+  }
+
+  static fromSeed(
+    seed: FoundationReplicationPhysicsSeed,
+    actorBindings: readonly FoundationReplicationPhysicsActorBinding[],
+  ): FoundationReplicationPhysicsRuntime {
+    assertSeedShape(seed);
+    const bytes = decodeBase64(seed.bytesBase64);
+    if (bytes.byteLength !== seed.byteLength) throw new Error("physics replication seed byte length mismatch");
+    if (u32Hex(b3.b3Bytes_Fnv1a32(bytes)) !== seed.fnv1a32) throw new Error("physics replication seed checksum mismatch");
+
+    const player = b3.b3RecPlayer_CreateFromBytes(bytes, 1);
+    if (!player) throw new Error("physics replication seed failed to create recording player");
+    try {
+      if (b3.b3RecPlayer_GetFrameCount(player) !== 0) throw new Error("physics replication seed unexpectedly contains future frames");
+      if (b3.b3RecPlayer_StepFrame(player) !== false) throw new Error("physics replication seed unexpectedly stepped a recorded frame");
+      const world = b3.b3RecPlayer_GetWorldId(player);
+      const runtime = new FoundationReplicationPhysicsRuntime({ world, player });
+      runtime.rebindRestoredBodies(seed.bodyNames, actorBindings);
+      return runtime;
+    } catch (error) {
+      b3.b3RecPlayer_Destroy(player);
+      throw error;
+    }
+  }
+
+  private rebindRestoredBodies(
+    expectedNames: readonly string[],
+    actorBindings: readonly FoundationReplicationPhysicsActorBinding[],
+  ): void {
+    if (!this.recordingPlayer) throw new Error("physics replication restored body rebind requires recording player");
+    const found = new Map<string, any>();
+    const bodyCount = b3.b3RecPlayer_GetBodyCount(this.recordingPlayer);
+    if (bodyCount !== expectedNames.length) throw new Error("physics replication restored body count mismatch");
+    for (let index = 0; index < bodyCount; index += 1) {
+      const body = b3.b3RecPlayer_GetBodyId(this.recordingPlayer, index);
+      if (!b3.b3Body_IsValid(body)) throw new Error(`physics replication restored body ${index} is invalid`);
+      const name = b3.b3Body_GetName(body);
+      if (!name || found.has(name)) throw new Error(`physics replication restored body name ${name || index} is invalid`);
+      found.set(name, body);
+    }
+    const actualNames = [...found.keys()].sort();
+    const requiredNames = [...expectedNames].sort();
+    if (JSON.stringify(actualNames) !== JSON.stringify(requiredNames)) {
+      throw new Error("physics replication restored semantic body domain mismatch");
+    }
+
+    WORLD_V0_ARENA.staticBoxes.forEach((_box, index) => {
+      const name = `arena:static:${index}`;
+      if (!found.has(name)) throw new Error(`physics replication restored static body ${name} missing`);
+      this.staticNames.push(name);
+    });
+    for (const prop of WORLD_V0_PROP_LAYOUT) {
+      const body = found.get(prop.id);
+      if (!body) throw new Error(`physics replication restored prop ${prop.id} missing`);
+      this.props.set(prop.id, body);
+    }
+    for (const actor of actorBindings) {
+      if (this.actors.has(actor.actorId)) throw new Error(`physics replication restored actor ${actor.actorId} duplicated`);
+      const body = found.get(actor.actorId);
+      if (!body) throw new Error(`physics replication restored actor ${actor.actorId} missing`);
+      this.actors.set(actor.actorId, { body, actorSessionId: actor.actorSessionId });
+    }
+
+    const expectedActorIds = new Set(actorBindings.map((actor) => actor.actorId));
+    for (const name of found.keys()) {
+      if (name.startsWith("actor:") && !expectedActorIds.has(name as `actor:${number}`)) {
+        throw new Error(`physics replication restored unexpected actor body ${name}`);
+      }
     }
   }
 

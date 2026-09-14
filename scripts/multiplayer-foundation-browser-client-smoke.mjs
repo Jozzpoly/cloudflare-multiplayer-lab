@@ -110,6 +110,17 @@ async function waitForDebugger(port) {
   }
   throw new Error(`Chrome debugger unavailable: ${last}`);
 }
+async function stopBrowser(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise((resolvePromise) => {
+    const timer = setTimeout(resolvePromise, 3000);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolvePromise();
+    });
+    child.kill("SIGKILL");
+  });
+}
 class Cdp {
   constructor(url) {
     this.ws = new WebSocket(url);
@@ -252,8 +263,8 @@ try {
   await cdp.call("Target.closeTarget", { targetId: topologyRun.targetId });
 } finally {
   cdp?.close();
-  if (browser?.exitCode === null) browser.kill("SIGKILL");
+  await stopBrowser(browser);
   if (server) await new Promise((resolvePromise) => server.close(resolvePromise));
-  if (profile) rmSync(profile, { recursive: true, force: true });
-  rmSync(DIST_ROOT, { recursive: true, force: true });
+  if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  rmSync(DIST_ROOT, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 }

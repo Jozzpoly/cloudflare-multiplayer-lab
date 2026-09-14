@@ -162,6 +162,7 @@ try {
         selfActorId: latest.selfActorId,
         worldId,
         worldEpoch,
+        latestTopologyRevision: latest.topologyRevision,
         topologyRevision: latest.topologyRevision,
         topologyDigest: finalTopologyDigest,
         remoteActors: latest.remoteActors,

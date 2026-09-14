@@ -340,7 +340,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       this.finalSeedFnv1a32 = runtimeBootstrap.executionSeed.fnv1a32;
     }
     const syncId = `physics-sync-${++this.syncSequence}-${this.roster.snapshot().currentTick}-${binding.actorId.replace(":", "-")}`;
-    binding.lastTopologyRevision = runtimeBootstrap.envelope.topology.topologyRevision;
+    binding.lastTopologyRevision = this.topology.snapshot().topologyRevision;
     binding.expectedSyncId = syncId;
     binding.expectedRuntimeDigest = runtimeBootstrap.envelopeDigest;
     binding.readyTopologyRevision = null;

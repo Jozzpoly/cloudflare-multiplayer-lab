@@ -3,6 +3,7 @@ set -euo pipefail
 
 EXPECTED_WORKER="cloudflare-multiplayer-lab-foundation-recovery"
 EXPECTED_BRANCH="research/multiplayer-foundation-recovery-remote"
+RECOVERY_CONFIG="workers/foundation-recovery-remote/wrangler.jsonc"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
@@ -32,11 +33,17 @@ if [[ "$HEAD_SHA" != "$WORKERS_CI_COMMIT_SHA" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$RECOVERY_CONFIG" ]]; then
+  echo "Refusing foundation recovery remote deploy: dedicated Wrangler config is missing." >&2
+  exit 1
+fi
+
+npm ci
 bash scripts/build-foundation-recovery-remote.sh
 
 WRANGLER_ARGS=(
   deploy
-  --config wrangler.foundation-authority-constructor-remote.jsonc
+  --config "$RECOVERY_CONFIG"
 )
 if [[ "${FOUNDATION_RECOVERY_REMOTE_DRY_RUN:-}" == "1" ]]; then
   WRANGLER_ARGS+=(--dry-run)

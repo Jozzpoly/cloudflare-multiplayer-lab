@@ -1,7 +1,7 @@
 {
-  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "cloudflare-multiplayer-lab-foundation-recovery",
-  "main": "../../workers/foundation-recovery-remote/worker.mjs",
+  "main": "./workers/foundation-recovery-remote/worker.mjs",
   "compatibility_date": "2026-08-29",
   "workers_dev": true,
   "preview_urls": false,

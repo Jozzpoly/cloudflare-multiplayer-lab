@@ -20,12 +20,22 @@ const actorSessionId = params.get("session") || "";
 const run = params.get("run") || "";
 const authorityPort = Number(params.get("authorityPort") || "0");
 const worldId = `foundation-physics-replication-${run}`;
-const CONTINUATION_TICKS = 30;
+const interactive = run.startsWith("interactive-");
+const CONTINUATION_TICKS = interactive ? 60 : 30;
+const INPUT_BATCH_TICKS = 15;
+const EXPECTED_INPUT_RESULTS = CONTINUATION_TICKS / INPUT_BATCH_TICKS;
+const EXPECTED_COMMIT_MESSAGES = interactive ? 3 * EXPECTED_INPUT_RESULTS : 0;
+const EXPECTED_COMMIT_RECORDS = interactive ? 3 * CONTINUATION_TICKS : 0;
 const DT = 1 / WORLD_V0_TIMING.simulationHz;
 const PROFILE = {
   profileId: "shared-yard-foundation-client-v1",
   buildId: WORLD_V0_SIM_BUILD_ID,
   stateSchemaId: "shared-yard-rigidbody-f32-13-v1",
+};
+const INTERACTIVE_INPUTS = {
+  "actor:0": { x: 0.8, z: 0.6 },
+  "actor:1": { x: -0.8, z: 0.6 },
+  "actor:2": { x: 0, z: -1 },
 };
 
 function assert(condition, message) {
@@ -77,7 +87,7 @@ function applyIntent(b3, body, input) {
   b3.b3Body_SetLinearVelocity(body, [nextX, velocity[1], nextZ]);
 }
 
-publish({ status: "RUNNING", actorSessionId, latestTopologyRevision: 0, syncCount: 0 });
+publish({ status: "RUNNING", actorSessionId, mode: interactive ? "interactive" : "neutral", latestTopologyRevision: 0, syncCount: 0 });
 
 try {
   assert(/^[A-Za-z0-9._|:=+-]{1,512}$/.test(actorSessionId), "invalid fixture ActorSession");
@@ -87,6 +97,7 @@ try {
   const b3 = await Box3D();
   const syncs = [];
   const inputStatuses = [];
+  const commitSources = new Set();
   let worldEpoch = null;
   let runtime = null;
   let hydrated = null;
@@ -97,7 +108,10 @@ try {
   let localFinalGuard = null;
   let exactContinuationTicks = 0;
   let inputResults = 0;
+  let commitMessages = 0;
+  let commitRecords = 0;
   let batchesSent = false;
+  let continuationRan = false;
 
   const socket = new WebSocket(`ws://127.0.0.1:${authorityPort}/foundation-physics/ws?run=${encodeURIComponent(run)}`);
   window.__multiplayerFoundationPhysicsTransportSocket = socket;
@@ -115,22 +129,28 @@ try {
   }
 
   function runLocalContinuation() {
+    assert(!continuationRan, "local continuation ran twice");
     assert(runtime && hydrated, "final runtime missing before continuation");
     assert(finalTopologyStartTick !== null, "final topology start tick missing");
     let guard = null;
     for (let targetTick = finalTopologyStartTick + 1; targetTick <= finalTopologyStartTick + CONTINUATION_TICKS; targetTick += 1) {
-      const self = hydrated.projection.self;
-      const recorded = hydrated.inputLedger.recordPredicted({
-        netEntityId: self.netEntityId,
-        actorSessionId: self.actorSessionId,
-        targetTick,
-        x: 0,
-        z: 0,
-        jump: false,
-      }, "local");
-      assert(recorded.status === "accepted", `self zero prediction rejected at ${targetTick}: ${recorded.status}`);
+      if (!interactive) {
+        const self = hydrated.projection.self;
+        const recorded = hydrated.inputLedger.recordPredicted({
+          netEntityId: self.netEntityId,
+          actorSessionId: self.actorSessionId,
+          targetTick,
+          x: 0,
+          z: 0,
+          jump: false,
+        }, "local");
+        assert(recorded.status === "accepted", `self zero prediction rejected at ${targetTick}: ${recorded.status}`);
+      }
       const frame = hydrated.inputLedger.resolveTick(targetTick);
       assert(frame.actors.length === 3, `resolved actor coverage ${frame.actors.length} at ${targetTick}`);
+      if (interactive) {
+        assert(frame.actors.every((input) => input.source === "authority"), `interactive tick ${targetTick} did not resolve entirely from authority commits`);
+      }
       guard = stepFoundationBox3DClientRuntime(runtime, frame, {
         dt: DT,
         substeps: WORLD_V0_TIMING.substeps,
@@ -144,6 +164,13 @@ try {
     assert(guard, "local continuation produced no guard");
     localFinalGuard = guard.packed;
     exactContinuationTicks = CONTINUATION_TICKS;
+    continuationRan = true;
+  }
+
+  function maybeRunLocalContinuation() {
+    if (continuationRan || inputResults !== EXPECTED_INPUT_RESULTS) return;
+    if (interactive && (commitMessages !== EXPECTED_COMMIT_MESSAGES || commitRecords !== EXPECTED_COMMIT_RECORDS)) return;
+    runLocalContinuation();
   }
 
   socket.addEventListener("open", () => {
@@ -205,6 +232,7 @@ try {
             status: "MULTIPLAYER_FOUNDATION_BROWSER_PHYSICS_TRANSPORT_CLIENT_PASS",
             environment: "chromium",
             userAgent: navigator.userAgent,
+            mode: interactive ? "interactive" : "neutral",
             actorSessionId,
             selfActorId,
             worldId,
@@ -223,6 +251,9 @@ try {
             finalSeedFnv1a32,
             inputResults,
             inputStatuses: [...inputStatuses],
+            commitMessages,
+            commitRecords,
+            commitSources: [...commitSources].sort(),
           };
           publish(evidence);
           console.log("MULTIPLAYER_FOUNDATION_BROWSER_PHYSICS_TRANSPORT_CLIENT_PASS", JSON.stringify(evidence));
@@ -240,8 +271,28 @@ try {
           finalTopologyStartTick = nextHydrated.envelope.canonicalTick;
           finalTopologyDigest = nextHydrated.envelope.topology.topologyDigest;
           const actorId = nextHydrated.projection.self.netEntityId;
-          for (let batchIndex = 0; batchIndex < 2; batchIndex += 1) {
-            const firstTick = finalTopologyStartTick + 1 + batchIndex * 15;
+          const interactiveInput = INTERACTIVE_INPUTS[actorId];
+          assert(!interactive || interactiveInput, `missing interactive input pattern ${actorId}`);
+          for (let batchIndex = 0; batchIndex < EXPECTED_INPUT_RESULTS; batchIndex += 1) {
+            const firstTick = finalTopologyStartTick + 1 + batchIndex * INPUT_BATCH_TICKS;
+            const records = Array.from({ length: INPUT_BATCH_TICKS }, (_, index) => ({
+              targetTick: firstTick + index,
+              x: interactive ? interactiveInput.x : 0,
+              z: interactive ? interactiveInput.z : 0,
+            }));
+            if (interactive) {
+              for (const record of records) {
+                const predicted = nextHydrated.inputLedger.recordPredicted({
+                  netEntityId: actorId,
+                  actorSessionId,
+                  targetTick: record.targetTick,
+                  x: record.x,
+                  z: record.z,
+                  jump: false,
+                }, "local");
+                assert(predicted.status === "accepted", `interactive self prediction rejected at ${record.targetTick}: ${predicted.status}`);
+              }
+            }
             socket.send(JSON.stringify({
               type: "foundation_input_batch",
               revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
@@ -251,11 +302,7 @@ try {
               actorId,
               topologyRevision,
               batchSeq: batchIndex + 1,
-              records: Array.from({ length: 15 }, (_, index) => ({
-                targetTick: firstTick + index,
-                x: 0,
-                z: 0,
-              })),
+              records,
             }));
           }
         }
@@ -263,6 +310,7 @@ try {
         publish({
           status: "RUNNING",
           actorSessionId,
+          mode: interactive ? "interactive" : "neutral",
           selfActorId,
           worldEpoch,
           latestTopologyRevision: topologyRevision,
@@ -273,12 +321,36 @@ try {
         return;
       }
 
+      if (parsed.message.type === "foundation_input_commit") {
+        assert(interactive, "neutral physics fixture received unexpected input commit");
+        assert(hydrated && finalTopologyStartTick !== null, "input commit arrived before final runtime bootstrap");
+        assert(parsed.message.topologyRevision === hydrated.envelope.topology.topologyRevision, "input commit topology mismatch");
+        assert(parsed.message.authorityBoundaryTick === finalTopologyStartTick, "input commit authority boundary mismatch");
+        assert(parsed.message.records.length === INPUT_BATCH_TICKS, "input commit record count mismatch");
+        commitSources.add(parsed.message.sourceActorSessionId);
+        for (const record of parsed.message.records) {
+          const recorded = hydrated.inputLedger.recordAuthoritative({
+            netEntityId: parsed.message.actorId,
+            actorSessionId: parsed.message.sourceActorSessionId,
+            targetTick: record.targetTick,
+            x: record.x,
+            z: record.z,
+            jump: false,
+          });
+          assert(recorded.status === "accepted" || recorded.status === "superseded", `authority commit rejected at ${record.targetTick}: ${recorded.status}`);
+        }
+        commitMessages += 1;
+        commitRecords += parsed.message.records.length;
+        maybeRunLocalContinuation();
+        return;
+      }
+
       assert(batchesSent, "physics input result arrived before final batches");
-      assert(parsed.message.records.length === 15, "physics input result record count mismatch");
+      assert(parsed.message.records.length === INPUT_BATCH_TICKS, "physics input result record count mismatch");
       assert(parsed.message.records.every((record) => record.status === "accepted"), "physics input record was not accepted");
       inputResults += 1;
       inputStatuses.push(...parsed.message.records.map((record) => record.status));
-      if (inputResults === 2) runLocalContinuation();
+      maybeRunLocalContinuation();
     } catch (error) {
       fail(error);
     }

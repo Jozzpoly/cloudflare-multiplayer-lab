@@ -237,7 +237,7 @@ const backwardsCounters = createFoundationReplicationProgressOverlay({
     committedInputRecords: 89,
   },
 } as any);
-expectThrow(() => assertFoundationReplicationProgressOverlayMatchesBase(backwardsCounters, nominal.base, 1), /acceptedInputRecords moved backwards/);
+expectThrow(() => assertFoundationReplicationProgressOverlayMatchesBase(backwardsCounters, nominal.base, 1), /committedInputRecords moved backwards/);
 
 const foreign = buildScenario(3, 15);
 foreign.base.worldId = "different-world";

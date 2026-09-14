@@ -84,7 +84,10 @@ jobs:
           MW_FOUNDATION_RECOVERY_EXPECTED_BUILD: ${{ github.sha }}
           MW_FOUNDATION_RECOVERY_ENVELOPE: ${{ runner.temp }}/authority-envelope.json
           MW_FOUNDATION_RECOVERY_OUTPUT: foundation-recovery-remote-seed-evidence.json
-        run: node scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs | tee foundation-recovery-remote-seed.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs | tee foundation-recovery-remote-seed.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -108,7 +111,10 @@ jobs:
         env:
           MW_FOUNDATION_RECOVERY_EXPECTED_BUILD: ${{ github.sha }}
           MW_FOUNDATION_RECOVERY_OUTPUT: foundation-recovery-remote-resume-evidence.json
-        run: node scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs | tee foundation-recovery-remote-resume.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs | tee foundation-recovery-remote-resume.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:

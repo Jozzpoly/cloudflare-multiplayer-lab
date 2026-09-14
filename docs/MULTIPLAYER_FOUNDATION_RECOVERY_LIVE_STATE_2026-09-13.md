@@ -84,7 +84,11 @@ Confirming evidence: run `34788569624` repeated the entire hardened qualificatio
 The apparatus is isolated from `staging`, `reliability_play`, `qualified_play` and the production/root Worker. Its dedicated target is:
 
 - deployment branch: `research/multiplayer-foundation-recovery-remote`
+- deployment branch head: `d9a28a4cf162cbd9dff267308b014b68832aa948`
 - Worker: `cloudflare-multiplayer-lab-foundation-recovery`
+- Workers Builds root directory: `/workers/foundation-recovery-remote/`
+- dedicated Wrangler config: `workers/foundation-recovery-remote/wrangler.jsonc`
+- Node: pinned to `22` in the Worker root
 - Durable Object binding: `FOUNDATION_AUTHORITY_CONSTRUCTOR_TEST`
 - storage: SQLite
 - workers.dev only; no custom route
@@ -95,8 +99,10 @@ The intended executed path is deliberately two deployments of the same Worker/DO
 
 Repository safeguards:
 
-- `scripts/deploy-foundation-recovery-remote.sh` refuses execution unless it is running under Workers Builds, the Cloudflare Worker override name is exactly the dedicated recovery Worker, the Workers Builds commit SHA is valid, and the checked-out HEAD is that exact SHA.
-- The deployment wrapper builds the pinned byte-capable/CSP-safe Box3D adapter itself and invokes Wrangler with only `wrangler.foundation-authority-constructor-remote.jsonc`; it cannot fall through to the root `wrangler.jsonc` deployment path.
+- `scripts/deploy-foundation-recovery-remote.sh` refuses execution unless it is running under Workers Builds, the Cloudflare Worker override name is exactly the dedicated recovery Worker, the Workers Builds branch is exactly the dedicated deployment branch, the Workers Builds commit SHA is valid, and the checked-out HEAD is that exact SHA.
+- The deployment wrapper is self-contained: it installs the repository dependency graph, builds the pinned byte-capable/CSP-safe Box3D adapter, and invokes only the dedicated Wrangler config.
+- Cloudflare's configured root directory contains the same dedicated Worker name and entrypoint used by the wrapper; the root production/staging `wrangler.jsonc` is outside this Worker root and cannot be selected by the guarded path.
+- The superseded root-level recovery Wrangler config was removed; there is one canonical remote Worker config.
 - `foundation-recovery-remote-trigger.json` is fail-closed across `idle`, `seed`, and `resume`; the dedicated branch currently remains `idle / unarmed`.
 - Both remote audit phases wait until `/build` reports the exact expected Git commit before accepting evidence.
 - `seed` independently rebuilds Gate 4B producer/consumer material before publishing the remote checkpoint.
@@ -107,11 +113,21 @@ Executed apparatus evidence:
 - run `34789275755` — first full remote bundle dry-run PASS.
 - run `34789277298` — ordinary CI on the same head PASS.
 - run `34792201941` — dedicated remote branch classification PASS in `idle`; `seed` and `resume` correctly skipped.
-- run `34792311322` — exact fail-closed Workers Builds deploy command, including pinned Box3D rebuild and `wrangler deploy --dry-run` against the dedicated config, PASS.
+- run `34792311322` — exact fail-closed Workers Builds deploy command, including pinned Box3D rebuild and dedicated-config `wrangler deploy --dry-run`, PASS.
 - run `34792313249` — ordinary CI on the hardened deploy-command head PASS.
-- dedicated deployment branch is synchronized to validated head `e6592462f35eeaec73099b1362167191baf92e72` and remains unarmed.
+- run `34792795657` — final dry-run PASS with the command launched from the exact configured Workers Builds root directory; wrapper performed its own dependency install, pinned Box3D build and dedicated Worker bundle.
+- run `34792812095` — ordinary CI PASS on final remote deployment code after removal of the superseded root-level config.
+- dedicated deployment branch is synchronized to `d9a28a4cf162cbd9dff267308b014b68832aa948` and remains unarmed.
 
-External prerequisite still pending: create/connect the dedicated Cloudflare Worker to that deployment branch with Workers Builds and set its deploy command to `bash scripts/deploy-foundation-recovery-remote.sh`. Until that account-side setup exists and both `seed` and `resume` execute remotely, Gate 4C-R1 remains UNEXECUTED.
+External prerequisite still pending: create/connect the dedicated Cloudflare Worker to that deployment branch with Workers Builds using:
+
+- production branch: `research/multiplayer-foundation-recovery-remote`
+- root directory: `/workers/foundation-recovery-remote/`
+- build command: empty
+- deploy command: `bash ../../scripts/deploy-foundation-recovery-remote.sh`
+- non-production branch builds: disabled
+
+Until that account-side setup exists, the initial `idle` deployment is independently verified, and both `seed` and `resume` execute remotely, Gate 4C-R1 remains UNEXECUTED.
 
 This gate qualifies a **real Cloudflare code-deployment restart boundary**. It must not be relabeled as spontaneous edge eviction, hibernation, failover, or migration evidence.
 
@@ -156,7 +172,7 @@ Still unproven:
 
 ## Current next move
 
-The scoped **local recovery stack is defended through a fresh Durable Object constructor**, and the isolated remote deployment-restart apparatus is validated but unexecuted. The next qualitative durability boundary is to connect the dedicated Worker to `research/multiplayer-foundation-recovery-remote`, leave it unarmed until the exact Worker/branch/deploy-command configuration is verified, then execute the controlled two-deployment `seed → resume` campaign.
+The scoped **local recovery stack is defended through a fresh Durable Object constructor**, and the isolated remote deployment-restart apparatus is validated but unexecuted. The next qualitative durability boundary is now account-side only: connect the dedicated Worker with the exact Workers Builds settings recorded above, verify the first `idle` deployment identifies the expected Worker/branch/SHA, then execute the controlled two-deployment `seed → resume` campaign.
 
 A successful R1 would establish recovery across an intentional real Cloudflare code-deployment restart only. Natural eviction/hibernation/failover remains a separate later question and must be evidenced independently.
 

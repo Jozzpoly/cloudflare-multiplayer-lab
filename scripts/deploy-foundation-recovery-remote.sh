@@ -4,6 +4,7 @@ set -euo pipefail
 EXPECTED_WORKER="cloudflare-multiplayer-lab-foundation-recovery"
 EXPECTED_BRANCH="research/multiplayer-foundation-recovery-remote"
 RECOVERY_CONFIG="workers/foundation-recovery-remote/wrangler.jsonc"
+ROOT_RECOVERY_CONFIG_TEMPLATE="workers/foundation-recovery-remote/wrangler.repository-root.jsonc"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
@@ -53,3 +54,22 @@ if [[ "${FOUNDATION_RECOVERY_REMOTE_DRY_RUN:-}" == "1" ]]; then
 fi
 
 npx wrangler "${WRANGLER_ARGS[@]}"
+
+if [[ "${FOUNDATION_RECOVERY_REMOTE_DRY_RUN:-}" == "1" && -f "$ROOT_RECOVERY_CONFIG_TEMPLATE" ]]; then
+  ROOT_CONFIG_BACKUP="$(mktemp)"
+  cp wrangler.jsonc "$ROOT_CONFIG_BACKUP"
+  restore_root_config() {
+    cp "$ROOT_CONFIG_BACKUP" wrangler.jsonc
+    rm -f "$ROOT_CONFIG_BACKUP"
+  }
+  trap restore_root_config EXIT
+
+  cp "$ROOT_RECOVERY_CONFIG_TEMPLATE" wrangler.jsonc
+  ROOT_DRY_RUN_OUTDIR="${FOUNDATION_RECOVERY_REMOTE_DRY_RUN_OUTDIR:-$REPO_ROOT/.wrangler/foundation-recovery-root-dry-run}-root-config"
+  npx wrangler deploy --config wrangler.jsonc --dry-run --outdir "$ROOT_DRY_RUN_OUTDIR"
+  test -d "$ROOT_DRY_RUN_OUTDIR"
+  echo FOUNDATION_RECOVERY_REMOTE_ROOT_CONFIG_DRY_RUN_PASS
+
+  restore_root_config
+  trap - EXIT
+fi

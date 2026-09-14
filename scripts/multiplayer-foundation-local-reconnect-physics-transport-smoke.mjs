@@ -9,6 +9,8 @@ const AUTHORITY_PORT = 8792;
 const AUTHORITY_ORIGIN = `http://127.0.0.1:${AUTHORITY_PORT}`;
 const DEBUG_PORT = 9692;
 const TIMEOUT_MS = 60_000;
+const HIBERNATION_QUIET_MS = 18_000;
+const HIBERNATION_ATTEMPTS = 3;
 const CONFIG = resolve("wrangler.foundation-replication-physics-test.jsonc");
 const WRANGLER_BIN = resolve("node_modules/wrangler/bin/wrangler.js");
 const DIST_ROOT = resolve(".foundation-browser-reconnect-dist");
@@ -155,6 +157,17 @@ async function waitForStatus(predicate, label) {
     await sleep(100);
   }
   throw new Error(`${label} timeout · last=${JSON.stringify(last)}`);
+}
+async function requireHibernationRestore(initialConstructorNonce) {
+  let observed = null;
+  for (let attempt = 1; attempt <= HIBERNATION_ATTEMPTS; attempt += 1) {
+    await sleep(HIBERNATION_QUIET_MS);
+    observed = await status();
+    if (observed.constructorNonce !== initialConstructorNonce) return observed;
+  }
+  throw new Error(
+    `required Durable Object hibernation did not occur after ${HIBERNATION_ATTEMPTS} quiet windows · last=${JSON.stringify(observed)}`,
+  );
 }
 function findChrome() {
   const override = process.env.CHROME_BIN?.trim();
@@ -360,14 +373,44 @@ try {
       && value.committedInputRecords === 90
       && value.inputCommitsSent === 18
       && value.correctionSyncs === 3
-      && value.continuationTicks === 30,
-    "reconnect phase-1 authority boundary",
+      && value.continuationTicks === 30
+      && value.checkpointGeneration === 1
+      && value.restoredCheckpointTick === 33,
+    "reconnect phase-1 durable authority boundary",
   );
   assert.deepEqual(phase1Authority.actors.map((actor) => actor.actorId), ["actor:0", "actor:1", "actor:2"]);
   assert(phase1Authority.actors.every((actor) => actor.transportConnected === true));
+  assert.equal(phase1Authority.restoreState, "empty");
+  assert.equal(phase1Authority.checkpointGeneration, 1);
+  assert.equal(phase1Authority.checkpointPublishes, 1);
+  assert(phase1Authority.checkpointPayloadBytes > 0);
+  assert.equal(phase1Authority.checkpointStorage.headRows, 1);
+  assert(phase1Authority.checkpointStorage.immutableRows > 0);
   const stableTopologyRevision = phase1Authority.topologyRevision;
   const stableTopologyDigest = phase1Authority.topologyDigest;
   const stableActors = phase1Authority.actors.map(({ actorId, actorSessionId }) => ({ actorId, actorSessionId }));
+  const phase1ConstructorNonce = phase1Authority.constructorNonce;
+
+  const hibernationRecoveredAuthority = await requireHibernationRestore(phase1ConstructorNonce);
+  assert.notEqual(hibernationRecoveredAuthority.constructorNonce, phase1ConstructorNonce);
+  assert.equal(hibernationRecoveredAuthority.restoreState, "restored");
+  assert.equal(hibernationRecoveredAuthority.restoreError, null);
+  assert.equal(hibernationRecoveredAuthority.boundaryTick, 33);
+  assert.equal(hibernationRecoveredAuthority.topologyRevision, stableTopologyRevision);
+  assert.equal(hibernationRecoveredAuthority.topologyDigest, stableTopologyDigest);
+  assert.equal(hibernationRecoveredAuthority.checkpointGeneration, 1);
+  assert.equal(hibernationRecoveredAuthority.restoredCheckpointTick, 33);
+  assert.equal(hibernationRecoveredAuthority.connectedTransports, 3);
+  assert.equal(hibernationRecoveredAuthority.readyCurrentTopology, 3);
+  assert.equal(hibernationRecoveredAuthority.hibernationWebSockets, 3);
+  assert.equal(hibernationRecoveredAuthority.recoveredSocketBindings, 3);
+  assert.equal(hibernationRecoveredAuthority.checkpointStorage.headRows, 1);
+  assert(hibernationRecoveredAuthority.checkpointStorage.immutableRows > 0);
+  assert.deepEqual(
+    hibernationRecoveredAuthority.actors.map(({ actorId, actorSessionId }) => ({ actorId, actorSessionId })),
+    stableActors,
+  );
+  assert(hibernationRecoveredAuthority.actors.every((actor) => actor.transportConnected === true));
 
   const reconnectClient = clients.find((client) => client.actorSessionId === RECONNECT_SESSION);
   assert(reconnectClient, "designated reconnect client missing");
@@ -454,13 +497,19 @@ try {
       && value.inputCommitsSent === 36
       && value.correctionSyncs === 6
       && value.resumeSyncs === 1
-      && value.continuationTicks === 60,
-    "reconnect final authority convergence",
+      && value.continuationTicks === 60
+      && value.checkpointGeneration === 2
+      && value.restoredCheckpointTick === 63,
+    "reconnect final durable authority convergence",
   );
 
   assert.equal(finalAuthority.syncsSent, 13);
   assert.equal(finalAuthority.invalidMessages, 0);
   assert.equal(finalAuthority.staleReady, 0);
+  assert.equal(finalAuthority.checkpointGeneration, 2);
+  assert.equal(finalAuthority.checkpointStorage.headRows, 1);
+  assert(finalAuthority.checkpointStorage.immutableRows > 0);
+  assert(finalAuthority.checkpointPayloadBytes > 0);
   assert(finalAuthority.maxPropHorizontalDisplacement > 0.05, `reconnect shared props did not move materially: ${finalAuthority.maxPropHorizontalDisplacement}`);
   assert.deepEqual(finalAuthority.actors.map(({ actorId, actorSessionId }) => ({ actorId, actorSessionId })), stableActors);
   assert(finalAuthority.actors.every((actor) => actor.transportConnected === true));
@@ -489,17 +538,23 @@ try {
   assert.equal(finalEvidence[1].resumeSyncs, 1);
   assert.equal(finalEvidence[2].resumeSyncs, 0);
 
-  console.log("MULTIPLAYER_FOUNDATION_RECONNECT_PHYSICS_TRANSPORT_PASS", JSON.stringify({
+  console.log("MULTIPLAYER_FOUNDATION_HIBERNATION_RECOVERY_RECONNECT_PASS", JSON.stringify({
     run: RUN,
     environment: "wrangler-workerd + chromium + box3d-i4",
     box3dBuild: finalAuthority.box3dBuild,
     worldId: finalAuthority.worldId,
     worldEpoch: finalAuthority.worldEpoch,
     phase1BoundaryTick: 33,
+    phase1CheckpointGeneration: phase1Authority.checkpointGeneration,
+    constructorBeforeHibernation: phase1ConstructorNonce,
+    constructorAfterHibernation: hibernationRecoveredAuthority.constructorNonce,
+    hibernationRestoreState: hibernationRecoveredAuthority.restoreState,
+    recoveredSocketBindings: hibernationRecoveredAuthority.recoveredSocketBindings,
     disconnectedTransports: disconnectedAuthority.connectedTransports,
     resumedSession: RECONNECT_SESSION,
     resumedActorId: "actor:1",
     finalBoundaryTick: finalAuthority.boundaryTick,
+    finalCheckpointGeneration: finalAuthority.checkpointGeneration,
     topologyRevision: finalAuthority.topologyRevision,
     topologyDigest: finalAuthority.topologyDigest,
     actors: finalAuthority.actors,

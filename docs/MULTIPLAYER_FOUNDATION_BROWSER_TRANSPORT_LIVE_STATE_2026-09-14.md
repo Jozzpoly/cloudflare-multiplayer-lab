@@ -211,6 +211,8 @@ The preferred sequence is:
 
 A future test that merely survives network disturbance by repeatedly shipping full corrections would not automatically qualify the intended replication design; message provenance, bounded recovery cost and the actual reconciliation path must remain inspectable.
 
+Evidence boundary for that next step: 5F3 demonstrates clean-path canonical input fan-out and exact continuation. It does **not** demonstrate replay after a commit arrives after local simulation has already consumed the affected tick. That distinction must remain explicit when designing the first impairment/reconnect specimen.
+
 ## Certification interpretation
 
 Gate 5 should now be read as:

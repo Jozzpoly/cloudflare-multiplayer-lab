@@ -10,7 +10,7 @@ import type {
   FoundationClientExecutionProfile,
 } from "./client-bootstrap.ts";
 
-export const FOUNDATION_REPLICATION_PROTOCOL_REVISION = "multiplayer-foundation-replication-v2-input-commit";
+export const FOUNDATION_REPLICATION_PROTOCOL_REVISION = "multiplayer-foundation-replication-v3-session-resume";
 export const FOUNDATION_REPLICATION_MAX_INPUT_RECORDS = 16;
 export const FOUNDATION_REPLICATION_MAX_CLIENT_MESSAGE_BYTES = 64 * 1024;
 export const FOUNDATION_REPLICATION_MAX_SERVER_MESSAGE_BYTES = 2 * 1024 * 1024;
@@ -23,6 +23,19 @@ export interface FoundationReplicationJoin {
   requestId: string;
   worldId: string;
   actorSessionId: string;
+  executionProfile: FoundationClientExecutionProfile;
+}
+
+export interface FoundationReplicationResume {
+  type: "foundation_resume";
+  revision: typeof FOUNDATION_REPLICATION_PROTOCOL_REVISION;
+  requestId: string;
+  worldId: string;
+  worldEpoch: string;
+  actorSessionId: string;
+  actorId: FoundationActorId;
+  topologyRevision: number;
+  topologyDigest: string;
   executionProfile: FoundationClientExecutionProfile;
 }
 
@@ -56,6 +69,7 @@ export interface FoundationReplicationInputBatch {
 
 export type FoundationReplicationClientMessage =
   | FoundationReplicationJoin
+  | FoundationReplicationResume
   | FoundationReplicationRuntimeReady
   | FoundationReplicationInputBatch;
 
@@ -230,6 +244,30 @@ function parseJoin(record: Record<string, unknown>): FoundationReplicationJoin |
   };
 }
 
+function parseResume(record: Record<string, unknown>): FoundationReplicationResume | null {
+  if (!isIdentityString(record.requestId)) return null;
+  if (!isIdentityString(record.worldId)) return null;
+  if (!isIdentityString(record.worldEpoch)) return null;
+  if (!isIdentityString(record.actorSessionId)) return null;
+  if (!isActorId(record.actorId)) return null;
+  if (!isNonNegativeSafeInteger(record.topologyRevision)) return null;
+  if (!isIdentityString(record.topologyDigest)) return null;
+  const executionProfile = parseExecutionProfile(record.executionProfile);
+  if (!executionProfile) return null;
+  return {
+    type: "foundation_resume",
+    revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
+    requestId: record.requestId,
+    worldId: record.worldId,
+    worldEpoch: record.worldEpoch,
+    actorSessionId: record.actorSessionId,
+    actorId: record.actorId,
+    topologyRevision: record.topologyRevision,
+    topologyDigest: record.topologyDigest,
+    executionProfile,
+  };
+}
+
 function parseRuntimeReady(record: Record<string, unknown>): FoundationReplicationRuntimeReady | null {
   if (!isIdentityString(record.worldId)) return null;
   if (!isIdentityString(record.worldEpoch)) return null;
@@ -275,6 +313,7 @@ export function parseFoundationReplicationClientMessage(raw: string): Foundation
     return null;
   }
   if (record.type === "foundation_join") return parseJoin(record);
+  if (record.type === "foundation_resume") return parseResume(record);
   if (record.type === "foundation_runtime_ready") return parseRuntimeReady(record);
   if (record.type === "foundation_input_batch") return parseInputBatch(record);
   return null;

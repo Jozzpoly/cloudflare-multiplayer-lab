@@ -15,7 +15,7 @@ import {
   foundationReplicationRuntimeSync,
   parseFoundationReplicationClientMessage,
   sameFoundationExecutionProfile,
-  type FoundationReplicationRuntimeSyncReason,
+  type FoundationRuntimeSyncReason,
 } from "./replication-protocol.ts";
 import { FoundationRosterMachine } from "./roster-machine.ts";
 
@@ -264,7 +264,7 @@ export class FoundationReplicationTestWorld extends DurableObject<ReplicationTes
     const topology = this.topology.snapshot();
     for (const binding of this.bindingBySession.values()) {
       const isNew = binding.actorSessionId === newSessionId;
-      const reason: FoundationReplicationRuntimeSyncReason = isNew ? "join" : "topology_change";
+      const reason: FoundationRuntimeSyncReason = isNew ? "join" : "topology_change";
       const previous = isNew ? null : binding.lastTopologyRevision || previousTopologyRevision;
       const runtimeBootstrap = this.createRuntimeBootstrap(binding.actorSessionId);
       const syncId = `sync-${++this.syncSequence}-${topology.topologyRevision}-${binding.actorId.replace(":", "-")}`;

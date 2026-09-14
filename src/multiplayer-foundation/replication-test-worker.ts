@@ -127,6 +127,10 @@ export class FoundationReplicationTestWorld extends DurableObject<ReplicationTes
       this.handleJoin(socket, message);
       return;
     }
+    if (message.type === "foundation_resume") {
+      this.closePolicy(socket, "resume_not_supported_in_gate_5f1");
+      return;
+    }
 
     const actorSessionId = this.sessionBySocket.get(socket);
     const binding = actorSessionId ? this.bindingBySession.get(actorSessionId) : undefined;
@@ -153,6 +157,10 @@ export class FoundationReplicationTestWorld extends DurableObject<ReplicationTes
         return;
       }
       binding.readyTopologyRevision = binding.lastTopologyRevision;
+      return;
+    }
+    if (message.type !== "foundation_input_batch") {
+      this.closePolicy(socket, "unsupported_bound_message");
       return;
     }
 

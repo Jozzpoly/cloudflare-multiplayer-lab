@@ -17,6 +17,9 @@ const WRANGLER_BIN = resolve("node_modules/wrangler/bin/wrangler.js");
 const RUN = `reconnect-midprogress-${Date.now().toString(36)}`;
 const WORLD_ID = `foundation-physics-replication-${RUN}`;
 const SESSIONS = ["session-alpha", "session-bravo", "session-charlie"] as const;
+const RECONNECT_SESSION = "session-bravo";
+const EXPECTED_FINAL_SEED_FNV1A32 = "b98daa7d";
+const EXPECTED_FINAL_SEED_BYTES = 35153;
 const INPUTS = [
   { x: 0.8, z: 0.6 },
   { x: -0.8, z: 0.6 },
@@ -128,6 +131,7 @@ type ClientState = {
   topologyRevision: number;
   topologyDigest: string | null;
   readySyncs: number;
+  resumeSyncs: number;
   correctionTick: number | null;
   inputResults: number;
   commitMessages: number;
@@ -135,16 +139,20 @@ type ClientState = {
   failure: string | null;
 };
 
+type AttachmentKind = "join" | "resume";
+
 class ProbeClient {
   readonly actorSessionId: string;
   readonly input: { x: number; z: number };
-  readonly socket: WebSocket;
+  socket: WebSocket;
+  private intentionalClose = false;
   readonly state: ClientState = {
     worldEpoch: null,
     actorId: null,
     topologyRevision: 0,
     topologyDigest: null,
     readySyncs: 0,
+    resumeSyncs: 0,
     correctionTick: null,
     inputResults: 0,
     commitMessages: 0,
@@ -155,31 +163,58 @@ class ProbeClient {
   constructor(actorSessionId: string, input: { x: number; z: number }) {
     this.actorSessionId = actorSessionId;
     this.input = input;
-    this.socket = new WebSocket(`ws://127.0.0.1:${PORT}/foundation-physics/ws?run=${encodeURIComponent(RUN)}`);
-    this.socket.addEventListener("open", () => {
-      this.socket.send(JSON.stringify({
-        type: "foundation_join",
-        revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
-        requestId: `join-${actorSessionId}`,
-        worldId: WORLD_ID,
-        actorSessionId,
-        executionProfile: PROFILE,
-      }));
+    this.socket = this.installSocket("join");
+  }
+
+  private installSocket(kind: AttachmentKind): WebSocket {
+    const socket = new WebSocket(`ws://127.0.0.1:${PORT}/foundation-physics/ws?run=${encodeURIComponent(RUN)}`);
+    socket.addEventListener("open", () => {
+      try {
+        if (kind === "join") {
+          socket.send(JSON.stringify({
+            type: "foundation_join",
+            revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
+            requestId: `join-${this.actorSessionId}`,
+            worldId: WORLD_ID,
+            actorSessionId: this.actorSessionId,
+            executionProfile: PROFILE,
+          }));
+          return;
+        }
+        assert(this.state.worldEpoch && this.state.actorId && this.state.topologyRevision > 0 && this.state.topologyDigest);
+        socket.send(JSON.stringify({
+          type: "foundation_resume",
+          revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
+          requestId: `resume-${this.actorSessionId}`,
+          worldId: WORLD_ID,
+          worldEpoch: this.state.worldEpoch,
+          actorSessionId: this.actorSessionId,
+          actorId: this.state.actorId,
+          topologyRevision: this.state.topologyRevision,
+          topologyDigest: this.state.topologyDigest,
+          executionProfile: PROFILE,
+        }));
+      } catch (error) {
+        this.state.failure = error instanceof Error ? error.stack ?? error.message : String(error);
+      }
     });
-    this.socket.addEventListener("message", (event) => {
-      void this.handleMessage(event).catch((error) => {
+    socket.addEventListener("message", (event) => {
+      void this.handleMessage(event, socket).catch((error) => {
         this.state.failure = error instanceof Error ? error.stack ?? error.message : String(error);
       });
     });
-    this.socket.addEventListener("error", () => {
-      if (!this.state.failure) this.state.failure = "WebSocket error";
+    socket.addEventListener("error", () => {
+      if (!this.intentionalClose && !this.state.failure) this.state.failure = "WebSocket error";
     });
-    this.socket.addEventListener("close", (event) => {
-      if (!this.state.failure) this.state.failure = `unexpected close ${event.code} ${event.reason}`;
+    socket.addEventListener("close", (event) => {
+      if (!this.intentionalClose && !this.state.failure) {
+        this.state.failure = `unexpected close ${event.code} ${event.reason}`;
+      }
     });
+    return socket;
   }
 
-  private async handleMessage(event: MessageEvent): Promise<void> {
+  private async handleMessage(event: MessageEvent, socket: WebSocket): Promise<void> {
     const raw = typeof event.data === "string" ? event.data : await (event.data as Blob).text();
     const parsed = parseFoundationReplicationServerMessage(raw, {
       worldId: WORLD_ID,
@@ -201,8 +236,12 @@ class ProbeClient {
       this.state.actorId = actorId;
       this.state.topologyRevision = hydrated.envelope.topology.topologyRevision;
       this.state.topologyDigest = hydrated.envelope.topology.topologyDigest;
+      if (sync.reason === "resume") {
+        assert.equal(hydrated.envelope.canonicalTick, 33, "resume boundary drift");
+        this.state.resumeSyncs += 1;
+      }
       if (sync.reason === "correction") this.state.correctionTick = hydrated.envelope.canonicalTick;
-      this.socket.send(JSON.stringify({
+      socket.send(JSON.stringify({
         type: "foundation_runtime_ready",
         revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
         worldId: WORLD_ID,
@@ -247,7 +286,29 @@ class ProbeClient {
     }));
   }
 
+  async disconnectForResume(): Promise<void> {
+    assert.equal(this.socket.readyState, WebSocket.OPEN);
+    this.intentionalClose = true;
+    const socket = this.socket;
+    const closed = new Promise<void>((resolveClose) => {
+      socket.addEventListener("close", () => resolveClose(), { once: true });
+    });
+    socket.close(1000, "controlled-midprogress-reconnect");
+    const completed = await Promise.race([
+      closed.then(() => true),
+      sleep(5000).then(() => false),
+    ]);
+    assert(completed, `${this.actorSessionId} controlled close timed out`);
+    this.intentionalClose = false;
+  }
+
+  openResumeTransport(): void {
+    assert.equal(this.socket.readyState, WebSocket.CLOSED);
+    this.socket = this.installSocket("resume");
+  }
+
   close(): void {
+    this.intentionalClose = true;
     try { this.socket.close(1000, "probe-complete"); } catch { /* cleanup */ }
   }
 }
@@ -284,6 +345,9 @@ try {
   }
   await waitForStatus((value) => value.topologyRevision === 3 && value.readyCurrentTopology === 3, "final topology ready");
 
+  const actorIdentity = new Map(clients.map((client) => [client.actorSessionId, client.state.actorId] as const));
+  assert.deepEqual([...actorIdentity.values()], ["actor:0", "actor:1", "actor:2"]);
+
   for (const client of clients) {
     client.sendBatch(1, 4);
     client.sendBatch(2, 19);
@@ -304,8 +368,8 @@ try {
   );
   assert.equal(phase1.restoreState, "empty");
 
-  // Advance canonical/protocol truth beyond the durable physics boundary without
-  // providing enough batches to advance the authority simulation to its next checkpoint.
+  // Advance canonical/protocol truth beyond the exact physics checkpoint without
+  // providing enough input to advance the authority simulation to its next base.
   for (const client of clients) client.sendBatch(3, 34);
   const partial = await waitForStatus(
     (value) => value.boundaryTick === 33
@@ -313,46 +377,153 @@ try {
       && value.inputBatches === 9
       && value.acceptedInputRecords === 135
       && value.committedInputRecords === 135
-      && value.inputCommitsSent === 27,
+      && value.inputCommitsSent === 27
+      && value.progressSequence >= 6
+      && value.progressPayloadBytes > 0,
     "partial post-checkpoint protocol progress",
   );
-  assert.equal(partial.checkpointGeneration, 1);
   assert.equal(partial.restoredCheckpointTick, 33);
+  assert.equal(partial.progressStorage.rows, 1);
   const constructorBefore = partial.constructorNonce;
 
-  let observedFailure: { status: number; body: any } | null = null;
+  let restored: any = null;
   for (let window = 1; window <= 3; window += 1) {
     await sleep(18_000);
     const observed = await rawStatus();
+    assert.equal(observed.status, 200, JSON.stringify(observed.body));
     if (observed.body?.constructorNonce !== constructorBefore) {
-      observedFailure = observed;
+      restored = observed.body;
       break;
     }
-    assert.equal(observed.status, 200, `unexpected status before constructor replacement: ${JSON.stringify(observed.body)}`);
     assert.equal(observed.body.boundaryTick, 33);
     assert.equal(observed.body.inputBatches, 9);
+    assert.equal(observed.body.acceptedInputRecords, 135);
   }
 
-  assert(observedFailure, "workerd did not hibernate the mid-progress authority within bounded quiet windows");
-  assert.equal(observedFailure.status, 503, JSON.stringify(observedFailure.body));
-  assert.equal(observedFailure.body.error, "authority_restore_failed");
-  assert.notEqual(observedFailure.body.constructorNonce, constructorBefore);
-  const detail = String(observedFailure.body.detail ?? "");
-  assert.match(detail, /recovered socket attachment protocol state drift/);
+  assert(restored, "workerd did not hibernate the mid-progress authority within bounded quiet windows");
+  assert.equal(restored.restoreState, "restored");
+  assert.equal(restored.restoreError, null);
+  assert.notEqual(restored.constructorNonce, constructorBefore);
+  assert.equal(restored.recoveredSocketBindings, 3);
+  assert.equal(restored.connectedTransports, 3);
+  assert.equal(restored.readyCurrentTopology, 3);
+  assert.equal(restored.boundaryTick, 33);
+  assert.equal(restored.checkpointGeneration, 1);
+  assert.equal(restored.restoredCheckpointTick, 33);
+  assert.equal(restored.inputBatches, 9);
+  assert.equal(restored.acceptedInputRecords, 135);
+  assert.equal(restored.committedInputRecords, 135);
+  assert.equal(restored.inputCommitsSent, 27);
+  assert(restored.progressSequence >= 6);
+  assert(restored.progressPayloadBytes > 0);
+  assert.equal(restored.progressStorage.rows, 1);
+  for (const actor of restored.actors) {
+    assert.equal(actor.actorId, actorIdentity.get(actor.actorSessionId), `restored ActorId drift for ${actor.actorSessionId}`);
+  }
 
-  console.log("MULTIPLAYER_FOUNDATION_MIDPROGRESS_HIBERNATION_GAP_CONFIRMED", JSON.stringify({
+  // Preserve the existing reconnect-profile contract: exactly one ActorSession
+  // performs an explicit transport resume before the second 30-tick segment.
+  const reconnectClient = clients.find((client) => client.actorSessionId === RECONNECT_SESSION);
+  assert(reconnectClient, "reconnect client missing");
+  const resumedActorId = reconnectClient.state.actorId;
+  await reconnectClient.disconnectForResume();
+  await waitForStatus(
+    (value) => value.connectedTransports === 2
+      && value.actors.find((actor: any) => actor.actorSessionId === RECONNECT_SESSION)?.transportConnected === false,
+    "controlled transport detach",
+  );
+  reconnectClient.openResumeTransport();
+  await waitForClient(reconnectClient, (state) => state.resumeSyncs === 1, "controlled transport resume sync");
+  const resumed = await waitForStatus(
+    (value) => value.connectedTransports === 3
+      && value.readyCurrentTopology === 3
+      && value.resumeSyncs === 1
+      && value.resumedSessions.includes(RECONNECT_SESSION),
+    "controlled transport resume ready",
+  );
+  assert.equal(reconnectClient.state.actorId, resumedActorId);
+  assert.equal(
+    resumed.actors.find((actor: any) => actor.actorSessionId === RECONNECT_SESSION)?.actorId,
+    resumedActorId,
+  );
+
+  // Batch 3 (ticks 34..48) was accepted before hibernation and exists only in
+  // the bounded progress overlay above the tick-33 exact base. Batch 4 completes
+  // the segment after restore; exact final seed equality proves the old inputs
+  // were not merely counted but were actually consumed by future physics.
+  for (const client of clients) client.sendBatch(4, 49);
+  for (const client of clients) {
+    await waitForClient(client, (state) => state.correctionTick === 63, "phase-2 correction after mid-progress restore");
+  }
+
+  const final = await waitForStatus(
+    (value) => value.boundaryTick === 63
+      && value.checkpointGeneration === 2
+      && value.restoredCheckpointTick === 63
+      && value.inputBatches === 12
+      && value.acceptedInputRecords === 180
+      && value.committedInputRecords === 180
+      && value.inputCommitsSent === 36
+      && value.continuationTicks === 60
+      && value.resumeSyncs === 1
+      && value.readyCurrentTopology === 3,
+    "exact continuation after mid-progress hibernation",
+  );
+
+  assert.equal(final.finalSeedBytes, EXPECTED_FINAL_SEED_BYTES);
+  assert.equal(final.finalSeedFnv1a32, EXPECTED_FINAL_SEED_FNV1A32);
+  assert.equal(final.topologyRevision, 3);
+  assert.equal(final.topologyDigest, phase1.topologyDigest);
+  assert.deepEqual(final.resumedSessions, [RECONNECT_SESSION]);
+  for (const actor of final.actors) {
+    assert.equal(actor.actorId, actorIdentity.get(actor.actorSessionId), `final ActorId drift for ${actor.actorSessionId}`);
+  }
+  for (const client of clients) {
+    const state = await waitForClient(
+      client,
+      (candidate) => candidate.inputResults === 4 && candidate.commitMessages === 12 && candidate.commitRecords === 180,
+      `final protocol accounting ${client.actorSessionId}`,
+    );
+    assert.equal(state.actorId, actorIdentity.get(client.actorSessionId));
+  }
+  assert.equal(reconnectClient.state.resumeSyncs, 1);
+
+  console.log("MULTIPLAYER_FOUNDATION_MIDPROGRESS_HIBERNATION_RECOVERY_PASS", JSON.stringify({
     run: RUN,
     worldId: WORLD_ID,
     phase1BoundaryTick: phase1.boundaryTick,
-    durableGeneration: phase1.checkpointGeneration,
-    partialBoundaryTick: partial.boundaryTick,
+    baseCheckpointGeneration: phase1.checkpointGeneration,
     partialInputBatches: partial.inputBatches,
     partialAcceptedInputRecords: partial.acceptedInputRecords,
-    partialCommittedInputRecords: partial.committedInputRecords,
-    partialInputCommitsSent: partial.inputCommitsSent,
+    partialProgressSequence: partial.progressSequence,
+    partialProgressPayloadBytes: partial.progressPayloadBytes,
     constructorBeforeHibernation: constructorBefore,
-    constructorAfterHibernation: observedFailure.body.constructorNonce,
-    expectedRestoreFailure: "recovered socket attachment protocol state drift",
+    constructorAfterHibernation: restored.constructorNonce,
+    restoreState: restored.restoreState,
+    recoveredSocketBindings: restored.recoveredSocketBindings,
+    restoredInputBatches: restored.inputBatches,
+    restoredAcceptedInputRecords: restored.acceptedInputRecords,
+    resumedSession: RECONNECT_SESSION,
+    resumedActorId,
+    finalBoundaryTick: final.boundaryTick,
+    finalCheckpointGeneration: final.checkpointGeneration,
+    finalInputBatches: final.inputBatches,
+    finalAcceptedInputRecords: final.acceptedInputRecords,
+    finalCommittedInputRecords: final.committedInputRecords,
+    finalInputCommitsSent: final.inputCommitsSent,
+    continuationTicks: final.continuationTicks,
+    finalSeedBytes: final.finalSeedBytes,
+    finalSeedFnv1a32: final.finalSeedFnv1a32,
+    exactReferenceSeedFnv1a32: EXPECTED_FINAL_SEED_FNV1A32,
+    clients: clients.map((client) => ({
+      actorSessionId: client.actorSessionId,
+      actorId: client.state.actorId,
+      inputResults: client.state.inputResults,
+      commitMessages: client.state.commitMessages,
+      commitRecords: client.state.commitRecords,
+      resumeSyncs: client.state.resumeSyncs,
+      correctionTick: client.state.correctionTick,
+    })),
   }));
 } finally {
   for (const client of clients) client.close();

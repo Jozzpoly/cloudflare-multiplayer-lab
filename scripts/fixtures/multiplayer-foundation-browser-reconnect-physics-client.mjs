@@ -436,6 +436,7 @@ try {
     if (actorSessionId === "session-bravo") assert(resumeSyncs === 1, "session-bravo must resume before phase 2");
     assert(socket?.readyState === WebSocket.OPEN, "phase 2 requires open transport");
     phase2Started = true;
+    phase = 2;
     resetSegment(33);
     sendSegmentBatches(2);
     publish(evidence("MULTIPLAYER_FOUNDATION_BROWSER_RECONNECT_PHASE2_RUNNING"));

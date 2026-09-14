@@ -2,6 +2,7 @@
 set -euo pipefail
 
 EXPECTED_WORKER="cloudflare-multiplayer-lab-foundation-recovery"
+EXPECTED_BRANCH="research/multiplayer-foundation-recovery-remote"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
@@ -12,6 +13,11 @@ fi
 
 if [[ "${WRANGLER_CI_OVERRIDE_NAME:-}" != "$EXPECTED_WORKER" ]]; then
   echo "Refusing foundation recovery remote deploy: Workers Builds target '${WRANGLER_CI_OVERRIDE_NAME:-<missing>}' != '$EXPECTED_WORKER'." >&2
+  exit 1
+fi
+
+if [[ "${WORKERS_CI_BRANCH:-}" != "$EXPECTED_BRANCH" ]]; then
+  echo "Refusing foundation recovery remote deploy: Workers Builds branch '${WORKERS_CI_BRANCH:-<missing>}' != '$EXPECTED_BRANCH'." >&2
   exit 1
 fi
 

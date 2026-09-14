@@ -102,6 +102,26 @@ assert.equal(parsedJoin.actorSessionId, SELF_SESSION);
 assert(sameFoundationExecutionProfile(parsedJoin.executionProfile, PROFILE));
 assert(!sameFoundationExecutionProfile(parsedJoin.executionProfile, { ...PROFILE, buildId: "wrong-build" }));
 
+const resume = {
+  type: "foundation_resume",
+  revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
+  requestId: "resume-request-1",
+  worldId: WORLD_ID,
+  worldEpoch: WORLD_EPOCH,
+  actorSessionId: SELF_SESSION,
+  actorId: "actor:0",
+  topologyRevision: topology.topologyRevision,
+  topologyDigest: topology.topologyDigest,
+  executionProfile: PROFILE,
+};
+const parsedResume = parseFoundationReplicationClientMessage(JSON.stringify(resume));
+assert(parsedResume?.type === "foundation_resume");
+assert.equal(parsedResume.actorSessionId, SELF_SESSION);
+assert.equal(parsedResume.actorId, "actor:0");
+assert.equal(parsedResume.topologyRevision, topology.topologyRevision);
+assert.equal(parsedResume.topologyDigest, topology.topologyDigest);
+assert(sameFoundationExecutionProfile(parsedResume.executionProfile, PROFILE));
+
 const ready = {
   type: "foundation_runtime_ready",
   revision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
@@ -165,6 +185,17 @@ const topologySync = foundationReplicationRuntimeSync({
 });
 assert(parseFoundationReplicationServerMessage(JSON.stringify(topologySync), expectation));
 
+const resumeSync = foundationReplicationRuntimeSync({
+  ...runtimeSync,
+  syncId: "sync-resume-1",
+  reason: "resume",
+  previousTopologyRevision: topology.topologyRevision,
+});
+const parsedResumeSync = parseFoundationReplicationServerMessage(JSON.stringify(resumeSync), expectation);
+assert(parsedResumeSync?.message.type === "foundation_runtime_sync");
+assert.equal(parsedResumeSync.message.reason, "resume");
+assert.equal(parsedResumeSync.message.previousTopologyRevision, topology.topologyRevision);
+
 const inputResult = foundationReplicationInputResult({
   worldId: WORLD_ID,
   worldEpoch: WORLD_EPOCH,
@@ -214,6 +245,10 @@ assert.equal(parseFoundationReplicationClientMessage(JSON.stringify({
     { targetTick: 5, x: 0, z: 0 },
   ],
 })), null);
+assert.equal(parseFoundationReplicationClientMessage(JSON.stringify({ ...resume, actorId: "player-0" })), null);
+assert.equal(parseFoundationReplicationClientMessage(JSON.stringify({ ...resume, topologyDigest: "bad digest with spaces" })), null);
+assert.equal(parseFoundationReplicationClientMessage(JSON.stringify({ ...resume, topologyRevision: -1 })), null);
+assert.equal(parseFoundationReplicationClientMessage(JSON.stringify({ ...resume, executionProfile: { ...PROFILE, buildId: "bad build with spaces" } })), null);
 
 assert.equal(
   parseFoundationReplicationServerMessage(JSON.stringify(runtimeSync), { ...expectation, actorSessionId: "session-peer" }),
@@ -278,7 +313,7 @@ console.log("MULTIPLAYER_FOUNDATION_REPLICATION_PROTOCOL_PASS", JSON.stringify({
   runtimeDigest: runtimeBootstrap.envelopeDigest,
   seedBytes: seedBytes.byteLength,
   actors: rosterSnapshot.actors.length,
-  clientMessages: ["join", "runtime_ready", "input_batch"],
+  clientMessages: ["join", "resume", "runtime_ready", "input_batch"],
   serverMessages: ["runtime_sync", "input_result", "input_commit"],
-  malformedCases: 14,
+  malformedCases: 18,
 }));

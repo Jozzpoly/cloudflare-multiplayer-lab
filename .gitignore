@@ -1,5 +1,6 @@
 node_modules/
 .wrangler/
+.foundation-browser-dist/
 worker-configuration.d.ts
 .dev.vars*
 .env*

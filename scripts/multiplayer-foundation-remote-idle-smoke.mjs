@@ -1,5 +1,17 @@
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+
+const trigger = JSON.parse(readFileSync("foundation-recovery-remote-trigger.json", "utf8"));
+assert.equal(trigger.revision, "multiplayer-foundation-remote-recovery-trigger-v1");
+assert(["idle", "seed", "resume"].includes(trigger.phase), `invalid remote recovery phase ${trigger.phase}`);
+
+if (trigger.phase !== "idle") {
+  console.log(`MULTIPLAYER FOUNDATION REMOTE RECOVERY IDLE VERIFY SKIP · phase=${trigger.phase} · campaign=${trigger.campaignId}`);
+  process.exit(0);
+}
+
+assert.equal(trigger.campaignId, "unarmed", "idle verifier requires unarmed campaign");
+assert.equal(trigger.expectedPreviousInstanceNonce, null, "idle verifier requires null previous instance nonce");
 
 const BASE = (process.env.MW_FOUNDATION_RECOVERY_REMOTE_BASE
   || "https://cloudflare-multiplayer-lab-foundation-recovery.jozzpoly.workers.dev").replace(/\/$/, "");

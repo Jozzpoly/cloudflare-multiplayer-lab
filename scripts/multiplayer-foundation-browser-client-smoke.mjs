@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 
 const DIST_ROOT = resolve(".foundation-browser-dist");
 const FIXTURE_PATH = resolve("scripts/fixtures/multiplayer-foundation-browser-client.mjs");
+const TOPOLOGY_FIXTURE_PATH = resolve("scripts/fixtures/multiplayer-foundation-browser-topology-rebootstrap.mjs");
 const BOX3D_ROOT = resolve("public/world-v0/box3d-i4");
 const DEBUG_PORT = 9688;
 const TIMEOUT_MS = 45_000;
@@ -55,13 +56,15 @@ function startFixtureServer() {
   const server = createServer((request, response) => {
     try {
       const url = new URL(request.url || "/", "http://127.0.0.1");
-      if (url.pathname === "/") {
+      if (url.pathname === "/" || url.pathname === "/topology") {
+        const fixtureSrc = url.pathname === "/topology" ? "/topology-fixture.mjs" : "/fixture.mjs";
         response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-        response.end("<!doctype html><meta charset=utf-8><title>Foundation browser smoke</title><script type=module src=/fixture.mjs></script>");
+        response.end(`<!doctype html><meta charset=utf-8><title>Foundation browser smoke</title><script type=module src=${fixtureSrc}></script>`);
         return;
       }
       let path = null;
       if (url.pathname === "/fixture.mjs") path = FIXTURE_PATH;
+      else if (url.pathname === "/topology-fixture.mjs") path = TOPOLOGY_FIXTURE_PATH;
       else if (url.pathname.startsWith("/runtime/")) path = safeChild(DIST_ROOT, url.pathname.slice("/runtime/".length));
       else if (url.pathname.startsWith("/box3d/")) path = safeChild(BOX3D_ROOT, url.pathname.slice("/box3d/".length));
       if (!path) {
@@ -150,14 +153,14 @@ class Cdp {
     try { this.ws.close(); } catch { /* cleanup */ }
   }
 }
-async function waitForEvidence(cdp, sessionId) {
+async function waitForEvidence(cdp, sessionId, globalName, passStatus, failStatus) {
   const started = Date.now();
   let last = null;
   while (Date.now() - started < TIMEOUT_MS) {
     try {
-      last = await cdp.evaluate(sessionId, "window.__multiplayerFoundationBrowserEvidence || null");
-      if (last?.status === "MULTIPLAYER_FOUNDATION_BROWSER_CLIENT_PASS") return last;
-      if (last?.status === "MULTIPLAYER_FOUNDATION_BROWSER_CLIENT_FAIL") {
+      last = await cdp.evaluate(sessionId, `window[${JSON.stringify(globalName)}] || null`);
+      if (last?.status === passStatus) return last;
+      if (last?.status === failStatus) {
         throw new Error(`browser fixture failed: ${last.error}\n${last.stack || ""}`);
       }
     } catch (error) {
@@ -166,7 +169,15 @@ async function waitForEvidence(cdp, sessionId) {
     }
     await sleep(100);
   }
-  throw new Error(`browser foundation evidence timeout · last=${JSON.stringify(last)}`);
+  throw new Error(`browser foundation evidence timeout · ${globalName} · last=${JSON.stringify(last)}`);
+}
+async function createFixtureTarget(cdp, url, globalName, passStatus, failStatus) {
+  const { targetId } = await cdp.call("Target.createTarget", { url });
+  const { sessionId } = await cdp.call("Target.attachToTarget", { targetId, flatten: true });
+  await cdp.call("Runtime.enable", {}, sessionId);
+  await cdp.call("Page.enable", {}, sessionId);
+  const evidence = await waitForEvidence(cdp, sessionId, globalName, passStatus, failStatus);
+  return { targetId, evidence };
 }
 
 let server = null;
@@ -199,12 +210,15 @@ try {
   const debuggerInfo = await waitForDebugger(DEBUG_PORT);
   cdp = new Cdp(debuggerInfo.webSocketDebuggerUrl);
   await cdp.opened;
-  const { targetId } = await cdp.call("Target.createTarget", { url: fixture.url });
-  const { sessionId } = await cdp.call("Target.attachToTarget", { targetId, flatten: true });
-  await cdp.call("Runtime.enable", {}, sessionId);
-  await cdp.call("Page.enable", {}, sessionId);
-  const evidence = await waitForEvidence(cdp, sessionId);
 
+  const staticRun = await createFixtureTarget(
+    cdp,
+    fixture.url,
+    "__multiplayerFoundationBrowserEvidence",
+    "MULTIPLAYER_FOUNDATION_BROWSER_CLIENT_PASS",
+    "MULTIPLAYER_FOUNDATION_BROWSER_CLIENT_FAIL",
+  );
+  const evidence = staticRun.evidence;
   assert(evidence.environment === "chromium", `unexpected browser environment ${evidence.environment}`);
   assert(evidence.activeActors === 6 && evidence.remoteActors === 5, "browser self + N actor coverage failed");
   assert(evidence.dynamicEntities === 18, `browser dynamic entity count ${evidence.dynamicEntities}`);
@@ -212,6 +226,30 @@ try {
   assert(evidence.activeActorPropContacts > 0, "browser contact-rich checkpoint missing");
   assert(evidence.seedBytes > 0, "browser byte seed missing");
   console.log("MULTIPLAYER_FOUNDATION_BROWSER_CLIENT_PASS", JSON.stringify(evidence));
+  await cdp.call("Target.closeTarget", { targetId: staticRun.targetId });
+
+  const topologyRun = await createFixtureTarget(
+    cdp,
+    `${fixture.url}topology`,
+    "__multiplayerFoundationTopologyEvidence",
+    "MULTIPLAYER_FOUNDATION_BROWSER_TOPOLOGY_REBOOTSTRAP_PASS",
+    "MULTIPLAYER_FOUNDATION_BROWSER_TOPOLOGY_REBOOTSTRAP_FAIL",
+  );
+  const topology = topologyRun.evidence;
+  assert(topology.environment === "chromium", `unexpected topology browser environment ${topology.environment}`);
+  assert(topology.initial?.activeActors === 2 && topology.initial?.remoteActors === 1, "browser topology initial 2-player boundary failed");
+  assert(topology.lateJoin?.activeActors === 6 && topology.lateJoin?.remoteActors === 5, "browser topology 2→6 rebootstrap failed");
+  assert(topology.churn?.activeActors === 6 && topology.churn?.remoteActors === 5, "browser topology churn coverage failed");
+  assert(topology.lateJoin?.topologyRevision === 6, `browser late-join topology revision ${topology.lateJoin?.topologyRevision}`);
+  assert(topology.churn?.topologyRevision === 8, `browser churn topology revision ${topology.churn?.topologyRevision}`);
+  assert(topology.exactPreJoinTicks === 8, `browser pre-join exact ticks ${topology.exactPreJoinTicks}`);
+  assert(topology.exactPostJoinTicks === 12, `browser post-join exact ticks ${topology.exactPostJoinTicks}`);
+  assert(topology.exactPostChurnTicks === 30, `browser post-churn exact ticks ${topology.exactPostChurnTicks}`);
+  assert(topology.churnRemovedActor === "actor:2" && topology.churnReplacementActor === "actor:6", "browser churn identity transition failed");
+  assert(topology.initial?.contacts > 0, "browser topology initial contact-rich boundary missing");
+  assert(topology.churn?.contacts > 0, "browser topology churn contact state missing");
+  console.log("MULTIPLAYER_FOUNDATION_BROWSER_TOPOLOGY_REBOOTSTRAP_PASS", JSON.stringify(topology));
+  await cdp.call("Target.closeTarget", { targetId: topologyRun.targetId });
 } finally {
   cdp?.close();
   if (browser?.exitCode === null) browser.kill("SIGKILL");

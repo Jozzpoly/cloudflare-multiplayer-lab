@@ -99,14 +99,16 @@ function validateWorkerState(value: unknown): asserts value is FoundationReplica
     "correctionSyncs",
     "resumeSyncs",
     "inputCommitsSent",
-    "committedInputRecords",
-    "acceptedInputRecords",
     "invalidMessages",
     "staleReady",
   ] as const) {
     assertNonNegativeInteger(value[field], `progress overlay workerState.${field}`);
   }
-  if (value.committedInputRecords > value.acceptedInputRecords) {
+  const committedInputRecords = value.committedInputRecords;
+  const acceptedInputRecords = value.acceptedInputRecords;
+  assertNonNegativeInteger(committedInputRecords, "progress overlay workerState.committedInputRecords");
+  assertNonNegativeInteger(acceptedInputRecords, "progress overlay workerState.acceptedInputRecords");
+  if (committedInputRecords > acceptedInputRecords) {
     throw new Error("progress overlay committed inputs cannot exceed accepted inputs");
   }
   if (!Array.isArray(value.resumedSessions)) throw new Error("progress overlay resumedSessions must be an array");

@@ -258,10 +258,21 @@ export function validateFoundationReplicationProgressOverlay(
 export function createFoundationReplicationProgressOverlay(
   input: FoundationReplicationProgressOverlayInput,
 ): FoundationReplicationProgressOverlay {
+  const canonicalInput: FoundationReplicationProgressOverlayInput = JSON.parse(JSON.stringify({
+    worldId: input.worldId,
+    worldEpoch: input.worldEpoch,
+    baseCheckpointGeneration: input.baseCheckpointGeneration,
+    baseCanonicalTick: input.baseCanonicalTick,
+    topologyRevision: input.topologyRevision,
+    topologyDigest: input.topologyDigest,
+    progressSequence: input.progressSequence,
+    inputCheckpoint: input.inputCheckpoint,
+    workerState: input.workerState,
+  })) as FoundationReplicationProgressOverlayInput;
   const base: Omit<FoundationReplicationProgressOverlay, "stateDigest"> = {
     revision: FOUNDATION_REPLICATION_PROGRESS_OVERLAY_REVISION,
     protocolRevision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
-    ...JSON.parse(JSON.stringify(input)) as FoundationReplicationProgressOverlayInput,
+    ...canonicalInput,
   };
   const overlay: FoundationReplicationProgressOverlay = {
     ...base,

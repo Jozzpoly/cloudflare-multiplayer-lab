@@ -27,6 +27,7 @@ const CAPACITY = 3;
 const MAX_FUTURE_TICKS = 80;
 const NEUTRAL_CONTINUATION_TICKS = 30;
 const INTERACTIVE_CONTINUATION_TICKS = 60;
+const RECONNECT_SEGMENT_TICKS = 30;
 const INPUT_BATCH_TICKS = 15;
 const RUN_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
 const PROFILE: FoundationClientExecutionProfile = {
@@ -39,6 +40,8 @@ const PERSISTENT_WORLD = Array.from({ length: 12 }, (_, index) => `prop-${index}
 type PhysicsReplicationEnv = {
   FOUNDATION_REPLICATION_PHYSICS_TEST: DurableObjectNamespace<FoundationReplicationPhysicsTestWorld>;
 };
+
+type PhysicsReplicationMode = "neutral" | "interactive" | "reconnect";
 
 type ClientBinding = {
   socket: WebSocket;
@@ -67,6 +70,12 @@ function expectedWorldId(run: string): string {
   return `foundation-physics-replication-${run}`;
 }
 
+function modeForRun(run: string): PhysicsReplicationMode {
+  if (run.startsWith("reconnect-")) return "reconnect";
+  if (run.startsWith("interactive-")) return "interactive";
+  return "neutral";
+}
+
 export class FoundationReplicationPhysicsTestWorld extends DurableObject<PhysicsReplicationEnv> {
   private readonly roster = new FoundationRosterMachine({ worldEpoch: WORLD_EPOCH, capacity: CAPACITY });
   private readonly topology = new FoundationEntityTopology(WORLD_EPOCH, PERSISTENT_WORLD);
@@ -75,17 +84,19 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
   private readonly bindingBySession = new Map<string, ClientBinding>();
   private readonly sessionBySocket = new Map<WebSocket, string>();
   private readonly propStartXZ = new Map<string, readonly [number, number]>();
+  private readonly resumedSessions = new Set<string>();
   private worldId: string | null = null;
-  private interactive = false;
+  private mode: PhysicsReplicationMode = "neutral";
   private syncSequence = 0;
   private syncsSent = 0;
   private correctionSyncs = 0;
+  private resumeSyncs = 0;
   private inputCommitsSent = 0;
   private committedInputRecords = 0;
   private acceptedInputRecords = 0;
   private invalidMessages = 0;
   private staleReady = 0;
-  private advancedContinuation = false;
+  private completedContinuationTicks = 0;
   private finalGuardPacked: string | null = null;
   private finalSeedBytes = 0;
   private finalSeedFnv1a32: string | null = null;
@@ -101,7 +112,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     }
     if (this.worldId === null) {
       this.worldId = requestedWorldId;
-      this.interactive = run.startsWith("interactive-");
+      this.mode = modeForRun(run);
     }
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return json(this.status());
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket];
@@ -125,6 +136,10 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       this.handleJoin(socket, message);
       return;
     }
+    if (message.type === "foundation_resume") {
+      this.handleResume(socket, message);
+      return;
+    }
 
     const actorSessionId = this.sessionBySocket.get(socket);
     const binding = actorSessionId ? this.bindingBySession.get(actorSessionId) : undefined;
@@ -143,6 +158,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       binding.readyTopologyRevision = binding.lastTopologyRevision;
       return;
     }
+    if (message.type !== "foundation_input_batch") return this.closePolicy(socket, "unsupported_bound_message");
 
     const topology = this.topology.snapshot();
     if (message.actorId !== binding.actorId || message.topologyRevision !== topology.topologyRevision) {
@@ -175,9 +191,10 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       batchSeq: message.batchSeq,
       records,
     }));
-    if (this.interactive && committedRecords.length > 0) {
+    if (this.usesCanonicalInputCommits() && committedRecords.length > 0) {
       this.committedInputRecords += committedRecords.length;
       for (const recipient of this.bindingBySession.values()) {
+        if (!this.isCurrentTransportConnected(recipient)) continue;
         this.send(recipient.socket, foundationReplicationInputCommit({
           worldId: this.worldId!,
           worldEpoch: WORLD_EPOCH,
@@ -255,6 +272,37 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     this.broadcastRuntimeSync(binding.actorSessionId, previousTopologyRevision, false);
   }
 
+  private handleResume(
+    socket: WebSocket,
+    message: Extract<NonNullable<ReturnType<typeof parseFoundationReplicationClientMessage>>, { type: "foundation_resume" }>,
+  ): void {
+    if (this.mode !== "reconnect") return this.closePolicy(socket, "resume_not_enabled");
+    if (this.sessionBySocket.has(socket)) return this.closePolicy(socket, "resume_transport_already_bound");
+    if (message.worldId !== this.worldId) return this.closePolicy(socket, "resume_world_mismatch");
+    if (message.worldEpoch !== WORLD_EPOCH) return this.closePolicy(socket, "resume_world_epoch_mismatch");
+    if (!sameFoundationExecutionProfile(message.executionProfile, PROFILE)) return this.closePolicy(socket, "resume_execution_profile_mismatch");
+
+    const topology = this.topology.snapshot();
+    if (message.topologyRevision !== topology.topologyRevision || message.topologyDigest !== topology.topologyDigest) {
+      return this.closePolicy(socket, "resume_topology_mismatch");
+    }
+    const actor = this.roster.snapshot().actors.find((candidate) => candidate.actorSessionId === message.actorSessionId);
+    if (!actor || actor.actorId !== message.actorId) return this.closePolicy(socket, "resume_actor_identity_mismatch");
+    if (actor.transportConnected) return this.closePolicy(socket, "resume_transport_still_connected");
+    const binding = this.bindingBySession.get(message.actorSessionId);
+    if (!binding || binding.actorId !== message.actorId) return this.closePolicy(socket, "resume_binding_missing");
+
+    binding.socket = socket;
+    binding.readyTopologyRevision = null;
+    this.sessionBySocket.set(socket, binding.actorSessionId);
+    if (!this.roster.setTransportConnected(binding.actorSessionId, true)) {
+      this.sessionBySocket.delete(socket);
+      return this.closePolicy(socket, "resume_roster_rebind_failed");
+    }
+    this.resumedSessions.add(binding.actorSessionId);
+    this.sendRuntimeSync(binding, "resume", topology.topologyRevision);
+  }
+
   private createRuntimeBootstrap(selfActorSessionId: string) {
     const roster = this.roster.snapshot();
     const topology = this.topology.snapshot();
@@ -281,6 +329,35 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     return createFoundationClientRuntimeBootstrap({ bootstrap, executionSeed: seed });
   }
 
+  private sendRuntimeSync(
+    binding: ClientBinding,
+    reason: FoundationRuntimeSyncReason,
+    previousTopologyRevision: number | null,
+  ): void {
+    const runtimeBootstrap = this.createRuntimeBootstrap(binding.actorSessionId);
+    if (reason === "correction") {
+      this.finalSeedBytes = runtimeBootstrap.executionSeed.byteLength;
+      this.finalSeedFnv1a32 = runtimeBootstrap.executionSeed.fnv1a32;
+    }
+    const syncId = `physics-sync-${++this.syncSequence}-${this.roster.snapshot().currentTick}-${binding.actorId.replace(":", "-")}`;
+    binding.lastTopologyRevision = runtimeBootstrap.envelope.topology.topologyRevision;
+    binding.expectedSyncId = syncId;
+    binding.expectedRuntimeDigest = runtimeBootstrap.envelopeDigest;
+    binding.readyTopologyRevision = null;
+    this.syncsSent += 1;
+    if (reason === "correction") this.correctionSyncs += 1;
+    if (reason === "resume") this.resumeSyncs += 1;
+    this.send(binding.socket, foundationReplicationRuntimeSync({
+      syncId,
+      reason,
+      worldId: this.worldId!,
+      worldEpoch: WORLD_EPOCH,
+      actorSessionId: binding.actorSessionId,
+      previousTopologyRevision,
+      runtimeBootstrap,
+    }));
+  }
+
   private broadcastRuntimeSync(
     newSessionId: string | null,
     previousTopologyRevision: number,
@@ -288,6 +365,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
   ): void {
     const topology = this.topology.snapshot();
     for (const binding of this.bindingBySession.values()) {
+      if (!this.isCurrentTransportConnected(binding)) continue;
       const isNew = binding.actorSessionId === newSessionId;
       const reason: FoundationRuntimeSyncReason = correction ? "correction" : isNew ? "join" : "topology_change";
       const previous = isNew
@@ -295,46 +373,48 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
         : correction
           ? topology.topologyRevision
           : binding.lastTopologyRevision || previousTopologyRevision;
-      const runtimeBootstrap = this.createRuntimeBootstrap(binding.actorSessionId);
-      if (correction) {
-        this.finalSeedBytes = runtimeBootstrap.executionSeed.byteLength;
-        this.finalSeedFnv1a32 = runtimeBootstrap.executionSeed.fnv1a32;
-      }
-      const syncId = `physics-sync-${++this.syncSequence}-${this.roster.snapshot().currentTick}-${binding.actorId.replace(":", "-")}`;
-      binding.lastTopologyRevision = topology.topologyRevision;
-      binding.expectedSyncId = syncId;
-      binding.expectedRuntimeDigest = runtimeBootstrap.envelopeDigest;
-      binding.readyTopologyRevision = null;
-      this.syncsSent += 1;
-      if (correction) this.correctionSyncs += 1;
-      this.send(binding.socket, foundationReplicationRuntimeSync({
-        syncId,
-        reason,
-        worldId: this.worldId!,
-        worldEpoch: WORLD_EPOCH,
-        actorSessionId: binding.actorSessionId,
-        previousTopologyRevision: previous,
-        runtimeBootstrap,
-      }));
+      this.sendRuntimeSync(binding, reason, previous);
     }
   }
 
-  private continuationTicks(): number {
-    return this.interactive ? INTERACTIVE_CONTINUATION_TICKS : NEUTRAL_CONTINUATION_TICKS;
+  private usesCanonicalInputCommits(): boolean {
+    return this.mode !== "neutral";
   }
 
-  private requiredInputBatches(): number {
-    return this.continuationTicks() / INPUT_BATCH_TICKS;
+  private isCurrentTransportConnected(binding: ClientBinding): boolean {
+    return this.sessionBySocket.get(binding.socket) === binding.actorSessionId;
   }
 
   private maybeAdvanceContinuation(): void {
-    const continuationTicks = this.continuationTicks();
-    if (this.advancedContinuation || this.bindingBySession.size !== CAPACITY) return;
-    if (![...this.bindingBySession.values()].every((binding) => binding.inputBatches === this.requiredInputBatches())) return;
+    if (this.bindingBySession.size !== CAPACITY) return;
+
+    if (this.mode === "reconnect") {
+      if (this.completedContinuationTicks === 0) {
+        if (![...this.bindingBySession.values()].every((binding) => binding.inputBatches === 2)) return;
+        if (this.acceptedInputRecords !== CAPACITY * RECONNECT_SEGMENT_TICKS) return;
+        this.advanceContinuationSegment(RECONNECT_SEGMENT_TICKS);
+        return;
+      }
+      if (this.completedContinuationTicks === RECONNECT_SEGMENT_TICKS) {
+        if (this.resumedSessions.size !== 1) return;
+        if (![...this.bindingBySession.values()].every((binding) => binding.inputBatches === 4)) return;
+        if (this.acceptedInputRecords !== CAPACITY * RECONNECT_SEGMENT_TICKS * 2) return;
+        this.advanceContinuationSegment(RECONNECT_SEGMENT_TICKS);
+      }
+      return;
+    }
+
+    if (this.completedContinuationTicks !== 0) return;
+    const continuationTicks = this.mode === "interactive" ? INTERACTIVE_CONTINUATION_TICKS : NEUTRAL_CONTINUATION_TICKS;
+    const requiredInputBatches = continuationTicks / INPUT_BATCH_TICKS;
+    if (![...this.bindingBySession.values()].every((binding) => binding.inputBatches === requiredInputBatches)) return;
     if (this.acceptedInputRecords !== CAPACITY * continuationTicks) return;
-    this.advancedContinuation = true;
+    this.advanceContinuationSegment(continuationTicks);
+  }
+
+  private advanceContinuationSegment(segmentTicks: number): void {
     const startTick = this.roster.snapshot().currentTick;
-    for (let targetTick = startTick + 1; targetTick <= startTick + continuationTicks; targetTick += 1) {
+    for (let targetTick = startTick + 1; targetTick <= startTick + segmentTicks; targetTick += 1) {
       const outcomes = this.roster.advanceTo(targetTick);
       if (outcomes.length !== 0) throw new Error("unexpected topology mutation during physics continuation");
       const roster = this.roster.snapshot();
@@ -344,11 +424,12 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
         const input = this.inputs.consume(actor.actorId, targetTick);
         return { actorId: actor.actorId, x: input.x, z: input.z };
       }));
-      if (targetTick === startTick + continuationTicks) {
+      if (targetTick === startTick + segmentTicks) {
         this.finalGuardPacked = this.physics.captureGuard(topology).packed;
       }
     }
-    if (this.interactive) {
+    this.completedContinuationTicks += segmentTicks;
+    if (this.mode !== "neutral") {
       for (const propId of PERSISTENT_WORLD) {
         const start = this.propStartXZ.get(propId);
         if (!start) throw new Error(`interactive prop baseline missing ${propId}`);
@@ -367,25 +448,31 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     const topology = this.topology.snapshot();
     return {
       ok: true,
-      revision: "foundation-local-physics-transport-worker-v2-input-commit",
+      revision: "foundation-local-physics-transport-worker-v3-session-resume",
       protocolRevision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
       box3dBuild: this.physics.buildId,
-      mode: this.interactive ? "interactive" : "neutral",
+      mode: this.mode,
       worldId: this.worldId,
       worldEpoch: WORLD_EPOCH,
       boundaryTick: roster.currentTick,
       topologyRevision: topology.topologyRevision,
       topologyDigest: topology.topologyDigest,
-      actors: roster.actors.map((actor) => ({ actorId: actor.actorId, actorSessionId: actor.actorSessionId })),
+      actors: roster.actors.map((actor) => ({
+        actorId: actor.actorId,
+        actorSessionId: actor.actorSessionId,
+        transportConnected: actor.transportConnected,
+      })),
       connectedTransports: this.sessionBySocket.size,
-      readyCurrentTopology: [...this.bindingBySession.values()].filter((binding) => binding.readyTopologyRevision === topology.topologyRevision).length,
+      readyCurrentTopology: [...this.bindingBySession.values()].filter((binding) => binding.readyTopologyRevision === topology.topologyRevision && this.isCurrentTransportConnected(binding)).length,
       inputBatches: [...this.bindingBySession.values()].reduce((sum, binding) => sum + binding.inputBatches, 0),
       acceptedInputRecords: this.acceptedInputRecords,
       committedInputRecords: this.committedInputRecords,
       inputCommitsSent: this.inputCommitsSent,
       syncsSent: this.syncsSent,
       correctionSyncs: this.correctionSyncs,
-      continuationTicks: this.advancedContinuation ? this.continuationTicks() : 0,
+      resumeSyncs: this.resumeSyncs,
+      resumedSessions: [...this.resumedSessions].sort(),
+      continuationTicks: this.completedContinuationTicks,
       finalGuardPacked: this.finalGuardPacked,
       finalSeedBytes: this.finalSeedBytes,
       finalSeedFnv1a32: this.finalSeedFnv1a32,
@@ -409,7 +496,9 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     this.sessionBySocket.delete(socket);
     if (!session) return;
     const binding = this.bindingBySession.get(session);
-    if (binding?.socket === socket) binding.readyTopologyRevision = null;
+    if (binding?.socket !== socket) return;
+    binding.readyTopologyRevision = null;
+    this.roster.setTransportConnected(session, false);
   }
 }
 
@@ -417,7 +506,7 @@ export default {
   async fetch(request: Request, env: PhysicsReplicationEnv): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/health") {
-      return json({ ok: true, revision: "foundation-local-physics-transport-worker-v2-input-commit" });
+      return json({ ok: true, revision: "foundation-local-physics-transport-worker-v3-session-resume" });
     }
     if (url.pathname !== "/foundation-physics/ws" && url.pathname !== "/foundation-physics/status") {
       return new Response("not found", { status: 404 });

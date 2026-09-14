@@ -1,5 +1,8 @@
 import { foundationCheckpointDigest } from "./checkpoint-digest.ts";
-import type { FoundationActorInputCheckpoint } from "./actor-input-registry.ts";
+import {
+  FOUNDATION_INPUT_CHECKPOINT_REVISION,
+  type FoundationActorInputCheckpoint,
+} from "./actor-input-registry.ts";
 import {
   FOUNDATION_REPLICATION_PROTOCOL_REVISION,
 } from "./replication-protocol.ts";
@@ -131,7 +134,9 @@ function validateWorkerState(value: unknown): asserts value is FoundationReplica
 
 function validateInputCheckpointShape(value: unknown): asserts value is FoundationActorInputCheckpoint {
   if (!isRecord(value)) throw new Error("progress overlay inputCheckpoint must be an object");
-  assertNonEmptyString(value.revision, "progress overlay input revision");
+  if (value.revision !== FOUNDATION_INPUT_CHECKPOINT_REVISION) {
+    throw new Error("progress overlay input checkpoint revision mismatch");
+  }
   assertNonEmptyString(value.worldEpoch, "progress overlay input worldEpoch");
   assertPositiveInteger(value.maxFutureTicks, "progress overlay input maxFutureTicks");
   assertNonNegativeInteger(value.rosterRevision, "progress overlay input rosterRevision");
@@ -160,6 +165,18 @@ function validateInputCheckpointShape(value: unknown): asserts value is Foundati
       if (ticks.has(pending.targetTick)) throw new Error(`progress overlay pending tick ${pending.targetTick} is duplicated`);
       ticks.add(pending.targetTick);
     }
+  }
+
+  const inputDigestBase = {
+    revision: value.revision,
+    worldEpoch: value.worldEpoch,
+    maxFutureTicks: value.maxFutureTicks,
+    rosterRevision: value.rosterRevision,
+    boundaryTick: value.boundaryTick,
+    channels: value.channels,
+  };
+  if (foundationCheckpointDigest(inputDigestBase) !== value.stateDigest) {
+    throw new Error("progress overlay input checkpoint digest mismatch");
   }
 }
 
@@ -218,6 +235,17 @@ export function validateFoundationReplicationProgressOverlay(
     }
     if (binding.readyTopologyRevision !== null && binding.readyTopologyRevision !== value.topologyRevision) {
       throw new Error(`progress overlay ready topology mismatch for ${channel.actorSessionId}`);
+    }
+    if (channel.pending.length > value.inputCheckpoint.maxFutureTicks) {
+      throw new Error(`progress overlay pending input count exceeds bounded horizon for ${channel.actorSessionId}`);
+    }
+    for (const pending of channel.pending) {
+      if (pending.targetTick <= value.baseCanonicalTick) {
+        throw new Error(`progress overlay pending tick is not future for ${channel.actorSessionId}`);
+      }
+      if (pending.targetTick > value.baseCanonicalTick + value.inputCheckpoint.maxFutureTicks) {
+        throw new Error(`progress overlay pending tick exceeds bounded horizon for ${channel.actorSessionId}`);
+      }
     }
   }
 

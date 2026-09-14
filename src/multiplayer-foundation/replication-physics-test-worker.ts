@@ -4,13 +4,29 @@ import {
   WORLD_V0_STATE_COMPONENTS,
 } from "../world-v0-contract.ts";
 import { FoundationActorInputRegistry } from "./actor-input-registry.ts";
+import { FoundationCheckpointSqliteStorage } from "./checkpoint-sqlite-storage.ts";
+import {
+  publishFoundationCheckpoint,
+  recoverFoundationCheckpoint,
+} from "./checkpoint-store.ts";
 import {
   createFoundationClientBootstrap,
   type FoundationClientExecutionProfile,
 } from "./client-bootstrap.ts";
 import { createFoundationClientRuntimeBootstrap } from "./client-runtime-bootstrap.ts";
 import { FoundationEntityTopology } from "./entity-topology.ts";
-import { FoundationReplicationPhysicsRuntime } from "./replication-physics-runtime.ts";
+import {
+  decodeFoundationReplicationLiveCheckpoint,
+  encodeFoundationReplicationLiveCheckpoint,
+  FOUNDATION_REPLICATION_LIVE_CHECKPOINT_REVISION,
+  type FoundationReplicationLiveBindingState,
+  type FoundationReplicationLiveCheckpoint,
+  type FoundationReplicationLiveMode,
+} from "./replication-live-checkpoint.ts";
+import {
+  FoundationReplicationPhysicsRuntime,
+  type FoundationReplicationPhysicsActorBinding,
+} from "./replication-physics-runtime.ts";
 import {
   FOUNDATION_REPLICATION_PROTOCOL_REVISION,
   foundationReplicationInputCommit,
@@ -29,6 +45,8 @@ const NEUTRAL_CONTINUATION_TICKS = 30;
 const INTERACTIVE_CONTINUATION_TICKS = 60;
 const RECONNECT_SEGMENT_TICKS = 30;
 const INPUT_BATCH_TICKS = 15;
+const CHECKPOINT_CHUNK_BYTES = 32 * 1024;
+const SOCKET_ATTACHMENT_REVISION = "multiplayer-foundation-physics-socket-attachment-v1";
 const RUN_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
 const PROFILE: FoundationClientExecutionProfile = {
   profileId: "shared-yard-foundation-client-v1",
@@ -41,18 +59,18 @@ type PhysicsReplicationEnv = {
   FOUNDATION_REPLICATION_PHYSICS_TEST: DurableObjectNamespace<FoundationReplicationPhysicsTestWorld>;
 };
 
-type PhysicsReplicationMode = "neutral" | "interactive" | "reconnect";
-
-type ClientBinding = {
-  socket: WebSocket;
-  actorSessionId: string;
-  actorId: `actor:${number}`;
-  lastTopologyRevision: number;
-  expectedSyncId: string;
-  expectedRuntimeDigest: string;
-  readyTopologyRevision: number | null;
-  inputBatches: number;
+type ClientBinding = FoundationReplicationLiveBindingState & {
+  socket: WebSocket | null;
 };
+
+type PhysicsSocketAttachment = FoundationReplicationLiveBindingState & {
+  revision: typeof SOCKET_ATTACHMENT_REVISION;
+  protocolRevision: typeof FOUNDATION_REPLICATION_PROTOCOL_REVISION;
+  worldId: string;
+  worldEpoch: string;
+};
+
+type RestoreState = "pending" | "empty" | "restored" | "failed";
 
 function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -70,25 +88,68 @@ function expectedWorldId(run: string): string {
   return `foundation-physics-replication-${run}`;
 }
 
-function modeForRun(run: string): PhysicsReplicationMode {
+function modeForRun(run: string): FoundationReplicationLiveMode {
   if (run.startsWith("reconnect-")) return "reconnect";
   if (run.startsWith("interactive-")) return "interactive";
   return "neutral";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function bindingState(binding: ClientBinding): FoundationReplicationLiveBindingState {
+  return {
+    actorSessionId: binding.actorSessionId,
+    actorId: binding.actorId,
+    lastTopologyRevision: binding.lastTopologyRevision,
+    expectedSyncId: binding.expectedSyncId,
+    expectedRuntimeDigest: binding.expectedRuntimeDigest,
+    readyTopologyRevision: binding.readyTopologyRevision,
+    inputBatches: binding.inputBatches,
+  };
+}
+
+function parseSocketAttachment(value: unknown): PhysicsSocketAttachment | null {
+  if (!isRecord(value)) return null;
+  if (value.revision !== SOCKET_ATTACHMENT_REVISION) return null;
+  if (value.protocolRevision !== FOUNDATION_REPLICATION_PROTOCOL_REVISION) return null;
+  if (typeof value.worldId !== "string" || value.worldId.length === 0) return null;
+  if (value.worldEpoch !== WORLD_EPOCH) return null;
+  if (typeof value.actorSessionId !== "string" || value.actorSessionId.length === 0) return null;
+  if (typeof value.actorId !== "string" || !/^actor:\d+$/.test(value.actorId)) return null;
+  if (typeof value.lastTopologyRevision !== "number" || !Number.isSafeInteger(value.lastTopologyRevision) || value.lastTopologyRevision < 0) return null;
+  if (typeof value.expectedSyncId !== "string" || value.expectedSyncId.length === 0) return null;
+  if (typeof value.expectedRuntimeDigest !== "string" || value.expectedRuntimeDigest.length === 0) return null;
+  if (
+    value.readyTopologyRevision !== null
+    && (typeof value.readyTopologyRevision !== "number" || !Number.isSafeInteger(value.readyTopologyRevision) || value.readyTopologyRevision < 0)
+  ) return null;
+  if (typeof value.inputBatches !== "number" || !Number.isSafeInteger(value.inputBatches) || value.inputBatches < 0) return null;
+  return value as PhysicsSocketAttachment;
+}
+
 export class FoundationReplicationPhysicsTestWorld extends DurableObject<PhysicsReplicationEnv> {
   private readonly constructorNonce = crypto.randomUUID();
   private readonly constructorBornAtMs = Date.now();
-  private readonly roster = new FoundationRosterMachine({ worldEpoch: WORLD_EPOCH, capacity: CAPACITY });
-  private readonly topology = new FoundationEntityTopology(WORLD_EPOCH, PERSISTENT_WORLD);
-  private readonly inputs = new FoundationActorInputRegistry(WORLD_EPOCH, MAX_FUTURE_TICKS);
-  private readonly physics = new FoundationReplicationPhysicsRuntime();
+  private readonly checkpointStorage: FoundationCheckpointSqliteStorage;
+  private roster = new FoundationRosterMachine({ worldEpoch: WORLD_EPOCH, capacity: CAPACITY });
+  private topology = new FoundationEntityTopology(WORLD_EPOCH, PERSISTENT_WORLD);
+  private inputs = new FoundationActorInputRegistry(WORLD_EPOCH, MAX_FUTURE_TICKS);
+  private physics = new FoundationReplicationPhysicsRuntime();
   private readonly bindingBySession = new Map<string, ClientBinding>();
   private readonly sessionBySocket = new Map<WebSocket, string>();
   private readonly propStartXZ = new Map<string, readonly [number, number]>();
   private readonly resumedSessions = new Set<string>();
+  private restoreState: RestoreState = "pending";
+  private restoreError: string | null = null;
+  private checkpointGeneration = 0;
+  private checkpointPublishes = 0;
+  private checkpointPayloadBytes = 0;
+  private restoredCheckpointTick: number | null = null;
+  private recoveredSocketBindings = 0;
   private worldId: string | null = null;
-  private mode: PhysicsReplicationMode = "neutral";
+  private mode: FoundationReplicationLiveMode = "neutral";
   private syncSequence = 0;
   private syncsSent = 0;
   private correctionSyncs = 0;
@@ -104,7 +165,35 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
   private finalSeedFnv1a32: string | null = null;
   private maxPropHorizontalDisplacement = 0;
 
+  constructor(ctx: DurableObjectState, env: PhysicsReplicationEnv) {
+    super(ctx, env);
+    this.checkpointStorage = new FoundationCheckpointSqliteStorage(ctx.storage);
+    ctx.blockConcurrencyWhile(async () => {
+      try {
+        const recovered = await recoverFoundationCheckpoint(this.checkpointStorage);
+        if (!recovered) {
+          if (ctx.getWebSockets().length > 0) {
+            throw new Error("hibernation WebSockets survived without a durable live authority checkpoint");
+          }
+          this.restoreState = "empty";
+          return;
+        }
+        const checkpoint = decodeFoundationReplicationLiveCheckpoint(recovered.payload);
+        if (recovered.head.worldEpoch !== checkpoint.worldEpoch) throw new Error("live checkpoint HEAD WorldEpoch mismatch");
+        if (recovered.head.canonicalTick !== checkpoint.canonicalTick) throw new Error("live checkpoint HEAD canonical tick mismatch");
+        this.restoreLiveCheckpoint(checkpoint, recovered.head.generation, recovered.payload.byteLength);
+        this.restoreState = "restored";
+      } catch (error) {
+        this.restoreState = "failed";
+        this.restoreError = error instanceof Error ? error.stack ?? error.message : String(error);
+      }
+    });
+  }
+
   async fetch(request: Request): Promise<Response> {
+    if (this.restoreState === "failed") {
+      return json({ ok: false, error: "authority_restore_failed", detail: this.restoreError, constructorNonce: this.constructorNonce }, 503);
+    }
     const url = new URL(request.url);
     const run = normalizeRun(url.searchParams.get("run"));
     if (!run) return json({ ok: false, error: "invalid_run" }, 400);
@@ -123,6 +212,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
   }
 
   async webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer): Promise<void> {
+    if (this.restoreState === "failed") return this.closePolicy(socket, "authority_restore_failed");
     if (typeof raw !== "string") {
       this.invalidMessages += 1;
       this.closePolicy(socket, "text_frames_only");
@@ -158,6 +248,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       }
       if (message.runtimeDigest !== binding.expectedRuntimeDigest) return this.closePolicy(socket, "runtime_digest_mismatch");
       binding.readyTopologyRevision = binding.lastTopologyRevision;
+      this.persistSocketAttachment(binding);
       return;
     }
     if (message.type !== "foundation_input_batch") return this.closePolicy(socket, "unsupported_bound_message");
@@ -185,6 +276,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       return { actorId: acceptance.actorId, targetTick: acceptance.targetTick, status: acceptance.status };
     });
     binding.inputBatches += 1;
+    this.persistSocketAttachment(binding);
     this.send(socket, foundationReplicationInputResult({
       worldId: this.worldId!,
       worldEpoch: WORLD_EPOCH,
@@ -196,7 +288,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     if (this.usesCanonicalInputCommits() && committedRecords.length > 0) {
       this.committedInputRecords += committedRecords.length;
       for (const recipient of this.bindingBySession.values()) {
-        if (!this.isCurrentTransportConnected(recipient)) continue;
+        if (!this.isCurrentTransportConnected(recipient) || !recipient.socket) continue;
         this.send(recipient.socket, foundationReplicationInputCommit({
           worldId: this.worldId!,
           worldEpoch: WORLD_EPOCH,
@@ -211,7 +303,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
         this.inputCommitsSent += 1;
       }
     }
-    this.maybeAdvanceContinuation();
+    await this.maybeAdvanceContinuation();
   }
 
   async webSocketClose(socket: WebSocket): Promise<void> {
@@ -293,12 +385,14 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     if (actor.transportConnected) return this.closePolicy(socket, "resume_transport_still_connected");
     const binding = this.bindingBySession.get(message.actorSessionId);
     if (!binding || binding.actorId !== message.actorId) return this.closePolicy(socket, "resume_binding_missing");
+    if (binding.socket !== null) return this.closePolicy(socket, "resume_binding_still_has_transport");
 
     binding.socket = socket;
     binding.readyTopologyRevision = null;
     this.sessionBySocket.set(socket, binding.actorSessionId);
     if (!this.roster.setTransportConnected(binding.actorSessionId, true)) {
       this.sessionBySocket.delete(socket);
+      binding.socket = null;
       return this.closePolicy(socket, "resume_roster_rebind_failed");
     }
     this.resumedSessions.add(binding.actorSessionId);
@@ -336,6 +430,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     reason: FoundationRuntimeSyncReason,
     previousTopologyRevision: number | null,
   ): void {
+    if (!binding.socket) throw new Error(`cannot send runtime sync without transport for ${binding.actorSessionId}`);
     const runtimeBootstrap = this.createRuntimeBootstrap(binding.actorSessionId);
     if (reason === "correction") {
       this.finalSeedBytes = runtimeBootstrap.executionSeed.byteLength;
@@ -349,6 +444,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     this.syncsSent += 1;
     if (reason === "correction") this.correctionSyncs += 1;
     if (reason === "resume") this.resumeSyncs += 1;
+    this.persistSocketAttachment(binding);
     this.send(binding.socket, foundationReplicationRuntimeSync({
       syncId,
       reason,
@@ -379,29 +475,41 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     }
   }
 
+  private persistSocketAttachment(binding: ClientBinding): void {
+    if (!binding.socket || !this.worldId) return;
+    const attachment: PhysicsSocketAttachment = {
+      revision: SOCKET_ATTACHMENT_REVISION,
+      protocolRevision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
+      worldId: this.worldId,
+      worldEpoch: WORLD_EPOCH,
+      ...bindingState(binding),
+    };
+    binding.socket.serializeAttachment(attachment);
+  }
+
   private usesCanonicalInputCommits(): boolean {
     return this.mode !== "neutral";
   }
 
   private isCurrentTransportConnected(binding: ClientBinding): boolean {
-    return this.sessionBySocket.get(binding.socket) === binding.actorSessionId;
+    return binding.socket !== null && this.sessionBySocket.get(binding.socket) === binding.actorSessionId;
   }
 
-  private maybeAdvanceContinuation(): void {
+  private async maybeAdvanceContinuation(): Promise<void> {
     if (this.bindingBySession.size !== CAPACITY) return;
 
     if (this.mode === "reconnect") {
       if (this.completedContinuationTicks === 0) {
         if (![...this.bindingBySession.values()].every((binding) => binding.inputBatches === 2)) return;
         if (this.acceptedInputRecords !== CAPACITY * RECONNECT_SEGMENT_TICKS) return;
-        this.advanceContinuationSegment(RECONNECT_SEGMENT_TICKS);
+        await this.advanceContinuationSegment(RECONNECT_SEGMENT_TICKS);
         return;
       }
       if (this.completedContinuationTicks === RECONNECT_SEGMENT_TICKS) {
         if (this.resumedSessions.size !== 1) return;
         if (![...this.bindingBySession.values()].every((binding) => binding.inputBatches === 4)) return;
         if (this.acceptedInputRecords !== CAPACITY * RECONNECT_SEGMENT_TICKS * 2) return;
-        this.advanceContinuationSegment(RECONNECT_SEGMENT_TICKS);
+        await this.advanceContinuationSegment(RECONNECT_SEGMENT_TICKS);
       }
       return;
     }
@@ -411,10 +519,10 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     const requiredInputBatches = continuationTicks / INPUT_BATCH_TICKS;
     if (![...this.bindingBySession.values()].every((binding) => binding.inputBatches === requiredInputBatches)) return;
     if (this.acceptedInputRecords !== CAPACITY * continuationTicks) return;
-    this.advanceContinuationSegment(continuationTicks);
+    await this.advanceContinuationSegment(continuationTicks);
   }
 
-  private advanceContinuationSegment(segmentTicks: number): void {
+  private async advanceContinuationSegment(segmentTicks: number): Promise<void> {
     const startTick = this.roster.snapshot().currentTick;
     for (let targetTick = startTick + 1; targetTick <= startTick + segmentTicks; targetTick += 1) {
       const outcomes = this.roster.advanceTo(targetTick);
@@ -443,18 +551,210 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       }
     }
     this.broadcastRuntimeSync(null, this.topology.snapshot().topologyRevision, true);
+    if (this.mode === "reconnect") await this.publishLiveCheckpoint();
+  }
+
+  private async publishLiveCheckpoint(): Promise<void> {
+    if (this.mode !== "reconnect" || !this.worldId) return;
+    const roster = this.roster.snapshot();
+    const topology = this.topology.snapshot();
+    const bindings = [...this.bindingBySession.values()]
+      .sort((a, b) => Number(a.actorId.slice("actor:".length)) - Number(b.actorId.slice("actor:".length)))
+      .map(bindingState);
+    if (bindings.length !== roster.actors.length) throw new Error("live checkpoint binding coverage mismatch");
+    for (const actor of roster.actors) {
+      const binding = bindings.find((candidate) => candidate.actorSessionId === actor.actorSessionId);
+      if (!binding || binding.actorId !== actor.actorId) throw new Error(`live checkpoint binding identity mismatch for ${actor.actorId}`);
+    }
+    const physicsSeed = this.physics.captureSeed(WORLD_EPOCH, roster.currentTick, topology);
+    const checkpoint: FoundationReplicationLiveCheckpoint = {
+      revision: FOUNDATION_REPLICATION_LIVE_CHECKPOINT_REVISION,
+      protocolRevision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
+      worldId: this.worldId,
+      worldEpoch: WORLD_EPOCH,
+      canonicalTick: roster.currentTick,
+      topologyRevision: topology.topologyRevision,
+      topologyDigest: topology.topologyDigest,
+      mode: this.mode,
+      rosterCheckpoint: this.roster.checkpoint(),
+      inputCheckpoint: this.inputs.checkpoint(roster),
+      physicsSeed,
+      workerState: {
+        syncSequence: this.syncSequence,
+        syncsSent: this.syncsSent,
+        correctionSyncs: this.correctionSyncs,
+        resumeSyncs: this.resumeSyncs,
+        inputCommitsSent: this.inputCommitsSent,
+        committedInputRecords: this.committedInputRecords,
+        acceptedInputRecords: this.acceptedInputRecords,
+        invalidMessages: this.invalidMessages,
+        staleReady: this.staleReady,
+        completedContinuationTicks: this.completedContinuationTicks,
+        finalGuardPacked: this.finalGuardPacked,
+        finalSeedBytes: this.finalSeedBytes,
+        finalSeedFnv1a32: this.finalSeedFnv1a32,
+        maxPropHorizontalDisplacement: this.maxPropHorizontalDisplacement,
+        propStartXZ: [...this.propStartXZ.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([entityId, [x, z]]) => ({ entityId, x, z })),
+        resumedSessions: [...this.resumedSessions].sort(),
+        bindings,
+      },
+    };
+    const payload = encodeFoundationReplicationLiveCheckpoint(checkpoint);
+    const head = await publishFoundationCheckpoint(this.checkpointStorage, {
+      generation: this.checkpointGeneration + 1,
+      worldEpoch: WORLD_EPOCH,
+      canonicalTick: roster.currentTick,
+      payload,
+      chunkBytes: CHECKPOINT_CHUNK_BYTES,
+    });
+    const verified = await recoverFoundationCheckpoint(this.checkpointStorage);
+    if (!verified || verified.head.generation !== head.generation || verified.head.canonicalTick !== roster.currentTick) {
+      throw new Error("live checkpoint failed immediate durable recovery verification");
+    }
+    decodeFoundationReplicationLiveCheckpoint(verified.payload);
+    this.checkpointGeneration = head.generation;
+    this.checkpointPublishes += 1;
+    this.checkpointPayloadBytes = payload.byteLength;
+    this.restoredCheckpointTick = roster.currentTick;
+  }
+
+  private restoreLiveCheckpoint(
+    checkpoint: FoundationReplicationLiveCheckpoint,
+    generation: number,
+    payloadBytes: number,
+  ): void {
+    if (checkpoint.worldEpoch !== WORLD_EPOCH) throw new Error("live checkpoint WorldEpoch mismatch");
+    if (!checkpoint.worldId.startsWith("foundation-physics-replication-reconnect-")) {
+      throw new Error("live checkpoint world is outside reconnect recovery scope");
+    }
+    if (checkpoint.mode !== "reconnect") throw new Error("live checkpoint mode is outside reconnect recovery scope");
+
+    const roster = FoundationRosterMachine.fromCheckpoint(structuredClone(checkpoint.rosterCheckpoint));
+    const rosterSnapshot = roster.snapshot();
+    if (rosterSnapshot.currentTick !== checkpoint.canonicalTick) throw new Error("restored roster tick mismatch");
+    if (rosterSnapshot.topologyRevision !== checkpoint.topologyRevision) throw new Error("restored roster topology revision mismatch");
+    const inputs = FoundationActorInputRegistry.fromCheckpoint(structuredClone(checkpoint.inputCheckpoint), rosterSnapshot);
+    const topology = new FoundationEntityTopology(WORLD_EPOCH, PERSISTENT_WORLD);
+    const topologySnapshot = topology.syncRoster(rosterSnapshot);
+    if (topologySnapshot.topologyRevision !== checkpoint.topologyRevision) throw new Error("restored topology revision mismatch");
+    if (topologySnapshot.topologyDigest !== checkpoint.topologyDigest) throw new Error("restored topology digest mismatch");
+    if (checkpoint.physicsSeed.worldEpoch !== WORLD_EPOCH || checkpoint.physicsSeed.canonicalTick !== checkpoint.canonicalTick) {
+      throw new Error("restored physics seed canonical boundary mismatch");
+    }
+    if (
+      checkpoint.physicsSeed.topologyRevision !== checkpoint.topologyRevision
+      || checkpoint.physicsSeed.topologyDigest !== checkpoint.topologyDigest
+    ) throw new Error("restored physics seed topology mismatch");
+    const actorBindings: FoundationReplicationPhysicsActorBinding[] = rosterSnapshot.actors.map((actor) => ({
+      actorId: actor.actorId,
+      actorSessionId: actor.actorSessionId,
+    }));
+    const physics = FoundationReplicationPhysicsRuntime.fromSeed(checkpoint.physicsSeed, actorBindings);
+    const restoredGuard = physics.captureGuard(topologySnapshot).packed;
+    if (checkpoint.workerState.finalGuardPacked !== null && restoredGuard !== checkpoint.workerState.finalGuardPacked) {
+      throw new Error("restored physics guard does not match durable checkpoint boundary");
+    }
+
+    this.roster = roster;
+    this.inputs = inputs;
+    this.topology = topology;
+    this.physics = physics;
+    this.worldId = checkpoint.worldId;
+    this.mode = checkpoint.mode;
+    this.syncSequence = checkpoint.workerState.syncSequence;
+    this.syncsSent = checkpoint.workerState.syncsSent;
+    this.correctionSyncs = checkpoint.workerState.correctionSyncs;
+    this.resumeSyncs = checkpoint.workerState.resumeSyncs;
+    this.inputCommitsSent = checkpoint.workerState.inputCommitsSent;
+    this.committedInputRecords = checkpoint.workerState.committedInputRecords;
+    this.acceptedInputRecords = checkpoint.workerState.acceptedInputRecords;
+    this.invalidMessages = checkpoint.workerState.invalidMessages;
+    this.staleReady = checkpoint.workerState.staleReady;
+    this.completedContinuationTicks = checkpoint.workerState.completedContinuationTicks;
+    this.finalGuardPacked = checkpoint.workerState.finalGuardPacked;
+    this.finalSeedBytes = checkpoint.workerState.finalSeedBytes;
+    this.finalSeedFnv1a32 = checkpoint.workerState.finalSeedFnv1a32;
+    this.maxPropHorizontalDisplacement = checkpoint.workerState.maxPropHorizontalDisplacement;
+    this.propStartXZ.clear();
+    for (const entry of checkpoint.workerState.propStartXZ) this.propStartXZ.set(entry.entityId, [entry.x, entry.z]);
+    this.resumedSessions.clear();
+    for (const session of checkpoint.workerState.resumedSessions) this.resumedSessions.add(session);
+
+    this.bindingBySession.clear();
+    this.sessionBySocket.clear();
+    for (const state of checkpoint.workerState.bindings) {
+      const actor = rosterSnapshot.actors.find((candidate) => candidate.actorSessionId === state.actorSessionId);
+      if (!actor || actor.actorId !== state.actorId) throw new Error(`restored binding identity mismatch for ${state.actorSessionId}`);
+      if (state.lastTopologyRevision !== checkpoint.topologyRevision) throw new Error(`restored binding topology mismatch for ${state.actorSessionId}`);
+      if (state.readyTopologyRevision !== null && state.readyTopologyRevision !== checkpoint.topologyRevision) {
+        throw new Error(`restored binding ready topology mismatch for ${state.actorSessionId}`);
+      }
+      this.bindingBySession.set(state.actorSessionId, { socket: null, ...state });
+    }
+    if (this.bindingBySession.size !== rosterSnapshot.actors.length) throw new Error("restored binding coverage mismatch");
+
+    this.recoveredSocketBindings = 0;
+    for (const socket of this.ctx.getWebSockets()) {
+      let attachment: PhysicsSocketAttachment | null = null;
+      try {
+        attachment = parseSocketAttachment(socket.deserializeAttachment());
+      } catch {
+        attachment = null;
+      }
+      if (!attachment) {
+        try { socket.close(1008, "missing_or_invalid_hibernation_attachment"); } catch { /* close race */ }
+        continue;
+      }
+      if (attachment.worldId !== checkpoint.worldId) throw new Error("recovered socket attachment world mismatch");
+      const binding = this.bindingBySession.get(attachment.actorSessionId);
+      if (!binding || binding.actorId !== attachment.actorId) throw new Error("recovered socket attachment identity mismatch");
+      if (binding.socket !== null) throw new Error(`duplicate recovered socket for ${binding.actorSessionId}`);
+      if (
+        attachment.lastTopologyRevision !== binding.lastTopologyRevision
+        || attachment.expectedSyncId !== binding.expectedSyncId
+        || attachment.expectedRuntimeDigest !== binding.expectedRuntimeDigest
+        || attachment.inputBatches !== binding.inputBatches
+      ) throw new Error(`recovered socket attachment protocol state drift for ${binding.actorSessionId}`);
+      if (attachment.readyTopologyRevision !== null && attachment.readyTopologyRevision !== checkpoint.topologyRevision) {
+        throw new Error(`recovered socket attachment ready topology drift for ${binding.actorSessionId}`);
+      }
+      binding.socket = socket;
+      binding.readyTopologyRevision = attachment.readyTopologyRevision;
+      this.sessionBySocket.set(socket, binding.actorSessionId);
+      this.recoveredSocketBindings += 1;
+    }
+
+    for (const actor of rosterSnapshot.actors) {
+      const connected = [...this.sessionBySocket.values()].includes(actor.actorSessionId);
+      if (!this.roster.setTransportConnected(actor.actorSessionId, connected)) {
+        throw new Error(`restored roster transport reconciliation failed for ${actor.actorSessionId}`);
+      }
+    }
+    this.checkpointGeneration = generation;
+    this.checkpointPayloadBytes = payloadBytes;
+    this.restoredCheckpointTick = checkpoint.canonicalTick;
   }
 
   private status() {
     const roster = this.roster.snapshot();
     const topology = this.topology.snapshot();
     return {
-      ok: true,
-      revision: "foundation-local-physics-transport-worker-v3-session-resume",
+      ok: this.restoreState !== "failed",
+      revision: "foundation-local-physics-transport-worker-v4-hibernation-recovery",
       protocolRevision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
       box3dBuild: this.physics.buildId,
       constructorNonce: this.constructorNonce,
       constructorAgeMs: Date.now() - this.constructorBornAtMs,
+      restoreState: this.restoreState,
+      restoreError: this.restoreError,
+      checkpointGeneration: this.checkpointGeneration,
+      checkpointPublishes: this.checkpointPublishes,
+      checkpointPayloadBytes: this.checkpointPayloadBytes,
+      restoredCheckpointTick: this.restoredCheckpointTick,
+      recoveredSocketBindings: this.recoveredSocketBindings,
+      checkpointStorage: this.checkpointStorage.stats(),
       hibernationWebSockets: this.ctx.getWebSockets().length,
       mode: this.mode,
       worldId: this.worldId,
@@ -468,7 +768,9 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
         transportConnected: actor.transportConnected,
       })),
       connectedTransports: this.sessionBySocket.size,
-      readyCurrentTopology: [...this.bindingBySession.values()].filter((binding) => binding.readyTopologyRevision === topology.topologyRevision && this.isCurrentTransportConnected(binding)).length,
+      readyCurrentTopology: [...this.bindingBySession.values()].filter((binding) =>
+        binding.readyTopologyRevision === topology.topologyRevision && this.isCurrentTransportConnected(binding)
+      ).length,
       inputBatches: [...this.bindingBySession.values()].reduce((sum, binding) => sum + binding.inputBatches, 0),
       acceptedInputRecords: this.acceptedInputRecords,
       committedInputRecords: this.committedInputRecords,
@@ -502,6 +804,7 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
     if (!session) return;
     const binding = this.bindingBySession.get(session);
     if (binding?.socket !== socket) return;
+    binding.socket = null;
     binding.readyTopologyRevision = null;
     this.roster.setTransportConnected(session, false);
   }
@@ -511,7 +814,7 @@ export default {
   async fetch(request: Request, env: PhysicsReplicationEnv): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/health") {
-      return json({ ok: true, revision: "foundation-local-physics-transport-worker-v3-session-resume" });
+      return json({ ok: true, revision: "foundation-local-physics-transport-worker-v4-hibernation-recovery" });
     }
     if (url.pathname !== "/foundation-physics/ws" && url.pathname !== "/foundation-physics/status") {
       return new Response("not found", { status: 404 });

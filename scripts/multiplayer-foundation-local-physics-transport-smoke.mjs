@@ -5,6 +5,13 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
+const INTERACTIVE = process.argv.slice(2).includes("--interactive");
+const CONTINUATION_TICKS = INTERACTIVE ? 60 : 30;
+const EXPECTED_INPUT_RESULTS = CONTINUATION_TICKS / 15;
+const EXPECTED_INPUT_BATCHES = EXPECTED_INPUT_RESULTS * 3;
+const EXPECTED_ACCEPTED_RECORDS = CONTINUATION_TICKS * 3;
+const EXPECTED_COMMIT_MESSAGES_PER_CLIENT = INTERACTIVE ? EXPECTED_INPUT_BATCHES : 0;
+const EXPECTED_COMMIT_RECORDS_PER_CLIENT = INTERACTIVE ? EXPECTED_ACCEPTED_RECORDS : 0;
 const AUTHORITY_PORT = 8793;
 const AUTHORITY_ORIGIN = `http://127.0.0.1:${AUTHORITY_PORT}`;
 const DEBUG_PORT = 9691;
@@ -14,7 +21,7 @@ const WRANGLER_BIN = resolve("node_modules/wrangler/bin/wrangler.js");
 const DIST_ROOT = resolve(".foundation-browser-dist");
 const FIXTURE_PATH = resolve("scripts/fixtures/multiplayer-foundation-browser-physics-transport-client.mjs");
 const BOX3D_ROOT = resolve("public/world-v0/box3d-i4");
-const RUN = `physics-triad-${Date.now().toString(36)}`;
+const RUN = `${INTERACTIVE ? "interactive" : "physics"}-triad-${Date.now().toString(36)}`;
 const SESSIONS = ["session-alpha", "session-bravo", "session-charlie"];
 const PERSIST_DIR = mkdtempSync(join(tmpdir(), "mw-foundation-physics-transport-do-"));
 
@@ -353,51 +360,69 @@ try {
     ));
   }
 
+  const expectedBoundaryTick = 3 + CONTINUATION_TICKS;
   const authority = await waitForStatus(
-    (value) => value.boundaryTick === 33
+    (value) => value.boundaryTick === expectedBoundaryTick
       && value.topologyRevision === 3
       && value.readyCurrentTopology === 3
-      && value.inputBatches === 6
-      && value.acceptedInputRecords === 90
+      && value.inputBatches === EXPECTED_INPUT_BATCHES
+      && value.acceptedInputRecords === EXPECTED_ACCEPTED_RECORDS
       && value.correctionSyncs === 3,
     "physics authority final convergence state",
   );
 
+  assert.equal(authority.mode, INTERACTIVE ? "interactive" : "neutral");
   assert.equal(authority.connectedTransports, 3);
   assert.equal(authority.actors.length, 3);
   assert.deepEqual(authority.actors.map((actor) => actor.actorSessionId), SESSIONS);
   assert.deepEqual(authority.actors.map((actor) => actor.actorId), ["actor:0", "actor:1", "actor:2"]);
   assert.equal(authority.syncsSent, 9);
-  assert.equal(authority.continuationTicks, 30);
+  assert.equal(authority.continuationTicks, CONTINUATION_TICKS);
   assert.equal(authority.invalidMessages, 0);
   assert.equal(authority.staleReady, 0);
   assert.equal(typeof authority.finalGuardPacked, "string");
   assert(authority.finalGuardPacked.length > 0);
   assert(authority.finalSeedBytes > 0);
   assert.match(authority.finalSeedFnv1a32, /^[0-9a-f]{8}$/);
+  if (INTERACTIVE) {
+    assert.equal(authority.committedInputRecords, EXPECTED_ACCEPTED_RECORDS);
+    assert.equal(authority.inputCommitsSent, EXPECTED_INPUT_BATCHES * 3);
+    assert(authority.maxPropHorizontalDisplacement > 0.05, `interactive props did not move materially: ${authority.maxPropHorizontalDisplacement}`);
+  } else {
+    assert.equal(authority.committedInputRecords, 0);
+    assert.equal(authority.inputCommitsSent, 0);
+  }
 
   for (let index = 0; index < clientEvidence.length; index += 1) {
     const value = clientEvidence[index];
+    assert.equal(value.mode, INTERACTIVE ? "interactive" : "neutral");
     assert.equal(value.actorSessionId, SESSIONS[index]);
     assert.equal(value.selfActorId, `actor:${index}`);
     assert.equal(value.topologyRevision, 3);
     assert.equal(value.remoteActors, 2);
     assert.equal(value.topologyDigest, authority.topologyDigest);
-    assert.equal(value.exactContinuationTicks, 30);
-    assert.equal(value.correctionTick, 33);
+    assert.equal(value.exactContinuationTicks, CONTINUATION_TICKS);
+    assert.equal(value.correctionTick, expectedBoundaryTick);
     assert.equal(value.correctionGuardMatched, true);
     assert.equal(value.finalSeedBytes, authority.finalSeedBytes);
     assert.equal(value.finalSeedFnv1a32, authority.finalSeedFnv1a32);
-    assert.equal(value.inputResults, 2);
-    assert.equal(value.inputStatuses.length, 30);
+    assert.equal(value.inputResults, EXPECTED_INPUT_RESULTS);
+    assert.equal(value.inputStatuses.length, CONTINUATION_TICKS);
     assert(value.inputStatuses.every((statusValue) => statusValue === "accepted"));
+    assert.equal(value.commitMessages, EXPECTED_COMMIT_MESSAGES_PER_CLIENT);
+    assert.equal(value.commitRecords, EXPECTED_COMMIT_RECORDS_PER_CLIENT);
+    assert.deepEqual(value.commitSources, INTERACTIVE ? [...SESSIONS].sort() : []);
   }
   assert.deepEqual(clientEvidence[0].syncReasons, ["join", "topology_change", "topology_change", "correction"]);
   assert.deepEqual(clientEvidence[1].syncReasons, ["join", "topology_change", "correction"]);
   assert.deepEqual(clientEvidence[2].syncReasons, ["join", "correction"]);
 
-  console.log("MULTIPLAYER_FOUNDATION_LOCAL_PHYSICS_TRANSPORT_PASS", JSON.stringify({
+  const marker = INTERACTIVE
+    ? "MULTIPLAYER_FOUNDATION_INTERACTIVE_PHYSICS_TRANSPORT_PASS"
+    : "MULTIPLAYER_FOUNDATION_LOCAL_PHYSICS_TRANSPORT_PASS";
+  console.log(marker, JSON.stringify({
     run: RUN,
+    mode: INTERACTIVE ? "interactive" : "neutral",
     environment: "wrangler-workerd + chromium + box3d-i4",
     box3dBuild: authority.box3dBuild,
     worldId: authority.worldId,
@@ -412,7 +437,10 @@ try {
     correctionSyncs: authority.correctionSyncs,
     inputBatches: authority.inputBatches,
     acceptedInputRecords: authority.acceptedInputRecords,
+    committedInputRecords: authority.committedInputRecords,
+    inputCommitsSent: authority.inputCommitsSent,
     continuationTicks: authority.continuationTicks,
+    maxPropHorizontalDisplacement: authority.maxPropHorizontalDisplacement,
     finalSeedBytes: authority.finalSeedBytes,
     finalSeedFnv1a32: authority.finalSeedFnv1a32,
     clients: clientEvidence.map((value) => ({
@@ -423,6 +451,9 @@ try {
       exactContinuationTicks: value.exactContinuationTicks,
       correctionTick: value.correctionTick,
       correctionGuardMatched: value.correctionGuardMatched,
+      commitMessages: value.commitMessages,
+      commitRecords: value.commitRecords,
+      commitSources: value.commitSources,
     })),
   }));
 } finally {

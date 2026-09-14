@@ -5,8 +5,15 @@ on:
     branches:
       - research/multiplayer-foundation-recovery-remote
     paths:
+      - wrangler.jsonc
       - foundation-recovery-remote-trigger.json
+      - scripts/deploy-foundation-recovery-remote.sh
+      - scripts/build-foundation-recovery-remote.sh
+      - scripts/build-foundation-recovery-box3d.sh
       - scripts/multiplayer-foundation-remote-idle-smoke.mjs
+      - scripts/fixtures/multiplayer-foundation-authority-constructor-remote-worker.mjs
+      - scripts/fixtures/multiplayer-foundation-authority-constructor-worker.mjs
+      - workers/foundation-recovery-remote/**
       - .github/workflows/multiplayer-foundation-remote-idle-verify.yml
 
 permissions:

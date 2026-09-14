@@ -14,6 +14,11 @@ export interface FoundationClientInputRecord extends FoundationClientInputValue 
   targetTick: number;
 }
 
+export interface FoundationClientInputBaseline extends FoundationClientInputValue {
+  netEntityId: string;
+  actorSessionId: string;
+}
+
 export type FoundationClientPredictedInputSource = "local" | "peer";
 
 export type FoundationClientInputRecordStatus =
@@ -85,7 +90,6 @@ function sameResolvedFrame(a: FoundationResolvedInputFrame, b: FoundationResolve
       || left.actorSessionId !== right.actorSessionId
       || left.actorOrdinal !== right.actorOrdinal
       || left.role !== right.role
-      || left.source !== right.source
       || !Object.is(left.x, right.x)
       || !Object.is(left.z, right.z)
       || left.jump !== right.jump
@@ -138,13 +142,29 @@ export class FoundationClientInputLedger {
     this.selfActorSessionId = selfActorSessionId;
   }
 
+  bootstrapProjection(snapshot: FoundationClientReplicaSnapshot, baselines: readonly FoundationClientInputBaseline[]): void {
+    if (this.worldEpoch !== null) throw new Error("client input ledger is already bootstrapped");
+    this.installFreshProjection(snapshot, baselines);
+  }
+
+  resyncProjection(snapshot: FoundationClientReplicaSnapshot, baselines: readonly FoundationClientInputBaseline[]): void {
+    if (this.worldEpoch === null) throw new Error("client input ledger must bootstrap before resync");
+    if (snapshot.worldEpoch !== this.worldEpoch) {
+      throw new Error("client input ledger cannot resync across WorldEpoch without reconstruction");
+    }
+    const currentSelf = this.channelsBySession.get(this.selfActorSessionId);
+    if (currentSelf && (snapshot.self.netEntityId !== currentSelf.netEntityId || snapshot.self.actorOrdinal !== currentSelf.actorOrdinal)) {
+      throw new Error("client input ledger self identity drift during resync");
+    }
+    if (snapshot.canonicalTick < this.canonicalBoundaryTick) {
+      throw new Error("client input ledger resync boundary cannot move backwards");
+    }
+    this.installFreshProjection(snapshot, baselines);
+  }
+
   syncProjection(snapshot: FoundationClientReplicaSnapshot): void {
-    if (snapshot.self.actorSessionId !== this.selfActorSessionId) {
-      throw new Error("client input ledger projection self ActorSession mismatch");
-    }
-    if (this.worldEpoch !== null && snapshot.worldEpoch !== this.worldEpoch) {
-      throw new Error("client input ledger cannot cross WorldEpoch without reconstruction");
-    }
+    if (this.worldEpoch === null) throw new Error("client input ledger must bootstrap before continuity sync");
+    this.assertProjectionIdentity(snapshot);
     if (snapshot.topologyRevision < this.topologyRevision) {
       throw new Error("client input ledger topology revision cannot move backwards");
     }
@@ -166,17 +186,18 @@ export class FoundationClientInputLedger {
         }
         continue;
       }
-      this.channelsBySession.set(actor.actorSessionId, {
+      const channel: InputChannel = {
         netEntityId: actor.netEntityId,
         actorSessionId: actor.actorSessionId,
         actorOrdinal: actor.actorOrdinal,
         role: actor.role,
         predictedByTick: new Map(),
         authoritativeByTick: new Map(),
-      });
+      };
+      channel.authoritativeByTick.set(snapshot.canonicalTick, { x: 0, z: 0, jump: false });
+      this.channelsBySession.set(actor.actorSessionId, channel);
     }
 
-    this.worldEpoch = snapshot.worldEpoch;
     this.topologyRevision = snapshot.topologyRevision;
     this.canonicalBoundaryTick = snapshot.canonicalTick;
     this.resolvedByTick.clear();
@@ -208,8 +229,7 @@ export class FoundationClientInputLedger {
         const jump = exact?.value.jump ?? false;
         const jumpTrigger = jump && !(previousExact?.value.jump ?? false);
         const value = motion?.value ?? { x: 0, z: 0, jump: false };
-        const source: FoundationResolvedActorInput["source"] = exact?.source
-          ?? (motion ? "hold" : "neutral");
+        const source: FoundationResolvedActorInput["source"] = exact?.source ?? (motion ? "hold" : "neutral");
         return {
           netEntityId: channel.netEntityId,
           actorSessionId: channel.actorSessionId,
@@ -239,6 +259,61 @@ export class FoundationClientInputLedger {
       .map(({ netEntityId, actorSessionId, actorOrdinal, role }) => ({ netEntityId, actorSessionId, actorOrdinal, role }));
   }
 
+  private assertProjectionIdentity(snapshot: FoundationClientReplicaSnapshot): void {
+    if (snapshot.self.actorSessionId !== this.selfActorSessionId) {
+      throw new Error("client input ledger projection self ActorSession mismatch");
+    }
+    if (this.worldEpoch !== null && snapshot.worldEpoch !== this.worldEpoch) {
+      throw new Error("client input ledger cannot cross WorldEpoch without reconstruction");
+    }
+  }
+
+  private installFreshProjection(snapshot: FoundationClientReplicaSnapshot, baselines: readonly FoundationClientInputBaseline[]): void {
+    this.assertProjectionIdentity(snapshot);
+    const actors = [snapshot.self, ...snapshot.remotes];
+    if (baselines.length !== actors.length) {
+      throw new Error("client input baseline must cover every active actor exactly once");
+    }
+    const baselineBySession = new Map<string, FoundationClientInputBaseline>();
+    for (const baseline of baselines) {
+      assertNonEmpty(baseline.netEntityId, "baseline NetEntityId");
+      assertNonEmpty(baseline.actorSessionId, "baseline ActorSessionId");
+      if (baselineBySession.has(baseline.actorSessionId)) {
+        throw new Error(`duplicate client input baseline for ${baseline.actorSessionId}`);
+      }
+      baselineBySession.set(baseline.actorSessionId, baseline);
+    }
+
+    const channels = new Map<string, InputChannel>();
+    for (const actor of actors) {
+      const baseline = baselineBySession.get(actor.actorSessionId);
+      if (!baseline) throw new Error(`missing client input baseline for ${actor.actorSessionId}`);
+      if (baseline.netEntityId !== actor.netEntityId) {
+        throw new Error(`client input baseline identity mismatch for ${actor.actorSessionId}`);
+      }
+      const channel: InputChannel = {
+        netEntityId: actor.netEntityId,
+        actorSessionId: actor.actorSessionId,
+        actorOrdinal: actor.actorOrdinal,
+        role: actor.role,
+        predictedByTick: new Map(),
+        authoritativeByTick: new Map(),
+      };
+      channel.authoritativeByTick.set(snapshot.canonicalTick, normalizeInput(baseline));
+      channels.set(actor.actorSessionId, channel);
+    }
+    if (baselineBySession.size !== channels.size) {
+      throw new Error("client input baseline contains an inactive ActorSession");
+    }
+
+    this.channelsBySession.clear();
+    for (const [sessionId, channel] of channels) this.channelsBySession.set(sessionId, channel);
+    this.worldEpoch = snapshot.worldEpoch;
+    this.topologyRevision = snapshot.topologyRevision;
+    this.canonicalBoundaryTick = snapshot.canonicalTick;
+    this.resolvedByTick.clear();
+  }
+
   private record(
     record: FoundationClientInputRecord,
     source: FoundationClientPredictedInputSource | "authority",
@@ -252,10 +327,12 @@ export class FoundationClientInputLedger {
     if (channel.netEntityId !== record.netEntityId) {
       return { status: "rejected_identity_mismatch", replayFromTick: null };
     }
+    if (record.targetTick < this.canonicalBoundaryTick || (!authoritative && record.targetTick === this.canonicalBoundaryTick)) {
+      return { status: "rejected_late", replayFromTick: null };
+    }
     if (!authoritative) {
       if (source === "local" && channel.role !== "self") return { status: "rejected_wrong_source_role", replayFromTick: null };
       if (source === "peer" && channel.role !== "remote") return { status: "rejected_wrong_source_role", replayFromTick: null };
-      if (record.targetTick < this.canonicalBoundaryTick) return { status: "rejected_late", replayFromTick: null };
     }
 
     const normalized = normalizeInput(record);

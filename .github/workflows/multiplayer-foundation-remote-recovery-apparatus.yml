@@ -49,6 +49,7 @@ jobs:
           FOUNDATION_RECOVERY_REMOTE_DRY_RUN_OUTDIR: ${{ runner.temp }}/foundation-recovery-remote-dry-run
           WORKERS_CI: "1"
           WRANGLER_CI_OVERRIDE_NAME: cloudflare-multiplayer-lab-foundation-recovery
+          WORKERS_CI_BRANCH: research/multiplayer-foundation-recovery-remote
           WORKERS_CI_COMMIT_SHA: ${{ github.sha }}
         shell: bash
         run: |

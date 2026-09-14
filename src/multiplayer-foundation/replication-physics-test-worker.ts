@@ -77,6 +77,8 @@ function modeForRun(run: string): PhysicsReplicationMode {
 }
 
 export class FoundationReplicationPhysicsTestWorld extends DurableObject<PhysicsReplicationEnv> {
+  private readonly constructorNonce = crypto.randomUUID();
+  private readonly constructorBornAtMs = Date.now();
   private readonly roster = new FoundationRosterMachine({ worldEpoch: WORLD_EPOCH, capacity: CAPACITY });
   private readonly topology = new FoundationEntityTopology(WORLD_EPOCH, PERSISTENT_WORLD);
   private readonly inputs = new FoundationActorInputRegistry(WORLD_EPOCH, MAX_FUTURE_TICKS);
@@ -451,6 +453,9 @@ export class FoundationReplicationPhysicsTestWorld extends DurableObject<Physics
       revision: "foundation-local-physics-transport-worker-v3-session-resume",
       protocolRevision: FOUNDATION_REPLICATION_PROTOCOL_REVISION,
       box3dBuild: this.physics.buildId,
+      constructorNonce: this.constructorNonce,
+      constructorAgeMs: Date.now() - this.constructorBornAtMs,
+      hibernationWebSockets: this.ctx.getWebSockets().length,
       mode: this.mode,
       worldId: this.worldId,
       worldEpoch: WORLD_EPOCH,

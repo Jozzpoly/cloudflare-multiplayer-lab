@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "outDir": ".foundation-browser-dist",
+    "rootDir": "src",
+    "types": [],
+    "lib": ["ES2022", "DOM"],
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": [
+    "src/world-v0-contract.ts",
+    "src/multiplayer-foundation/checkpoint-digest.ts",
+    "src/multiplayer-foundation/client-bootstrap.ts",
+    "src/multiplayer-foundation/client-box3d-runtime.ts",
+    "src/multiplayer-foundation/client-input-ledger.ts",
+    "src/multiplayer-foundation/client-replica-model.ts",
+    "src/multiplayer-foundation/client-runtime-bootstrap.ts",
+    "src/multiplayer-foundation/entity-topology.ts",
+    "src/multiplayer-foundation/roster-machine.ts",
+    "src/multiplayer-foundation/state-guard.ts"
+  ]
+}

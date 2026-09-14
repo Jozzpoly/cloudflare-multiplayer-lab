@@ -68,6 +68,8 @@ type ClientState = {
 };
 type BootstrapEvidence = {
   tick: number;
+  selfSessionId: string;
+  selfActorId: string;
   activeActors: number;
   remoteActors: number;
   topologyRevision: number;
@@ -302,7 +304,12 @@ function captureSourceGuard(runtime: RuntimeState): FoundationStateGuard {
   });
 }
 
-function buildClientState(runtime: RuntimeState, canonicalTick: number, expectedGuard: FoundationStateGuard): { client: ClientState; evidence: BootstrapEvidence } {
+function buildClientState(
+  runtime: RuntimeState,
+  canonicalTick: number,
+  expectedGuard: FoundationStateGuard,
+  selfActorSessionId = "session-self",
+): { client: ClientState; evidence: BootstrapEvidence } {
   const topology = runtime.topology.snapshot();
   const roster = runtime.roster.snapshot();
   const stateById = new Map<string, number[]>();
@@ -314,7 +321,7 @@ function buildClientState(runtime: RuntimeState, canonicalTick: number, expected
   const bootstrap = createFoundationClientBootstrap({
     worldEpoch: WORLD_EPOCH,
     canonicalTick,
-    selfActorSessionId: "session-self",
+    selfActorSessionId,
     executionProfile: PROFILE,
     topology,
     stateComponents: WORLD_V0_STATE_COMPONENTS,
@@ -367,12 +374,15 @@ function buildClientState(runtime: RuntimeState, canonicalTick: number, expected
   assert.equal(clientRuntime.boundaryTick, canonicalTick);
   assert.equal(clientRuntime.actorBodiesBySession.size, roster.actors.length);
   assert.equal(hydrated.projection.remotes.length, roster.actors.length - 1);
+  assert.equal(hydrated.projection.self.actorSessionId, selfActorSessionId);
   assert.equal(captureSourceGuard(runtime).packed, expectedGuard.packed);
 
   return {
     client: { runtime: clientRuntime, hydrated },
     evidence: {
       tick: canonicalTick,
+      selfSessionId: selfActorSessionId,
+      selfActorId: hydrated.projection.self.netEntityId,
       activeActors: roster.actors.length,
       remoteActors: hydrated.projection.remotes.length,
       topologyRevision: topology.topologyRevision,
@@ -417,6 +427,20 @@ function assertExactSegment(runtime: RuntimeState, client: ClientState, startTic
   }
 }
 
+function assertExactSegmentMulti(runtime: RuntimeState, clients: readonly ClientState[], startTick: number, endTick: number): void {
+  for (let tick = startTick; tick <= endTick; tick += 1) {
+    const sourceGuard = advanceSource(runtime, tick);
+    for (const client of clients) {
+      const clientGuard = advanceClient(client, tick);
+      assert.equal(
+        clientGuard.packed,
+        sourceGuard.packed,
+        `client ${client.hydrated.projection.self.actorSessionId}/source divergence at B(${tick})`,
+      );
+    }
+  }
+}
+
 const source = createRuntime();
 source.roster.queue({ kind: "join", mutationId: "join-self", effectiveTick: 1, actorSessionId: "session-self" });
 source.roster.queue({ kind: "join", mutationId: "join-peer-a", effectiveTick: 2, actorSessionId: "session-peer-a" });
@@ -435,6 +459,7 @@ assert(initialTick !== null && initialGuard, "initial 2-actor fixture failed to 
 const initial = buildClientState(source, initialTick, initialGuard);
 assert.equal(initial.evidence.activeActors, 2);
 assert.equal(initial.evidence.remoteActors, 1);
+assert.equal(initial.evidence.selfActorId, "actor:0");
 
 const preJoinEnd = initialTick + 8;
 assertExactSegment(source, initial.client, initialTick + 1, preJoinEnd);
@@ -452,9 +477,22 @@ assert.equal(joined.evidence.activeActors, 6);
 assert.equal(joined.evidence.remoteActors, 5);
 assert.notEqual(joined.evidence.projectionDigest, initial.evidence.projectionDigest);
 
-const preChurnEnd = joinTick + 12;
-assertExactSegment(source, joined.client, joinTick + 1, preChurnEnd);
+const lateJoinPerspective = buildClientState(source, joinTick, joinGuard, "session-peer-d");
+assert.equal(lateJoinPerspective.evidence.selfActorId, "actor:4");
+assert.equal(lateJoinPerspective.evidence.activeActors, 6);
+assert.equal(lateJoinPerspective.evidence.remoteActors, 5);
+assert.equal(lateJoinPerspective.evidence.topologyDigest, joined.evidence.topologyDigest);
+assert.equal(lateJoinPerspective.evidence.seedBytes, joined.evidence.seedBytes);
+assert.equal(lateJoinPerspective.evidence.seedFnv1a32, joined.evidence.seedFnv1a32);
+assert.notEqual(lateJoinPerspective.evidence.projectionDigest, joined.evidence.projectionDigest);
+assert.notEqual(lateJoinPerspective.evidence.runtimeDigest, joined.evidence.runtimeDigest);
+assert(lateJoinPerspective.client.hydrated.projection.remotes.some((actor) => actor.netEntityId === "actor:0"));
+assert(!lateJoinPerspective.client.hydrated.projection.remotes.some((actor) => actor.netEntityId === "actor:4"));
 
+const preChurnEnd = joinTick + 12;
+assertExactSegmentMulti(source, [joined.client, lateJoinPerspective.client], joinTick + 1, preChurnEnd);
+
+destroyFoundationBox3DClientRuntime(lateJoinPerspective.client.runtime);
 const churnTick = preChurnEnd + 1;
 source.roster.queue({ kind: "retire", mutationId: "a-retire-actor-2", effectiveTick: churnTick, actorId: "actor:2" });
 source.roster.queue({ kind: "join", mutationId: "b-join-replacement", effectiveTick: churnTick, actorSessionId: "session-replacement" });
@@ -490,4 +528,16 @@ console.log("MULTIPLAYER_FOUNDATION_CLIENT_TOPOLOGY_REBOOTSTRAP_PASS", JSON.stri
   exactPostJoinTicks: preChurnEnd - joinTick,
   exactPostChurnTicks: finalTick - churnTick,
   finalTick,
+}));
+
+console.log("MULTIPLAYER_FOUNDATION_CLIENT_LATE_JOIN_PERSPECTIVE_PASS", JSON.stringify({
+  worldEpoch: WORLD_EPOCH,
+  canonicalTick: joinTick,
+  primary: joined.evidence,
+  lateJoin: lateJoinPerspective.evidence,
+  sharedTopologyDigest: joined.evidence.topologyDigest,
+  sharedSeedBytes: joined.evidence.seedBytes,
+  sharedSeedFnv1a32: joined.evidence.seedFnv1a32,
+  alternateSelf: lateJoinPerspective.evidence.selfActorId,
+  exactSharedTicks: preChurnEnd - joinTick,
 }));

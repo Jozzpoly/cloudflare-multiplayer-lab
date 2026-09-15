@@ -3,7 +3,7 @@ import { writeFileSync } from "node:fs";
 import { cameraRelativeInput } from "../public/world-v0/playable-control.js";
 
 const OUTPUT = process.env.MW_WORLD_V0_REVISION_OUTPUT ?? "world-v0-smoothness-input-revision.json";
-const LEAD = 8;
+const PREDICTION_LEAD_TICKS = 8;
 const START = 100;
 
 class SchedulerModel {
@@ -14,15 +14,20 @@ class SchedulerModel {
     this.superseded = 0;
     this.pumps = 0;
     this.revisionsByTick = new Map();
+    this.maxWindowRecords = 0;
   }
   same(a, b) {
     return Math.abs(a.x - b.x) <= 1e-9 && Math.abs(a.z - b.z) <= 1e-9;
   }
   pump(estimate, movement) {
-    const startTick = Math.max(START, Math.floor(estimate));
-    const through = Math.floor(estimate + LEAD) - 1;
+    // Literal current browser semantics since 0657187f: never author the estimated
+    // current authority boundary itself. The nominal lead remains eight ticks, but
+    // floor(estimate)+1 .. floor(estimate+8)-1 contains at most seven records.
+    const startTick = Math.max(START, Math.floor(estimate) + 1);
+    const through = Math.floor(estimate + PREDICTION_LEAD_TICKS) - 1;
     if (through < startTick) return;
     this.pumps += 1;
+    this.maxWindowRecords = Math.max(this.maxWindowRecords, through - startTick + 1);
     for (let tick = startTick; tick <= through; tick += 1) {
       const next = { x: movement.x, z: movement.z };
       const existing = this.intended.get(tick);
@@ -34,8 +39,8 @@ class SchedulerModel {
       }
       if (this.same(existing, next)) continue;
       this.intended.set(tick, next);
-      // Current browser can revise already-sent future ticks. This pure model treats
-      // every previously authored tick as sent so it measures the upper semantic pressure.
+      // Upper semantic pressure model: every previously authored tick is treated as
+      // already sent, so a changed value exercises the legal supersession path.
       this.superseded += 1;
       this.revisionsByTick.set(tick, (this.revisionsByTick.get(tick) || 0) + 1);
       this.sent.set(tick, next);
@@ -65,6 +70,7 @@ function runScenario({ name, seconds = 4, pumpsPerTick = 2, yawAt }) {
     authored: model.authored,
     superseded: model.superseded,
     supersededPerAuthored: model.authored ? model.superseded / model.authored : 0,
+    maxAuthoredWindowRecords: model.maxWindowRecords,
     revisedTicks: counts.length,
     meanRevisionsPerRevisedTick: counts.length ? sum / counts.length : 0,
     p50RevisionsPerRevisedTick: percentile(0.50),
@@ -97,17 +103,22 @@ const oscillatingOrbit = runScenario({
   yawAt: (t) => Math.sin((t / 60) * Math.PI * 1.5) * 1.1,
 });
 
+for (const scenario of [fixed, oneTurn, smoothOrbitOnePump, smoothOrbitTwoPumps, oscillatingOrbit]) {
+  assert.equal(scenario.maxAuthoredWindowRecords, 7, "authority-floor authored window drifted");
+}
 assert.equal(fixed.superseded, 0, "fixed camera unexpectedly revises future movement");
 assert(oneTurn.superseded > 0, "single camera turn did not revise future movement");
 assert(smoothOrbitOnePump.superseded > oneTurn.superseded, "continuous orbit did not amplify future revisions");
 assert(smoothOrbitTwoPumps.superseded > smoothOrbitOnePump.superseded, "second scheduler pump opportunity did not amplify revisions");
-assert(smoothOrbitTwoPumps.maxRevisionsPerTick >= 8, "continuous orbit did not repeatedly revise the same future tick");
+assert(smoothOrbitTwoPumps.maxRevisionsPerTick >= 12, "continuous orbit did not repeatedly revise the same future tick");
 
 const result = {
-  revision: "world-v0-smoothness-input-revision-probe-v1",
+  revision: "world-v0-smoothness-input-revision-probe-v2-authority-floor",
   contract: {
-    predictionLeadTicks: LEAD,
-    note: "Pure upper-pressure model of current future-intent semantics; no network or physics.",
+    predictionLeadTicks: PREDICTION_LEAD_TICKS,
+    authorityFloorExcludesEstimatedCurrentTick: true,
+    maxAuthoredFutureRecordsPerPump: 7,
+    note: "Pure upper-pressure model of the current authority-floor future-intent semantics; no network or physics.",
   },
   scenarios: [fixed, oneTurn, smoothOrbitOnePump, smoothOrbitTwoPumps, oscillatingOrbit],
   derived: {

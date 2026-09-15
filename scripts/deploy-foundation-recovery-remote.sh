@@ -17,29 +17,10 @@ cd "$REPO_ROOT"
 [[ -f "$ROOT_RECOVERY_CONFIG_TEMPLATE" ]]
 cmp -s wrangler.jsonc "$ROOT_RECOVERY_CONFIG_TEMPLATE"
 
-npm ci
+if command -v cmake >/dev/null 2>&1; then
+  echo "FOUNDATION_RECOVERY_WORKERS_BUILD_CMAKE_PRESENT_UNEXPECTED"
+  exit 31
+fi
 
-PROBE_SCRIPT="scripts/.foundation-recovery-box3d-st-configure-probe.sh"
-cp scripts/build-foundation-recovery-box3d.sh "$PROBE_SCRIPT"
-python - <<'PY'
-from pathlib import Path
-path = Path("scripts/.foundation-recovery-box3d-st-configure-probe.sh")
-source = path.read_text()
-needle = "pnpm build\n"
-assert source.count(needle) == 1
-replacement = r'''python - <<'PY2'
-from pathlib import Path
-import os
-p = Path(os.environ["BOX3D_JS_DIR"]) / "scripts" / "build.mjs"
-s = p.read_text()
-needle = "\trun( 'emcmake', args );\n\trun( 'cmake', [ '--build', buildDir, '--target', 'box3d', '-j', '8' ] );"
-assert s.count(needle) == 1
-s = s.replace(needle, "\trun( 'emcmake', args );\n\tconsole.log('FOUNDATION_RECOVERY_WORKERS_BUILD_ST_CONFIGURE_PROBE_PASS');\n\tprocess.exit(0);\n\trun( 'cmake', [ '--build', buildDir, '--target', 'box3d', '-j', '8' ] );", 1)
-p.write_text(s)
-PY2
-pnpm build
-'''
-source = source.replace(needle, replacement, 1)
-path.write_text(source)
-PY
-bash "$PROBE_SCRIPT"
+echo "FOUNDATION_RECOVERY_WORKERS_BUILD_CMAKE_ABSENT_CONFIRMED"
+exit 0

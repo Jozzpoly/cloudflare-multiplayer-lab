@@ -1,0 +1,140 @@
+name: World V0 ongoing Yard staging
+
+on:
+  push:
+    branches:
+      - world-v0-ongoing-yard
+    paths:
+      - .github/workflows/world-v0-ongoing-yard-staging.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-ongoing-yard-staging
+  cancel-in-progress: false
+
+env:
+  EXPECTED_STAGING_WORKER: cloudflare-multiplayer-lab-staging
+  STAGING_BASE_URL: https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev
+  CLOUDFLARE_ACCOUNT_ID: 566456b8f2f4d9f85b3fa8173e190c1a
+
+jobs:
+  deliver-and-prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Prove exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$GITHUB_SHA"
+          echo "ONGOING_YARD_EXACT_HEAD=$actual"
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Prove isolated staging target
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const config = JSON.parse(readFileSync("wrangler.jsonc", "utf8"));
+          const staging = config.env?.staging;
+          if (!staging) throw new Error("wrangler env.staging missing");
+          if (staging.name !== process.env.EXPECTED_STAGING_WORKER) throw new Error(`staging target drift ${staging.name}`);
+          if (config.name === staging.name) throw new Error(`staging aliases production/root worker ${config.name}`);
+          if (staging.workers_dev !== true) throw new Error("staging workers_dev must stay enabled");
+          const bindings = staging.durable_objects?.bindings || [];
+          if (!bindings.some((binding) => binding.name === "SHARED_YARD_V0" && binding.class_name === "SharedYardV0")) {
+            throw new Error("staging SharedYardV0 binding missing");
+          }
+          const workerFirst = staging.assets?.run_worker_first || [];
+          if (!workerFirst.includes("/world-v0/ws")) throw new Error("staging world-v0 websocket route missing");
+          console.log(`ONGOING_YARD_STAGING_TARGET_PASS root=${config.name} staging=${staging.name}`);
+          NODE
+          npm run test:staging-deploy-guard
+          npm run validate:staging-contract
+
+      - name: Dry-run exact staging candidate
+        run: npx wrangler deploy --dry-run --env staging --outdir .wrangler/ongoing-yard-staging-dry-run
+
+      - name: Require Cloudflare deploy credential
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          echo "Cloudflare staging credential present"
+
+      - name: Deploy only isolated staging Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run deploy:staging
+
+      - name: Require ongoing-Yard UI build to become public
+        env:
+          MW_WORLD_V0_STAGING_BASE_URL: ${{ env.STAGING_BASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { WORLD_V0_BROWSER_UI_REVISION } from "./public/world-v0/build-contract.js";
+          const base = process.env.MW_WORLD_V0_STAGING_BASE_URL.replace(/\/$/, "");
+          const deadline = Date.now() + 120_000;
+          let last = null;
+          while (Date.now() < deadline) {
+            try {
+              const response = await fetch(`${base}/world-v0/build-contract.js?head=${process.env.GITHUB_SHA}`, {
+                cache: "no-store",
+                signal: AbortSignal.timeout(8000),
+              });
+              const body = await response.text();
+              last = { status: response.status, ui: body.includes(WORLD_V0_BROWSER_UI_REVISION) };
+              if (response.ok && last.ui) {
+                console.log("ONGOING_YARD_STAGING_BUILD_VISIBLE", JSON.stringify({
+                  head: process.env.GITHUB_SHA,
+                  uiRevision: WORLD_V0_BROWSER_UI_REVISION,
+                }));
+                process.exit(0);
+              }
+            } catch (error) {
+              last = { error: error instanceof Error ? error.message : String(error) };
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+          throw new Error(`ongoing Yard staging build not visible: ${JSON.stringify(last)}`);
+          NODE
+
+      - name: Prove remote public Yard solo-to-friend flow in real Chromium
+        env:
+          MW_WORLD_V0_ONGOING_BASE: ${{ env.STAGING_BASE_URL }}
+          MW_WORLD_V0_ONGOING_OUTPUT: world-v0-ongoing-yard-staging.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 130s node scripts/world-v0-ongoing-yard-product-chromium.mjs | tee world-v0-ongoing-yard-staging.log
+          grep -q 'WORLD_V0_ONGOING_YARD_PUBLIC_FLOW_PASS' world-v0-ongoing-yard-staging.log
+
+      - name: Upload remote evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-ongoing-yard-staging-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-ongoing-yard-staging.json
+            world-v0-ongoing-yard-staging.log
+            .wrangler/ongoing-yard-staging-dry-run

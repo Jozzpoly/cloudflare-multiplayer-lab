@@ -20,13 +20,13 @@ replaceOnce("exactness failed during V6 render probe", "exactness failed during 
 
 replaceOnce(
   "  await cdp.eval(sessionId, \"window.__mwRenderProbeV6ResetCorrections()\");\n  await cdp.eval(sessionId, \"window.__mwRenderProbeV3StartSampler()\");",
-  "  await cdp.eval(sessionId, \"window.__mwRenderProbeV6ResetCorrections()\");\n  await cdp.eval(sessionId, \"window.__mwV9ResetRemotePredictionEvidence()\");\n  await cdp.eval(sessionId, \"window.__mwRenderProbeV3StartSampler()\");",
-  "remote prediction reset"
+  "  await cdp.eval(sessionId, \"(() => { window.__mwRenderProbeV6ResetCorrections(); window.__mwV9ResetRemotePredictionEvidence(); return true; })()\");\n  await cdp.eval(sessionId, \"window.__mwRenderProbeV3StartSampler()\");",
+  "atomic remote prediction reset"
 );
 replaceOnce(
   "  const correctionVectors = await cdp.eval(sessionId, \"window.__mwRenderProbeV6ReadCorrections()\");\n\n  const result = {",
-  "  const correctionVectors = await cdp.eval(sessionId, \"window.__mwRenderProbeV6ReadCorrections()\");\n  const remotePredictionV9 = await cdp.eval(sessionId, \"window.__mwV9ReadRemotePredictionEvidence()\");\n\n  const result = {",
-  "remote prediction evidence read"
+  "  const v9EvidenceBundle = await cdp.eval(sessionId, \"(() => ({ correctionVectors: window.__mwRenderProbeV6ReadCorrections(), remotePredictionV9: window.__mwV9ReadRemotePredictionEvidence() }))()\");\n  const correctionVectors = v9EvidenceBundle.correctionVectors;\n  const remotePredictionV9 = v9EvidenceBundle.remotePredictionV9;\n\n  const result = {",
+  "atomic remote prediction evidence read"
 );
 replaceOnce("    correctionVectors,", "    correctionVectors,\n    remotePredictionV9,", "remote prediction evidence attach");
 

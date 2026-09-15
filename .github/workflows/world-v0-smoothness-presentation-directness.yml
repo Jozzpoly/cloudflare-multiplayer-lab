@@ -26,7 +26,11 @@ jobs:
       - name: Prove exact corrections are exposed directly to rendered transforms
         env:
           MW_WORLD_V0_PRESENTATION_OUTPUT: world-v0-smoothness-presentation-directness.json
-        run: node scripts/world-v0-smoothness-presentation-directness-probe.mjs | tee world-v0-smoothness-presentation-directness.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-presentation-directness-probe.mjs | tee world-v0-smoothness-presentation-directness.log
+          grep -q 'EXACT_CORRECTION_DIRECTLY_EXPOSED_TO_PRESENTATION_PROVEN' world-v0-smoothness-presentation-directness.log
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v6

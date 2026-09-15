@@ -1,0 +1,114 @@
+name: World V0 smoothness buffered remote v11b
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-buffered-remote-v11b.yml
+      - scripts/world-v0-smoothness-install-buffered-remote-v11b.mjs
+      - scripts/world-v0-smoothness-render-buffered-remote-v11b-transform.mjs
+      - scripts/world-v0-smoothness-render-buffered-remote-v11b-analyze.mjs
+      - scripts/world-v0-smoothness-install-confirmed-timeline-v11.mjs
+      - scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs
+      - scripts/world-v0-smoothness-render-discontinuity-v4-probe.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v3.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v5.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v6.mjs
+      - public/world-v0/app.js
+      - public/world-v0/playable-control.js
+      - public/world-v0/build-contract.js
+      - src/world-v0-contract.ts
+      - src/world-v0-protocol.ts
+      - src/world-v0-shared-yard.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  buffered-remote-v11b:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: r1
+          - label: r2
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Prepare V11b test-only buffered remote apparatus
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-install-render-probe-v3.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v5.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v6.mjs
+          node scripts/world-v0-smoothness-install-confirmed-timeline-v11.mjs
+          node scripts/world-v0-smoothness-install-buffered-remote-v11b.mjs
+          node scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs
+          node scripts/world-v0-smoothness-render-buffered-remote-v11b-transform.mjs \
+            /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs \
+            /tmp/world-v0-smoothness-render-buffered-remote-v11b-probe.mjs
+          node --check /tmp/world-v0-smoothness-render-buffered-remote-v11b-probe.mjs
+          node --check scripts/world-v0-smoothness-render-buffered-remote-v11b-analyze.mjs
+      - name: Start instrumented local Workerd copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-buffered-remote-v11b-wrangler.log 2>&1 &
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-buffered-remote-v11b-wrangler.log
+          exit 1
+      - name: Capture buffered remote presentation evidence
+        env:
+          MW_WORLD_V0_RENDER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RENDER_LATENCY_MS: 90
+          MW_WORLD_V0_RENDER_STRESS_MS: 9000
+          MW_WORLD_V0_RENDER_OUTPUT: world-v0-smoothness-buffered-remote-v11b-${{ matrix.label }}.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 240s node /tmp/world-v0-smoothness-render-buffered-remote-v11b-probe.mjs \
+            | tee world-v0-smoothness-buffered-remote-v11b-${{ matrix.label }}.log
+          test -s world-v0-smoothness-buffered-remote-v11b-${{ matrix.label }}.json
+      - name: Analyze buffered remote presentation
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -s world-v0-smoothness-buffered-remote-v11b-${{ matrix.label }}.json ]]; then
+            node scripts/world-v0-smoothness-render-buffered-remote-v11b-analyze.mjs \
+              world-v0-smoothness-buffered-remote-v11b-${{ matrix.label }}.json \
+              world-v0-smoothness-buffered-remote-v11b-analysis-${{ matrix.label }}.json \
+              | tee world-v0-smoothness-buffered-remote-v11b-analysis-${{ matrix.label }}.log
+          else
+            echo "V11b source evidence unavailable"
+            exit 1
+          fi
+      - name: Restore canonical runtime source
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove repository source is unchanged
+        if: always()
+        run: git diff --exit-code
+      - name: Upload V11b evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-buffered-remote-v11b-${{ matrix.label }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-smoothness-buffered-remote-v11b-${{ matrix.label }}.json
+            world-v0-smoothness-buffered-remote-v11b-${{ matrix.label }}.log
+            world-v0-smoothness-buffered-remote-v11b-analysis-${{ matrix.label }}.json
+            world-v0-smoothness-buffered-remote-v11b-analysis-${{ matrix.label }}.log
+            world-v0-buffered-remote-v11b-wrangler.log

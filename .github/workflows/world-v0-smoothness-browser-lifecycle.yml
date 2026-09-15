@@ -1,0 +1,53 @@
+name: World V0 smoothness normal browser lifecycle diagnosis
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-browser-lifecycle.yml
+      - scripts/world-v0-smoothness-browser-lifecycle-probe.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-lifecycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Start unchanged local Workerd runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-browser-lifecycle-wrangler.log 2>&1 &
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-browser-lifecycle-wrangler.log
+          exit 1
+      - name: Reproduce natural inactive-tab temporal staleness
+        env:
+          MW_WORLD_V0_LIFECYCLE_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_LIFECYCLE_HIDDEN_MS: 5000
+          MW_WORLD_V0_LIFECYCLE_OUTPUT: world-v0-smoothness-browser-lifecycle.json
+        run: timeout 120s node scripts/world-v0-smoothness-browser-lifecycle-probe.mjs | tee world-v0-smoothness-browser-lifecycle.log
+      - name: Prove diagnostic did not modify runtime
+        run: git diff --exit-code
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-browser-lifecycle-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-smoothness-browser-lifecycle.json
+            world-v0-smoothness-browser-lifecycle.log
+            world-v0-browser-lifecycle-wrangler.log

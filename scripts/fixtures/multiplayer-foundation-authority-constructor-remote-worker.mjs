@@ -40,6 +40,7 @@ export default {
         triggerRevision: FOUNDATION_RECOVERY_REMOTE_TRIGGER.revision,
         phase: FOUNDATION_RECOVERY_REMOTE_TRIGGER.phase,
         campaignId: FOUNDATION_RECOVERY_REMOTE_TRIGGER.campaignId,
+        durableObjectTouched: false,
         adapter: {
           box3dJsCommit: "5d5a3af049cccd9948b2b55bac4342414af0ef64",
           box3dCommit: "8441b4a06d6d09dcfb0b0f704df4d847d1437b92",

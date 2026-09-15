@@ -45,6 +45,7 @@ async function exactBuild() {
   assert.equal(result.body.triggerRevision, trigger.revision, JSON.stringify(result.body));
   assert.equal(result.body.phase, "hibernate", JSON.stringify(result.body));
   assert.equal(result.body.campaignId, trigger.campaignId, JSON.stringify(result.body));
+  assert.equal(result.body.durableObjectTouched, false, JSON.stringify(result.body));
   return result.body;
 }
 
@@ -61,6 +62,7 @@ async function waitForExactDeployment() {
         && result.body.triggerRevision === trigger.revision
         && result.body.phase === "hibernate"
         && result.body.campaignId === trigger.campaignId
+        && result.body.durableObjectTouched === false
       ) return result.body;
     } catch (error) {
       last = { error: error instanceof Error ? error.message : String(error) };
@@ -130,8 +132,6 @@ for (let cycle = 1; cycle <= REQUIRED_CYCLES; cycle += 1) {
   await sleep(QUIET_MS);
   const quietElapsedMs = Date.now() - quietStartedAt;
 
-  // /build is served by the outer Worker and does not obtain or invoke the Durable Object stub.
-  // It therefore proves code identity after the quiet window without touching the tested object.
   const buildAfterQuiet = await exactBuild();
 
   const restored = await health();

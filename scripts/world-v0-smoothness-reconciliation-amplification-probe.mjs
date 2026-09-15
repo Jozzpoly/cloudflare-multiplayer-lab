@@ -3,10 +3,14 @@ import { writeFileSync } from "node:fs";
 import { WORLD_V0_TIMING } from "../src/world-v0-contract.ts";
 
 const OUTPUT = process.env.MW_WORLD_V0_RECON_OUTPUT ?? "world-v0-smoothness-reconciliation-amplification.json";
-const HORIZON = WORLD_V0_TIMING.predictionLeadTicks;
+const LEAD = WORLD_V0_TIMING.predictionLeadTicks;
 const BATCH = WORLD_V0_TIMING.inputBatchSize;
-assert.equal(HORIZON, 8, "probe assumptions changed: prediction lead");
+const AUTHORED_WINDOW = LEAD - 1; // floor(estimate)+1 .. floor(estimate+lead)-1
+const MESSAGES_PER_FULL_WINDOW_REVISION = Math.ceil(AUTHORED_WINDOW / BATCH);
+assert.equal(LEAD, 8, "probe assumptions changed: prediction lead");
+assert.equal(AUTHORED_WINDOW, 7, "authority-floor authored window drifted");
 assert.equal(BATCH, 2, "probe assumptions changed: input batch size");
+assert.equal(MESSAGES_PER_FULL_WINDOW_REVISION, 4, "revision message split drifted");
 
 const same = (a, b) => Math.abs(a.x - b.x) < 1e-12 && Math.abs(a.z - b.z) < 1e-12;
 
@@ -17,7 +21,7 @@ class ReceiverModel {
     this.corrections = [];
   }
   seed(startTick, input) {
-    for (let tick = startTick; tick < startTick + HORIZON; tick += 1) {
+    for (let tick = startTick; tick < startTick + AUTHORED_WINDOW; tick += 1) {
       this.peerRemote.set(tick, { ...input });
       this.usedRemote.set(tick, { ...input });
     }
@@ -67,7 +71,7 @@ class ReceiverModel {
 
 function revisionMessages(startTick, input) {
   const records = [];
-  for (let tick = startTick; tick < startTick + HORIZON; tick += 1) records.push({ targetTick: tick, ...input });
+  for (let tick = startTick; tick < startTick + AUTHORED_WINDOW; tick += 1) records.push({ targetTick: tick, ...input });
   const messages = [];
   for (let cursor = 0; cursor < records.length; cursor += BATCH) messages.push(records.slice(cursor, cursor + BATCH));
   return messages;
@@ -101,7 +105,9 @@ const samples = [1, 2, 5, 10, 30].map((revisionCount) => {
   const coalesced = runCoalesced(revisionCount);
   return {
     revisionCount,
-    peerMessagesPerRevision: HORIZON / BATCH,
+    authoredRecordsPerFullWindowRevision: AUTHORED_WINDOW,
+    peerMessagesPerRevision: MESSAGES_PER_FULL_WINDOW_REVISION,
+    messageRecordCounts: revisionMessages(200, { x: 1, z: 0 }).map((records) => records.length),
     currentCorrectionPasses: current.length,
     coalescedCorrectionPasses: coalesced.length,
     amplification: coalesced.length ? current.length / coalesced.length : null,
@@ -110,17 +116,21 @@ const samples = [1, 2, 5, 10, 30].map((revisionCount) => {
 });
 
 for (const sample of samples) {
-  assert.equal(sample.currentCorrectionPasses, sample.revisionCount * (HORIZON / BATCH), "current per-message correction semantics drifted");
+  assert.deepEqual(sample.messageRecordCounts, [2, 2, 2, 1], "authority-floor revision chunk shape drifted");
+  assert.equal(sample.currentCorrectionPasses, sample.revisionCount * MESSAGES_PER_FULL_WINDOW_REVISION, "current per-message correction semantics drifted");
   assert.equal(sample.coalescedCorrectionPasses, sample.revisionCount, "coalesced reference semantics drifted");
-  assert.equal(sample.amplification, HORIZON / BATCH, "unexpected reconciliation amplification factor");
+  assert.equal(sample.amplification, MESSAGES_PER_FULL_WINDOW_REVISION, "unexpected reconciliation amplification factor");
 }
 
 const result = {
-  revision: "world-v0-smoothness-reconciliation-amplification-v1",
+  revision: "world-v0-smoothness-reconciliation-amplification-v2-authority-floor",
   currentContract: {
-    predictionLeadTicks: HORIZON,
+    predictionLeadTicks: LEAD,
+    authorityFloorExcludesEstimatedCurrentTick: true,
+    authoredRecordsPerFullWindowRevision: AUTHORED_WINDOW,
     inputBatchSize: BATCH,
-    peerMessagesPerFullHorizonRevision: HORIZON / BATCH,
+    peerMessagesPerFullWindowRevision: MESSAGES_PER_FULL_WINDOW_REVISION,
+    messageRecordCounts: [2, 2, 2, 1],
     receiverPolicy: "maybeCorrect once per peer-record message",
   },
   samples,

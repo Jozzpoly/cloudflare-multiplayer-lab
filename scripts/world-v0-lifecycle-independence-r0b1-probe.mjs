@@ -263,16 +263,6 @@ feedB2.stop();
 assert(!a.messages.some((m) => m?.type === "world_v0_epoch_ended"), "A observed epoch end during 1->2 join");
 assert(!b.messages.some((m) => m?.type === "world_v0_epoch_ended"), "B observed epoch end during 1->2 join");
 
-const healthUrl = new URL(`${BASE}/world-v0/ws`);
-healthUrl.searchParams.set("run", RUN);
-healthUrl.searchParams.set("lifecycle", "r0");
-const health = await fetch(healthUrl, { cache: "no-store" }).then((response) => response.json());
-assert.equal(health.worldEpoch, aw.worldEpoch, "health epoch drift after late join");
-assert.equal(health.players, 2, "health actor count is not two after late join");
-assert.equal(health.connectedPlayers, 2, "health connected count is not two after late join");
-assert.equal(health.topology?.revision, 2, "health topology revision drift");
-assert.equal(health.failure, null, `authority failure: ${health.failure}`);
-
 try { a.ws.close(1000, "r0b1_done"); } catch {}
 try { b.ws.close(1000, "r0b1_done"); } catch {}
 

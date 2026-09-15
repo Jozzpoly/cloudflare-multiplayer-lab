@@ -1,0 +1,122 @@
+name: World V0 smoothness remote prediction v9
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-remote-prediction-v9.yml
+      - scripts/world-v0-smoothness-install-remote-prediction-v9.mjs
+      - scripts/world-v0-smoothness-render-remote-prediction-v9-transform.mjs
+      - scripts/world-v0-smoothness-render-remote-prediction-v9-analyze.mjs
+      - scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs
+      - scripts/world-v0-smoothness-render-discontinuity-v4-probe.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v3.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v5.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v6.mjs
+      - public/world-v0/app.js
+      - public/world-v0/playable-control.js
+      - public/world-v0/build-contract.js
+      - src/world-v0-contract.ts
+      - src/world-v0-protocol.ts
+      - src/world-v0-shared-yard.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  remote-prediction-v9:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: f1_0-r1
+            factor: 1
+          - label: f1_0-r2
+            factor: 1
+          - label: f0_5-r1
+            factor: 0.5
+          - label: f0_5-r2
+            factor: 0.5
+          - label: f0_0-r1
+            factor: 0
+          - label: f0_0-r2
+            factor: 0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Prepare V9 test-only remote prediction policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-install-render-probe-v3.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v5.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v6.mjs
+          node scripts/world-v0-smoothness-install-remote-prediction-v9.mjs "${{ matrix.factor }}"
+          node scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs
+          node scripts/world-v0-smoothness-render-remote-prediction-v9-transform.mjs \
+            /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs \
+            /tmp/world-v0-smoothness-render-remote-prediction-v9-probe.mjs
+          node --check /tmp/world-v0-smoothness-render-remote-prediction-v9-probe.mjs
+          node --check scripts/world-v0-smoothness-render-remote-prediction-v9-analyze.mjs
+      - name: Start instrumented local Workerd copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-remote-prediction-v9-wrangler.log 2>&1 &
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-remote-prediction-v9-wrangler.log
+          exit 1
+      - name: Capture matched-age remote prediction evidence
+        env:
+          MW_WORLD_V0_RENDER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RENDER_LATENCY_MS: 90
+          MW_WORLD_V0_RENDER_STRESS_MS: 9000
+          MW_WORLD_V0_RENDER_OUTPUT: world-v0-smoothness-remote-prediction-v9-${{ matrix.label }}.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 240s node /tmp/world-v0-smoothness-render-remote-prediction-v9-probe.mjs \
+            | tee world-v0-smoothness-remote-prediction-v9-${{ matrix.label }}.log
+          test -s world-v0-smoothness-remote-prediction-v9-${{ matrix.label }}.json
+      - name: Analyze correction error by rewind age
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -s world-v0-smoothness-remote-prediction-v9-${{ matrix.label }}.json ]]; then
+            node scripts/world-v0-smoothness-render-remote-prediction-v9-analyze.mjs \
+              world-v0-smoothness-remote-prediction-v9-${{ matrix.label }}.json \
+              world-v0-smoothness-remote-prediction-v9-analysis-${{ matrix.label }}.json \
+              | tee world-v0-smoothness-remote-prediction-v9-analysis-${{ matrix.label }}.log
+          else
+            echo "V9 source evidence unavailable"
+            exit 1
+          fi
+      - name: Restore canonical runtime source
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove repository source is unchanged
+        if: always()
+        run: git diff --exit-code
+      - name: Upload V9 evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-remote-prediction-v9-${{ matrix.label }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-smoothness-remote-prediction-v9-${{ matrix.label }}.json
+            world-v0-smoothness-remote-prediction-v9-${{ matrix.label }}.log
+            world-v0-smoothness-remote-prediction-v9-analysis-${{ matrix.label }}.json
+            world-v0-smoothness-remote-prediction-v9-analysis-${{ matrix.label }}.log
+            world-v0-remote-prediction-v9-wrangler.log

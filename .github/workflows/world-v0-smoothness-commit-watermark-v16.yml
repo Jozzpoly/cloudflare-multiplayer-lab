@@ -1,0 +1,121 @@
+name: World V0 smoothness commit watermark v16
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-commit-watermark-v16.yml
+      - scripts/world-v0-smoothness-install-commit-watermark-v16.mjs
+      - scripts/world-v0-smoothness-install-authority-delay-v15.mjs
+      - scripts/world-v0-smoothness-render-commit-watermark-v16-transform.mjs
+      - scripts/world-v0-smoothness-render-commit-watermark-v16-analyze.mjs
+      - scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs
+      - scripts/world-v0-smoothness-render-discontinuity-v4-probe.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v3.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v5.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v6.mjs
+      - public/world-v0/app.js
+      - public/world-v0/playable-control.js
+      - public/world-v0/build-contract.js
+      - src/world-v0-contract.ts
+      - src/world-v0-protocol.ts
+      - src/world-v0-shared-yard.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  commit-watermark-v16:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: clock-r1
+            mode: clock
+          - label: clock-r2
+            mode: clock
+          - label: commit-r1
+            mode: commit
+          - label: commit-r2
+            mode: commit
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Prepare V16 test-only commit-watermark apparatus
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-install-render-probe-v3.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v5.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v6.mjs
+          node scripts/world-v0-smoothness-install-commit-watermark-v16.mjs "${{ matrix.mode }}"
+          node scripts/world-v0-smoothness-install-authority-delay-v15.mjs
+          node scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs
+          node scripts/world-v0-smoothness-render-commit-watermark-v16-transform.mjs \
+            /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs \
+            /tmp/world-v0-smoothness-render-commit-watermark-v16-probe.mjs
+          node --check public/world-v0/app.js
+          node --check /tmp/world-v0-smoothness-render-commit-watermark-v16-probe.mjs
+          node --check scripts/world-v0-smoothness-render-commit-watermark-v16-analyze.mjs
+      - name: Start instrumented local Workerd copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-commit-watermark-v16-wrangler.log 2>&1 &
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-commit-watermark-v16-wrangler.log
+          exit 1
+      - name: Capture commit-watermark evidence
+        env:
+          MW_WORLD_V0_RENDER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RENDER_LATENCY_MS: 550
+          MW_WORLD_V0_RENDER_STRESS_MS: 10000
+          MW_WORLD_V0_RENDER_OUTPUT: world-v0-smoothness-commit-watermark-v16-${{ matrix.label }}.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 240s node /tmp/world-v0-smoothness-render-commit-watermark-v16-probe.mjs \
+            | tee world-v0-smoothness-commit-watermark-v16-${{ matrix.label }}.log
+          test -s world-v0-smoothness-commit-watermark-v16-${{ matrix.label }}.json
+      - name: Analyze commit-watermark semantics
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -s world-v0-smoothness-commit-watermark-v16-${{ matrix.label }}.json ]]; then
+            node scripts/world-v0-smoothness-render-commit-watermark-v16-analyze.mjs \
+              world-v0-smoothness-commit-watermark-v16-${{ matrix.label }}.json \
+              world-v0-smoothness-commit-watermark-v16-analysis-${{ matrix.label }}.json \
+              | tee world-v0-smoothness-commit-watermark-v16-analysis-${{ matrix.label }}.log
+          else
+            echo "V16 source evidence unavailable"
+            exit 1
+          fi
+      - name: Restore canonical runtime source
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove repository source is unchanged
+        if: always()
+        run: git diff --exit-code
+      - name: Upload V16 evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-commit-watermark-v16-${{ matrix.label }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-smoothness-commit-watermark-v16-${{ matrix.label }}.json
+            world-v0-smoothness-commit-watermark-v16-${{ matrix.label }}.log
+            world-v0-smoothness-commit-watermark-v16-analysis-${{ matrix.label }}.json
+            world-v0-smoothness-commit-watermark-v16-analysis-${{ matrix.label }}.log
+            world-v0-commit-watermark-v16-wrangler.log

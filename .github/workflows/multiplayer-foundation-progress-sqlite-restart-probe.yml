@@ -1,0 +1,44 @@
+name: Multiplayer foundation progress SQLite restart probe
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-v1-2026-09-13
+    paths:
+      - .github/workflows/multiplayer-foundation-progress-sqlite-restart-probe.yml
+      - scripts/multiplayer-foundation-progress-sqlite-restart-smoke.ts
+      - src/multiplayer-foundation/replication-progress-storage-test-worker.ts
+      - src/multiplayer-foundation/replication-progress-sqlite-storage.ts
+      - src/multiplayer-foundation/replication-progress-overlay.ts
+      - src/multiplayer-foundation/actor-input-registry.ts
+      - src/multiplayer-foundation/replication-live-checkpoint.ts
+      - src/multiplayer-foundation/replication-protocol.ts
+      - src/multiplayer-foundation/roster-machine.ts
+      - src/multiplayer-foundation/entity-topology.ts
+      - src/multiplayer-foundation/checkpoint-digest.ts
+      - wrangler.foundation-progress-test.jsonc
+      - package.json
+      - package-lock.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  progress-sqlite-restart:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run SQLite-backed progress overlay restart specimen
+        run: node --experimental-strip-types scripts/multiplayer-foundation-progress-sqlite-restart-smoke.ts

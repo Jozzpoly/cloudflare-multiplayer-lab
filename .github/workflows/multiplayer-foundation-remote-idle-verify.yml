@@ -1,0 +1,46 @@
+name: Multiplayer Foundation Remote Idle Verify
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-recovery-remote
+    paths:
+      - wrangler.jsonc
+      - foundation-recovery-remote-trigger.json
+      - scripts/deploy-foundation-recovery-remote.sh
+      - scripts/build-foundation-recovery-remote.sh
+      - scripts/build-foundation-recovery-box3d.sh
+      - scripts/multiplayer-foundation-remote-idle-smoke.mjs
+      - scripts/fixtures/multiplayer-foundation-authority-constructor-remote-worker.mjs
+      - scripts/fixtures/multiplayer-foundation-authority-constructor-worker.mjs
+      - workers/foundation-recovery-remote/**
+      - .github/workflows/multiplayer-foundation-remote-idle-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify-idle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify exact idle Cloudflare deployment
+        env:
+          MW_FOUNDATION_RECOVERY_EXPECTED_BUILD: ${{ github.sha }}
+          MW_FOUNDATION_RECOVERY_OUTPUT: foundation-recovery-remote-idle-evidence.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/multiplayer-foundation-remote-idle-smoke.mjs | tee foundation-recovery-remote-idle.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: foundation-recovery-remote-idle-${{ github.run_id }}
+          path: |
+            foundation-recovery-remote-idle-evidence.json
+            foundation-recovery-remote-idle.log
+          retention-days: 30

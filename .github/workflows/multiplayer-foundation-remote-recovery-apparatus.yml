@@ -1,0 +1,73 @@
+name: Multiplayer Foundation Remote Recovery Apparatus
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-v1-2026-09-13
+    paths:
+      - .github/workflows/multiplayer-foundation-remote-recovery-apparatus.yml
+      - .github/workflows/multiplayer-foundation-remote-recovery.yml
+      - .node-version
+      - foundation-recovery-remote-trigger.json
+      - scripts/build-foundation-recovery-box3d.sh
+      - scripts/build-foundation-recovery-remote.sh
+      - scripts/deploy-foundation-recovery-remote.sh
+      - scripts/patch-foundation-recovery-deterministic-driver.py
+      - scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs
+      - scripts/fixtures/multiplayer-foundation-authority-constructor-remote-worker.mjs
+      - scripts/fixtures/multiplayer-foundation-authority-constructor-worker.mjs
+      - workers/foundation-recovery-remote/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-remote-apparatus:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Static apparatus checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat .node-version)" = "22"
+          python -m py_compile scripts/patch-foundation-recovery-deterministic-driver.py
+          bash -n scripts/build-foundation-recovery-box3d.sh
+          bash -n scripts/build-foundation-recovery-remote.sh
+          bash -n scripts/deploy-foundation-recovery-remote.sh
+          node --check scripts/multiplayer-foundation-authority-constructor-remote-smoke.mjs
+          node --check scripts/fixtures/multiplayer-foundation-authority-constructor-remote-worker.mjs
+          node --check workers/foundation-recovery-remote/worker.mjs
+          grep -q '"name": "cloudflare-multiplayer-lab-foundation-recovery"' workers/foundation-recovery-remote/wrangler.jsonc
+          grep -q '"storage": "sqlite"' workers/foundation-recovery-remote/wrangler.jsonc
+      - name: Dry-run exact Workers Builds deploy command from repository root
+        env:
+          FOUNDATION_RECOVERY_BUILD_ROOT: ${{ runner.temp }}/foundation-recovery-box3d
+          FOUNDATION_RECOVERY_REMOTE_DRY_RUN: "1"
+          FOUNDATION_RECOVERY_REMOTE_DRY_RUN_OUTDIR: ${{ runner.temp }}/foundation-recovery-remote-dry-run
+          WORKERS_CI: "1"
+          WRANGLER_CI_OVERRIDE_NAME: cloudflare-multiplayer-lab-foundation-recovery
+          WORKERS_CI_BRANCH: research/multiplayer-foundation-recovery-remote
+          WORKERS_CI_COMMIT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-foundation-recovery-remote.sh | tee foundation-recovery-remote-dry-run.log
+          test -s scripts/fixtures/box3d-byte-probe.generated.mjs
+          test -s scripts/fixtures/box3d-byte-probe.generated.wasm
+          test -s scripts/fixtures/foundation-recovery-remote-build.generated.mjs
+          grep -q "${GITHUB_SHA}" scripts/fixtures/foundation-recovery-remote-build.generated.mjs
+          grep -q 'FOUNDATION_RECOVERY_BOX3D_BUILD_PASS' foundation-recovery-remote-dry-run.log
+          grep -q 'FOUNDATION_RECOVERY_REMOTE_BUILD_METADATA_PASS' foundation-recovery-remote-dry-run.log
+          echo MULTIPLAYER_FOUNDATION_REMOTE_RECOVERY_APPARATUS_PASS
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: foundation-recovery-remote-apparatus-${{ github.run_id }}
+          path: foundation-recovery-remote-dry-run.log
+          retention-days: 14

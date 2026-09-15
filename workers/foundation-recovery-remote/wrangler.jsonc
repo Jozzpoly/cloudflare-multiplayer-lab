@@ -1,0 +1,22 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "cloudflare-multiplayer-lab-foundation-recovery",
+  "main": "./worker.mjs",
+  "compatibility_date": "2026-08-29",
+  "workers_dev": true,
+  "preview_urls": false,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "FOUNDATION_AUTHORITY_CONSTRUCTOR_TEST",
+        "class_name": "FoundationAuthorityConstructorTest"
+      }
+    ]
+  },
+  "exports": {
+    "FoundationAuthorityConstructorTest": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}

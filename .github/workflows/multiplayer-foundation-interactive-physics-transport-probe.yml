@@ -1,0 +1,41 @@
+name: Multiplayer foundation interactive physics transport probe
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-v1-2026-09-13
+    paths:
+      - .github/workflows/multiplayer-foundation-*-physics-transport-probe.yml
+      - package.json
+      - package-lock.json
+      - scripts/multiplayer-foundation-local-physics-transport-smoke.mjs
+      - scripts/fixtures/multiplayer-foundation-browser-physics-transport-client.mjs
+      - public/world-v0/box3d-i4/**
+      - src/box3d-runtime.ts
+      - src/world-v0-contract.ts
+      - src/multiplayer-foundation/**
+      - tsconfig.multiplayer-foundation-browser.json
+      - wrangler.foundation-replication-physics-test.jsonc
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  interactive-physics-transport-convergence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run real workerd + 3 Chromium + canonical non-zero input convergence specimen
+        run: node scripts/multiplayer-foundation-local-physics-transport-smoke.mjs --interactive

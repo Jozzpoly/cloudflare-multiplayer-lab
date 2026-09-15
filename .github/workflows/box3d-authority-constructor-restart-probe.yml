@@ -1,0 +1,236 @@
+name: Box3D authority constructor restart probe
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-v1-2026-09-13
+    paths:
+      - .github/workflows/box3d-authority-constructor-restart-probe.yml
+      - scripts/fixtures/multiplayer-foundation-authority-constructor-worker.mjs
+      - scripts/multiplayer-foundation-authority-constructor-restart-smoke.mjs
+      - scripts/multiplayer-foundation-authority-byte-process-smoke.ts
+      - src/multiplayer-foundation/checkpoint-store.ts
+      - src/multiplayer-foundation/checkpoint-sqlite-storage.ts
+      - src/multiplayer-foundation/engine-rebind-token.ts
+      - src/multiplayer-foundation/actor-input-registry.ts
+      - src/multiplayer-foundation/entity-topology.ts
+      - src/multiplayer-foundation/roster-machine.ts
+      - src/multiplayer-foundation/spawn-policy.ts
+      - src/multiplayer-foundation/state-guard.ts
+      - src/world-v0-contract.ts
+      - wrangler.foundation-authority-constructor-test.jsonc
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authority-constructor-restart-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout foundation repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install foundation dependencies
+        run: npm ci
+
+      - name: Install pinned Emscripten
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 6.0.2
+          "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.2
+
+      - name: Checkout exact box3d.js source and Box3D submodule
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/isaac-mason/box3d.js.git "$RUNNER_TEMP/box3d-js"
+          cd "$RUNNER_TEMP/box3d-js"
+          git checkout 5d5a3af049cccd9948b2b55bac4342414af0ef64
+          git submodule update --init --recursive
+          test "$(git rev-parse HEAD)" = "5d5a3af049cccd9948b2b55bac4342414af0ef64"
+          test "$(git -C vendor/box3d rev-parse HEAD)" = "8441b4a06d6d09dcfb0b0f704df4d847d1437b92"
+
+      - name: Add minimal recording byte bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          path = Path(os.environ['RUNNER_TEMP']) / 'box3d-js' / 'src' / 'bindings.cpp'
+          source = path.read_text()
+          needle = '\tfunction( "b3RecPlayer_CreateFromRecording(recording, workerCount)", +[]( uintptr_t rec, int workerCount ) -> uintptr_t\n\t{\n\t\tb3Recording* r = reinterpret_cast<b3Recording*>( rec );\n\t\treturn reinterpret_cast<uintptr_t>( b3RecPlayer_Create( b3Recording_GetData( r ), b3Recording_GetSize( r ), workerCount ) );\n\t} );'
+          assert needle in source, 'exact recording helper insertion point drifted'
+          bridge_lines = [
+              '',
+              '\tret_function( "b3Recording_CopyBytes(recording): Uint8Array", +[]( uintptr_t rec ) -> val',
+              '\t{',
+              '\t\tb3Recording* r = reinterpret_cast<b3Recording*>( rec );',
+              '\t\tconst uint8_t* data = b3Recording_GetData( r );',
+              '\t\tint size = b3Recording_GetSize( r );',
+              '\t\tif ( data == nullptr || size <= 0 ) return val::global( "Uint8Array" ).new_( 0 );',
+              '\t\tval view = val( typed_memory_view( (size_t)size, data ) );',
+              '\t\treturn val::global( "Uint8Array" ).new_( view );',
+              '\t} );',
+              '',
+              '\tfunction( "b3RecPlayer_CreateFromBytes(bytes, workerCount)", +[]( val bytes, int workerCount ) -> uintptr_t',
+              '\t{',
+              '\t\tint size = bytes["byteLength"].as<int>();',
+              '\t\tif ( size <= 0 ) return 0;',
+              '\t\tstd::vector<uint8_t> copy( (size_t)size );',
+              '\t\tval view = val( typed_memory_view( (size_t)size, copy.data() ) );',
+              '\t\tview.call<void>( "set", bytes );',
+              '\t\treturn reinterpret_cast<uintptr_t>( b3RecPlayer_Create( copy.data(), size, workerCount ) );',
+              '\t} );',
+          ]
+          path.write_text(source.replace(needle, needle + '\n' + '\n'.join(bridge_lines)))
+          PY
+
+      - name: Make candidate build CSP-safe for workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'box3d-js'
+
+          build_path = root / 'scripts' / 'build.mjs'
+          build_source = build_path.read_text()
+          flag_anchor = "\t'-sFILESYSTEM=0',\n"
+          assert build_source.count(flag_anchor) == 1, 'common Emscripten flags insertion point drifted'
+          build_source = build_source.replace(flag_anchor, flag_anchor + "\t'-sDYNAMIC_EXECUTION=0',\n", 1)
+          build_path.write_text(build_source)
+
+          facade_path = root / 'src' / 'facade.js'
+          facade_source = facade_path.read_text()
+          start_marker = "\tconst makeOutParamReader = ( rawInto, sizes, trailing ) =>\n\t{\n"
+          end_marker = "\n\n\t// Install a public reader per binding-site entry; capture + strip the raw `*Into`."
+          start = facade_source.index(start_marker)
+          end = facade_source.index(end_marker, start)
+          original = facade_source[start:end]
+          assert 'return new Function(' in original, 'expected facade runtime codegen not found'
+          replacement_lines = [
+              '\tconst makeOutParamReader = ( rawInto, sizes, trailing ) =>',
+              '\t{',
+              '\t\tlet byteOff = 0;',
+              '\t\tconst slotPtrs = sizes.map( ( n ) => { const p = SCRATCH + byteOff; byteOff += n * 4; return p; } );',
+              '\t\tlet elemOff = 0;',
+              '\t\tconst elemBases = sizes.map( ( n ) => { const base = SCRATCH_F32 + elemOff; elemOff += n; return base; } );',
+              '',
+              '\t\treturn ( ...args ) =>',
+              '\t\t{',
+              '\t\t\tconst outs = args.slice( 0, sizes.length );',
+              '\t\t\tconst trail = args.slice( sizes.length, sizes.length + trailing );',
+              '\t\t\trawInto( ...slotPtrs, ...trail );',
+              '\t\t\tconst h = getF32();',
+              '\t\t\tfor ( let i = 0; i < sizes.length; i++ )',
+              '\t\t\t{',
+              '\t\t\t\tconst out = outs[ i ];',
+              '\t\t\t\tconst base = elemBases[ i ];',
+              '\t\t\t\tfor ( let k = 0; k < sizes[ i ]; k++ ) out[ k ] = h[ base + k ];',
+              '\t\t\t}',
+              '\t\t\treturn outs.length === 1 ? outs[ 0 ] : outs;',
+              '\t\t};',
+              '\t};',
+          ]
+          replacement = '\n'.join(replacement_lines)
+          facade_source = facade_source[:start] + replacement + facade_source[end:]
+          assert 'return new Function(' not in facade_source, 'facade runtime codegen remains after CSP patch'
+          facade_path.write_text(facade_source)
+          PY
+
+      - name: Build exact byte-capable CSP-safe source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh" >/dev/null
+          corepack enable
+          corepack prepare pnpm@10.32.1 --activate
+          cd "$RUNNER_TEMP/box3d-js"
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Stage workerd-compatible JS and precompiled Wasm modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          source_path = Path(os.environ['RUNNER_TEMP']) / 'box3d-js' / 'dist' / 'box3d.mjs'
+          destination = Path('scripts/fixtures/box3d-byte-probe.generated.mjs')
+          source = source_path.read_text()
+          needle = '_scriptName.startsWith('
+          count = source.count(needle)
+          assert count == 1, f'expected exactly one Emscripten _scriptName.startsWith guard, found {count}'
+          source = source.replace(needle, '_scriptName?.startsWith(', 1)
+          destination.write_text(source)
+          PY
+          cp "$RUNNER_TEMP/box3d-js/dist/box3d.wasm" scripts/fixtures/box3d-byte-probe.generated.wasm
+
+      # The original synthetic orbit used Math.cos/sin and exposed a host-JS
+      # Node↔workerd numeric confounder in input digests while restored physics,
+      # roster and topology were still exact. This qualification driver uses
+      # integer-selected cardinal inputs so the stimulus itself is bit-exact.
+      - name: Make cross-runtime authority test inputs deterministic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              Path('scripts/multiplayer-foundation-authority-byte-process-smoke.ts'),
+              Path('scripts/fixtures/multiplayer-foundation-authority-constructor-worker.mjs'),
+          ]
+          old = '\n'.join([
+              '  const ordinal = Number(actorId.slice("actor:".length));',
+              '  const angle = ordinal * 1.618 + targetTick * 0.031;',
+              '  return [Math.cos(angle), Math.sin(angle)];',
+          ])
+          new = '\n'.join([
+              '  const ordinal = Number(actorId.slice("actor:".length));',
+              '  const phase = (ordinal + targetTick) & 3;',
+              '  if (phase === 0) return [1, 0];',
+              '  if (phase === 1) return [0, 1];',
+              '  if (phase === 2) return [-1, 0];',
+              '  return [0, -1];',
+          ])
+          for path in paths:
+              source = path.read_text()
+              assert source.count(old) == 1, f'deterministic-input insertion point drifted in {path}'
+              patched = source.replace(old, new, 1)
+              assert old not in patched, f'original transcendental driver remains in {path}'
+              assert 'Math.cos(angle)' not in patched and 'Math.sin(angle)' not in patched, f'transcendental driver remains in {path}'
+              assert patched.count(new) == 1, f'deterministic-input replacement count wrong in {path}'
+              path.write_text(patched)
+          PY
+
+      - name: Generate and independently verify full authority envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          rm -rf node_modules/box3d.js
+          ln -s "$RUNNER_TEMP/box3d-js" node_modules/box3d.js
+          node --experimental-strip-types scripts/multiplayer-foundation-authority-byte-process-smoke.ts "$RUNNER_TEMP/authority-envelope.json"
+
+      - name: Exercise full authority restore in fresh Durable Object constructor
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          node scripts/multiplayer-foundation-authority-constructor-restart-smoke.mjs "$RUNNER_TEMP/authority-envelope.json"

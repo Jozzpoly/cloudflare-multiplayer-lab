@@ -26,7 +26,11 @@ jobs:
       - name: Prove history-safety detector can escalate while socket is open
         env:
           MW_WORLD_V0_RECOVERY_SPECIFICITY_OUTPUT: world-v0-smoothness-recovery-specificity.json
-        run: node --experimental-strip-types scripts/world-v0-smoothness-recovery-specificity-probe.mjs | tee world-v0-smoothness-recovery-specificity.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/world-v0-smoothness-recovery-specificity-probe.mjs | tee world-v0-smoothness-recovery-specificity.log
+          grep -q 'RECOVERY_SPECIFICITY_GAP_PROVEN' world-v0-smoothness-recovery-specificity.log
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v6

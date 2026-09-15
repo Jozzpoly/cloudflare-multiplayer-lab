@@ -38,7 +38,21 @@ jobs:
         run: npm ci
 
       - name: Materialize bounded R0-B1 patch in runner
-        run: python3 scripts/materialize-world-v0-lifecycle-r0b1.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/materialize-world-v0-lifecycle-r0b1.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/world-v0-shared-yard.ts')
+          text = path.read_text()
+          old = 'if (this.lifecycleR0 && message.type !== "world_v0_ping") {'
+          new = 'if (this.lifecycleR0) {'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'R0-B1 ping narrowing fix expected one match, found {count}')
+          path.write_text(text.replace(old, new, 1))
+          PY
 
       - name: Prove patch scope is bounded
         shell: bash

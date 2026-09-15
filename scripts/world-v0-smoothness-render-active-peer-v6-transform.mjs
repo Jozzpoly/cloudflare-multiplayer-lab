@@ -32,6 +32,14 @@ replaceOnce("c.value='V4Browser'", "c.value='V6Browser'", "browser name");
 replaceOnce("world-v0-smoothness-render-discontinuity-v4-single-renderer-raw-peer", "world-v0-smoothness-render-active-peer-v6", "result revision");
 replaceOnce("Node WebSocket protocol peer with zero canonical input", "Node WebSocket protocol peer with alternating mutable future input and legal supersession", "apparatus description");
 
+// Keep timeout failures evidential: the old helper only retained the boolean predicate result,
+// which made a bootstrap regression indistinguishable from a stale assertion.
+replaceOnce(
+  "  throw new Error(`${label} timeout last=${JSON.stringify(last)}`);",
+  "  let debug = null;\n  try {\n    debug = await cdp.eval(page.sessionId, \"(() => ({ href: location.href, readyState: document.readyState, bodyText: document.body?.innerText?.slice(0, 2500) ?? '', evidence: window.__sharedYardV0Evidence?.() ?? null, renderProbeV3: typeof window.__mwRenderProbeV3StartSampler, renderProbeV6: typeof window.__mwRenderProbeV6ReadCorrections }))()\");\n  } catch (debugError) {\n    debug = { diagnosticReadFailed: debugError instanceof Error ? debugError.message : String(debugError) };\n  }\n  throw new Error(`${label} timeout last=${JSON.stringify(last)} debug=${JSON.stringify(debug)}`);",
+  "timeout evidence dump"
+);
+
 // V4 applies artificial latency before the browser even enters the world. That mixes the
 // already-proven authority-silence/recovery pathology into a reconciliation experiment.
 // V6 bootstraps the solo + topology-2 state at ordinary local latency, then applies the exact

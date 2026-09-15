@@ -1,0 +1,82 @@
+name: World V0 smoothness active-peer render v6
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-render-active-peer-v6.yml
+      - scripts/world-v0-smoothness-render-discontinuity-v4-probe.mjs
+      - scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v3.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v5.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v6.mjs
+      - public/world-v0/app.js
+      - public/world-v0/playable-control.js
+      - public/world-v0/build-contract.js
+      - src/world-v0-contract.ts
+      - src/world-v0-protocol.ts
+      - src/world-v0-shared-yard.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  active-peer-render-v6:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Prepare test-only render instrumentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-install-render-probe-v3.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v5.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v6.mjs
+          node scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs
+          node --check /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs
+      - name: Start instrumented local Workerd copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-render-v6-wrangler.log 2>&1 &
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-render-v6-wrangler.log
+          exit 1
+      - name: Capture one-renderer active-peer correction-vector evidence
+        env:
+          MW_WORLD_V0_RENDER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RENDER_LATENCY_MS: 90
+          MW_WORLD_V0_RENDER_STRESS_MS: 9000
+          MW_WORLD_V0_RENDER_OUTPUT: world-v0-smoothness-render-active-peer-v6.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 240s node /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs | tee world-v0-smoothness-render-active-peer-v6.log
+          test -s world-v0-smoothness-render-active-peer-v6.json
+          grep -Eq 'SINGLE_RENDERER_NEGATIVE_CONTROL_DISCONTINUITY_REPRODUCED|SINGLE_RENDERER_NEGATIVE_CONTROL_NOT_REPRODUCED' world-v0-smoothness-render-active-peer-v6.log
+      - name: Restore canonical runtime source
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove repository source is unchanged
+        if: always()
+        run: git diff --exit-code
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-render-active-peer-v6-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-smoothness-render-active-peer-v6.json
+            world-v0-smoothness-render-active-peer-v6.log
+            world-v0-render-v6-wrangler.log

@@ -1,0 +1,41 @@
+name: World V0 smoothness consumed-after-peer falsifier
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-consumed-after-peer.yml
+      - scripts/world-v0-smoothness-consumed-after-peer-probe.mjs
+      - src/world-v0-protocol.ts
+      - public/world-v0/app.js
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  consumed-after-peer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Falsify generic peer-record plus consumed double correction
+        shell: bash
+        env:
+          MW_WORLD_V0_CONSUMED_AFTER_PEER_OUTPUT: world-v0-smoothness-consumed-after-peer.json
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types scripts/world-v0-smoothness-consumed-after-peer-probe.mjs | tee world-v0-smoothness-consumed-after-peer.log
+          grep -q 'HEALTHY_REMOTE_RELAY_DOES_NOT_GENERICALLY_DOUBLE_CORRECT_ON_CONSUMED' world-v0-smoothness-consumed-after-peer.log
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-consumed-after-peer-${{ github.run_id }}
+          path: |
+            world-v0-smoothness-consumed-after-peer.json
+            world-v0-smoothness-consumed-after-peer.log

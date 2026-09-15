@@ -15,6 +15,11 @@ const ALLOWED = {
     ["/health", "GET"],
     ["/resume", "POST"],
   ]),
+  hibernate: new Map([
+    ["/health", "GET"],
+    ["/publish-envelope", "POST"],
+    ["/resume", "POST"],
+  ]),
 };
 
 function json(value, status = 200) {

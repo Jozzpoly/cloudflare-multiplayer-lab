@@ -11,6 +11,7 @@ on:
       - scripts/build-foundation-recovery-remote.sh
       - scripts/build-foundation-recovery-box3d.sh
       - scripts/multiplayer-foundation-remote-idle-smoke.mjs
+      - scripts/multiplayer-foundation-authority-constructor-remote-hibernation-smoke.mjs
       - scripts/fixtures/multiplayer-foundation-authority-constructor-remote-worker.mjs
       - scripts/fixtures/multiplayer-foundation-authority-constructor-worker.mjs
       - workers/foundation-recovery-remote/**
@@ -33,7 +34,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PHASE="$(node -e "const fs=require('fs'); const trigger=JSON.parse(fs.readFileSync('foundation-recovery-remote-trigger.json','utf8')); const phase=trigger.phase; if (!['idle','seed','resume'].includes(phase)) process.exit(2); process.stdout.write(phase);")"
+          PHASE="$(node -e "const fs=require('fs'); const trigger=JSON.parse(fs.readFileSync('foundation-recovery-remote-trigger.json','utf8')); const phase=trigger.phase; if (!['idle','seed','resume','hibernate'].includes(phase)) process.exit(2); process.stdout.write(phase);")"
           echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
           echo "Recovery trigger phase: $PHASE"
       - name: Skip idle smoke for armed recovery phase

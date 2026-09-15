@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -18,8 +19,7 @@ const RUN = `reconnect-midprogress-${Date.now().toString(36)}`;
 const WORLD_ID = `foundation-physics-replication-${RUN}`;
 const SESSIONS = ["session-alpha", "session-bravo", "session-charlie"] as const;
 const RECONNECT_SESSION = "session-bravo";
-const EXPECTED_FINAL_SEED_FNV1A32 = "b98daa7d";
-const EXPECTED_FINAL_SEED_BYTES = 35153;
+const EXPECTED_FINAL_STATE_GUARD_SHA256 = "1d76b17f64630dad372d1166806a7aee9f3ed500cc8ee4fc2d6a2d898cc205d6";
 const INPUTS = [
   { x: 0.8, z: 0.6 },
   { x: -0.8, z: 0.6 },
@@ -34,6 +34,10 @@ const PERSIST_DIR = mkdtempSync(join(tmpdir(), "mw-foundation-midprogress-do-"))
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+function sha256Text(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function boundedAppend(current: string, chunk: unknown): string {
@@ -440,8 +444,9 @@ try {
 
   // Batch 3 (ticks 34..48) was accepted before hibernation and exists only in
   // the bounded progress overlay above the tick-33 exact base. Batch 4 completes
-  // the segment after restore; exact final seed equality proves the old inputs
-  // were not merely counted but were actually consumed by future physics.
+  // the segment after restore. Exact final state identity plus a second natural
+  // hibernation proves those inputs affected physics and that the resulting
+  // Recording seed can reconstruct the durable tick-63 authority boundary.
   for (const client of clients) client.sendBatch(4, 49);
   for (const client of clients) {
     await waitForClient(client, (state) => state.correctionTick === 63, "phase-2 correction after mid-progress restore");
@@ -461,8 +466,9 @@ try {
     "exact continuation after mid-progress hibernation",
   );
 
-  assert.equal(final.finalSeedBytes, EXPECTED_FINAL_SEED_BYTES);
-  assert.equal(final.finalSeedFnv1a32, EXPECTED_FINAL_SEED_FNV1A32);
+  assert.equal(sha256Text(final.finalGuardPacked), EXPECTED_FINAL_STATE_GUARD_SHA256);
+  assert(Number.isSafeInteger(final.finalSeedBytes) && final.finalSeedBytes > 0);
+  assert.match(final.finalSeedFnv1a32, /^[0-9a-f]{8}$/);
   assert.equal(final.topologyRevision, 3);
   assert.equal(final.topologyDigest, phase1.topologyDigest);
   assert.deepEqual(final.resumedSessions, [RECONNECT_SESSION]);
@@ -478,6 +484,44 @@ try {
     assert.equal(state.actorId, actorIdentity.get(client.actorSessionId));
   }
   assert.equal(reconnectClient.state.resumeSyncs, 1);
+
+  const finalConstructorBefore = final.constructorNonce;
+  let finalRestored: any = null;
+  for (let window = 1; window <= 3; window += 1) {
+    await sleep(18_000);
+    const observed = await rawStatus();
+    assert.equal(observed.status, 200, JSON.stringify(observed.body));
+    if (observed.body?.constructorNonce !== finalConstructorBefore) {
+      finalRestored = observed.body;
+      break;
+    }
+    assert.equal(observed.body.boundaryTick, 63);
+    assert.equal(observed.body.checkpointGeneration, 2);
+    assert.equal(sha256Text(observed.body.finalGuardPacked), EXPECTED_FINAL_STATE_GUARD_SHA256);
+  }
+
+  assert(finalRestored, "workerd did not hibernate the final authority within bounded quiet windows");
+  assert.equal(finalRestored.restoreState, "restored");
+  assert.equal(finalRestored.restoreError, null);
+  assert.notEqual(finalRestored.constructorNonce, finalConstructorBefore);
+  assert.equal(finalRestored.recoveredSocketBindings, 3);
+  assert.equal(finalRestored.connectedTransports, 3);
+  assert.equal(finalRestored.readyCurrentTopology, 3);
+  assert.equal(finalRestored.boundaryTick, 63);
+  assert.equal(finalRestored.checkpointGeneration, 2);
+  assert.equal(finalRestored.restoredCheckpointTick, 63);
+  assert.equal(finalRestored.inputBatches, 12);
+  assert.equal(finalRestored.acceptedInputRecords, 180);
+  assert.equal(finalRestored.committedInputRecords, 180);
+  assert.equal(finalRestored.inputCommitsSent, 36);
+  assert.equal(finalRestored.continuationTicks, 60);
+  assert.equal(finalRestored.resumeSyncs, 1);
+  assert.deepEqual(finalRestored.resumedSessions, [RECONNECT_SESSION]);
+  assert.equal(finalRestored.finalGuardPacked, final.finalGuardPacked);
+  assert.equal(sha256Text(finalRestored.finalGuardPacked), EXPECTED_FINAL_STATE_GUARD_SHA256);
+  for (const actor of finalRestored.actors) {
+    assert.equal(actor.actorId, actorIdentity.get(actor.actorSessionId), `final restored ActorId drift for ${actor.actorSessionId}`);
+  }
 
   console.log("MULTIPLAYER_FOUNDATION_MIDPROGRESS_HIBERNATION_RECOVERY_PASS", JSON.stringify({
     run: RUN,
@@ -503,9 +547,12 @@ try {
     finalCommittedInputRecords: final.committedInputRecords,
     finalInputCommitsSent: final.inputCommitsSent,
     continuationTicks: final.continuationTicks,
-    finalSeedBytes: final.finalSeedBytes,
-    finalSeedFnv1a32: final.finalSeedFnv1a32,
-    exactReferenceSeedFnv1a32: EXPECTED_FINAL_SEED_FNV1A32,
+    finalGuardSha256: sha256Text(final.finalGuardPacked),
+    finalRecordingSeedBytes: final.finalSeedBytes,
+    finalRecordingSeedFnv1a32: final.finalSeedFnv1a32,
+    finalConstructorBeforeHibernation: finalConstructorBefore,
+    finalConstructorAfterHibernation: finalRestored.constructorNonce,
+    finalRestoreState: finalRestored.restoreState,
     clients: clients.map((client) => ({
       actorSessionId: client.actorSessionId,
       actorId: client.state.actorId,

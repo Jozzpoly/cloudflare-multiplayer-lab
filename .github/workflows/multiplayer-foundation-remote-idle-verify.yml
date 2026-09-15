@@ -20,6 +20,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: multiplayer-foundation-remote-idle-verify-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify-idle:
     runs-on: ubuntu-24.04

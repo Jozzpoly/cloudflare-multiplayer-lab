@@ -19,6 +19,7 @@ cd "$REPO_ROOT"
 cmp -s wrangler.jsonc "$ROOT_RECOVERY_CONFIG_TEMPLATE"
 
 npm ci
+bash scripts/build-foundation-recovery-remote.sh
 
-echo "FOUNDATION_RECOVERY_WORKERS_BUILD_NPM_CI_PROBE_PASS"
+echo "FOUNDATION_RECOVERY_WORKERS_BUILD_ARTIFACT_PROBE_PASS"
 exit 0

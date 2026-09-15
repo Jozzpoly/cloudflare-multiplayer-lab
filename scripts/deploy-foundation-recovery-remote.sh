@@ -6,6 +6,8 @@ EXPECTED_BRANCH="research/multiplayer-foundation-recovery-remote"
 RECOVERY_CONFIG="workers/foundation-recovery-remote/wrangler.jsonc"
 ROOT_RECOVERY_CONFIG_TEMPLATE="workers/foundation-recovery-remote/wrangler.repository-root.jsonc"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/foundation-recovery-box3d"
+EMSDK_DIR="$BUILD_ROOT/emsdk"
 cd "$REPO_ROOT"
 
 [[ "${WORKERS_CI:-}" == "1" ]]
@@ -17,8 +19,11 @@ cd "$REPO_ROOT"
 [[ -f "$ROOT_RECOVERY_CONFIG_TEMPLATE" ]]
 cmp -s wrangler.jsonc "$ROOT_RECOVERY_CONFIG_TEMPLATE"
 
-npm ci
-bash scripts/build-foundation-recovery-box3d.sh
+rm -rf "$BUILD_ROOT"
+mkdir -p "$BUILD_ROOT"
+git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$EMSDK_DIR"
+"$EMSDK_DIR/emsdk" install 6.0.2
+"$EMSDK_DIR/emsdk" activate 6.0.2
 
-echo "FOUNDATION_RECOVERY_WORKERS_BUILD_BOX3D_PROBE_PASS"
+echo "FOUNDATION_RECOVERY_WORKERS_BUILD_EMSDK_BOOTSTRAP_PROBE_PASS"
 exit 0

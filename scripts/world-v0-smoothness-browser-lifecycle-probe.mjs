@@ -52,10 +52,15 @@ class Cdp {
 }
 
 async function createPage(cdp, name) {
-  const { targetId } = await cdp.call("Target.createTarget", { url: `${BASE}/world-v0/` });
+  // Separate browser contexts are essential: the product deliberately treats two
+  // same-profile tabs as the same human/ActorSession and performs live rebind.
+  // We need independent identities while keeping both tabs in one Chrome process
+  // so normal visibility/background scheduling still applies.
+  const { browserContextId } = await cdp.call("Target.createBrowserContext", {});
+  const { targetId } = await cdp.call("Target.createTarget", { url: `${BASE}/world-v0/`, browserContextId });
   const { sessionId } = await cdp.call("Target.attachToTarget", { targetId, flatten: true });
   await cdp.call("Runtime.enable", {}, sessionId); await cdp.call("Page.enable", {}, sessionId);
-  return { name, targetId, sessionId };
+  return { name, targetId, sessionId, browserContextId };
 }
 async function waitFor(cdp, page, expression, label, timeoutMs = 45_000) {
   const deadline = Date.now() + timeoutMs; let last = null;
@@ -95,6 +100,9 @@ try {
     waitFor(cdp, a, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.lifecycle?.topology?.revision===2 && e.presentation?.remotePresence==='PEER' && e.metrics.guardMismatches===0; })()`, "A topology2"),
     waitFor(cdp, b, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.lifecycle?.topology?.revision===2 && e.presentation?.remotePresence==='PEER' && e.metrics.guardMismatches===0; })()`, "B topology2"),
   ]);
+  const joinedA = await evidence(cdp, a); const joinedB = await evidence(cdp, b);
+  assert(joinedA.session.actorSessionId !== joinedB.session.actorSessionId, "browser contexts did not isolate ActorSession identity");
+  assert(joinedA.identity.worldEpoch === joinedB.identity.worldEpoch, "independent contexts did not join same WorldEpoch");
 
   await cdp.call("Target.activateTarget", { targetId: a.targetId });
   await sleep(150);
@@ -138,10 +146,12 @@ try {
   assert(finalB.metrics.guardMismatches === 0, "exact state diverged during lifecycle probe");
 
   const result = {
-    revision: "world-v0-smoothness-browser-lifecycle-v1",
+    revision: "world-v0-smoothness-browser-lifecycle-v2-isolated-contexts",
     chromeVersion: (spawnSync(chrome, ["--version"], { encoding: "utf8" }).stdout || "unknown").trim(),
     antiBackgroundFlagsUsed: false,
+    browserContexts: 2,
     hiddenMs: HIDDEN_MS,
+    identity: { independentActorSessions: true, sameWorldEpoch: true },
     visibility: { activeA: visA, backgroundB: visB },
     hiddenInterval: {
       localBoundaryBefore: hiddenBefore.localBoundaryTick,
@@ -170,5 +180,8 @@ try {
   if (cdp) for (const page of pages) { try { failure.pages.push({ name: page.name, visibility: await visibility(cdp, page), evidence: await evidence(cdp, page) }); } catch {} }
   writeFileSync(OUTPUT, JSON.stringify(failure, null, 2)); console.error(failure.error); process.exitCode = 1;
 } finally {
+  if (cdp) {
+    for (const page of pages) { try { await cdp.call("Target.disposeBrowserContext", { browserContextId: page.browserContextId }); } catch {} }
+  }
   cdp?.close(); if (child.exitCode === null) child.kill("SIGKILL"); await sleep(100); try { rmSync(profile, { recursive: true, force: true }); } catch {}
 }

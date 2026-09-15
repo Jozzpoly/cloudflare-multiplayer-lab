@@ -18,15 +18,21 @@ export type WorldV0Identity = {
   clientSimRevision: string;
 };
 
+// WORLD_V0_LIFECYCLE_R0_TOPOLOGY_PROTOCOL_V1
+export type WorldV0TopologyIdentity = {
+  topologyRevision: number;
+  topologyDigest: string;
+};
+
 export type WorldV0InputValue = { x: number; z: number; jump?: boolean };
 export type WorldV0InputRecord = WorldV0InputValue & { targetTick: number };
-export type WorldV0InputBatch = WorldV0Identity & {
+export type WorldV0InputBatch = WorldV0Identity & Partial<WorldV0TopologyIdentity> & {
   type: "world_v0_input_batch";
   batchSeq: number;
   records: WorldV0InputRecord[];
 };
 export type WorldV0Ping = { type: "world_v0_ping"; id: string };
-export type WorldV0Ready = WorldV0Identity & { type: "world_v0_ready" };
+export type WorldV0Ready = WorldV0Identity & Partial<WorldV0TopologyIdentity> & { type: "world_v0_ready" };
 export type WorldV0ClientMessage = WorldV0InputBatch | WorldV0Ping | WorldV0Ready;
 
 export type WorldV0RecordStatus =
@@ -98,6 +104,18 @@ function parseIdentity(value: Record<string, unknown>): WorldV0Identity | null {
   };
 }
 
+function parseOptionalTopologyIdentity(
+  value: Record<string, unknown>,
+): WorldV0TopologyIdentity | undefined | null {
+  const hasRevision = "topologyRevision" in value;
+  const hasDigest = "topologyDigest" in value;
+  if (!hasRevision && !hasDigest) return undefined;
+  if (!hasRevision || !hasDigest) return null;
+  if (!isFiniteInteger(value.topologyRevision) || value.topologyRevision <= 0) return null;
+  if (!isIdentityString(value.topologyDigest)) return null;
+  return { topologyRevision: value.topologyRevision, topologyDigest: value.topologyDigest };
+}
+
 export function expectedWorldV0Identity(worldId: string, worldEpoch: string): WorldV0Identity {
   return {
     worldId,
@@ -144,12 +162,17 @@ export function parseWorldV0ClientMessage(raw: string): WorldV0ClientMessage | n
 
   if (record.type === "world_v0_ready") {
     const identity = parseIdentity(record);
-    return identity ? { type: "world_v0_ready", ...identity } : null;
+    if (!identity) return null;
+    const topology = parseOptionalTopologyIdentity(record);
+    if (topology === null) return null;
+    return { type: "world_v0_ready", ...identity, ...(topology ?? {}) };
   }
 
   if (record.type !== "world_v0_input_batch") return null;
   const identity = parseIdentity(record);
   if (!identity) return null;
+  const topology = parseOptionalTopologyIdentity(record);
+  if (topology === null) return null;
   if (!isFiniteInteger(record.batchSeq) || record.batchSeq <= 0) return null;
   if (!Array.isArray(record.records)) return null;
   if (record.records.length < 1 || record.records.length > WORLD_V0_INPUT_BATCH_SIZE) return null;
@@ -169,7 +192,7 @@ export function parseWorldV0ClientMessage(raw: string): WorldV0ClientMessage | n
     if (records[index].targetTick !== records[index - 1].targetTick + 1) return null;
   }
 
-  return { type: "world_v0_input_batch", ...identity, batchSeq: record.batchSeq, records };
+  return { type: "world_v0_input_batch", ...identity, ...(topology ?? {}), batchSeq: record.batchSeq, records };
 }
 
 export class WorldV0ScheduledInputBuffer {
@@ -275,6 +298,12 @@ export class WorldV0ScheduledInputBuffer {
       source: "held",
       missingStreak: this.missingStreak,
     };
+  }
+
+  resetForTopology(): void {
+    this.pending.clear();
+    this.consumed = { x: 0, z: 0, jump: false };
+    this.missingStreak = 0;
   }
 
   stats(): WorldV0InputBufferStats {

@@ -1,0 +1,11 @@
+{
+  "name": "cloudflare-multiplayer-lab-foundation-recovery",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "wrangler": "4.127.1"
+  }
+}

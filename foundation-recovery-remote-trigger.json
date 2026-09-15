@@ -1,6 +1,6 @@
 {
-  "revision": "multiplayer-foundation-remote-recovery-trigger-v2",
-  "campaignId": "unarmed",
-  "phase": "idle",
-  "expectedPreviousInstanceNonce": null
+    "revision": "multiplayer-foundation-remote-recovery-trigger-v2",
+    "campaignId": "unarmed",
+    "phase": "idle",
+    "expectedPreviousInstanceNonce": null
 }

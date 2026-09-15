@@ -1,0 +1,69 @@
+name: World V0 smoothness render discontinuity v3
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-render-discontinuity-v3.yml
+      - scripts/world-v0-smoothness-render-discontinuity-v3-probe.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v3.mjs
+      - public/world-v0/app.js
+      - public/world-v0/playable-control.js
+      - src/world-v0-contract.ts
+      - src/world-v0-protocol.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render-discontinuity-v3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Install low-overhead test-only render hook
+        run: node scripts/world-v0-smoothness-install-render-probe-v3.mjs
+      - name: Start instrumented local Workerd copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-render-v3-wrangler.log 2>&1 &
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-render-v3-wrangler.log
+          exit 1
+      - name: Measure rendered discontinuity without CDP hot-loop interference
+        env:
+          MW_WORLD_V0_RENDER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RENDER_LATENCY_MS: 90
+          MW_WORLD_V0_RENDER_STRESS_MS: 4500
+          MW_WORLD_V0_RENDER_OUTPUT: world-v0-smoothness-render-discontinuity-v3.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 180s node scripts/world-v0-smoothness-render-discontinuity-v3-probe.mjs | tee world-v0-smoothness-render-discontinuity-v3.log
+          grep -Eq 'RENDER_CADENCE_CORRECTION_DISCONTINUITY_REPRODUCED|NEGATIVE_CONTROL_PRESSURE_OR_RENDER_DISCONTINUITY_NOT_REPRODUCED' world-v0-smoothness-render-discontinuity-v3.log
+      - name: Restore canonical runtime source
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove repository source is unchanged
+        if: always()
+        run: git diff --exit-code
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-render-discontinuity-v3-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-smoothness-render-discontinuity-v3.json
+            world-v0-smoothness-render-discontinuity-v3.log
+            world-v0-render-v3-wrangler.log

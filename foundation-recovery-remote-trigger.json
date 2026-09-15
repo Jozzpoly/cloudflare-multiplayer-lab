@@ -1,6 +1,6 @@
 {
   "revision": "multiplayer-foundation-remote-recovery-trigger-v2",
-  "campaignId": "r2-hibernate-20260915",
-  "phase": "hibernate",
+  "campaignId": "unarmed",
+  "phase": "idle",
   "expectedPreviousInstanceNonce": null
 }

@@ -1,0 +1,70 @@
+name: Multiplayer Foundation Mid-progress Oracle Diagnostic
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-v1-2026-09-13
+    paths:
+      - .github/workflows/multiplayer-foundation-midprogress-oracle-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  reconnect-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Instrument passing reconnect control in runner only
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/multiplayer-foundation-local-reconnect-physics-transport-smoke.mjs')
+          text = path.read_text()
+          needle = '    finalSeedBytes: finalAuthority.finalSeedBytes,\n'
+          replacement = '    finalGuardPacked: finalAuthority.finalGuardPacked,\n' + needle
+          assert needle in text
+          path.write_text(text.replace(needle, replacement, 1))
+          PY
+      - name: Run passing hibernation reconnect control
+        run: node scripts/multiplayer-foundation-local-reconnect-physics-transport-smoke.mjs
+
+  midprogress-observation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Instrument red mid-progress falsifier in runner only
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/multiplayer-foundation-midprogress-hibernation-probe.ts')
+          text = path.read_text()
+          needle = '  assert.equal(final.finalSeedBytes, EXPECTED_FINAL_SEED_BYTES);\n'
+          marker = '''  console.log("MIDPROGRESS_ORACLE_DIAGNOSTIC", JSON.stringify({\n    finalGuardPacked: final.finalGuardPacked,\n    finalSeedBytes: final.finalSeedBytes,\n    finalSeedFnv1a32: final.finalSeedFnv1a32,\n  }));\n'''
+          assert needle in text
+          path.write_text(text.replace(needle, marker + needle, 1))
+          PY
+      - name: Observe existing mid-progress mismatch without promoting it to PASS
+        shell: bash
+        run: |
+          set +e
+          node --experimental-strip-types scripts/multiplayer-foundation-midprogress-hibernation-probe.ts 2>&1 | tee midprogress-oracle.log
+          status=${PIPESTATUS[0]}
+          set -e
+          grep 'MIDPROGRESS_ORACLE_DIAGNOSTIC' midprogress-oracle.log
+          echo "MIDPROGRESS_EXISTING_RESULT_STATUS=$status"
+          if [ "$status" -eq 0 ]; then
+            echo "Historical red path unexpectedly passed; treat this as a finding, not as an assumed failure."
+          fi

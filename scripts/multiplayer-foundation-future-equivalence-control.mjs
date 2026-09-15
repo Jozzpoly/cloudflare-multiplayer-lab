@@ -20,7 +20,7 @@ globalThis.fetch = async (...args) => {
     if (url.includes("/foundation-physics/status")) {
       const body = await response.clone().json();
       const diagnostic = body?.diagnosticFuture;
-      if (diagnostic?.revision === "multiplayer-foundation-future-equivalence-v1") {
+      if (diagnostic?.revision === "multiplayer-foundation-future-equivalence-v2") {
         const evidence = {
           sourceSeedBytes: diagnostic.sourceSeedBytes,
           sourceSeedFnv1a32: diagnostic.sourceSeedFnv1a32,
@@ -29,6 +29,11 @@ globalThis.fetch = async (...args) => {
           futureSeedBytes: diagnostic.futureSeedBytes,
           futureSeedFnv1a32: diagnostic.futureSeedFnv1a32,
           futurePhysicsSteps: diagnostic.futurePhysicsSteps,
+          secondInitialGuardSha256: createHash("sha256").update(diagnostic.secondInitialGuardPacked).digest("hex"),
+          secondFutureGuardSha256: createHash("sha256").update(diagnostic.secondFutureGuardPacked).digest("hex"),
+          secondFutureSeedBytes: diagnostic.secondFutureSeedBytes,
+          secondFutureSeedFnv1a32: diagnostic.secondFutureSeedFnv1a32,
+          secondFuturePhysicsSteps: diagnostic.secondFuturePhysicsSteps,
         };
         const key = JSON.stringify(evidence);
         if (key !== emittedKey) {

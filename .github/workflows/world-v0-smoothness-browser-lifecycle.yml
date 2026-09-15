@@ -38,7 +38,11 @@ jobs:
           MW_WORLD_V0_LIFECYCLE_BASE: http://127.0.0.1:8787
           MW_WORLD_V0_LIFECYCLE_HIDDEN_MS: 5000
           MW_WORLD_V0_LIFECYCLE_OUTPUT: world-v0-smoothness-browser-lifecycle.json
-        run: timeout 120s node scripts/world-v0-smoothness-browser-lifecycle-probe.mjs | tee world-v0-smoothness-browser-lifecycle.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120s node scripts/world-v0-smoothness-browser-lifecycle-probe.mjs | tee world-v0-smoothness-browser-lifecycle.log
+          grep -q 'NORMAL_BROWSER_BACKGROUND_STALENESS_REPRODUCED' world-v0-smoothness-browser-lifecycle.log
       - name: Prove diagnostic did not modify runtime
         run: git diff --exit-code
       - name: Upload evidence

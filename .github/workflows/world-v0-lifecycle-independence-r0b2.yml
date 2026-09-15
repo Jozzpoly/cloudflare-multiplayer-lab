@@ -1,0 +1,140 @@
+name: World V0 lifecycle independence R0-B2 browser gate
+
+on:
+  push:
+    branches:
+      - research/world-v0-lifecycle-independence-r0
+    paths:
+      - .github/workflows/world-v0-lifecycle-independence-r0b2.yml
+      - scripts/materialize-world-v0-lifecycle-r0b2.py
+      - scripts/world-v0-lifecycle-independence-r0b2-chromium-audit.mjs
+      - public/world-v0/app.js
+      - public/world-v0/build-contract.js
+      - public/world-v0/state-guard.js
+      - src/world-v0-shared-yard.ts
+      - src/world-v0-protocol.ts
+      - src/world-v0-contract.ts
+      - scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-lifecycle-r0b2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-topology-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Materialize bounded R0-B2 browser patch in runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/materialize-world-v0-lifecycle-r0b2.py
+
+      - name: Prove browser patch scope is bounded
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only)
+          printf 'R0-B2 materialized files:\n%s\n' "${changed[*]}"
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "public/world-v0/app.js"
+          grep -q 'WORLD_V0_LIFECYCLE_R0_BROWSER_V1' public/world-v0/app.js
+          grep -q 'r0-topology-rebase-complete' public/world-v0/app.js
+          grep -q 'r0-late-join-bootstrap' public/world-v0/app.js
+
+      - name: Typecheck materialized repository
+        run: npm run typecheck
+
+      - name: Keep fixed protocol unit control
+        run: npm run test:world-v0-protocol
+
+      - name: Validate Worker bundle
+        run: npm run validate:worker
+
+      - name: Start local reliability Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-r0b2-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-r0b2-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "R0-B2 Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-r0b2-wrangler.log
+          exit 1
+
+      - name: Prove real Chromium solo-to-late-peer transition
+        env:
+          MW_WORLD_V0_R0B2_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_R0B2_OUTPUT: world-v0-r0b2-chromium.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 110s node --experimental-strip-types scripts/world-v0-lifecycle-independence-r0b2-chromium-audit.mjs | tee world-v0-r0b2-chromium.log
+          grep -q 'WORLD_V0_LIFECYCLE_INDEPENDENCE_R0B2_REAL_CHROMIUM_PASS' world-v0-r0b2-chromium.log
+
+      - name: Keep fixed-2P I4B browser exact-rebase as control
+        env:
+          MW_WORLD_V0_I4B_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_I4B_OFFLINE_MS: 1500
+          MW_WORLD_V0_I4B_OUTPUT: world-v0-r0b2-fixed-i4b.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 100s node --experimental-strip-types scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee world-v0-r0b2-fixed-i4b.log
+          grep -q 'WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS' world-v0-r0b2-fixed-i4b.log
+
+      - name: Prove no test-side source drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only)
+          printf 'R0-B2 final changed files:\n%s\n' "${changed[*]}"
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "public/world-v0/app.js"
+
+      - name: Materialize tested browser source on research branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/world-v0/app.js
+          git diff --cached --quiet && { echo 'R0-B2 source already materialized; no commit required'; exit 0; }
+          git commit -m 'Materialize lifecycle R0-B2 browser topology transition'
+          git push origin HEAD:${GITHUB_REF_NAME}
+
+      - name: Upload R0-B2 evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-lifecycle-r0b2-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-r0b2-chromium.json
+            world-v0-r0b2-chromium.log
+            world-v0-r0b2-fixed-i4b.json
+            world-v0-r0b2-fixed-i4b.log
+            world-v0-r0b2-wrangler.log

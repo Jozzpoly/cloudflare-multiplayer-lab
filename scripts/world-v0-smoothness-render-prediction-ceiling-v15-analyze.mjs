@@ -6,6 +6,7 @@ if (!input) throw new Error("usage: node world-v0-smoothness-render-prediction-c
 
 const source = JSON.parse(readFileSync(input, "utf8"));
 const v15 = source.predictionCeilingV15 || {};
+const authorityDelay = source.authorityDelayV15 || {};
 const mode = String(v15.mode || "unknown");
 const samples = Array.isArray(v15.samples) ? v15.samples : [];
 const clampSamples = samples.filter((entry) => entry?.kind === "advance" && entry?.clamped === true);
@@ -22,10 +23,14 @@ const maxRawOvershootTicks = Number(v15.maxRawOvershootTicks || 0);
 const maxLeadAfter = Number(v15.maxLeadAfter || 0);
 const safetyViolations = Number(v15.safetyViolations || 0);
 const maxStepsPerAdvance = Number(v15.maxStepsPerAdvance || 0);
+const authorityDelayRequestedMs = Number(source.authorityDelayRequestedMsV15 || 0);
+const authorityMessagesScheduled = Number(authorityDelay.scheduled || 0);
+const authorityMessagesDelivered = Number(authorityDelay.delivered || 0);
 
 const common = {
   recognizedMode: mode === "baseline" || mode === "ceiling",
-  latencyPressureConfigured: Number(source.requestedLatencyMs) >= 400,
+  deterministicAuthorityDelayConfigured: authorityDelayRequestedMs >= 500,
+  deterministicAuthorityDelayExercised: authorityMessagesScheduled > 0 && authorityMessagesDelivered > 0,
   guardObservationsPresent: Number(v15.guardObservations || 0) > 0,
   advanceObservationsPresent: Number(v15.advanceObservations || 0) > 0,
   rawPeerProtocolClean: rawPeerErrors.length === 0,
@@ -49,11 +54,11 @@ const comparable = Object.values(common).every(Boolean);
 const modePass = comparable && Object.values(modeSpecific).every(Boolean);
 
 const result = {
-  revision: "world-v0-smoothness-prediction-ceiling-v15-analysis-v1",
+  revision: "world-v0-smoothness-prediction-ceiling-v15-analysis-v2-deterministic-authority-delay",
   sourceRevision: source.revision ?? null,
-  status: "test-only retained-history prediction ceiling; prevents a single advancePrediction call from overshooting rewind-safe lead",
+  status: "test-only retained-history prediction ceiling under deterministic authority-state delivery delay with live pong phase anchors",
   mode,
-  requestedLatencyMs: source.requestedLatencyMs ?? null,
+  authorityDelayRequestedMs,
   stressMs: source.stressMs ?? null,
   exactness: {
     guardMismatchDelta,
@@ -78,6 +83,13 @@ const result = {
     strongestClampSamples: [...clampSamples]
       .sort((a, b) => ((b.rawTargetBoundary ?? 0) - (b.targetBoundary ?? 0)) - ((a.rawTargetBoundary ?? 0) - (a.targetBoundary ?? 0)))
       .slice(0, 12),
+  },
+  authorityDelivery: {
+    scheduled: authorityMessagesScheduled,
+    delivered: authorityMessagesDelivered,
+    dropped: Number(authorityDelay.dropped || 0),
+    byType: authorityDelay.byType || {},
+    maxObservedBoundary: authorityDelay.maxObservedBoundary ?? null,
   },
   apparatus: {
     rawPeerSuperseded: source.apparatus?.rawPeer?.superseded ?? null,

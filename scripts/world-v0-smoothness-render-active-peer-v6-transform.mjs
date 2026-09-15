@@ -58,6 +58,12 @@ replaceOnce(
 );
 
 replaceOnce(
+  "  await cdp.eval(sessionId, \"window.__mwRenderProbeV3StartSampler()\");\n  await sleep(1500);\n  const controlSamples = await cdp.eval(sessionId, \"window.__mwRenderProbeV3StopSampler()\");",
+  "  await cdp.eval(sessionId, \"window.__mwRenderProbeV3StartSampler()\");\n  await sleep(2500);\n  const controlSamples = await cdp.eval(sessionId, \"window.__mwRenderProbeV3StopSampler()\");",
+  "lengthen control sample without weakening interval threshold"
+);
+
+replaceOnce(
   "  const before = await cdp.eval(sessionId, \"window.__sharedYardV0Evidence()\");\n  await cdp.eval(sessionId, \"window.__mwRenderProbeV3StartSampler()\");",
   "  const before = await cdp.eval(sessionId, \"window.__sharedYardV0Evidence()\");\n  await cdp.eval(sessionId, \"window.__mwRenderProbeV6ResetCorrections()\");\n  await cdp.eval(sessionId, \"window.__mwRenderProbeV3StartSampler()\");",
   "correction vector reset"

@@ -19,15 +19,15 @@ cmp -s wrangler.jsonc "$ROOT_RECOVERY_CONFIG_TEMPLATE"
 
 npm ci
 
-PROBE_SCRIPT="scripts/.foundation-recovery-box3d-pnpm-install-probe.sh"
+PROBE_SCRIPT="scripts/.foundation-recovery-box3d-build-probe.sh"
 cp scripts/build-foundation-recovery-box3d.sh "$PROBE_SCRIPT"
 python - <<'PY'
 from pathlib import Path
-path = Path("scripts/.foundation-recovery-box3d-pnpm-install-probe.sh")
+path = Path("scripts/.foundation-recovery-box3d-build-probe.sh")
 source = path.read_text()
 needle = "pnpm build\n"
 assert source.count(needle) == 1
-source = source.replace(needle, 'echo "FOUNDATION_RECOVERY_WORKERS_BUILD_PNPM_INSTALL_PROBE_PASS"\nexit 0\n', 1)
+source = source.replace(needle, 'pnpm build\necho "FOUNDATION_RECOVERY_WORKERS_BUILD_PNPM_BUILD_PROBE_PASS"\nexit 0\n', 1)
 path.write_text(source)
 PY
 bash "$PROBE_SCRIPT"

@@ -39,6 +39,8 @@ const SNAPSHOT_EVERY_TICKS = WORLD_V0_TIMING.simulationHz / WORLD_V0_TIMING.snap
 const MAX_PLAYERS = 2;
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
 const RUN_KEY_PATTERN = /^[A-Za-z0-9_-]{1,20}$/;
+const R0_LIFECYCLE_MODE = "r0";
+const R0_AUTHORITY_REVISION = "world-v0-lifecycle-r0-authority-v1"; // WORLD_V0_LIFECYCLE_R0_AUTHORITY_V1
 
 type WorldId = ReturnType<typeof b3.b3CreateWorld>;
 type BodyId = ReturnType<typeof b3.b3CreateBody>;
@@ -178,10 +180,21 @@ function encodeU32Hex(value: number): string {
   return (value >>> 0).toString(16).padStart(8, "0");
 }
 
+function topologyDigest(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return encodeU32Hex(hash);
+}
+
 export class SharedYardV0 extends DurableObject<Env> {
   private world: WorldId | null = null;
   private worldId: string | null = null;
   private worldEpoch: string | null = null;
+  private lifecycleR0 = false;
+  private topologyRevision = 0;
   private props: SharedYardProp[] = [];
   // ActorSession lifetime is deliberately independent from transport lifetime.
   // sessionId is public simulation identity; resumeToken is private reconnect authority.
@@ -228,6 +241,8 @@ export class SharedYardV0 extends DurableObject<Env> {
         worldId: this.worldId,
         worldEpoch: this.worldEpoch,
         simBuildId: WORLD_V0_SIM_BUILD_ID,
+        lifecycleMode: this.lifecycleR0 ? R0_LIFECYCLE_MODE : "fixed-2p",
+        topology: this.lifecycleR0 && this.world ? this.topologyPayload() : null,
         boundaryTick: this.tick,
         protocolStartTick: this.protocolStartTick,
         players: this.players.size,
@@ -302,9 +317,32 @@ export class SharedYardV0 extends DurableObject<Env> {
       return;
     }
 
+    if (this.lifecycleR0) {
+      const topology = this.topologyPayload();
+      if (message.topologyRevision !== topology.revision || message.topologyDigest !== topology.digest) {
+        this.send(ws, {
+          type: "world_v0_error",
+          error: "topology_identity_mismatch",
+          expectedTopology: topology,
+          receivedTopology: {
+            revision: message.topologyRevision ?? null,
+            digest: message.topologyDigest ?? null,
+          },
+          boundaryTick: this.tick,
+          ...this.identityPayload(),
+        });
+        return;
+      }
+    }
+
     if (message.type === "world_v0_ready") {
       player.ready = true;
-      this.send(ws, { type: "world_v0_ready_ack", boundaryTick: this.tick, ...this.identityPayload() });
+      this.send(ws, {
+        type: "world_v0_ready_ack",
+        boundaryTick: this.tick,
+        ...this.topologyEnvelope(),
+        ...this.identityPayload(),
+      });
       this.maybeStartProtocol();
       return;
     }
@@ -315,6 +353,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         batchSeq: message.batchSeq,
         batchStatus: "protocol_not_scheduled",
         records: [],
+        ...this.topologyEnvelope(),
         ...this.identityPayload(),
       });
       return;
@@ -339,6 +378,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         records: accepted.map(({ targetTick, x, z, jump }) => ({ targetTick, x, z, jump: Boolean(jump) })),
         relayBoundaryTick: this.tick,
         serverTime: Date.now(),
+        ...this.topologyEnvelope(),
         ...this.identityPayload(),
       };
       for (const peer of this.players.values()) {
@@ -352,6 +392,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       protocolStartTick: this.protocolStartTick,
       ...acceptance,
       stats: player.input.stats(),
+      ...this.topologyEnvelope(),
       ...this.identityPayload(),
     });
   }
@@ -370,10 +411,15 @@ export class SharedYardV0 extends DurableObject<Env> {
     const requestedResumeToken = (url.searchParams.get("resume") ?? "").trim();
     const runKey = normalizeRunKey(url.searchParams.get("run"));
     const requestedWorldId = `shared-yard-v0-${runKey}`;
+    const requestedLifecycleR0 = url.searchParams.get("lifecycle") === R0_LIFECYCLE_MODE;
     if (!PLAYER_ID_PATTERN.test(playerId)) return json({ ok: false, error: "invalid_player" }, 400);
+    if (this.world && requestedLifecycleR0 !== this.lifecycleR0) {
+      return json({ ok: false, error: "world_mode_mismatch" }, 409);
+    }
 
     let player: SharedYardPlayer | undefined;
     let resumed = false;
+    let topologyChanged = false;
 
     if (requestedResumeToken) {
       if (!this.world || !this.worldId || !this.worldEpoch) {
@@ -403,14 +449,19 @@ export class SharedYardV0 extends DurableObject<Env> {
       } else if (softOnlyReplacement) {
         this.endEpoch("peer_left_restart_required");
       }
-      // Fresh actors otherwise may only join before the run starts. Reconnects use the private token above.
-      if (this.protocolStartTick !== null || this.loopTimer) return json({ ok: false, error: "world_v0_run_already_active" }, 409);
+      // The research-only R0 lifecycle mode admits one new authored slot into an
+      // already-running epoch. Default World V0 remains fixed-2P and unchanged.
+      const allowR0LateJoin = this.lifecycleR0 && activeEpoch && this.players.size < MAX_PLAYERS;
+      if (!allowR0LateJoin && (this.protocolStartTick !== null || this.loopTimer)) {
+        return json({ ok: false, error: "world_v0_run_already_active" }, 409);
+      }
       if (this.players.size >= MAX_PLAYERS) return json({ ok: false, error: "world_v0_full" }, 503);
-      if (!this.world) this.createWorld(requestedWorldId);
+      if (!this.world) this.createWorld(requestedWorldId, requestedLifecycleR0);
       if (!this.world || !this.worldId || !this.worldEpoch) return json({ ok: false, error: "world_not_ready" }, 500);
       if (this.worldId !== requestedWorldId) return json({ ok: false, error: "world_id_mismatch" }, 409);
 
-      const slot = this.players.size;
+      const usedSlots = new Set(this.sortedPlayers().map((candidate) => candidate.slot));
+      const slot = [0, 1].find((candidate) => !usedSlots.has(candidate)) ?? -1;
       const start = WORLD_V0_PLAYER_STARTS[slot];
       if (!start) return json({ ok: false, error: "world_v0_slot_missing" }, 500);
       player = {
@@ -427,6 +478,10 @@ export class SharedYardV0 extends DurableObject<Env> {
         previousJumpIntent: false,
       };
       this.players.set(player.sessionId, player);
+      if (this.lifecycleR0) {
+        this.advanceR0Topology();
+        topologyChanged = true;
+      }
     }
 
     if (!player || !this.world || !this.worldId || !this.worldEpoch) {
@@ -451,9 +506,12 @@ export class SharedYardV0 extends DurableObject<Env> {
     if (this.protocolStartTick === null && this.connectedPlayerCount() === MAX_PLAYERS) {
       this.clearPreStartAmbiguityTimer();
     }
-    const rebaseSeed = resumed && this.protocolStartTick !== null
+    const topologyRebaseSeed = topologyChanged && this.lifecycleR0 && this.protocolStartTick !== null
       ? this.createAuthorityRebaseSeed()
       : null;
+    const rebaseSeed = topologyRebaseSeed ?? (resumed && this.protocolStartTick !== null
+      ? this.createAuthorityRebaseSeed()
+      : null);
 
     this.send(server, {
       type: "world_v0_welcome",
@@ -466,11 +524,13 @@ export class SharedYardV0 extends DurableObject<Env> {
       resumeLastBatchSeq: player.input.stats().lastBatchSeq,
       rebaseSeed,
       slot: player.slot,
-      waitingForPeer: this.connectedPlayerCount() < MAX_PLAYERS,
+      waitingForPeer: !this.lifecycleR0 && this.connectedPlayerCount() < MAX_PLAYERS,
+      acceptingLateJoin: this.lifecycleR0 && this.players.size < MAX_PLAYERS,
       protocolStartTick: this.protocolStartTick,
       simulation: worldV0SimulationContract(),
       state: this.snapshotState(),
       serverTime: Date.now(),
+      ...this.topologyEnvelope(),
       ...this.identityPayload(),
     });
     this.broadcast({
@@ -482,14 +542,27 @@ export class SharedYardV0 extends DurableObject<Env> {
         slot: playerSlot,
         netEntityId: entityId,
       })),
+      ...this.topologyEnvelope(),
       ...this.identityPayload(),
     });
+    if (topologyRebaseSeed) {
+      this.broadcast({
+        type: "world_v0_topology_changed",
+        boundaryTick: this.tick,
+        topology: this.topologyPayload(),
+        rebaseSeed: topologyRebaseSeed,
+        serverTime: Date.now(),
+        ...this.identityPayload(),
+      });
+    }
     return new Response(null, { status: 101, webSocket: client });
   }
 
   private maybeStartProtocol(): void {
-    if (this.protocolStartTick !== null || this.players.size !== MAX_PLAYERS) return;
-    if (this.connectedPlayerCount() !== MAX_PLAYERS) return;
+    if (this.protocolStartTick !== null) return;
+    const requiredPlayers = this.lifecycleR0 ? 1 : MAX_PLAYERS;
+    if (this.players.size < requiredPlayers) return;
+    if (this.connectedPlayerCount() !== this.players.size) return;
     if ([...this.players.values()].some((player) => !player.ready)) return;
 
     this.clearPreStartAmbiguityTimer();
@@ -502,18 +575,21 @@ export class SharedYardV0 extends DurableObject<Env> {
       simulation: worldV0SimulationContract(),
       state: this.snapshotState(),
       serverTime: Date.now(),
+      ...this.topologyEnvelope(),
       ...this.identityPayload(),
     });
     this.startLoop();
   }
 
-  private createWorld(worldId: string): void {
+  private createWorld(worldId: string, lifecycleR0 = false): void {
     this.destroyWorld();
     const def = b3.b3DefaultWorldDef();
     def.gravity = [...WORLD_V0_ARENA.gravity];
     this.world = b3.b3CreateWorld(def);
     this.worldId = worldId;
     this.worldEpoch = crypto.randomUUID();
+    this.lifecycleR0 = lifecycleR0;
+    this.topologyRevision = 0;
     this.tick = 0;
     this.snapshotSequence = 0;
     this.protocolStartTick = null;
@@ -696,6 +772,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         boundaryTick: this.tick,
         players: consumed,
         serverTime: Date.now(),
+        ...this.topologyEnvelope(),
         ...this.identityPayload(),
       });
     }
@@ -791,19 +868,28 @@ export class SharedYardV0 extends DurableObject<Env> {
     return { finite, players, props };
   }
 
-  private packStateGuard(sample: SharedYardSceneSample): { revision: string; packed: string } | null {
+  private packStateGuard(sample: SharedYardSceneSample) {
     const byId = new Map<string, DynamicState>();
     for (const player of sample.players) byId.set(player.netEntityId, player);
     for (const prop of sample.props) byId.set(prop.netEntityId, prop);
-    if (byId.size !== WORLD_V0_NET_ENTITY_ORDER.length) return null;
+    const topology = this.lifecycleR0 ? this.topologyPayload() : null;
+    const entityOrder = topology?.entityOrder ?? [...WORLD_V0_NET_ENTITY_ORDER];
+    if (byId.size !== entityOrder.length) return null;
 
     let packed = "";
-    for (const netEntityId of WORLD_V0_NET_ENTITY_ORDER) {
+    for (const netEntityId of entityOrder) {
       const state = byId.get(netEntityId);
       if (!state) return null;
       for (const value of flattenDynamicState(state)) packed += encodeFloat32Bits(value);
     }
-    return { revision: WORLD_V0_STATE_GUARD_REVISION, packed };
+    return topology
+      ? {
+          revision: WORLD_V0_STATE_GUARD_REVISION,
+          packed,
+          topologyRevision: topology.revision,
+          topologyDigest: topology.digest,
+        }
+      : { revision: WORLD_V0_STATE_GUARD_REVISION, packed };
   }
 
   private createAuthorityRebaseSeed() {
@@ -830,6 +916,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         fnv1a32: encodeU32Hex(Number(b3.b3Bytes_Fnv1a32(bytes)) >>> 0),
         bytesBase64: encodeBytesBase64(bytes),
         stateGuard: state.stateGuard,
+        ...(this.lifecycleR0 ? { topology: this.topologyPayload() } : {}),
       };
     } finally {
       b3.b3DestroyRecording(recording);
@@ -845,6 +932,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       props: sample.props,
       finite: sample.finite,
       stateGuard: this.packStateGuard(sample),
+      ...(this.lifecycleR0 ? { topology: this.topologyPayload() } : {}),
     };
   }
 
@@ -855,8 +943,49 @@ export class SharedYardV0 extends DurableObject<Env> {
       revision: WORLD_V0_SERVER_REVISION,
       ...this.snapshotState(),
       serverTime: Date.now(),
+      ...this.topologyEnvelope(),
       ...this.identityPayload(),
     });
+  }
+
+  private topologyPayload() {
+    if (!this.lifecycleR0 || !this.worldEpoch) throw new Error("r0_topology_not_ready");
+    const actors = this.sortedPlayers().map((player) => ({
+      sessionId: player.sessionId,
+      netEntityId: player.netEntityId,
+      slot: player.slot,
+    }));
+    const entityOrder = [
+      ...actors.map((actor) => actor.netEntityId),
+      ...WORLD_V0_PROP_LAYOUT.map((prop) => prop.id),
+    ];
+    const digest = topologyDigest(JSON.stringify({
+      modeRevision: R0_AUTHORITY_REVISION,
+      worldEpoch: this.worldEpoch,
+      revision: this.topologyRevision,
+      actors,
+      entityOrder,
+    }));
+    return {
+      modeRevision: R0_AUTHORITY_REVISION,
+      revision: this.topologyRevision,
+      digest,
+      actors,
+      entityOrder,
+    };
+  }
+
+  private topologyEnvelope() {
+    return this.lifecycleR0 ? { topology: this.topologyPayload() } : {};
+  }
+
+  private advanceR0Topology(): void {
+    if (!this.lifecycleR0) return;
+    this.topologyRevision += 1;
+    for (const player of this.players.values()) {
+      player.input.resetForTopology();
+      player.previousJumpIntent = false;
+    }
   }
 
   private sortedPlayers(): SharedYardPlayer[] {
@@ -992,6 +1121,8 @@ export class SharedYardV0 extends DurableObject<Env> {
     this.world = null;
     this.worldId = null;
     this.worldEpoch = null;
+    this.lifecycleR0 = false;
+    this.topologyRevision = 0;
     this.props = [];
   }
 

@@ -106,6 +106,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         protocolStartTick?: number | null;
         worldEpoch?: string | null;
         simBuildId?: string | null;
+        lifecycleMode?: string | null;
         failure?: string | null;
       };
       const occupancy = Number.isFinite(status.players) ? Number(status.players) : 0;
@@ -124,10 +125,12 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
       const protectedReserved = protectedReservedSlots.length;
       const softReserved = softReservedSlots.length;
       const active = status.protocolStartTick !== null && status.protocolStartTick !== undefined;
+      const ongoingLifecycle = status.lifecycleMode === "r0";
       const fullyVacantResumable = occupancy === WORLD_V0_PUBLIC_ROOM_CAPACITY && connected === 0 && reserved === occupancy && reserved > 0;
       const replacementCapable = connected < WORLD_V0_PUBLIC_ROOM_CAPACITY && (
         fullyVacantResumable || (active && softReserved > 0 && protectedReserved === 0)
       );
+      const openSeat = occupancy < WORLD_V0_PUBLIC_ROOM_CAPACITY;
       const state = active
         ? fullyVacantResumable
           ? "live-vacant-resumable"
@@ -155,8 +158,8 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         replacementCapable,
         capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
         state,
-        joinable: !status.failure && ((!active && occupancy < WORLD_V0_PUBLIC_ROOM_CAPACITY) || replacementCapable),
-        joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}`,
+        joinable: !status.failure && ((!active && openSeat) || (active && ongoingLifecycle && openSeat) || replacementCapable),
+        joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}&lifecycle=r0`,
         worldEpoch: status.worldEpoch ?? null,
         simBuildId: status.simBuildId ?? null,
         failure: status.failure ?? null,
@@ -177,7 +180,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
         state: "unavailable",
         joinable: false,
-        joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}`,
+        joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}&lifecycle=r0`,
         worldEpoch: null,
         simBuildId: null,
         failure: error instanceof Error ? error.message : String(error),
@@ -186,7 +189,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
   }));
 
   return new Response(JSON.stringify({
-    revision: "world-v0-public-room-directory-r4-vacant-capacity",
+    revision: "world-v0-public-room-directory-r5-ongoing-yard",
     generatedAt: new Date().toISOString(),
     rooms,
   }), {

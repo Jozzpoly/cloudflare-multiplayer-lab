@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  reconnect-control:
+  reconnect-control-future:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
@@ -20,6 +20,61 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - name: Add CI-only future-physics diagnostic endpoint
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/multiplayer-foundation/replication-physics-test-worker.ts')
+          text = path.read_text()
+          needle = '''    if (this.worldId === null) {
+      this.worldId = requestedWorldId;
+      this.mode = modeForRun(run);
+    }
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return json(this.status());
+'''
+          replacement = '''    if (this.worldId === null) {
+      this.worldId = requestedWorldId;
+      this.mode = modeForRun(run);
+    }
+    if (url.searchParams.get("diagnosticFuture") === "1") {
+      const roster = this.roster.snapshot();
+      const topology = this.topology.snapshot();
+      if (roster.currentTick !== 63 || this.completedContinuationTicks !== 60 || this.finalGuardPacked === null) {
+        return json({ ok: false, error: "future_diagnostic_not_ready", status: this.status() }, 409);
+      }
+      const patterns: Record<string, ReadonlyArray<readonly [number, number]>> = {
+        "actor:0": [[0.6, -0.8], [-1, 0], [0, 1], [0.8, 0.6]],
+        "actor:1": [[-0.6, -0.8], [1, 0], [0, -1], [-0.8, 0.6]],
+        "actor:2": [[1, 0], [0, 1], [-1, 0], [0, -1]],
+      };
+      const initialGuardPacked = this.physics.captureGuard(topology).packed;
+      for (let diagnosticTick = 0; diagnosticTick < 60; diagnosticTick += 1) {
+        const phase = Math.floor(diagnosticTick / 15);
+        this.physics.step(roster.actors.map((actor) => {
+          const vector = patterns[actor.actorId]?.[phase];
+          if (!vector) throw new Error(`future diagnostic pattern missing ${actor.actorId}/${phase}`);
+          return { actorId: actor.actorId, x: vector[0], z: vector[1] };
+        }));
+      }
+      const futureGuardPacked = this.physics.captureGuard(topology).packed;
+      const futureSeed = this.physics.captureSeed(WORLD_EPOCH, 123, topology);
+      return json({
+        ok: true,
+        diagnosticRevision: "midprogress-future-physics-v1",
+        sourceBoundaryTick: 63,
+        futurePhysicsSteps: 60,
+        initialGuardPacked,
+        futureGuardPacked,
+        futureSeedBytes: futureSeed.byteLength,
+        futureSeedFnv1a32: futureSeed.fnv1a32,
+      });
+    }
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return json(this.status());
+'''
+          assert needle in text
+          path.write_text(text.replace(needle, replacement, 1))
+          PY
       - name: Instrument passing reconnect control in runner only
         shell: bash
         run: |
@@ -27,26 +82,34 @@ jobs:
           from pathlib import Path
           path = Path('scripts/multiplayer-foundation-local-reconnect-physics-transport-smoke.mjs')
           text = path.read_text()
-          needle = '    finalSeedBytes: finalAuthority.finalSeedBytes,\n'
-          replacement = '    finalGuardPacked: finalAuthority.finalGuardPacked,\n' + needle
+          needle = '  console.log("MULTIPLAYER_FOUNDATION_HIBERNATION_RECOVERY_RECONNECT_PASS", JSON.stringify({\n'
+          marker = '''  const futureResponse = await fetch(`${AUTHORITY_ORIGIN}/foundation-physics/status?run=${encodeURIComponent(RUN)}&diagnosticFuture=1`, { signal: AbortSignal.timeout(10_000) });
+  const futureDiagnostic = await futureResponse.json();
+  assert.equal(futureResponse.status, 200, JSON.stringify(futureDiagnostic));
+  assert.equal(futureDiagnostic.ok, true);
+  assert.equal(futureDiagnostic.initialGuardPacked, finalAuthority.finalGuardPacked);
+  console.log("CONTROL_FUTURE_DIAGNOSTIC", JSON.stringify(futureDiagnostic));
+
+'''
           assert needle in text
-          path.write_text(text.replace(needle, replacement, 1))
+          path.write_text(text.replace(needle, marker + needle, 1))
           PY
-      - name: Run passing hibernation reconnect control
+      - name: Run control and hash future evidence
         shell: bash
         run: |
-          node scripts/multiplayer-foundation-local-reconnect-physics-transport-smoke.mjs 2>&1 | tee reconnect-control.log
+          node scripts/multiplayer-foundation-local-reconnect-physics-transport-smoke.mjs 2>&1 | tee control-future.log
           python - <<'PY'
           import hashlib, json
           from pathlib import Path
-          prefix = 'MULTIPLAYER_FOUNDATION_HIBERNATION_RECOVERY_RECONNECT_PASS '
-          line = next(line for line in Path('reconnect-control.log').read_text().splitlines() if line.startswith(prefix))
+          prefix = 'CONTROL_FUTURE_DIAGNOSTIC '
+          line = next(line for line in Path('control-future.log').read_text().splitlines() if line.startswith(prefix))
           value = json.loads(line[len(prefix):])
-          print('CONTROL_GUARD_SHA256=' + hashlib.sha256(value['finalGuardPacked'].encode()).hexdigest())
-          print('CONTROL_SEED=' + str(value['finalSeedBytes']) + '/' + value['finalSeedFnv1a32'])
+          print('CONTROL_INITIAL_GUARD_SHA256=' + hashlib.sha256(value['initialGuardPacked'].encode()).hexdigest())
+          print('CONTROL_FUTURE_GUARD_SHA256=' + hashlib.sha256(value['futureGuardPacked'].encode()).hexdigest())
+          print('CONTROL_FUTURE_SEED=' + str(value['futureSeedBytes']) + '/' + value['futureSeedFnv1a32'])
           PY
 
-  midprogress-observation:
+  midprogress-future:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
@@ -55,35 +118,95 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - name: Instrument red mid-progress falsifier in runner only
+      - name: Add CI-only future-physics diagnostic endpoint
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/multiplayer-foundation/replication-physics-test-worker.ts')
+          text = path.read_text()
+          needle = '''    if (this.worldId === null) {
+      this.worldId = requestedWorldId;
+      this.mode = modeForRun(run);
+    }
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return json(this.status());
+'''
+          replacement = '''    if (this.worldId === null) {
+      this.worldId = requestedWorldId;
+      this.mode = modeForRun(run);
+    }
+    if (url.searchParams.get("diagnosticFuture") === "1") {
+      const roster = this.roster.snapshot();
+      const topology = this.topology.snapshot();
+      if (roster.currentTick !== 63 || this.completedContinuationTicks !== 60 || this.finalGuardPacked === null) {
+        return json({ ok: false, error: "future_diagnostic_not_ready", status: this.status() }, 409);
+      }
+      const patterns: Record<string, ReadonlyArray<readonly [number, number]>> = {
+        "actor:0": [[0.6, -0.8], [-1, 0], [0, 1], [0.8, 0.6]],
+        "actor:1": [[-0.6, -0.8], [1, 0], [0, -1], [-0.8, 0.6]],
+        "actor:2": [[1, 0], [0, 1], [-1, 0], [0, -1]],
+      };
+      const initialGuardPacked = this.physics.captureGuard(topology).packed;
+      for (let diagnosticTick = 0; diagnosticTick < 60; diagnosticTick += 1) {
+        const phase = Math.floor(diagnosticTick / 15);
+        this.physics.step(roster.actors.map((actor) => {
+          const vector = patterns[actor.actorId]?.[phase];
+          if (!vector) throw new Error(`future diagnostic pattern missing ${actor.actorId}/${phase}`);
+          return { actorId: actor.actorId, x: vector[0], z: vector[1] };
+        }));
+      }
+      const futureGuardPacked = this.physics.captureGuard(topology).packed;
+      const futureSeed = this.physics.captureSeed(WORLD_EPOCH, 123, topology);
+      return json({
+        ok: true,
+        diagnosticRevision: "midprogress-future-physics-v1",
+        sourceBoundaryTick: 63,
+        futurePhysicsSteps: 60,
+        initialGuardPacked,
+        futureGuardPacked,
+        futureSeedBytes: futureSeed.byteLength,
+        futureSeedFnv1a32: futureSeed.fnv1a32,
+      });
+    }
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return json(this.status());
+'''
+          assert needle in text
+          path.write_text(text.replace(needle, replacement, 1))
+          PY
+      - name: Instrument mid-progress path without changing its runtime history
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           path = Path('scripts/multiplayer-foundation-midprogress-hibernation-probe.ts')
           text = path.read_text()
-          needle = '  assert.equal(final.finalSeedBytes, EXPECTED_FINAL_SEED_BYTES);\n'
-          marker = '''  console.log("MIDPROGRESS_ORACLE_DIAGNOSTIC", JSON.stringify({\n    finalGuardPacked: final.finalGuardPacked,\n    finalSeedBytes: final.finalSeedBytes,\n    finalSeedFnv1a32: final.finalSeedFnv1a32,\n  }));\n'''
+          old_assert = '  assert.equal(final.finalSeedFnv1a32, EXPECTED_FINAL_SEED_FNV1A32);\n'
+          replacement_assert = '  console.log("MIDPROGRESS_SEED_DIVERGENCE", JSON.stringify({ expected: EXPECTED_FINAL_SEED_FNV1A32, actual: final.finalSeedFnv1a32 }));\n'
+          assert old_assert in text
+          text = text.replace(old_assert, replacement_assert, 1)
+          needle = '  console.log("MULTIPLAYER_FOUNDATION_MIDPROGRESS_HIBERNATION_RECOVERY_PASS", JSON.stringify({\n'
+          marker = '''  const futureResponse = await fetch(`${ORIGIN}/foundation-physics/status?run=${encodeURIComponent(RUN)}&diagnosticFuture=1`, { signal: AbortSignal.timeout(10_000) });
+  const futureDiagnostic: any = await futureResponse.json();
+  assert.equal(futureResponse.status, 200, JSON.stringify(futureDiagnostic));
+  assert.equal(futureDiagnostic.ok, true);
+  assert.equal(futureDiagnostic.initialGuardPacked, final.finalGuardPacked);
+  console.log("MIDPROGRESS_FUTURE_DIAGNOSTIC", JSON.stringify(futureDiagnostic));
+
+'''
           assert needle in text
           path.write_text(text.replace(needle, marker + needle, 1))
           PY
-      - name: Observe existing mid-progress mismatch without promoting it to PASS
+      - name: Run mid-progress path and hash future evidence
         shell: bash
         run: |
-          set +e
-          node --experimental-strip-types scripts/multiplayer-foundation-midprogress-hibernation-probe.ts 2>&1 | tee midprogress-oracle.log
-          status=${PIPESTATUS[0]}
-          set -e
+          node --experimental-strip-types scripts/multiplayer-foundation-midprogress-hibernation-probe.ts 2>&1 | tee midprogress-future.log
           python - <<'PY'
           import hashlib, json
           from pathlib import Path
-          prefix = 'MIDPROGRESS_ORACLE_DIAGNOSTIC '
-          line = next(line for line in Path('midprogress-oracle.log').read_text().splitlines() if line.startswith(prefix))
+          prefix = 'MIDPROGRESS_FUTURE_DIAGNOSTIC '
+          line = next(line for line in Path('midprogress-future.log').read_text().splitlines() if line.startswith(prefix))
           value = json.loads(line[len(prefix):])
-          print('MIDPROGRESS_GUARD_SHA256=' + hashlib.sha256(value['finalGuardPacked'].encode()).hexdigest())
-          print('MIDPROGRESS_SEED=' + str(value['finalSeedBytes']) + '/' + value['finalSeedFnv1a32'])
+          print('MIDPROGRESS_INITIAL_GUARD_SHA256=' + hashlib.sha256(value['initialGuardPacked'].encode()).hexdigest())
+          print('MIDPROGRESS_FUTURE_GUARD_SHA256=' + hashlib.sha256(value['futureGuardPacked'].encode()).hexdigest())
+          print('MIDPROGRESS_FUTURE_SEED=' + str(value['futureSeedBytes']) + '/' + value['futureSeedFnv1a32'])
           PY
-          echo "MIDPROGRESS_EXISTING_RESULT_STATUS=$status"
-          if [ "$status" -eq 0 ]; then
-            echo "Historical red path unexpectedly passed; treat this as a finding, not as an assumed failure."
-          fi

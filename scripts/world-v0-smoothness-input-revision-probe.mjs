@@ -48,15 +48,14 @@ class SchedulerModel {
   }
 }
 
-function runScenario({ name, seconds = 4, pumpsPerTick = 2, yawAt }) {
+function runScenario({ name, seconds = 4, pumpsPerTick = 2, movementAt }) {
   const model = new SchedulerModel();
   const totalTicks = seconds * 60;
   const totalPumps = totalTicks * pumpsPerTick;
   for (let i = 0; i < totalPumps; i += 1) {
     const temporalTicks = i / pumpsPerTick;
     const estimate = START + temporalTicks;
-    const yaw = yawAt(temporalTicks, totalTicks);
-    const movement = cameraRelativeInput({ x: 0, z: -1 }, yaw);
+    const movement = movementAt(temporalTicks, totalTicks);
     model.pump(estimate, movement);
   }
   const counts = [...model.revisionsByTick.values()].sort((a, b) => a - b);
@@ -81,51 +80,72 @@ function runScenario({ name, seconds = 4, pumpsPerTick = 2, yawAt }) {
 
 const fixed = runScenario({
   name: "fixed-camera-W",
-  yawAt: () => 0,
+  movementAt: () => cameraRelativeInput({ x: 0, z: -1 }, 0),
 });
 const oneTurn = runScenario({
-  name: "single-90deg-turn",
-  yawAt: (t) => t < 120 ? 0 : Math.PI / 2,
+  name: "single-90deg-camera-turn",
+  movementAt: (t) => cameraRelativeInput({ x: 0, z: -1 }, t < 120 ? 0 : Math.PI / 2),
 });
 const smoothOrbitOnePump = runScenario({
-  name: "smooth-orbit-one-pump-per-tick",
+  name: "smooth-camera-orbit-one-pump-per-tick",
   pumpsPerTick: 1,
-  yawAt: (t, total) => (t / total) * Math.PI * 2,
+  movementAt: (t, total) => cameraRelativeInput({ x: 0, z: -1 }, (t / total) * Math.PI * 2),
 });
 const smoothOrbitTwoPumps = runScenario({
-  name: "smooth-orbit-two-pumps-per-tick",
+  name: "smooth-camera-orbit-two-pumps-per-tick",
   pumpsPerTick: 2,
-  yawAt: (t, total) => (t / total) * Math.PI * 2,
+  movementAt: (t, total) => cameraRelativeInput({ x: 0, z: -1 }, (t / total) * Math.PI * 2),
 });
 const oscillatingOrbit = runScenario({
-  name: "oscillating-orbit-two-pumps-per-tick",
+  name: "oscillating-camera-orbit-two-pumps-per-tick",
   pumpsPerTick: 2,
-  yawAt: (t) => Math.sin((t / 60) * Math.PI * 1.5) * 1.1,
+  movementAt: (t) => cameraRelativeInput({ x: 0, z: -1 }, Math.sin((t / 60) * Math.PI * 1.5) * 1.1),
+});
+const smoothAnalogFixedCamera = runScenario({
+  name: "smooth-analog-vector-fixed-camera-two-pumps-per-tick",
+  pumpsPerTick: 2,
+  movementAt: (t, total) => {
+    const angle = (t / total) * Math.PI * 2;
+    return { x: Math.sin(angle), z: -Math.cos(angle) };
+  },
 });
 
-for (const scenario of [fixed, oneTurn, smoothOrbitOnePump, smoothOrbitTwoPumps, oscillatingOrbit]) {
+const scenarios = [fixed, oneTurn, smoothOrbitOnePump, smoothOrbitTwoPumps, oscillatingOrbit, smoothAnalogFixedCamera];
+for (const scenario of scenarios) {
   assert.equal(scenario.maxAuthoredWindowRecords, 7, "authority-floor authored window drifted");
 }
 assert.equal(fixed.superseded, 0, "fixed camera unexpectedly revises future movement");
 assert(oneTurn.superseded > 0, "single camera turn did not revise future movement");
-assert(smoothOrbitOnePump.superseded > oneTurn.superseded, "continuous orbit did not amplify future revisions");
+assert(smoothOrbitOnePump.superseded > oneTurn.superseded, "continuous camera orbit did not amplify future revisions");
 assert(smoothOrbitTwoPumps.superseded > smoothOrbitOnePump.superseded, "second scheduler pump opportunity did not amplify revisions");
-assert(smoothOrbitTwoPumps.maxRevisionsPerTick >= 12, "continuous orbit did not repeatedly revise the same future tick");
+assert(smoothOrbitTwoPumps.maxRevisionsPerTick >= 12, "continuous camera orbit did not repeatedly revise the same future tick");
+assert.equal(
+  smoothAnalogFixedCamera.superseded,
+  smoothOrbitTwoPumps.superseded,
+  "continuous analog movement did not create the same mutable-future revision pressure as equivalent camera-relative rotation",
+);
+assert.equal(
+  smoothAnalogFixedCamera.maxRevisionsPerTick,
+  smoothOrbitTwoPumps.maxRevisionsPerTick,
+  "continuous analog movement revision multiplicity diverged from equivalent camera-relative rotation",
+);
 
 const result = {
-  revision: "world-v0-smoothness-input-revision-probe-v2-authority-floor",
+  revision: "world-v0-smoothness-input-revision-probe-v3-continuous-input",
   contract: {
     predictionLeadTicks: PREDICTION_LEAD_TICKS,
     authorityFloorExcludesEstimatedCurrentTick: true,
     maxAuthoredFutureRecordsPerPump: 7,
-    note: "Pure upper-pressure model of the current authority-floor future-intent semantics; no network or physics.",
+    note: "Pure upper-pressure model of current mutable future-intent semantics; no network or physics.",
   },
-  scenarios: [fixed, oneTurn, smoothOrbitOnePump, smoothOrbitTwoPumps, oscillatingOrbit],
+  scenarios,
   derived: {
-    orbitVsFixedSupersessionDelta: smoothOrbitTwoPumps.superseded - fixed.superseded,
+    cameraOrbitVsFixedSupersessionDelta: smoothOrbitTwoPumps.superseded - fixed.superseded,
     dualPumpAmplification: smoothOrbitOnePump.superseded ? smoothOrbitTwoPumps.superseded / smoothOrbitOnePump.superseded : null,
+    analogMatchesEquivalentCameraOrbit: smoothAnalogFixedCamera.superseded === smoothOrbitTwoPumps.superseded,
   },
-  verdict: "CAMERA_RELATIVE_FUTURE_REVISION_PRESSURE_PROVEN",
+  verdict: "CONTINUOUS_INPUT_MUTABLE_FUTURE_REVISION_PRESSURE_PROVEN",
+  conclusion: "Camera rotation is a reproducer, not the unique root cause. Any continuously changing movement vector can repeatedly rewrite the same seven-tick mutable future horizon. A fixed-camera rotating analog vector produces the same revision pressure as an equivalent camera-relative rotation.",
 };
 writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result, null, 2));

@@ -95,6 +95,7 @@ if (required.some((value) => !value)) throw new Error("Shared Yard V0 UI incompl
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
 const RUN_KEY_PATTERN = /^[A-Za-z0-9_-]{1,20}$/;
 const urlParams = new URL(location.href).searchParams;
+const lifecycleR0 = urlParams.get("lifecycle") === "r0"; // WORLD_V0_LIFECYCLE_R0_BROWSER_V1
 const storedCallsign = localStorage.getItem("shared-yard-v0-callsign") || "";
 const storedRun = localStorage.getItem("shared-yard-v0-run") || "";
 const randomRun = `yard-${Math.random().toString(36).slice(2, 8)}`;
@@ -663,6 +664,8 @@ let selfNetEntityId = null;
 let remoteNetEntityId = null;
 let selfSlot = null;
 let resumeToken = null;
+let currentTopology = null;
+let topologyTransitionPending = false;
 
 function persistCurrentActorSession() {
   if (!identity || !selfSessionId || !resumeToken || !selfNetEntityId || !Number.isInteger(selfSlot)) return false;
@@ -768,6 +771,7 @@ function buildInviteUrl() {
   url.hash = "";
   const key = sessionRunKey();
   if (RUN_KEY_PATTERN.test(key)) url.searchParams.set("run", key);
+  if (lifecycleR0) url.searchParams.set("lifecycle", "r0");
   return url.toString();
 }
 
@@ -1067,6 +1071,87 @@ function identityFields() {
   return { ...identity };
 }
 
+function normalizeR0Topology(value, phase) {
+  if (!lifecycleR0) return null;
+  if (!value || typeof value !== "object") throw new Error(`${phase} missing R0 topology`);
+  if (!Number.isInteger(value.revision) || value.revision <= 0) throw new Error(`${phase} invalid topology revision`);
+  if (typeof value.digest !== "string" || !/^[0-9a-f]{8}$/.test(value.digest)) throw new Error(`${phase} invalid topology digest`);
+  if (!Array.isArray(value.actors) || value.actors.length < 1 || value.actors.length > 2) throw new Error(`${phase} invalid topology actors`);
+  const actors = value.actors.map((actor) => ({
+    sessionId: actor?.sessionId,
+    netEntityId: actor?.netEntityId,
+    slot: actor?.slot,
+  }));
+  if (actors.some((actor) => typeof actor.sessionId !== "string" || !actor.sessionId || typeof actor.netEntityId !== "string" || !actor.netEntityId || !Number.isInteger(actor.slot))) {
+    throw new Error(`${phase} malformed topology actor`);
+  }
+  if (new Set(actors.map((actor) => actor.sessionId)).size !== actors.length || new Set(actors.map((actor) => actor.netEntityId)).size !== actors.length) {
+    throw new Error(`${phase} duplicate topology actor`);
+  }
+  if (!Array.isArray(value.entityOrder) || value.entityOrder.length !== actors.length + 12) throw new Error(`${phase} invalid topology entity order`);
+  const entityOrder = value.entityOrder.map((entry) => String(entry));
+  if (new Set(entityOrder).size !== entityOrder.length) throw new Error(`${phase} duplicate topology entity`);
+  for (let index = 0; index < actors.length; index += 1) {
+    if (entityOrder[index] !== actors[index].netEntityId) throw new Error(`${phase} topology actor order mismatch`);
+  }
+  return {
+    modeRevision: value.modeRevision || null,
+    revision: value.revision,
+    digest: value.digest,
+    actors,
+    entityOrder,
+  };
+}
+
+function sameR0Topology(a, c) {
+  return Boolean(a && c && a.revision === c.revision && a.digest === c.digest);
+}
+
+function updateRemoteFromR0Topology() {
+  if (!lifecycleR0 || !currentTopology || !selfSessionId) return;
+  const remote = currentTopology.actors.find((actor) => actor.sessionId !== selfSessionId) || null;
+  remoteSessionId = remote?.sessionId || null;
+  remoteNetEntityId = remote?.netEntityId || null;
+}
+
+function adoptR0Topology(value, phase, { allowChange = false } = {}) {
+  if (!lifecycleR0) return null;
+  const next = normalizeR0Topology(value, phase);
+  if (currentTopology && !sameR0Topology(currentTopology, next) && !allowChange) {
+    throw new Error(`${phase} unexpected topology drift ${currentTopology.revision}/${currentTopology.digest} -> ${next.revision}/${next.digest}`);
+  }
+  currentTopology = next;
+  updateRemoteFromR0Topology();
+  return next;
+}
+
+function assertR0MessageTopology(message, phase) {
+  if (!lifecycleR0) return null;
+  const observed = normalizeR0Topology(message?.topology, phase);
+  if (!currentTopology || !sameR0Topology(currentTopology, observed)) {
+    throw new Error(`${phase} topology drift ${currentTopology?.revision ?? "none"}/${currentTopology?.digest ?? "none"} -> ${observed.revision}/${observed.digest}`);
+  }
+  return observed;
+}
+
+function r0TopologyIdentityFields() {
+  if (!lifecycleR0) return {};
+  if (!currentTopology) throw new Error("R0 topology identity unavailable");
+  return {
+    topologyRevision: currentTopology.revision,
+    topologyDigest: currentTopology.digest,
+  };
+}
+
+function r0EntityDefs(topology) {
+  const actorByNet = new Map(topology.actors.map((actor) => [actor.netEntityId, actor]));
+  return topology.entityOrder.map((netEntityId) => {
+    const actor = actorByNet.get(netEntityId);
+    if (actor) return { netEntityId, locator: netEntityId, kind: "actor", slot: actor.slot, sessionId: actor.sessionId };
+    return { netEntityId, locator: `prop:${netEntityId}`, kind: "prop", propId: netEntityId };
+  });
+}
+
 function bodyPosition(body) {
   const out = [0, 0, 0];
   b3.b3Body_GetPosition(out, body);
@@ -1205,12 +1290,20 @@ function authorityEntityDefsFromState(state) {
 function createSimulationFromState(state) {
   const players = [...(state?.players || [])].sort((a, c) => (a.slot ?? 0) - (c.slot ?? 0));
   const props = [...(state?.props || [])];
-  if (players.length !== 2) throw new Error(`Shared Yard start requires exactly two players, got ${players.length}`);
+  if (players.length < 1 || players.length > 2) throw new Error(`Shared Yard start requires one or two players, got ${players.length}`);
   const self = players.find((player) => player.sessionId === selfSessionId);
-  const remote = players.find((player) => player.sessionId !== selfSessionId);
-  if (!self || !remote) throw new Error("Shared Yard start state missing actor");
-  remoteSessionId = remote.sessionId;
-  remoteNetEntityId = remote.netEntityId;
+  const remote = players.find((player) => player.sessionId !== selfSessionId) || null;
+  if (!self) throw new Error("Shared Yard start state missing self actor");
+  if (!lifecycleR0 && !remote) throw new Error("Shared Yard fixed-2P start state missing remote actor");
+  if (lifecycleR0) {
+    if (!currentTopology) throw new Error("R0 start missing topology");
+    const sessions = new Set(players.map((player) => player.sessionId));
+    if (currentTopology.actors.length !== players.length || currentTopology.actors.some((actor) => !sessions.has(actor.sessionId))) {
+      throw new Error("R0 state/topology actor mismatch");
+    }
+  }
+  remoteSessionId = remote?.sessionId || null;
+  remoteNetEntityId = remote?.netEntityId || null;
 
   const wd = b3.b3DefaultWorldDef();
   wd.gravity = [...simulation.arena.gravity];
@@ -1246,7 +1339,7 @@ function createSimulationFromState(state) {
     propBodies,
     netBodies,
     entityDefs,
-    netEntityOrder: [...simulation.netEntityOrder],
+    netEntityOrder: lifecycleR0 ? [...currentTopology.entityOrder] : [...simulation.netEntityOrder],
     ownerPlayer: 0,
   };
 }
@@ -1297,13 +1390,21 @@ function applyAuthorityRebase(seed, bootstrapState = null) {
   if (!seed || seed.revision !== AUTHORITY_REBASE_SEED_REVISION) throw new Error("authority rebase seed revision mismatch");
   if (!Number.isInteger(seed.boundaryTick) || seed.boundaryTick < 0) throw new Error("authority rebase boundary invalid");
   if (!seed.stateGuard || seed.stateGuard.revision !== WORLD_V0_EXPECTED_STATE_GUARD_REVISION) throw new Error("authority rebase state guard invalid");
+  const rebaseTopology = lifecycleR0 ? normalizeR0Topology(seed.topology, "authority-rebase") : null;
+  if (rebaseTopology && (seed.stateGuard.topologyRevision !== rebaseTopology.revision || seed.stateGuard.topologyDigest !== rebaseTopology.digest)) {
+    throw new Error("authority rebase topology/state-guard mismatch");
+  }
   const bytes = decodeBase64Bytes(seed.bytesBase64);
   if (!Number.isInteger(seed.byteLength) || bytes.byteLength !== seed.byteLength) throw new Error("authority rebase byte length mismatch");
   const hash = u32Hex(b3.b3Bytes_Fnv1a32(bytes));
   if (hash !== seed.fnv1a32) throw new Error("authority rebase checksum mismatch " + hash + " != " + seed.fnv1a32);
 
-  const entityDefs = localState?.sim?.entityDefs ?? authorityEntityDefsFromState(bootstrapState);
-  const netEntityOrder = localState?.sim?.netEntityOrder ?? simulation.netEntityOrder;
+  const entityDefs = rebaseTopology
+    ? r0EntityDefs(rebaseTopology)
+    : (localState?.sim?.entityDefs ?? authorityEntityDefsFromState(bootstrapState));
+  const netEntityOrder = rebaseTopology
+    ? [...rebaseTopology.entityOrder]
+    : (localState?.sim?.netEntityOrder ?? simulation.netEntityOrder);
   const player = b3.b3RecPlayer_CreateFromBytes(bytes, 1);
   if (!player) throw new Error("authority rebase player create failed");
   let next = null;
@@ -1313,7 +1414,7 @@ function applyAuthorityRebase(seed, bootstrapState = null) {
     const difference = firstWorldV0StateDifference(
       seed.stateGuard.packed,
       packed,
-      simulation.netEntityOrder,
+      next.netEntityOrder,
       simulation.stateComponents,
     );
     if (difference) throw new Error("authority rebase exact-state mismatch " + (difference.netEntityId || difference.field) + "." + (difference.component || ""));
@@ -1332,6 +1433,11 @@ function applyAuthorityRebase(seed, bootstrapState = null) {
   diagnosticSamples.clear();
   pendingStateGuards.clear();
   pendingBatch = [];
+  if (rebaseTopology) {
+    currentTopology = rebaseTopology;
+    topologyTransitionPending = false;
+    updateRemoteFromR0Topology();
+  }
   createHistoryAtBoundary(next, seed.boundaryTick, "authority-rebase");
   compareStateGuard(seed.boundaryTick, seed.stateGuard);
   phaseAnchor = { tick: seed.boundaryTick, at: performance.now() };
@@ -1346,6 +1452,8 @@ function applyAuthorityRebase(seed, bootstrapState = null) {
     gapTicks: metrics.latestRebaseGapTicks,
     byteLength: bytes.byteLength,
     fnv1a32: hash,
+    topologyRevision: currentTopology?.revision ?? null,
+    topologyDigest: currentTopology?.digest ?? null,
   });
 }
 
@@ -1459,10 +1567,13 @@ function applyResolvedTick(sim, tick, allowGenerateSelf) {
   const remoteJumpTrigger = Boolean(resolved.remote.jump) && !Boolean(previous.remote.jump);
   usedByTick.set(tick, { self: { ...resolved.self }, remote: { ...resolved.remote } });
   const selfBody = sim.actorBodies.get(selfSessionId);
-  const remoteBody = sim.actorBodies.get(remoteSessionId);
-  if (!selfBody || !remoteBody) throw new Error("predicted actor mapping incomplete");
+  if (!selfBody) throw new Error("predicted self actor mapping incomplete");
   applyIntent(selfBody, { ...resolved.self, jump: selfJumpTrigger });
-  applyIntent(remoteBody, { ...resolved.remote, jump: remoteJumpTrigger });
+  if (remoteSessionId) {
+    const remoteBody = sim.actorBodies.get(remoteSessionId);
+    if (!remoteBody) throw new Error("predicted remote actor mapping incomplete");
+    applyIntent(remoteBody, { ...resolved.remote, jump: remoteJumpTrigger });
+  }
 }
 
 function createHistoryAtBoundary(sim, boundaryTick, reason) {
@@ -1535,16 +1646,23 @@ function rotateIfNeeded(boundaryTick) {
 function compareStateGuard(boundaryTick, guard) {
   if (!guard) throw new Error(`missing authority state guard at B(${boundaryTick})`);
   if (guard.revision !== WORLD_V0_EXPECTED_STATE_GUARD_REVISION) throw new Error(`state guard revision mismatch ${guard.revision}`);
+  if (lifecycleR0) {
+    if (!currentTopology) throw new Error("state guard before R0 topology");
+    if (guard.topologyRevision !== currentTopology.revision || guard.topologyDigest !== currentTopology.digest) {
+      throw new Error(`state guard topology mismatch ${guard.topologyRevision}/${guard.topologyDigest}`);
+    }
+  }
   const predicted = diagnosticSamples.get(boundaryTick);
   if (!predicted) {
     pendingStateGuards.set(boundaryTick, guard);
     metrics.guardPending = pendingStateGuards.size;
     return;
   }
+  const netEntityOrder = localState?.sim?.netEntityOrder ?? simulation.netEntityOrder;
   const difference = firstWorldV0StateDifference(
     guard.packed,
     predicted,
-    simulation.netEntityOrder,
+    netEntityOrder,
     simulation.stateComponents,
   );
   pendingStateGuards.delete(boundaryTick);
@@ -1733,6 +1851,7 @@ function socketUrl() {
   const url = new URL(`${protocol}//${location.host}/world-v0/ws`);
   url.searchParams.set("player", callsign);
   url.searchParams.set("run", runKey);
+  if (lifecycleR0) url.searchParams.set("lifecycle", "r0");
   if (actorResume.pending && resumeToken) url.searchParams.set("resume", resumeToken);
   return url.toString();
 }
@@ -1754,6 +1873,7 @@ function sendInputRevisionRecords(records) {
     socket.send(JSON.stringify({
       type: "world_v0_input_batch",
       ...identityFields(),
+      ...r0TopologyIdentityFields(),
       batchSeq,
       records: chunk,
     }));
@@ -1772,6 +1892,7 @@ function flushPendingInputBatch() {
   socket.send(JSON.stringify({
     type: "world_v0_input_batch",
     ...identityFields(),
+    ...r0TopologyIdentityFields(),
     batchSeq,
     records,
   }));
@@ -1820,6 +1941,7 @@ function updatePhaseFromStart(message, receivedAt) {
 
 function classifyBatchAck(message) {
   assertMessageIdentity(message, "batch-ack");
+  assertR0MessageTopology(message, "batch-ack");
   if (message.batchStatus === "stale_batch") metrics.serverRejected += 1;
   for (const record of message.records || []) {
     if (record.status === "late") metrics.serverLate += 1;
@@ -1829,6 +1951,7 @@ function classifyBatchAck(message) {
 
 function handlePeerRecords(message) {
   assertMessageIdentity(message, "peer-records");
+  assertR0MessageTopology(message, "peer-records");
   if (!remoteSessionId || message.senderSessionId !== remoteSessionId) return;
   if (remoteNetEntityId && message.senderNetEntityId !== remoteNetEntityId) throw new Error("remote NetEntityId drift");
   const candidates = [];
@@ -1849,6 +1972,7 @@ function handlePeerRecords(message) {
 
 function handleConsumed(message) {
   assertMessageIdentity(message, "consumed");
+  assertR0MessageTopology(message, "consumed");
   if (!Number.isInteger(message.targetTick)) return;
   const map = new Map();
   let selfCanonical = null;
@@ -1876,6 +2000,7 @@ function handleConsumed(message) {
 
 function handleSnapshot(message) {
   assertMessageIdentity(message, "snapshot");
+  assertR0MessageTopology(message, "snapshot");
   if (message.revision !== WORLD_V0_EXPECTED_SERVER_REVISION) throw new Error(`snapshot server revision mismatch ${message.revision}`);
   if (!Number.isInteger(message.boundaryTick)) return;
   compareStateGuard(message.boundaryTick, message.stateGuard);
@@ -1889,6 +2014,7 @@ function handleStart(message) {
   if (message.boundaryTick !== 0 || message.state?.boundaryTick !== 0) throw new Error(`World V0 requires clean B(0), got ${message.boundaryTick}`);
 
   simulation = contract;
+  if (lifecycleR0) adoptR0Topology(message.topology, "start");
   destroyLocalState();
   intendedSelf.clear();
   peerRemote.clear();
@@ -1897,8 +2023,6 @@ function handleStart(message) {
   diagnosticSamples.clear();
   pendingStateGuards.clear();
   protocolStartTick = message.protocolStartTick;
-  // Fresh epochs start with authority previousJumpIntent=false, so a new physical
-  // edge is immediately legal. Resumes deliberately do not use this fresh arm.
   resetJumpDeliveryForFreshRun();
   buildArenaVisual(contract);
   const sim = createSimulationFromState(message.state);
@@ -1908,13 +2032,17 @@ function handleStart(message) {
   updatePhaseFromStart(message, performance.now());
   startLogicalInputScheduler();
   if (!selfMesh) selfMesh = createPlayerMesh(true);
-  if (!remoteMesh) remoteMesh = createPlayerMesh(false);
+  if (remoteSessionId && !remoteMesh) remoteMesh = createPlayerMesh(false);
   sessionEnd = null;
-  networkState = "live · Shared Yard V0";
+  networkState = lifecycleR0 && !remoteSessionId ? "live · solo Shared Yard" : "live · Shared Yard V0";
   jumpButton.classList.remove("hidden");
   joystick.classList.add("active");
   cameraGimbal.classList.add("active");
-  recordLifecycle("world-start", { protocolStartTick });
+  recordLifecycle("world-start", {
+    protocolStartTick,
+    topologyRevision: currentTopology?.revision ?? null,
+    topologyDigest: currentTopology?.digest ?? null,
+  });
   clearNotice();
   syncMeshes();
 }
@@ -1931,6 +2059,7 @@ function handleMessage(message) {
       throw new Error(`room recovery reused ended epoch ${sourceEpoch}`);
     }
     simulation = assertSimulationContract(message.simulation, "welcome");
+    if (lifecycleR0) adoptR0Topology(message.topology, "welcome");
     if (message.resumed) {
       if (!resumingActor || !priorSessionId || !priorResumeToken) throw new Error("unexpected resumed welcome");
       if (message.selfSessionId !== priorSessionId) throw new Error("resumed ActorSession identity drift");
@@ -1961,6 +2090,7 @@ function handleMessage(message) {
       selfNetEntityId = message.selfNetEntityId;
       selfSlot = message.slot;
       resumeToken = message.resumeToken;
+      updateRemoteFromR0Topology();
       persistCurrentActorSession();
       clearActorResumeTimer();
       actorResume.pending = false;
@@ -1984,7 +2114,7 @@ function handleMessage(message) {
         clearNotice();
         syncMeshes();
       } else {
-        networkState = message.waitingForPeer ? "waiting for peer" : "peer joined";
+        networkState = message.waitingForPeer ? "waiting for peer" : (lifecycleR0 ? "solo · ready" : "peer joined");
         jumpButton.classList.add("hidden");
         joystick.classList.remove("active");
         cameraGimbal.classList.remove("active");
@@ -1999,8 +2129,37 @@ function handleMessage(message) {
     selfSessionId = message.selfSessionId;
     selfNetEntityId = message.selfNetEntityId;
     selfSlot = message.slot;
+    updateRemoteFromR0Topology();
     persistCurrentActorSession();
-    networkState = message.waitingForPeer ? "waiting for peer" : "peer joined";
+
+    const lateJoinIntoR0 = lifecycleR0 && Number.isInteger(message.protocolStartTick);
+    if (lateJoinIntoR0) {
+      if (!message.rebaseSeed || !Number.isInteger(message.rebaseSeed.boundaryTick)) throw new Error("R0 late join missing authority rebase seed");
+      if (message.state?.boundaryTick !== message.rebaseSeed.boundaryTick) throw new Error("R0 late join state/rebase boundary mismatch");
+      protocolStartTick = message.protocolStartTick;
+      buildArenaVisual(simulation);
+      buildSpatialCues(message.state);
+      resetJumpDeliveryForFreshRun();
+      applyAuthorityRebase(message.rebaseSeed, message.state);
+      playing = true;
+      sessionEnd = null;
+      networkState = "live · joined running Shared Yard";
+      jumpButton.classList.remove("hidden");
+      joystick.classList.add("active");
+      cameraGimbal.classList.add("active");
+      socket.send(JSON.stringify({ type: "world_v0_ready", ...identityFields(), ...r0TopologyIdentityFields() }));
+      startLogicalInputScheduler();
+      recordLifecycle("r0-late-join-bootstrap", {
+        boundaryTick: localState.boundaryTick,
+        topologyRevision: currentTopology.revision,
+        topologyDigest: currentTopology.digest,
+      });
+      clearNotice();
+      syncMeshes();
+      return;
+    }
+
+    networkState = message.waitingForPeer ? "waiting for peer" : (lifecycleR0 ? "solo · synchronizing" : "peer joined");
     if (recoveringRoom) {
       clearRoomRecoveryTimer();
       roomRecovery.pending = false;
@@ -2016,10 +2175,29 @@ function handleMessage(message) {
   if (message.type === "world_v0_roster") {
     assertMessageIdentity(message, "roster");
     const players = message.players || [];
-    const remote = players.find((player) => player.sessionId !== selfSessionId);
-    if (remote) {
-      remoteSessionId = remote.sessionId;
-      remoteNetEntityId = remote.netEntityId;
+    const remote = players.find((player) => player.sessionId !== selfSessionId) || null;
+    remoteSessionId = remote?.sessionId || null;
+    remoteNetEntityId = remote?.netEntityId || null;
+    if (lifecycleR0) {
+      const observed = normalizeR0Topology(message.topology, "roster");
+      if (currentTopology && !sameR0Topology(currentTopology, observed) && Number.isInteger(protocolStartTick)) {
+        topologyTransitionPending = true;
+        stopLogicalInputScheduler();
+        pendingBatch = [];
+        networkState = "topology rebase pending";
+        recordLifecycle("r0-topology-transition-observed", {
+          fromRevision: currentTopology.revision,
+          toRevision: observed.revision,
+          toDigest: observed.digest,
+        });
+        return;
+      }
+      if (!currentTopology) adoptR0Topology(observed, "roster-initial", { allowChange: true });
+      if (socket?.readyState === WebSocket.OPEN && !Number.isInteger(protocolStartTick)) {
+        networkState = "solo · ready";
+        socket.send(JSON.stringify({ type: "world_v0_ready", ...identityFields(), ...r0TopologyIdentityFields() }));
+      }
+      return;
     }
     if (players.length === 2 && socket?.readyState === WebSocket.OPEN && !Number.isInteger(protocolStartTick)) {
       networkState = "both connected · ready";
@@ -2029,7 +2207,33 @@ function handleMessage(message) {
   }
   if (message.type === "world_v0_ready_ack") {
     assertMessageIdentity(message, "ready-ack");
-    networkState = "ready · awaiting start";
+    assertR0MessageTopology(message, "ready-ack");
+    networkState = lifecycleR0 && Number.isInteger(protocolStartTick) ? "live · Shared Yard V0" : "ready · awaiting start";
+    return;
+  }
+  if (message.type === "world_v0_topology_changed") {
+    if (!lifecycleR0) throw new Error("unexpected topology change outside R0");
+    assertMessageIdentity(message, "topology-changed");
+    const observed = normalizeR0Topology(message.topology, "topology-changed");
+    if (!message.rebaseSeed) throw new Error("topology change missing authority rebase seed");
+    if (currentTopology && sameR0Topology(currentTopology, observed) && localState && localState.boundaryTick >= message.rebaseSeed.boundaryTick) {
+      recordLifecycle("r0-topology-change-already-applied", { topologyRevision: observed.revision, boundaryTick: message.rebaseSeed.boundaryTick });
+      return;
+    }
+    stopLogicalInputScheduler();
+    pendingBatch = [];
+    topologyTransitionPending = true;
+    applyAuthorityRebase(message.rebaseSeed);
+    playing = true;
+    networkState = "live · topology rebased";
+    startLogicalInputScheduler();
+    recordLifecycle("r0-topology-rebase-complete", {
+      boundaryTick: localState.boundaryTick,
+      topologyRevision: currentTopology.revision,
+      topologyDigest: currentTopology.digest,
+    });
+    clearNotice();
+    syncMeshes();
     return;
   }
   if (message.type === "world_v0_start") return handleStart(message);
@@ -2072,6 +2276,22 @@ function handleMessage(message) {
   }
   if (message.type === "world_v0_error") {
     if (identity && message.worldEpoch) assertMessageIdentity(message, "server-error");
+    if (lifecycleR0 && message.error === "topology_identity_mismatch") {
+      const receivedRevision = message.receivedTopology?.revision;
+      if (currentTopology && Number.isInteger(receivedRevision) && receivedRevision < currentTopology.revision) {
+        recordLifecycle("r0-stale-topology-rejection-observed", { receivedRevision, currentRevision: currentTopology.revision });
+        return;
+      }
+      topologyTransitionPending = true;
+      stopLogicalInputScheduler();
+      pendingBatch = [];
+      networkState = "topology rebase pending";
+      recordLifecycle("r0-topology-mismatch-waiting-rebase", {
+        receivedRevision: receivedRevision ?? null,
+        expectedRevision: message.expectedTopology?.revision ?? null,
+      });
+      return;
+    }
     throw new Error(`World V0 server: ${message.error}`);
   }
 }
@@ -2199,7 +2419,7 @@ function connect() {
 }
 
 function advancePrediction() {
-  if (!localState || !phaseAnchor || runtimeFailed || actorResume.pending) return;
+  if (!localState || !phaseAnchor || runtimeFailed || actorResume.pending || topologyTransitionPending) return;
   if (Number.isInteger(lastAuthorityBoundaryTick) && Number.isInteger(simulation?.clientHistory?.retainTicks)) {
     const silenceTicks = Math.max(0, localState.boundaryTick - lastAuthorityBoundaryTick);
     metrics.maxAuthoritySilenceTicks = Math.max(metrics.maxAuthoritySilenceTicks, silenceTicks);
@@ -2229,18 +2449,18 @@ function syncPresence(mesh, position) {
 }
 
 function syncMeshes() {
-  if (!localState?.sim || !selfSessionId || !remoteSessionId) return;
+  if (!localState?.sim || !selfSessionId) return;
   if (!selfMesh) selfMesh = createPlayerMesh(true);
-  if (!remoteMesh) remoteMesh = createPlayerMesh(false);
+  if (remoteSessionId && !remoteMesh) remoteMesh = createPlayerMesh(false);
   const selfBody = localState.sim.actorBodies.get(selfSessionId);
-  const remoteBody = localState.sim.actorBodies.get(remoteSessionId);
+  const remoteBody = remoteSessionId ? localState.sim.actorBodies.get(remoteSessionId) : null;
   if (selfBody) {
     const position = bodyPosition(selfBody);
     selfMesh.position.fromArray(position);
     selfMesh.quaternion.fromArray(bodyRotation(selfBody)).normalize();
     syncPresence(selfMesh, position);
   }
-  if (remoteBody) {
+  if (remoteBody && remoteMesh) {
     const position = bodyPosition(remoteBody);
     remoteMesh.position.fromArray(position);
     remoteMesh.quaternion.fromArray(bodyRotation(remoteBody)).normalize();
@@ -2315,6 +2535,11 @@ function buildEvidence() {
     clientSimRevision: WORLD_V0_CLIENT_SIM_REVISION,
     expectedSimBuildId: WORLD_V0_EXPECTED_SIM_BUILD_ID,
     identity: identity ? { ...identity } : null,
+    lifecycle: {
+      r0: lifecycleR0,
+      topologyTransitionPending,
+      topology: currentTopology ? { ...currentTopology, actors: currentTopology.actors.map((actor) => ({ ...actor })), entityOrder: [...currentTopology.entityOrder] } : null,
+    },
     runKey,
     networkState,
     runtimeFailed,
@@ -2334,6 +2559,11 @@ function buildEvidence() {
     },
     localBoundaryTick: localState?.boundaryTick ?? null,
     protocolStartTick,
+    livePhysics: {
+      netEntityOrder: localState?.sim?.netEntityOrder ? [...localState.sim.netEntityOrder] : null,
+      selfPosition: selfSessionId && localState?.sim?.actorBodies.get(selfSessionId) ? bodyPosition(localState.sim.actorBodies.get(selfSessionId)) : null,
+      remotePosition: remoteSessionId && localState?.sim?.actorBodies.get(remoteSessionId) ? bodyPosition(localState.sim.actorBodies.get(remoteSessionId)) : null,
+    },
     presentation: {
       selfPresence: selfMesh?.userData?.presenceLabel?.userData?.presenceText || null,
       remotePresence: remoteMesh?.userData?.presenceLabel?.userData?.presenceText || null,
@@ -2494,6 +2724,8 @@ function resetProtocolState({ preserveRoomRecovery = false } = {}) {
   pendingBatch = [];
   batchSeq = 0;
   identity = null;
+  currentTopology = null;
+  topologyTransitionPending = false;
   selfSessionId = null;
   remoteSessionId = null;
   selfNetEntityId = null;
@@ -2582,6 +2814,7 @@ function enterWorld() {
   shareUrl.search = "";
   shareUrl.hash = "";
   shareUrl.searchParams.set("run", runKey);
+  if (lifecycleR0) shareUrl.searchParams.set("lifecycle", "r0");
   history.replaceState(null, "", shareUrl);
   const resumeIntent = takeWorldV0ResumeIntent({ runKey, playerId: callsign });
   resetProtocolState();

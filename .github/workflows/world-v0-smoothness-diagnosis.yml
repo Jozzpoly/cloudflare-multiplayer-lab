@@ -1,0 +1,79 @@
+name: World V0 smoothness causal diagnosis
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-diagnosis.yml
+      - scripts/world-v0-smoothness-active-storm-probe.mjs
+      - docs/WORLD_V0_SMOOTHNESS_REGRESSION_CAUSAL_AUDIT_2026-09-15.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-v0-smoothness-diagnosis
+  cancel-in-progress: true
+
+jobs:
+  reproduce-active-storm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Validate unchanged runtime
+        run: |
+          npm run typecheck
+          npm run validate:worker
+
+      - name: Start local Workerd baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > smoothness-diagnosis-wrangler.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "diagnostic Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat smoothness-diagnosis-wrangler.log
+          exit 1
+
+      - name: Reproduce active camera-relative correction storm
+        env:
+          MW_WORLD_V0_SMOOTH_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_SMOOTH_LATENCY_MS: 90
+          MW_WORLD_V0_SMOOTH_OUTPUT: world-v0-smoothness-active-storm.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120s node scripts/world-v0-smoothness-active-storm-probe.mjs | tee world-v0-smoothness-active-storm.log
+          grep -q 'OWNER_CORRECTION_STORM_REPRODUCED' world-v0-smoothness-active-storm.log
+
+      - name: Prove diagnosis did not mutate runtime source
+        run: git diff --exit-code
+
+      - name: Upload causal evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-diagnosis-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-smoothness-active-storm.json
+            world-v0-smoothness-active-storm.log
+            smoothness-diagnosis-wrangler.log

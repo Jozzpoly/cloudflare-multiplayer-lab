@@ -1,0 +1,128 @@
+name: World V0 lifecycle independence R0-B1 authority gate
+
+on:
+  push:
+    branches:
+      - research/world-v0-lifecycle-independence-r0
+    paths:
+      - .github/workflows/world-v0-lifecycle-independence-r0b1.yml
+      - scripts/materialize-world-v0-lifecycle-r0b1.py
+      - scripts/world-v0-lifecycle-independence-r0b1-probe.mjs
+      - src/world-v0-protocol.ts
+      - src/world-v0-shared-yard.ts
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: world-v0-lifecycle-r0b1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  authority-topology-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact event head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install exact dependency graph
+        run: npm ci
+
+      - name: Materialize bounded R0-B1 patch in runner
+        run: python3 scripts/materialize-world-v0-lifecycle-r0b1.py
+
+      - name: Prove patch scope is bounded
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only)
+          printf 'R0-B1 materialized files:\n%s\n' "${changed[*]}"
+          test "${#changed[@]}" -eq 2
+          printf '%s\n' "${changed[@]}" | sort > /tmp/r0b1-changed.txt
+          printf '%s\n' src/world-v0-protocol.ts src/world-v0-shared-yard.ts | sort > /tmp/r0b1-expected.txt
+          diff -u /tmp/r0b1-expected.txt /tmp/r0b1-changed.txt
+
+      - name: Typecheck materialized authority
+        run: npx tsc --noEmit
+
+      - name: Re-run fixed protocol unit control
+        run: npm run test:world-v0-protocol
+
+      - name: Validate Worker bundle
+        run: npm run validate:worker
+
+      - name: Start local reliability Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-r0b1-wrangler.log 2>&1 &
+          echo $! > /tmp/world-v0-r0b1-wrangler.pid
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "R0-B1 Workerd ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat world-v0-r0b1-wrangler.log
+          exit 1
+
+      - name: Prove solo running world to same-epoch late join
+        env:
+          MW_WORLD_V0_R0B1_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_R0B1_RUN: r0b1-${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 75s node --experimental-strip-types scripts/world-v0-lifecycle-independence-r0b1-probe.mjs | tee world-v0-r0b1.log
+          grep -q 'WORLD_V0_LIFECYCLE_INDEPENDENCE_R0B1_PASS' world-v0-r0b1.log
+
+      - name: Keep fixed-2P ActorSession lifecycle as control
+        env:
+          MW_WORLD_V0_I1_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_I1_RUN: r0b1-fixed-control-${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 75s node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-r0b1-fixed-control.log
+          grep -q 'WORLD_V0_INTEGRATION_I1_SERVER_SESSION_PASS' world-v0-r0b1-fixed-control.log
+
+      - name: Materialize tested source on research branch
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src/world-v0-protocol.ts src/world-v0-shared-yard.ts; then
+            echo "R0-B1 source already materialized; no commit required"
+            exit 0
+          fi
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 2
+          printf '%s\n' "${changed[@]}" | sort > /tmp/r0b1-changed-final.txt
+          printf '%s\n' src/world-v0-protocol.ts src/world-v0-shared-yard.ts | sort > /tmp/r0b1-expected-final.txt
+          diff -u /tmp/r0b1-expected-final.txt /tmp/r0b1-changed-final.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/world-v0-protocol.ts src/world-v0-shared-yard.ts
+          git commit -m 'Materialize lifecycle R0-B1 authority topology semantics'
+          git push origin HEAD:${GITHUB_REF_NAME}
+
+      - name: Upload R0-B1 evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-lifecycle-r0b1-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-r0b1.log
+            world-v0-r0b1-fixed-control.log
+            world-v0-r0b1-wrangler.log

@@ -1,0 +1,110 @@
+name: World V0 smoothness presentation v7
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-presentation-v7.yml
+      - scripts/world-v0-smoothness-install-presentation-v7.mjs
+      - scripts/world-v0-smoothness-render-presentation-v7-transform.mjs
+      - scripts/world-v0-smoothness-render-presentation-v7-analyze.mjs
+      - scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs
+      - scripts/world-v0-smoothness-render-discontinuity-v4-probe.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v3.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v5.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v6.mjs
+      - public/world-v0/app.js
+      - public/world-v0/playable-control.js
+      - public/world-v0/build-contract.js
+      - src/world-v0-contract.ts
+      - src/world-v0-protocol.ts
+      - src/world-v0-shared-yard.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  presentation-v7:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        half_life_ms: [50, 100, 150]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Prepare V7 test-only presentation candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-install-render-probe-v3.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v5.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v6.mjs
+          node scripts/world-v0-smoothness-install-presentation-v7.mjs "${{ matrix.half_life_ms }}"
+          node scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs
+          node scripts/world-v0-smoothness-render-presentation-v7-transform.mjs \
+            /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs \
+            /tmp/world-v0-smoothness-render-presentation-v7-probe.mjs
+          node --check /tmp/world-v0-smoothness-render-presentation-v7-probe.mjs
+          node --check scripts/world-v0-smoothness-render-presentation-v7-analyze.mjs
+      - name: Start instrumented local Workerd copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-presentation-v7-wrangler.log 2>&1 &
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-presentation-v7-wrangler.log
+          exit 1
+      - name: Capture V7 presentation evidence
+        env:
+          MW_WORLD_V0_RENDER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RENDER_LATENCY_MS: 90
+          MW_WORLD_V0_RENDER_STRESS_MS: 9000
+          MW_WORLD_V0_RENDER_OUTPUT: world-v0-smoothness-presentation-v7-${{ matrix.half_life_ms }}.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 240s node /tmp/world-v0-smoothness-render-presentation-v7-probe.mjs \
+            | tee world-v0-smoothness-presentation-v7-${{ matrix.half_life_ms }}.log
+          test -s world-v0-smoothness-presentation-v7-${{ matrix.half_life_ms }}.json
+      - name: Analyze correction transfer
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -s world-v0-smoothness-presentation-v7-${{ matrix.half_life_ms }}.json ]]; then
+            node scripts/world-v0-smoothness-render-presentation-v7-analyze.mjs \
+              world-v0-smoothness-presentation-v7-${{ matrix.half_life_ms }}.json \
+              world-v0-smoothness-presentation-v7-analysis-${{ matrix.half_life_ms }}.json \
+              | tee world-v0-smoothness-presentation-v7-analysis-${{ matrix.half_life_ms }}.log
+          else
+            echo "V7 source evidence unavailable"
+            exit 1
+          fi
+      - name: Restore canonical runtime source
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove repository source is unchanged
+        if: always()
+        run: git diff --exit-code
+      - name: Upload V7 evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-presentation-v7-${{ matrix.half_life_ms }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-smoothness-presentation-v7-${{ matrix.half_life_ms }}.json
+            world-v0-smoothness-presentation-v7-${{ matrix.half_life_ms }}.log
+            world-v0-smoothness-presentation-v7-analysis-${{ matrix.half_life_ms }}.json
+            world-v0-smoothness-presentation-v7-analysis-${{ matrix.half_life_ms }}.log
+            world-v0-presentation-v7-wrangler.log

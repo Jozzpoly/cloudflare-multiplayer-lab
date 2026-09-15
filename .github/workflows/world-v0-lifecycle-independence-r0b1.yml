@@ -52,7 +52,7 @@ jobs:
           diff -u /tmp/r0b1-expected.txt /tmp/r0b1-changed.txt
 
       - name: Typecheck materialized authority
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Re-run fixed protocol unit control
         run: npm run test:world-v0-protocol

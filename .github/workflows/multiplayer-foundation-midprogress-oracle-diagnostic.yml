@@ -33,7 +33,18 @@ jobs:
           path.write_text(text.replace(needle, replacement, 1))
           PY
       - name: Run passing hibernation reconnect control
-        run: node scripts/multiplayer-foundation-local-reconnect-physics-transport-smoke.mjs
+        shell: bash
+        run: |
+          node scripts/multiplayer-foundation-local-reconnect-physics-transport-smoke.mjs 2>&1 | tee reconnect-control.log
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          prefix = 'MULTIPLAYER_FOUNDATION_HIBERNATION_RECOVERY_RECONNECT_PASS '
+          line = next(line for line in Path('reconnect-control.log').read_text().splitlines() if line.startswith(prefix))
+          value = json.loads(line[len(prefix):])
+          print('CONTROL_GUARD_SHA256=' + hashlib.sha256(value['finalGuardPacked'].encode()).hexdigest())
+          print('CONTROL_SEED=' + str(value['finalSeedBytes']) + '/' + value['finalSeedFnv1a32'])
+          PY
 
   midprogress-observation:
     runs-on: ubuntu-24.04
@@ -63,7 +74,15 @@ jobs:
           node --experimental-strip-types scripts/multiplayer-foundation-midprogress-hibernation-probe.ts 2>&1 | tee midprogress-oracle.log
           status=${PIPESTATUS[0]}
           set -e
-          grep 'MIDPROGRESS_ORACLE_DIAGNOSTIC' midprogress-oracle.log
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          prefix = 'MIDPROGRESS_ORACLE_DIAGNOSTIC '
+          line = next(line for line in Path('midprogress-oracle.log').read_text().splitlines() if line.startswith(prefix))
+          value = json.loads(line[len(prefix):])
+          print('MIDPROGRESS_GUARD_SHA256=' + hashlib.sha256(value['finalGuardPacked'].encode()).hexdigest())
+          print('MIDPROGRESS_SEED=' + str(value['finalSeedBytes']) + '/' + value['finalSeedFnv1a32'])
+          PY
           echo "MIDPROGRESS_EXISTING_RESULT_STATUS=$status"
           if [ "$status" -eq 0 ]; then
             echo "Historical red path unexpectedly passed; treat this as a finding, not as an assumed failure."

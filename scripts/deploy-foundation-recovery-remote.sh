@@ -19,11 +19,11 @@ cmp -s wrangler.jsonc "$ROOT_RECOVERY_CONFIG_TEMPLATE"
 
 npm ci
 
-PROBE_SCRIPT="scripts/.foundation-recovery-box3d-st-lib-probe.sh"
+PROBE_SCRIPT="scripts/.foundation-recovery-box3d-st-configure-probe.sh"
 cp scripts/build-foundation-recovery-box3d.sh "$PROBE_SCRIPT"
 python - <<'PY'
 from pathlib import Path
-path = Path("scripts/.foundation-recovery-box3d-st-lib-probe.sh")
+path = Path("scripts/.foundation-recovery-box3d-st-configure-probe.sh")
 source = path.read_text()
 needle = "pnpm build\n"
 assert source.count(needle) == 1
@@ -32,9 +32,9 @@ from pathlib import Path
 import os
 p = Path(os.environ["BOX3D_JS_DIR"]) / "scripts" / "build.mjs"
 s = p.read_text()
-needle = "const stLib = buildBox3dLib( 'build/box3d', null );\nconst mtLib ="
+needle = "\trun( 'emcmake', args );\n\trun( 'cmake', [ '--build', buildDir, '--target', 'box3d', '-j', '8' ] );"
 assert s.count(needle) == 1
-s = s.replace(needle, "const stLib = buildBox3dLib( 'build/box3d', null );\nconsole.log('FOUNDATION_RECOVERY_WORKERS_BUILD_ST_LIB_PROBE_PASS');\nprocess.exit(0);\nconst mtLib =", 1)
+s = s.replace(needle, "\trun( 'emcmake', args );\n\tconsole.log('FOUNDATION_RECOVERY_WORKERS_BUILD_ST_CONFIGURE_PROBE_PASS');\n\tprocess.exit(0);\n\trun( 'cmake', [ '--build', buildDir, '--target', 'box3d', '-j', '8' ] );", 1)
 p.write_text(s)
 PY2
 pnpm build

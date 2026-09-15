@@ -1,4 +1,4 @@
-name: Multiplayer foundation mid-progress hibernation probe
+name: Multiplayer foundation mid-progress hibernation recovery
 
 on:
   push:
@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 jobs:
-  midprogress-hibernation-falsifier:
+  midprogress-hibernation-recovery:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -35,5 +35,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Confirm or falsify arbitrary-progress hibernation recovery
+      - name: Qualify arbitrary-progress hibernation and final checkpoint rehydration
         run: node --experimental-strip-types scripts/multiplayer-foundation-midprogress-hibernation-probe.ts

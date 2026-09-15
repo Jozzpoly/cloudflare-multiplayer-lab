@@ -1,226 +1,184 @@
 # Multiplayer Foundation — browser / transport live state
 
-Status: **RESEARCH / GATE 5 SCOPED AUTOMATED FOUNDATION PASS / NOT PRODUCT QUALIFIED**  
-Date: 2026-09-14  
+Status: **RESEARCH / SCOPED AUTOMATED FOUNDATION + LOCAL LIFECYCLE COMPOSITION PASS / NOT PRODUCT QUALIFIED**  
+Date: 2026-09-15  
 Branch: `research/multiplayer-foundation-v1-2026-09-13`  
 PR: #51
 
-This document is the current browser/transport truth for the isolated Multiplayer Foundation campaign. It supersedes older statements that Gate 5 is wholly unproven. It does not supersede the separate recovery live-state document and is not permission to merge this research line as a product-readiness claim.
+This is the current source of truth for the isolated browser / transport Multiplayer Foundation campaign. Older checkpoint descriptions remain useful provenance, but should not override the live conclusions below. The separate recovery branch remains authoritative for real deployed Cloudflare restart / hibernation evidence.
 
 ## Live truth
 
-The foundation now has executed evidence that a dynamic browser client is no longer constrained to the qualified fixed-2P `self + remote` topology.
+The research line now has executed evidence for one bounded dynamic multiplayer authority that composes:
 
-Scoped automated evidence currently demonstrates:
+- stable ActorSession / ActorId identity with dynamic `self + 0..N remotes` projection;
+- real Chromium hydration from Box3D recording seeds;
+- real local Cloudflare `wrangler/workerd` Durable Object + WebSockets;
+- dynamic membership `1 → 2 → 3` and earlier wider-topology / late-join browser evidence;
+- authority-authored canonical input commits for three simultaneous non-zero client input streams;
+- shared actor / prop physical interaction with exact browser-authority convergence;
+- controlled transport detach + resume of one ActorSession without identity replacement;
+- Durable Object hibernation and constructor re-entry while live socket bindings survive;
+- durable exact checkpoint recovery;
+- arbitrary-progress recovery where accepted future inputs live in a bounded progress overlay above an older exact physics checkpoint;
+- exact continuation after that mid-progress hibernation;
+- a second hibernation after the resulting final checkpoint, proving that the final Recording seed itself reconstructs the exact durable authority boundary.
 
-- dynamic client projection with one `self` plus `0..N` remotes keyed by stable ActorSession/Actor identity;
-- real Chromium hydration from exact Box3D recording bytes;
-- topology rebootstrap across `2 → 6` active actors and same-epoch churn;
-- a late-joining client using the same physical seed/topology as an existing client while selecting a different `self` actor;
-- a typed fail-closed replication wire vocabulary around the already-qualified bootstrap/runtime seams;
-- real local Cloudflare `wrangler/workerd` + one Durable Object + real WebSockets + three independent Chromium targets;
-- dynamic networked membership `1 → 2 → 3` with topology-bound runtime sync and owned scheduled input acceptance;
-- end-to-end authority/client Box3D convergence from real recording bytes through that real transport path;
-- authority-authored canonical input commit propagation for three distinct simultaneous non-zero client input streams;
-- exact 60-tick browser/authority convergence through shared actor/prop physical interaction.
+The qualified fixed-2P World V0 on `main` remains untouched reference evidence. This research branch is not yet product authority.
 
-The qualified fixed-2P World V0 on `main` remains untouched reference evidence.
+## Evidence ladder
 
-## Executed checkpoints
+### Gate 5 browser / transport foundation
 
-### 5E3B — alternate-self late join in Chromium: PASS
+Earlier checkpoints established, in order:
 
-Research head: `0bf170abfb47a1e4e7b2e6b84d5cb29e39411d3b`  
-Actions: `34867225179` / job `104053978346` — `completed / success`.
+- alternate-self late join and wider dynamic browser topology;
+- typed fail-closed replication protocol;
+- real local DO / WebSocket / three-Chromium transport;
+- live Box3D authority plus browser seed hydration;
+- authority-authored canonical input fan-out;
+- repeated 60-tick exact convergence under three distinct non-zero input streams and measurable shared prop interaction.
 
-At one six-actor physical boundary:
+The last clean-path 3-client interactive specimen reached:
 
-- primary client: `session-self → actor:0`;
-- late-join client: `session-d → actor:4`;
-- both had five remotes;
-- both received the same physical topology and the same recording seed bytes/checksum;
-- projection/runtime digests differed because `self/remote` semantics are client-relative;
-- both remained exact against one authority for 30 shared future ticks in real Chromium.
+- topology revision `3`;
+- topology digest `e6cce2820eb5cc3c`;
+- `12` input batches;
+- `180` authority-accepted canonical records;
+- `180` committed canonical records;
+- `36` recipient-bound commit messages;
+- maximum horizontal prop displacement `0.06361874507046983 m`;
+- exact browser / authority convergence through canonical tick `63`.
 
-This demonstrates that physical truth is not incorrectly bound to one client's `self` identity.
+### Reconnect + hibernation control: PASS / scoped
 
-### 5F0 — replication wire contract: PASS
+A real Chromium reconnect / hibernation control proved that one ActorSession can detach and resume without ActorId replacement while the other clients remain live, and that the workerd Durable Object can hibernate / reconstruct and still reach exact convergence at tick `63`.
 
-Initial research head: `05e1ec667a74d5a12a97082ff64d4fdf112c9241`  
-Initial Actions: `34867859430` / job `104056125983` — `completed / success`.
+Representative passing evidence:
 
-The original bounded v1 wire vocabulary contained:
+- research head `5a66479e019fe675ac92167e53aea376a766992c`;
+- Actions run `34879196382`;
+- job `104178399317`;
+- marker `MULTIPLAYER_FOUNDATION_HIBERNATION_RECOVERY_RECONNECT_PASS`.
 
-- `foundation_join`;
-- `foundation_runtime_sync`;
-- `foundation_runtime_ready`;
-- `foundation_input_batch`;
-- `foundation_input_result`.
+That control produced final Recording provenance `35153 B / b98daa7d`.
 
-For 5F3 this contract was intentionally versioned to `multiplayer-foundation-replication-v2-input-commit` rather than silently extending v1. v2 adds authority-authored `foundation_input_commit` with recipient ActorSession, source ActorSession/ActorId, topology revision, batch sequence, authority boundary tick and canonical records. The protocol smoke now also exercises invalid recipient/boundary/source cases.
+### Arbitrary-progress hibernation recovery: PASS / scoped
 
-No delta-state protocol, binary optimization or interest-management policy was introduced.
+Canonical semantic gate head:
 
-### 5F1 — real local DO/WebSocket/3-Chromium transport: PASS
+`3f3ee3bcd5f259923b3a3f0d1fccc7c7e8c5f5b8`
 
-Research head: `ee001d7dba81e59edf3c3515a104163efeccb313`  
-Actions: `34870420352` / job `104064660039` — `completed / success`.
+Dedicated workflow:
 
-One local Cloudflare workerd Durable Object served three independent Chromium targets over real WebSockets:
-
-- `session-alpha → actor:0`;
-- `session-bravo → actor:1`;
-- `session-charlie → actor:2`;
-- topology advanced `1 → 2 → 3`;
-- six topology/runtime syncs were delivered and acknowledged;
-- three client input batches / six input records were authority-accepted;
-- no invalid protocol message or stale-ready event occurred;
-- the same run continued through existing browser regressions, typecheck and Worker dry-run.
-
-The seed in this specific transport-isolation specimen was intentionally synthetic. Physical-byte integration was the next separate gate rather than being confounded with first WebSocket/DO lifecycle validation.
-
-### 5F2 — live Box3D authority + real transport + exact browser convergence: PASS
-
-Research head: `ca90ea11baa095e7719f3dfd9f4e4bf0ff59ae06`.
-
-Dedicated convergence workflow:
-
-- run `34871635591`;
-- job `104068679712`;
-- result: `completed / success`;
-- marker: `MULTIPLAYER_FOUNDATION_LOCAL_PHYSICS_TRANSPORT_PASS`.
+- run `34962335022`;
+- job `104358599349`;
+- result `completed / success`;
+- marker `MULTIPLAYER_FOUNDATION_MIDPROGRESS_HIBERNATION_RECOVERY_PASS`.
 
 Ordinary repository CI at the same head:
 
-- run `34871640032`;
-- job `104068695559`;
-- result: `completed / success`.
+- run `34962338930`;
+- job `104358611717`;
+- result `completed / success`.
 
-The isolated specimen executed:
+The specimen executed this stronger sequence:
 
-- one live World-V0-configured Box3D authority inside local workerd / Durable Object;
-- full arena + 12 persistent props + three dynamically joined actors;
-- real `b3Recording_CopyData` authority seeds transported through `foundation_runtime_sync`;
-- three independent Chromium clients hydrating their own Box3D runtimes from those bytes;
-- final topology revision `3` with two remotes per client;
-- six zero-input batches / 90 authority-accepted scheduled records covering 30 future ticks for all three actors;
-- 30 independent future Box3D steps in each browser runtime;
-- a same-topology authority `correction` sync at canonical tick `33`;
-- exact equality between every browser's pre-correction state guard and the authority correction boundary;
-- successful hydration of the correction seed afterward.
+1. reach exact durable physics checkpoint generation `1` at tick `33`;
+2. accept batch 3 (`ticks 34..48`) for all three actors without advancing physics, leaving canonical future input in a durable progress overlay;
+3. naturally hibernate the DO;
+4. reconstruct a fresh constructor from exact base + progress overlay while preserving three socket bindings;
+5. explicitly detach / resume `session-bravo` without replacing `actor:1`;
+6. provide batch 4 (`ticks 49..63`) and continue exact physics to tick `63`;
+7. require the exact final state guard;
+8. publish checkpoint generation `2`;
+9. naturally hibernate again;
+10. reconstruct another fresh constructor from the final Recording seed and require the same exact tick-63 state guard.
 
-Final executed evidence:
+Executed final evidence:
 
-- authority boundary tick: `33`;
-- topology digest: `e6cce2820eb5cc3c`;
-- total runtime syncs: `9` (`6` membership/topology + `3` correction);
-- correction syncs: `3`;
-- final recording seed: `31637 B`;
-- final seed FNV-1a32: `74d5adbd`;
-- all three clients: `exactContinuationTicks = 30` and `correctionGuardMatched = true`.
+- partial progress: `9` input batches / `135` accepted records;
+- progress sequence: `6`;
+- first constructor transition: `6b121231… → aa9f6a99…`;
+- first restore state: `restored`;
+- final tick: `63`;
+- final checkpoint generation: `2`;
+- final accepted / committed records: `180 / 180`;
+- final commit messages sent: `36`;
+- exact final state guard SHA-256: `1d76b17f64630dad372d1166806a7aee9f3ed500cc8ee4fc2d6a2d898cc205d6`;
+- final Recording provenance: `35153 B / de6fd36b`;
+- second constructor transition: `aa9f6a99… → 7896ef20…`;
+- second restore state: `restored`;
+- all three ActorIds preserved;
+- `session-bravo` resumed exactly once as `actor:1`.
 
-This remains the neutral control specimen for later interactive replication work.
+## Important oracle correction: Recording bytes are not canonical state identity
 
-### 5F3 — canonical non-zero multi-client input propagation + interacting exact convergence: PASS / scoped
+The historical arbitrary-progress falsifier originally required the final Recording FNV to equal the clean reconnect control (`b98daa7d`). The mid-progress path instead produced `de6fd36b`, making the old gate red.
 
-Research head: `fdaa9a058fbaf6e1323a1a5f3bb2af8cdf5075e4`.
+That red result was investigated rather than patched around.
 
-Dedicated interactive workflow:
+Controlled diagnostic runs proved:
 
-- run `34873837398`;
-- first job `104076010206` — `completed / success`;
-- confirmatory rerun job `104076580552` — `completed / success`;
-- marker: `MULTIPLAYER_FOUNDATION_INTERACTIVE_PHYSICS_TRANSPORT_PASS`.
+- clean control Recording: `35153 / b98daa7d`;
+- mid-progress Recording: `35153 / de6fd36b`;
+- both rehydrate to the same exact state guard SHA-256 `1d76b17f…cc205d6`;
+- after the same additional 60 non-trivial physics steps, both produce the same future guard SHA-256 `6679ec5243d1282fbf482660a8e5c7a3bde8bf47c05c9234a5376a3e9b5ee90a`;
+- their newly captured Recordings still differ (`c2b3312d` vs `30399ab0`);
+- after rehydrating those second-generation divergent Recordings and running another 120-step horizon with a different input regime, both again produce the same exact guard SHA-256 `e61bc33e575209c37708a080f73dccbad6807056c3d2f3bfa4056ff2ba52519d`;
+- their third Recording hashes still differ (`1b1bae62` vs `50204dae`).
 
-Ordinary repository CI at the same research head:
+Diagnostic runs:
 
-- run `34873842535`;
-- job `104076027844` — `completed / success`.
+- first future-equivalence run `34961144781`;
+- second-order rehydration run `34961677192`.
 
-Neutral-control regression on the same runtime/fixture/runner code before the workflow-only head advance:
+Conclusion:
 
-- head `af78c30fddf5467f7cf18512749feef1bc9e3569`;
-- run `34873792595` / job `104075864659` — `completed / success`;
-- marker: `MULTIPLAYER_FOUNDATION_LOCAL_PHYSICS_TRANSPORT_PASS`;
-- retained 30-tick zero-input exact convergence with no commit traffic.
+**For this pinned Box3D Recording path, byte/FNV identity is provenance, not canonical physical-state identity.**
 
-5F3 executed one authority with three distinct simultaneous deterministic non-zero input streams:
+Correctness gates must require valid seed rehydration and exact semantic state / continuation. They must not require two independently captured equivalent Recording payloads to be byte-identical. Replacing `b98daa7d` with another magic hash would recreate the same mistake.
 
-- `session-alpha / actor:0` → `(0.8, 0.6)`;
-- `session-bravo / actor:1` → `(-0.8, 0.6)`;
-- `session-charlie / actor:2` → `(0, -1)`;
-- four 15-tick batches per actor;
-- `12` total input batches;
-- `180` authority-accepted canonical records;
-- `180` committed canonical source records;
-- `36` recipient-bound `foundation_input_commit` messages from authority.
+The permanent mid-progress gate now uses exact state identity plus a real second constructor restore from the final durable checkpoint. Temporary future-equivalence apparatus was only a falsification tool and is not part of the intended permanent runtime design.
 
-Each Chromium client independently received:
+## Scope boundaries
 
-- `12` canonical commit messages;
-- `180` canonical records;
-- commits from all three ActorSessions;
-- its own local input as prediction followed by authority commit;
-- peer input only through authority-authored commits;
-- resolved input frames whose three actors were all authority-sourced before simulation.
+This is a strong **local deterministic lifecycle-composition PASS**, not product qualification.
 
-Each browser then advanced its own Box3D runtime for `60` future ticks and matched the authority's correction guard exactly at canonical tick `63`.
+Still unproven or intentionally open:
 
-First and confirmatory runs produced the same final physical evidence:
+- deterministic latency / jitter / duplicate / reorder / loss behavior in the live transport path;
+- late or superseding canonical input that requires real replay / reconciliation after local consumption;
+- actor retire / replacement while active physical continuation is running;
+- meaningful 3–6 client CPU, memory, bandwidth and message-rate measurements;
+- deployed-edge qualification of this full browser / transport specimen;
+- multi-human Owner / friend playability and feel;
+- product UX, capacity policy, matchmaking / room policy, auth or identity productization;
+- MMO-scale interest management, partitioning or authority migration.
 
-- topology revision: `3`;
-- topology digest: `e6cce2820eb5cc3c`;
-- final recording seed: `35153 B`;
-- final seed FNV-1a32: `1cc11f63`;
-- maximum horizontal prop displacement: `0.06361874507046983 m`;
-- all three clients: `exactContinuationTicks = 60`;
-- all three clients: `correctionGuardMatched = true`.
+The separate recovery campaign proves real deployed restart / same-build hibernation recovery for its isolated recovery specimen. Do not silently promote those claims into this browser specimen, or vice versa.
 
-The prop displacement requirement is intentional: 5F3 cannot pass merely by moving three independent actors in empty space. Shared dynamic world state was measurably disturbed while all replicas remained exact.
+## Stop condition reached for the current lifecycle subcampaign
 
-## What this does **not** prove
+The previous frontier was reconnect / hibernation while meaningful canonical motion was active. That frontier is now sufficiently grounded for the current foundation phase.
 
-5F3 closes the previous non-neutral peer-input gap for one bounded local deterministic specimen. It does not make the transport generally resilient or product-ready.
+Do **not** continue inventing R3/R4-style durability gates merely because more failure modes can be named. Additional resilience experiments should be justified by a concrete architectural or product question.
 
-Still unproven in this line:
+The higher-value next move is reconvergence toward a usable Multi_World continuation:
 
-- reconnect/resume while non-neutral shared physical interaction is active;
-- retire/replacement through real browser transports during active physical continuation;
-- controlled latency, jitter, loss, duplicate and reorder of input/commit/runtime-sync traffic;
-- late or superseding canonical input that actually forces replay/reconciliation in the live browser transport path;
-- meaningful 3/6-client CPU, memory, bandwidth and message-rate measurements;
-- deployed-Cloudflare behavior for this browser/transport specimen;
-- real 3–6 human Owner/friend playability and feel;
-- product UX, capacity policy or readiness;
-- MMO-scale, interest management, partitioning or authority migration.
-
-The separate recovery campaign remains authoritative for restart/storage claims. A local browser transport PASS must not be promoted into a deployed recovery claim.
-
-## Current-best next frontier
-
-The next narrow falsifier should be **transport/lifecycle disturbance while canonical shared motion is active**, not simply a longer clean run.
-
-The preferred sequence is:
-
-1. keep one live physical authority and three browser clients;
-2. preserve distinct non-zero canonical input streams and measurable shared actor/prop interaction;
-3. first exercise a controlled transport interruption/reconnect of one ActorSession without replacing its identity;
-4. require the reconnected browser to rehydrate/resume and return to exact convergence while the other clients remain live;
-5. then separately introduce deterministic latency/jitter/duplicate/reorder and finally loss;
-6. only after those semantics are grounded should the campaign broaden into N-client load/scale measurement and deployed edge validation.
-
-A future test that merely survives network disturbance by repeatedly shipping full corrections would not automatically qualify the intended replication design; message provenance, bounded recovery cost and the actual reconciliation path must remain inspectable.
-
-Evidence boundary for that next step: 5F3 demonstrates clean-path canonical input fan-out and exact continuation. It does **not** demonstrate replay after a commit arrives after local simulation has already consumed the affected tick. That distinction must remain explicit when designing the first impairment/reconnect specimen.
+1. treat the closed recovery branch as an evidence donor, not a blanket merge source;
+2. keep this foundation branch as the current dynamic browser / transport research authority;
+3. identify the minimal defended contracts that should move toward the playable Yard / ongoing-world line;
+4. preserve dynamic membership, stable ActorSession identity, canonical input provenance, exact recovery seams and inspectable reconnect behavior;
+5. return to an Owner-visible loop sooner rather than expanding the laboratory indefinitely;
+6. use network-impairment or scale falsifiers when they answer a concrete design decision, not as an endless prerequisite chain.
 
 ## Certification interpretation
 
-Gate 5 should now be read as:
+Current scoped interpretation:
 
-**PASS / scoped automated dynamic browser + real local transport + byte-seed Box3D + authority-authored multi-client canonical input convergence specimen.**
+**PASS — dynamic local browser multiplayer, real DO/WebSocket transport, authority-authored multi-client canonical inputs, shared Box3D interaction, controlled reconnect, natural hibernation, arbitrary-progress durable recovery and final-checkpoint rehydration have all been demonstrated in bounded automated specimens.**
 
-Gate 5F3 specifically is:
+Not demonstrated:
 
-**PASS / scoped repeated 3-client non-zero canonical input and interacting exact-convergence specimen.**
-
-This is not a Gate-7 human/product PASS and is not evidence that resilience, network impairment, scaling or deployed-runtime questions are solved.
+**product readiness, deployed full-stack resilience, hostile-network robustness, scale or human playability.**

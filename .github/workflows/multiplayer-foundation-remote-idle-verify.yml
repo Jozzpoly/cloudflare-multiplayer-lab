@@ -28,7 +28,21 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Classify recovery trigger for idle verification
+        id: trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          PHASE="$(node -e "const fs=require('fs'); const trigger=JSON.parse(fs.readFileSync('foundation-recovery-remote-trigger.json','utf8')); const phase=trigger.phase; if (!['idle','seed','resume'].includes(phase)) process.exit(2); process.stdout.write(phase);")"
+          echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
+          echo "Recovery trigger phase: $PHASE"
+      - name: Skip idle smoke for armed recovery phase
+        if: ${{ steps.trigger.outputs.phase != 'idle' }}
+        shell: bash
+        run: |
+          echo "Idle deployment verification intentionally skipped for recovery phase '${{ steps.trigger.outputs.phase }}'."
       - name: Verify exact idle Cloudflare deployment
+        if: ${{ steps.trigger.outputs.phase == 'idle' }}
         env:
           MW_FOUNDATION_RECOVERY_EXPECTED_BUILD: ${{ github.sha }}
           MW_FOUNDATION_RECOVERY_OUTPUT: foundation-recovery-remote-idle-evidence.json
@@ -37,7 +51,7 @@ jobs:
           set -euo pipefail
           node scripts/multiplayer-foundation-remote-idle-smoke.mjs | tee foundation-recovery-remote-idle.log
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: ${{ always() && steps.trigger.outputs.phase == 'idle' }}
         with:
           name: foundation-recovery-remote-idle-${{ github.run_id }}
           path: |

@@ -1,10 +1,27 @@
 # Multiplayer Foundation — Recovery Live State
 
-Date: 2026-09-14
+Date: 2026-09-15
 
-Status: **Gate 4A PASS / Gate 4B PASS / Gate 4C local stack L1–L4b PASS / remote deployment-restart gate READY but UNEXECUTED / not product-qualified**
+Status: **Gate 4A PASS / Gate 4B PASS / Gate 4C local stack L1–L4b PASS / Gate 4C-R1 PASS for intentional real Cloudflare code-deployment restart / not product-qualified**
 
-This document is the recovery/persistence source of truth for the `research/multiplayer-foundation-v1-2026-09-13` branch. Claims are limited to executed evidence.
+This document is the current recovery/persistence source of truth. Claims are limited to executed evidence. Earlier detailed archaeology remains available in Git history; this snapshot intentionally keeps the defended state, evidence anchors, boundaries, and next research decision compact.
+
+## Live truth
+
+The recovery stack has now crossed the first real deployed Cloudflare restart boundary.
+
+Defended path:
+
+`live authority → deterministic portable envelope + pinned Box3D Recording bytes → transactional SQLite DO generation-1 publication → real Cloudflare code deployment → fresh Durable Object constructor → restore before request handling → explicit resume → exact continuation through tick 329`
+
+The dedicated remote apparatus is isolated from staging/product Workers and is currently **disarmed**:
+
+- branch: `research/multiplayer-foundation-recovery-remote`
+- Worker: `cloudflare-multiplayer-lab-foundation-recovery`
+- trigger: `phase = idle`, `campaignId = unarmed`
+- disarm commit: `afea5cc285e71e0b5f9f535e024448083ae6f06e`
+- disarm Cloudflare version: `0f7c9f3d-ce37-43dd-ad8f-ba494ed32c9c`
+- exact idle runtime verification: PASS
 
 ## Gate status
 
@@ -14,166 +31,155 @@ This document is the recovery/persistence source of truth for the `research/mult
 
 ### Gate 4B — fresh-process exact authority recovery
 
-**PASS / scoped isolated-build specimen.** The official `box3d.js@0.1.1` package exposes no supported Recording byte export/import path, so the research build adds only owned Recording-byte export and RecPlayer creation from owned bytes.
+**PASS / scoped isolated-build specimen.** Recovery uses an owned Recording-byte bridge because the qualified upstream package does not expose the required supported byte export/import path.
 
 Pinned provenance:
 
 - box3d.js `5d5a3af049cccd9948b2b55bac4342414af0ef64`
 - Box3D `8441b4a06d6d09dcfb0b0f704df4d847d1437b92`
 - Emscripten `6.0.2`
+- Workers build profile: `static-wasm-csp-safe-byte-bridge-v1`
 
-Evidence:
+Key evidence:
 
-- `34783226902` — byte bridge active-contact specimen PASS.
-- `34783461543` — full `279068`-byte authority envelope with `41829`-byte physics payload restored in a fresh Node process/fresh WASM and remained exact through tick `329`; wrong engine/hash/boundary rejected before restore.
+- run `34783226902` — active-contact byte bridge PASS.
+- run `34783461543` — fresh Node/WASM consumer restored the full authority and remained exact through tick `329`; wrong engine/hash/boundary rejected before restore.
+- R1 seed repeated an independent producer/consumer rebuild before publication and passed with the final deterministic driver.
 
 ### Gate 4C-L1 — transactional checkpoint store
 
 **PASS / scoped fault campaign.** Run `34784584096` defended:
 
-`immutable content-addressed chunks → immutable content-addressed manifest → atomic HEAD`
+`immutable content-addressed chunks → immutable manifest → atomic HEAD`
 
-Crashes before future-generation durable mutations did not damage current recoverable truth; corrupt/missing published material and stale generations failed closed.
+Interrupted future generations did not damage current recoverable truth; corruption and stale generations fail closed.
 
 ### Gate 4C-L2 — SQLite-backed Durable Object restart
 
-**PASS / scoped local workerd specimen.** Run `34784856828` exercised real `ctx.storage.sql`, concurrent publication, full Wrangler/workerd process death, persisted restart with a changed constructor nonce, exact recovery, duplicate-generation rejection and post-restart publication.
-
-This is local durability evidence, not real Cloudflare edge-eviction evidence.
+**PASS / scoped local workerd specimen.** Run `34784856828` exercised real `ctx.storage.sql`, process death, persisted restart with changed constructor nonce, exact recovery, duplicate-generation rejection, and post-restart publication.
 
 ### Gate 4C-L3 — full authority envelope through durable restart
 
-**PASS / scoped composition specimen.** Run `34785027968` executed:
-
-`live authority → 279068-byte envelope → chunked SQLite DO → full workerd death → fresh constructor → exact envelope recovery → fresh Node/WASM consumer → exact future through tick 329`
-
-Durable envelope SHA-256: `0069f1d40cd6faeb08ec29e2d8e92e1e3d4a2efdbcdcc3277559984f7058ae74`. Physics remained `41829` bytes.
+**PASS / scoped composition specimen.** Run `34785027968` proved full authority envelope publication through chunked SQLite DO storage, full workerd death, fresh constructor, fresh Node/WASM restore, and exact continuation through tick `329`.
 
 ### Gate 4C-L4a — Box3D inside workerd
 
-**PASS / scoped Workers-runtime capability specimen.** Run `34786781239` established:
-
-- statically imported precompiled `.wasm`,
-- loader path tolerant of undefined `_scriptName`,
-- Emscripten `-sDYNAMIC_EXECUTION=0`,
-- CSP-safe non-JIT replacement for facade `makeOutParamReader`,
-- unique bounded engine rebind tokens because pinned Box3D has `B3_BODY_NAME_LENGTH = 18`.
-
-The specimen copied `8451` Recording bytes, destroyed the source Recording/world, reconstructed inside workerd and continued an active-contact future exactly for 90 ticks.
+**PASS / scoped Workers-runtime capability specimen.** Run `34786781239` established the CSP-safe static-WASM adapter needed by Workers, including `-sDYNAMIC_EXECUTION=0` and bounded engine rebind tokens.
 
 ### Gate 4C-L4b — fresh Durable Object constructor recovery
 
-**PASS / scoped local Wrangler/workerd specimen.** Primary evidence: run `34788380888`.
+**PASS / scoped local Wrangler/workerd specimen.** Primary evidence: run `34788380888`, confirmed by run `34788569624`.
 
-Executed path:
-
-`live authority → serialized envelope → SQLite publication in DO #1 → full Wrangler/workerd death → DO #2 fresh constructor → blockConcurrencyWhile recovery → envelope validation → roster/input/topology reconstruction → Box3D reconstruction → semantic rebind → request handling → exact future through tick 329`
-
-The harness required first constructor state `empty`, full process kill, a changed constructor nonce, second constructor state `restored` before `/resume`, restored generation `1` at tick `260`, physics payload `41829` bytes, and exact post-restore continuation through tick `329` including retire/replacement churn.
-
-Final deterministic cross-runtime envelope: `279033` bytes. Gate 4B was re-run first with the same driver and passed before L4b.
-
-Result: `MULTIPLAYER FOUNDATION AUTHORITY CONSTRUCTOR RESTART PASS`.
-
-Confirming evidence: run `34788569624` repeated the entire hardened qualification pipeline successfully, including deterministic-driver assertions, independent fresh Node/WASM Gate 4B verification and fresh-constructor L4b recovery. Both full post-confounder qualification runs are green.
+The second constructor had to report `restored` before `/resume`, restore generation `1` at tick `260`, preserve the `41829`-byte physics payload, change constructor nonce, and continue exactly through tick `329` including retire/replacement churn.
 
 ### Gate 4C-R1 — deployed Cloudflare deployment-restart recovery
 
-**READY / UNEXECUTED.** This is the next gate; no remote PASS is claimed yet.
+**PASS / scoped intentional real Cloudflare code-deployment restart.** Campaign: `r1-deploy-restart-20260915`.
 
-The apparatus is isolated from `staging`, `reliability_play`, `qualified_play` and the production/root Worker. Its dedicated target is:
+Executed deploy A / seed:
 
-- deployment branch: `research/multiplayer-foundation-recovery-remote`
-- deployment branch head: `d9a28a4cf162cbd9dff267308b014b68832aa948`
-- Worker: `cloudflare-multiplayer-lab-foundation-recovery`
-- Workers Builds root directory: `/workers/foundation-recovery-remote/`
-- dedicated Wrangler config: `workers/foundation-recovery-remote/wrangler.jsonc`
-- Node: pinned to `22` in the Worker root
-- Durable Object binding: `FOUNDATION_AUTHORITY_CONSTRUCTOR_TEST`
-- storage: SQLite
-- workers.dev only; no custom route
+- commit `2b81e18b0a30c84edd6767617f0185c438a12189`
+- Cloudflare version `fe78e47f-7a4d-4b5c-a952-3d2da2001f0a`
+- workflow run `34917693666`, seed job `104218830007` — PASS
+- independent exact Box3D producer/consumer rebuild — PASS
+- generation `1` published at canonical tick `260`
+- seed constructor nonce `3b1c92c4-d6c6-436b-9396-ce77c6812a50`
+- deterministic envelope `279033` bytes
+- physics payload `41829` bytes
 
-The intended executed path is deliberately two deployments of the same Worker/DO namespace:
+Executed deploy B / resume:
 
-`deploy A → fresh constructor empty → independently generated exact envelope → generation-1 SQLite publication → deploy B → fresh constructor nonce → constructor restores generation 1 before /resume → exact continuation through tick 329`
+- commit `6236c881851c0717aa2400aa80d6a996db1372ce`
+- Cloudflare build `44102591-5347-4f75-ba54-287762c64c08` — PASS
+- Cloudflare version `a6493629-83b6-490c-a15b-229cbcfd0e61`
+- workflow run `34917984970`, resume job `104219700774` — PASS
+- restored constructor nonce `4ee25295-d1f9-4929-a5e1-c956a428c1fe`
+- constructor nonce changed: true
+- restore state observed before `/resume`: `restored`
+- restored generation `1`, canonical tick `260`
+- restored payload SHA-256 `2d73de5e6cd0f16da9283d67454519df8aa8791872d1b966bf97a5a8fa468ecd`
+- physics payload `41829` bytes
+- exact frame count `69`
+- exact continuation through tick `329`
+- final actor IDs: `actor:0`, `actor:1`, `actor:3`, `actor:5`, `actor:6`, `actor:7`
 
-Repository safeguards:
+Literal qualification result:
 
-- `scripts/deploy-foundation-recovery-remote.sh` refuses execution unless it is running under Workers Builds, the Cloudflare Worker override name is exactly the dedicated recovery Worker, the Workers Builds branch is exactly the dedicated deployment branch, the Workers Builds commit SHA is valid, and the checked-out HEAD is that exact SHA.
-- The deployment wrapper is self-contained: it installs the repository dependency graph, builds the pinned byte-capable/CSP-safe Box3D adapter, and invokes only the dedicated Wrangler config.
-- Cloudflare's configured root directory contains the same dedicated Worker name and entrypoint used by the wrapper; the root production/staging `wrangler.jsonc` is outside this Worker root and cannot be selected by the guarded path.
-- The superseded root-level recovery Wrangler config was removed; there is one canonical remote Worker config.
-- `foundation-recovery-remote-trigger.json` is fail-closed across `idle`, `seed`, and `resume`; the dedicated branch currently remains `idle / unarmed`.
-- Both remote audit phases wait until `/build` reports the exact expected Git commit before accepting evidence.
-- `seed` independently rebuilds Gate 4B producer/consumer material before publishing the remote checkpoint.
-- `resume` requires a changed constructor nonce, `restoreState = restored` before `/resume`, restored generation `1` at tick `260`, `41829` physics bytes, and exact continuation through tick `329` including post-checkpoint churn.
+`MULTIPLAYER FOUNDATION REMOTE DEPLOYMENT RESTART PASS · campaign=r1-deploy-restart-20260915 · build=6236c881851c0717aa2400aa80d6a996db1372ce · constructorNonceChanged=true · restoredBeforeResume=true · exactThrough=329`
 
-Executed apparatus evidence:
+Resume evidence artifact:
 
-- run `34789275755` — first full remote bundle dry-run PASS.
-- run `34789277298` — ordinary CI on the same head PASS.
-- run `34792201941` — dedicated remote branch classification PASS in `idle`; `seed` and `resume` correctly skipped.
-- run `34792311322` — exact fail-closed Workers Builds deploy command, including pinned Box3D rebuild and dedicated-config `wrangler deploy --dry-run`, PASS.
-- run `34792313249` — ordinary CI on the hardened deploy-command head PASS.
-- run `34792795657` — final dry-run PASS with the command launched from the exact configured Workers Builds root directory; wrapper performed its own dependency install, pinned Box3D build and dedicated Worker bundle.
-- run `34792812095` — ordinary CI PASS on final remote deployment code after removal of the superseded root-level config.
-- dedicated deployment branch is synchronized to `d9a28a4cf162cbd9dff267308b014b68832aa948` and remains unarmed.
+- artifact `foundation-recovery-remote-resume-34917984970`
+- artifact ID `10376773011`
+- SHA-256 `b5b8d7c544e404f6f39e7a0b4fe6c426302b70ae27b05d60869f703017b500be`
 
-External prerequisite still pending: create/connect the dedicated Cloudflare Worker to that deployment branch with Workers Builds using:
+The campaign was then explicitly disarmed and independently returned to exact `idle / unarmed` runtime state.
 
-- production branch: `research/multiplayer-foundation-recovery-remote`
-- root directory: `/workers/foundation-recovery-remote/`
-- build command: empty
-- deploy command: `bash ../../scripts/deploy-foundation-recovery-remote.sh`
-- non-production branch builds: disabled
+## Workers Builds environment finding
 
-Until that account-side setup exists, the initial `idle` deployment is independently verified, and both `seed` and `resume` execute remotely, Gate 4C-R1 remains UNEXECUTED.
+The first remote deployment path failed before Box3D compilation because the Workers Builds host did not provide `cmake` in `PATH`, while the qualified GitHub Actions environment did.
 
-This gate qualifies a **real Cloudflare code-deployment restart boundary**. It must not be relabeled as spontaneous edge eviction, hibernation, failover, or migration evidence.
+The failure was bisected rather than worked around blindly:
 
-## L4b diagnostic boundary
+- source checkout and pinned SHAs: PASS
+- owned source patches: PASS
+- `pnpm install --frozen-lockfile`: PASS
+- `pnpm build`: FAIL
+- single-threaded Box3D static library path: FAIL
+- isolated `emcmake cmake ...` configure boundary: FAIL
+- explicit probe confirmed host CMake absent
 
-The first constructor specimen restored successfully but diverged at tick `268`. Instrumentation showed that **only `inputCheckpointDigest` differed**; physics `guardPacked`, roster, topology, outcomes and their digests remained exact. The mismatch appeared after the physical step when a synthetic future-input branch used `Math.cos/Math.sin` in Node versus workerd.
+Remediation: build-local pinned CMake `3.31.6`, installed through the official Python wheel and added only to that build's `PATH`.
 
-The qualification did not add tolerances or weaken equality. That synthetic branch was replaced in both test runtimes with exact cardinal inputs selected from integer state. Gate 4B then passed with the same deterministic driver and L4b passed end-to-end.
+Evidence:
 
-Supported claim: **recovered authority state and pinned physics continue exactly across the tested Node→workerd boundary when the cross-runtime stimulus is exactly representable.** Arbitrary bit identity of host-JS transcendental functions across runtimes is not qualified and is not part of the recovery contract.
+- `7c88b4bbe6d1e1d53d50d3284060ac7d4cab0887` — pinned CMake bootstrap PASS in Workers Builds.
+- `c68714f8edc59d6ab909c6469e523288fb63afab` — full canonical recovery bundle PASS with pinned CMake.
+- `a30d20aee538af72798f18b473a05fcbd2e8d973` — first real idle recovery Worker deploy PASS.
 
-## Defended recovery findings
+The recovery builder therefore no longer depends on an undeclared host CMake installation.
+
+## Apparatus correction after R1
+
+During R1, `.github/workflows/multiplayer-foundation-remote-idle-verify.yml` was found to run on every trigger change while always demanding `phase = idle`. That makes legal `seed` and `resume` phases produce a semantically false red idle check.
+
+R1 was not modified mid-flight. The apparatus correction was intentionally deferred until after resume PASS and explicit disarm. The verifier now classifies the trigger first and runs the exact idle smoke only for `phase = idle`; `seed`/`resume` report an intentional idle-verification skip instead of a false failure.
+
+## Defended findings
 
 - Visible rigid-body fields are not an exact contact-world save state; hidden engine state matters.
 - Seed-only Box3D Recordings can reconstruct worlds that accept new mutations and continue live simulation.
-- Historical creation ordinals are not durable semantic identity after churn; scoped recovery uses bounded unique engine rebind tokens with fail-closed restored-domain validation.
-- Portable roster/event/input/topology state has its own versioned checkpoint contract; exact physics alone is insufficient.
-- Raw Box3D Recording bytes are build-specific recovery material, not a universal durable save format.
-- Durable semantic truth, engine runtime checkpoint, transactional publication and platform-specific reconstruction remain separate layers.
-- Exact cross-runtime qualification needs deterministic host-side stimuli unless the numeric runtime pair is separately qualified.
-
-## Storage boundaries
-
-The store chunks payloads rather than assuming one arbitrarily large SQLite BLOB. Correctness currently precedes garbage collection; unreachable immutable material from interrupted future generations is tolerated until GC has separate qualification. Corruption of the published generation fails closed rather than silently falling back.
+- Durable semantic truth, engine runtime checkpoint, transactional publication, and platform-specific reconstruction are distinct layers.
+- Portable roster/event/input/topology state needs its own versioned checkpoint contract; exact physics alone is insufficient.
+- Raw Recording bytes are build-specific recovery material, not a universal save format.
+- Transactional immutable chunks + immutable manifest + atomic HEAD provide a robust publication boundary for the tested failures.
+- A real Cloudflare code deployment created a fresh constructor that restored the persisted authority before `/resume` and continued exactly under the qualified deterministic driver.
+- Exact cross-runtime qualification requires exactly representable host-side stimuli unless cross-runtime numeric behavior is separately qualified.
 
 ## Explicit non-claims
 
 Still unproven:
 
-- recovery across a real Cloudflare code deployment (Gate 4C-R1 apparatus is ready but not yet executed),
-- recovery after spontaneous real deployed Cloudflare eviction, hibernation, platform restart/failover or migration,
-- production packaging/distribution and upgrade policy for the custom Workers-compatible Box3D build,
-- runtime-checkpoint compatibility across Box3D/box3d.js builds,
+- spontaneous real Cloudflare eviction or hibernation recovery,
+- platform restart/failover or regional migration recovery,
+- active authority migration between regions/hosts,
+- runtime-checkpoint compatibility across Box3D/box3d.js upgrades,
+- production packaging/distribution and upgrade policy for the custom Workers-compatible adapter,
 - arbitrary cross-runtime bit identity for host-JS transcendental math,
 - large-world checkpoint sizing/cadence and garbage collection,
 - rollback networking,
-- active authority migration between regions/hosts,
 - large-world partitioned persistence,
 - browser `self + N` bootstrap/recovery,
 - real human 3–6 player qualification,
-- universal donor qualification.
+- universal donor qualification,
+- product readiness.
+
+Gate 4C-R1 must **not** be relabeled as spontaneous eviction, hibernation, failover, or migration evidence.
 
 ## Current next move
 
-The scoped **local recovery stack is defended through a fresh Durable Object constructor**, and the isolated remote deployment-restart apparatus is validated but unexecuted. The next qualitative durability boundary is now account-side only: connect the dedicated Worker with the exact Workers Builds settings recorded above, verify the first `idle` deployment identifies the expected Worker/branch/SHA, then execute the controlled two-deployment `seed → resume` campaign.
+The controlled deployment-restart question is answered for this specimen. The next durability work should be chosen as a new explicit gate rather than silently extending R1.
 
-A successful R1 would establish recovery across an intentional real Cloudflare code-deployment restart only. Natural eviction/hibernation/failover remains a separate later question and must be evidenced independently.
+A likely next research boundary is an independently evidenced spontaneous deployed constructor restart/eviction path, if Cloudflare provides a controllable or observable way to exercise it. That should be treated as a separate experiment with its own falsifier and stop conditions, not as an automatic consequence of R1.
 
-Separately, production use requires an explicit packaging/versioning/fingerprint/upgrade policy for the custom Workers-compatible Box3D adapter. Local constructor recovery is strong architecture evidence; it is not a real-edge or product-readiness claim.
+Separately, eventual product use still needs packaging/version/fingerprint/upgrade policy for the custom Workers-compatible Box3D adapter. R1 is strong architecture evidence; it is not product qualification.

@@ -32,6 +32,18 @@ replaceOnce("c.value='V4Browser'", "c.value='V6Browser'", "browser name");
 replaceOnce("world-v0-smoothness-render-discontinuity-v4-single-renderer-raw-peer", "world-v0-smoothness-render-active-peer-v6", "result revision");
 replaceOnce("Node WebSocket protocol peer with zero canonical input", "Node WebSocket protocol peer with alternating mutable future input and legal supersession", "apparatus description");
 
+// V4 applies artificial latency before the browser even enters the world. That mixes the
+// already-proven authority-silence/recovery pathology into a reconciliation experiment.
+// V6 bootstraps the solo + topology-2 state at ordinary local latency, then applies the exact
+// same Network.emulateNetworkConditions block only for the control/stress measurement phase.
+const latencyBlock = `  await cdp.call("Network.emulateNetworkConditions", {\n    offline: false,\n    latency: LATENCY_MS,\n    downloadThroughput: 12_500_000,\n    uploadThroughput: 12_500_000,\n    connectionType: "wifi",\n  }, sessionId);\n`;
+replaceOnce(latencyBlock, "", "defer artificial latency until measured phase");
+replaceOnce(
+  "  const topology2 = await waitFor(cdp, page, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.lifecycle?.topology?.revision===2 && e.presentation?.remotePresence==='PEER' && e.metrics.guardMismatches===0 && e.networkState.startsWith('live') && !e.runtimeFailed ? {boundary:e.localBoundaryTick, corrections:e.metrics.corrections} : false; })()`, \"browser topology2 after raw late join\", 45_000);\n  await sleep(900);",
+  "  const topology2 = await waitFor(cdp, page, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.lifecycle?.topology?.revision===2 && e.presentation?.remotePresence==='PEER' && e.metrics.guardMismatches===0 && e.networkState.startsWith('live') && !e.runtimeFailed ? {boundary:e.localBoundaryTick, corrections:e.metrics.corrections} : false; })()`, \"browser topology2 after raw late join\", 45_000);\n  await cdp.call(\"Network.emulateNetworkConditions\", {\n    offline: false,\n    latency: LATENCY_MS,\n    downloadThroughput: 12_500_000,\n    uploadThroughput: 12_500_000,\n    connectionType: \"wifi\",\n  }, sessionId);\n  await sleep(900);",
+  "apply artificial latency after stable topology"
+);
+
 replaceOnce(
   "  const before = await cdp.eval(sessionId, \"window.__sharedYardV0Evidence()\");\n  await cdp.eval(sessionId, \"window.__mwRenderProbeV3StartSampler()\");",
   "  const before = await cdp.eval(sessionId, \"window.__sharedYardV0Evidence()\");\n  await cdp.eval(sessionId, \"window.__mwRenderProbeV6ResetCorrections()\");\n  await cdp.eval(sessionId, \"window.__mwRenderProbeV3StartSampler()\");",

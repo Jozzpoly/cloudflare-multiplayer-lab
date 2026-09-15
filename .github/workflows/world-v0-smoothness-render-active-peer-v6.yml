@@ -8,6 +8,7 @@ on:
       - .github/workflows/world-v0-smoothness-render-active-peer-v6.yml
       - scripts/world-v0-smoothness-render-discontinuity-v4-probe.mjs
       - scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs
+      - scripts/world-v0-smoothness-render-correction-component-v6-analyze.mjs
       - scripts/world-v0-smoothness-install-render-probe-v3.mjs
       - scripts/world-v0-smoothness-install-render-probe-v5.mjs
       - scripts/world-v0-smoothness-install-render-probe-v6.mjs
@@ -41,6 +42,7 @@ jobs:
           node scripts/world-v0-smoothness-install-render-probe-v6.mjs
           node scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs
           node --check /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs
+          node --check scripts/world-v0-smoothness-render-correction-component-v6-analyze.mjs
       - name: Start instrumented local Workerd copy
         shell: bash
         run: |
@@ -64,6 +66,19 @@ jobs:
           timeout 240s node /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs | tee world-v0-smoothness-render-active-peer-v6.log
           test -s world-v0-smoothness-render-active-peer-v6.json
           grep -Eq 'SINGLE_RENDERER_NEGATIVE_CONTROL_DISCONTINUITY_REPRODUCED|SINGLE_RENDERER_NEGATIVE_CONTROL_NOT_REPRODUCED' world-v0-smoothness-render-active-peer-v6.log
+      - name: Characterize reconciliation contribution to rendered trajectory
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -s world-v0-smoothness-render-active-peer-v6.json ]]; then
+            node scripts/world-v0-smoothness-render-correction-component-v6-analyze.mjs \
+              world-v0-smoothness-render-active-peer-v6.json \
+              world-v0-smoothness-render-correction-component-v6.json \
+              | tee world-v0-smoothness-render-correction-component-v6.log
+          else
+            echo "V6 source evidence unavailable; correction-component analyzer skipped"
+          fi
       - name: Restore canonical runtime source
         if: always()
         run: git checkout -- public/world-v0/app.js
@@ -79,4 +94,6 @@ jobs:
           path: |
             world-v0-smoothness-render-active-peer-v6.json
             world-v0-smoothness-render-active-peer-v6.log
+            world-v0-smoothness-render-correction-component-v6.json
+            world-v0-smoothness-render-correction-component-v6.log
             world-v0-render-v6-wrangler.log

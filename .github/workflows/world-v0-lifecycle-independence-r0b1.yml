@@ -6,14 +6,13 @@ on:
       - research/world-v0-lifecycle-independence-r0
     paths:
       - .github/workflows/world-v0-lifecycle-independence-r0b1.yml
-      - scripts/materialize-world-v0-lifecycle-r0b1.py
       - scripts/world-v0-lifecycle-independence-r0b1-probe.mjs
       - src/world-v0-protocol.ts
       - src/world-v0-shared-yard.ts
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: world-v0-lifecycle-r0b1-${{ github.ref }}
@@ -26,8 +25,6 @@ jobs:
     steps:
       - name: Checkout exact event head
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -37,33 +34,17 @@ jobs:
       - name: Install exact dependency graph
         run: npm ci
 
-      - name: Materialize bounded R0-B1 patch in runner
+      - name: Verify materialized R0-B1 source markers
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/materialize-world-v0-lifecycle-r0b1.py
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('src/world-v0-shared-yard.ts')
-          text = path.read_text()
-          old = 'if (this.lifecycleR0 && message.type !== "world_v0_ping") {'
-          new = 'if (this.lifecycleR0) {'
-          count = text.count(old)
-          if count != 1:
-              raise SystemExit(f'R0-B1 ping narrowing fix expected one match, found {count}')
-          path.write_text(text.replace(old, new, 1))
-          PY
-
-      - name: Prove patch scope is bounded
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t changed < <(git diff --name-only)
-          printf 'R0-B1 materialized files:\n%s\n' "${changed[*]}"
-          test "${#changed[@]}" -eq 2
-          printf '%s\n' "${changed[@]}" | sort > /tmp/r0b1-changed.txt
-          printf '%s\n' src/world-v0-protocol.ts src/world-v0-shared-yard.ts | sort > /tmp/r0b1-expected.txt
-          diff -u /tmp/r0b1-expected.txt /tmp/r0b1-changed.txt
+          grep -q 'WORLD_V0_LIFECYCLE_R0_TOPOLOGY_PROTOCOL_V1' src/world-v0-protocol.ts
+          grep -q 'WORLD_V0_LIFECYCLE_R0_AUTHORITY_V1' src/world-v0-shared-yard.ts
+          grep -q 'if (this.lifecycleR0) {' src/world-v0-shared-yard.ts
+          if grep -q 'message.type !== "world_v0_ping"' src/world-v0-shared-yard.ts; then
+            echo 'obsolete R0-B1 ping narrowing remains materialized'
+            exit 1
+          fi
 
       - name: Typecheck materialized authority
         run: npm run typecheck
@@ -90,10 +71,10 @@ jobs:
           cat world-v0-r0b1-wrangler.log
           exit 1
 
-      - name: Prove solo running world to same-epoch late join
+      - name: Confirm solo running world to same-epoch late join
         env:
           MW_WORLD_V0_R0B1_BASE: http://127.0.0.1:8787
-          MW_WORLD_V0_R0B1_RUN: r0b1-${{ github.run_id }}
+          MW_WORLD_V0_R0B1_RUN: r0b1-confirm-${{ github.run_id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -109,26 +90,6 @@ jobs:
           set -euo pipefail
           timeout 75s node scripts/world-v0-integration-i1-lifecycle-probe.mjs | tee world-v0-r0b1-fixed-control.log
           grep -q 'WORLD_V0_INTEGRATION_I1_SERVER_SESSION_PASS' world-v0-r0b1-fixed-control.log
-
-      - name: Materialize tested source on research branch
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet -- src/world-v0-protocol.ts src/world-v0-shared-yard.ts; then
-            echo "R0-B1 source already materialized; no commit required"
-            exit 0
-          fi
-          mapfile -t changed < <(git diff --name-only)
-          test "${#changed[@]}" -eq 2
-          printf '%s\n' "${changed[@]}" | sort > /tmp/r0b1-changed-final.txt
-          printf '%s\n' src/world-v0-protocol.ts src/world-v0-shared-yard.ts | sort > /tmp/r0b1-expected-final.txt
-          diff -u /tmp/r0b1-expected-final.txt /tmp/r0b1-changed-final.txt
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/world-v0-protocol.ts src/world-v0-shared-yard.ts
-          git commit -m 'Materialize lifecycle R0-B1 authority topology semantics'
-          git push origin HEAD:${GITHUB_REF_NAME}
 
       - name: Upload R0-B1 evidence
         if: always()

@@ -31,6 +31,11 @@ replaceOnce("`v4-${Date.now().toString(36)}`", "`v6-${Date.now().toString(36)}`"
 replaceOnce("c.value='V4Browser'", "c.value='V6Browser'", "browser name");
 replaceOnce("world-v0-smoothness-render-discontinuity-v4-single-renderer-raw-peer", "world-v0-smoothness-render-active-peer-v6", "result revision");
 replaceOnce("Node WebSocket protocol peer with zero canonical input", "Node WebSocket protocol peer with alternating mutable future input and legal supersession", "apparatus description");
+replaceOnce(
+  "e.metrics.guardMismatches===0 && e.networkState.includes('solo') ? {epoch:e.identity.worldEpoch,boundary:e.localBoundaryTick}",
+  "e.metrics.guardMismatches===0 && e.networkState.startsWith('live') && !e.runtimeFailed ? {epoch:e.identity.worldEpoch,boundary:e.localBoundaryTick,authoritySilenceResumes:e.metrics.authoritySilenceResumes,networkState:e.networkState}",
+  "accept exact-resumed live solo baseline"
+);
 
 // Keep timeout failures evidential: the old helper only retained the boolean predicate result,
 // which made a bootstrap regression indistinguishable from a stale assertion.
@@ -48,7 +53,7 @@ const latencyBlock = `  await cdp.call("Network.emulateNetworkConditions", {\n  
 replaceOnce(latencyBlock, "", "defer artificial latency until measured phase");
 replaceOnce(
   "  const topology2 = await waitFor(cdp, page, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.lifecycle?.topology?.revision===2 && e.presentation?.remotePresence==='PEER' && e.metrics.guardMismatches===0 && e.networkState.startsWith('live') && !e.runtimeFailed ? {boundary:e.localBoundaryTick, corrections:e.metrics.corrections} : false; })()`, \"browser topology2 after raw late join\", 45_000);\n  await sleep(900);",
-  "  const topology2 = await waitFor(cdp, page, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.lifecycle?.topology?.revision===2 && e.presentation?.remotePresence==='PEER' && e.metrics.guardMismatches===0 && e.networkState.startsWith('live') && !e.runtimeFailed ? {boundary:e.localBoundaryTick, corrections:e.metrics.corrections} : false; })()`, \"browser topology2 after raw late join\", 45_000);\n  await cdp.call(\"Network.emulateNetworkConditions\", {\n    offline: false,\n    latency: LATENCY_MS,\n    downloadThroughput: 12_500_000,\n    uploadThroughput: 12_500_000,\n    connectionType: \"wifi\",\n  }, sessionId);\n  await sleep(900);",
+  "  const topology2 = await waitFor(cdp, page, `(() => { const e=window.__sharedYardV0Evidence?.(); return e?.lifecycle?.topology?.revision===2 && e.presentation?.remotePresence==='PEER' && e.metrics.guardMismatches===0 && e.networkState.startsWith('live') && !e.runtimeFailed ? {boundary:e.localBoundaryTick, corrections:e.metrics.corrections, authoritySilenceResumes:e.metrics.authoritySilenceResumes} : false; })()`, \"browser topology2 after raw late join\", 45_000);\n  await cdp.call(\"Network.emulateNetworkConditions\", {\n    offline: false,\n    latency: LATENCY_MS,\n    downloadThroughput: 12_500_000,\n    uploadThroughput: 12_500_000,\n    connectionType: \"wifi\",\n  }, sessionId);\n  await sleep(900);",
   "apply artificial latency after stable topology"
 );
 
@@ -65,10 +70,10 @@ replaceOnce(
 replaceOnce("    sampleCount: samples.length,", "    sampleCount: samples.length,\n    samples,\n    correctionVectors,", "raw samples and correction vectors");
 replaceOnce(
   "  assert(result.guardMismatchDelta === 0, \"exactness failed during V4 render probe\");",
-  "  const vectorMagnitude = (vector) => Math.hypot(...vector);\n  const summarizeVectors = (key) => {\n    const values = correctionVectors.map((event) => vectorMagnitude(event[key] || [0, 0, 0]));\n    return {\n      count: values.length,\n      nonzero: values.filter((value) => value > 1e-9).length,\n      p50: percentile(values, 0.5),\n      p95: percentile(values, 0.95),\n      p99: percentile(values, 0.99),\n      max: values.length ? Math.max(...values) : 0,\n    };\n  };\n  result.correctionVectorSummary = {\n    self: summarizeVectors(\"selfVector\"),\n    remote: summarizeVectors(\"remoteVector\"),\n    prop: summarizeVectors(\"propVector\"),\n    note: \"pre-to-post exact correction displacement; characterization only, not an Owner-ready SLO\",\n  };\n\n  assert(result.guardMismatchDelta === 0, \"exactness failed during V6 render probe\");",
-  "vector summary"
+  "  const vectorMagnitude = (vector) => Math.hypot(...vector);\n  const summarizeVectors = (key) => {\n    const values = correctionVectors.map((event) => vectorMagnitude(event[key] || [0, 0, 0]));\n    return {\n      count: values.length,\n      nonzero: values.filter((value) => value > 1e-9).length,\n      p50: percentile(values, 0.5),\n      p95: percentile(values, 0.95),\n      p99: percentile(values, 0.99),\n      max: values.length ? Math.max(...values) : 0,\n    };\n  };\n  result.correctionVectorSummary = {\n    self: summarizeVectors(\"selfVector\"),\n    remote: summarizeVectors(\"remoteVector\"),\n    prop: summarizeVectors(\"propVector\"),\n    note: \"pre-to-post exact correction displacement; characterization only, not an Owner-ready SLO\",\n  };\n  // Preserve characterization even when a downstream invariant fails; the final verdict still\n  // remains fail-closed and this provisional snapshot is overwritten on a clean completion.\n  writeFileSync(OUTPUT, JSON.stringify({ ...result, provisional: true }, null, 2));\n\n  assert(result.guardMismatchDelta === 0, \"exactness failed during V6 render probe\");",
+  "vector summary and fail-closed evidence preservation"
 );
-replaceOnce("V4 stress accidentally entered recovery path", "V6 stress accidentally entered recovery path", "recovery assertion label");
+replaceOnce("V4 stress accidentally entered recovery path", "V6 stress entered recovery path", "recovery assertion label");
 replaceOnce("result.stressInfo.steps >= STRESS_MS / 20", "result.stressInfo.steps > 0", "timer-rate non-oracle");
 replaceOnce("render_probe_v4_complete", "render_probe_v6_complete", "close reason");
 

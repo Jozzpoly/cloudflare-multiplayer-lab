@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/world-v0-smoothness-prediction-ceiling-v15.yml
       - scripts/world-v0-smoothness-install-prediction-ceiling-v15.mjs
+      - scripts/world-v0-smoothness-install-authority-delay-v15.mjs
       - scripts/world-v0-smoothness-render-prediction-ceiling-v15-transform.mjs
       - scripts/world-v0-smoothness-render-prediction-ceiling-v15-analyze.mjs
       - scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs
@@ -55,6 +56,7 @@ jobs:
           node scripts/world-v0-smoothness-install-render-probe-v5.mjs
           node scripts/world-v0-smoothness-install-render-probe-v6.mjs
           node scripts/world-v0-smoothness-install-prediction-ceiling-v15.mjs "${{ matrix.mode }}"
+          node scripts/world-v0-smoothness-install-authority-delay-v15.mjs
           node scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs
           node scripts/world-v0-smoothness-render-prediction-ceiling-v15-transform.mjs \
             /tmp/world-v0-smoothness-render-active-peer-v6-probe.mjs \
@@ -76,7 +78,7 @@ jobs:
       - name: Capture prediction ceiling evidence
         env:
           MW_WORLD_V0_RENDER_BASE: http://127.0.0.1:8787
-          MW_WORLD_V0_RENDER_LATENCY_MS: 450
+          MW_WORLD_V0_RENDER_LATENCY_MS: 550
           MW_WORLD_V0_RENDER_STRESS_MS: 10000
           MW_WORLD_V0_RENDER_OUTPUT: world-v0-smoothness-prediction-ceiling-v15-${{ matrix.label }}.json
         shell: bash

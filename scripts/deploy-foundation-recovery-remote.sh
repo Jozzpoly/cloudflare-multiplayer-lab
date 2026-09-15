@@ -15,11 +15,10 @@ cd "$REPO_ROOT"
 [[ "$(git rev-parse HEAD)" == "$WORKERS_CI_COMMIT_SHA" ]]
 [[ -f "$RECOVERY_CONFIG" ]]
 [[ -f "$ROOT_RECOVERY_CONFIG_TEMPLATE" ]]
-[[ -f wrangler.jsonc ]]
 cmp -s wrangler.jsonc "$ROOT_RECOVERY_CONFIG_TEMPLATE"
 
 npm ci
-bash scripts/build-foundation-recovery-remote.sh
+bash scripts/build-foundation-recovery-box3d.sh
 
-echo "FOUNDATION_RECOVERY_WORKERS_BUILD_ARTIFACT_PROBE_PASS"
+echo "FOUNDATION_RECOVERY_WORKERS_BUILD_BOX3D_PROBE_PASS"
 exit 0

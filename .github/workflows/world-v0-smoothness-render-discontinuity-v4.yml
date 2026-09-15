@@ -46,12 +46,17 @@ jobs:
         env:
           MW_WORLD_V0_RENDER_BASE: http://127.0.0.1:8787
           MW_WORLD_V0_RENDER_LATENCY_MS: 90
-          MW_WORLD_V0_RENDER_STRESS_MS: 4500
+          MW_WORLD_V0_RENDER_STRESS_MS: 9000
           MW_WORLD_V0_RENDER_OUTPUT: world-v0-smoothness-render-discontinuity-v4.json
         shell: bash
         run: |
           set -euo pipefail
-          timeout 180s node scripts/world-v0-smoothness-render-discontinuity-v4-probe.mjs | tee world-v0-smoothness-render-discontinuity-v4.log
+          # The first V4 run proved the single-renderer control had a healthy >=0.8
+          # valid-rAF ratio but only ~23-24 software-rendered FPS on this runner.
+          # Extend the observation windows; do not lower any cadence/discontinuity threshold.
+          cp scripts/world-v0-smoothness-render-discontinuity-v4-probe.mjs /tmp/world-v0-smoothness-render-discontinuity-v4-probe.mjs
+          sed -i 's/await sleep(1500);/await sleep(3000);/' /tmp/world-v0-smoothness-render-discontinuity-v4-probe.mjs
+          timeout 240s node /tmp/world-v0-smoothness-render-discontinuity-v4-probe.mjs | tee world-v0-smoothness-render-discontinuity-v4.log
           grep -Eq 'SINGLE_RENDERER_NEGATIVE_CONTROL_DISCONTINUITY_REPRODUCED|SINGLE_RENDERER_NEGATIVE_CONTROL_NOT_REPRODUCED' world-v0-smoothness-render-discontinuity-v4.log
       - name: Restore canonical runtime source
         if: always()

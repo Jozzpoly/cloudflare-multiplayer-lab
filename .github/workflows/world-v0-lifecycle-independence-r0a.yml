@@ -1,0 +1,34 @@
+name: World V0 lifecycle independence R0-A feasibility
+
+on:
+  push:
+    branches:
+      - research/world-v0-lifecycle-independence-r0
+    paths:
+      - .github/workflows/world-v0-lifecycle-independence-r0a.yml
+      - scripts/world-v0-lifecycle-independence-r0a-feasibility.mjs
+      - src/world-v0-contract.ts
+      - public/world-v0/box3d-i4/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-actor-add-recording-rehydrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prove one-actor world to live actor add Recording continuity
+        run: node --experimental-strip-types scripts/world-v0-lifecycle-independence-r0a-feasibility.mjs

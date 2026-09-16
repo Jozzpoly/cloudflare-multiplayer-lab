@@ -1,0 +1,224 @@
+name: World V0 smoothness integrated V25 qualification
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-integrated-v25-qualification.yml
+      - scripts/world-v0-smoothness-materialize-integrated-v25.mjs
+      - scripts/world-v0-smoothness-hidden-integrated-v25-transform.mjs
+      - scripts/world-v0-smoothness-v20-isolated-gate.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-gates:
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [product, i1, waiting-room, uncommitted-ready, prestart-partial, prestart-grace, start-window, all-drop, dual-browser, human-entry]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize V25 integrated candidate
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-materialize-integrated-v25.mjs
+          node --check public/world-v0/app.js
+      - name: Start fresh isolated Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-v25-${{ matrix.gate }}-wrangler.log 2>&1 &
+          echo $! > /tmp/v25-gate-wrangler.pid
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-v25-${{ matrix.gate }}-wrangler.log
+          exit 1
+      - name: Run isolated qualification gate
+        shell: bash
+        run: bash scripts/world-v0-smoothness-v20-isolated-gate.sh "${{ matrix.gate }}" http://127.0.0.1:8787
+      - name: Restore canonical runtime
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove tracked source clean
+        if: always()
+        run: git diff --exit-code
+      - name: Stop Workerd
+        if: always()
+        run: |
+          if [ -f /tmp/v25-gate-wrangler.pid ]; then kill "$(cat /tmp/v25-gate-wrangler.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-v25-${{ matrix.gate }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            world-v0-v20-*.json
+            world-v0-v20-*.log
+            world-v0-v25-${{ matrix.gate }}-wrangler.log
+
+  ongoing-cross-page:
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node scripts/world-v0-smoothness-materialize-integrated-v25.mjs
+      - name: Start fresh Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-v25-cross-r${{ matrix.rep }}-wrangler.log 2>&1 &
+          echo $! > /tmp/v25-cross.pid
+          for i in {1..80}; do if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi; sleep 0.25; done
+          exit 1
+      - name: Run current Ongoing Yard cross-page continuity
+        env:
+          MW_WORLD_V0_ONGOING_CROSS_PAGE_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_ONGOING_CROSS_PAGE_ROOM: yard-3
+          MW_WORLD_V0_ONGOING_CROSS_PAGE_OUTPUT: world-v0-v25-cross-r${{ matrix.rep }}.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 100s node scripts/world-v0-ongoing-cross-page-resume-browser-audit.mjs | tee world-v0-v25-cross-r${{ matrix.rep }}.log
+          grep -q 'WORLD_V0_ONGOING_CROSS_PAGE_RESUME_PASS' world-v0-v25-cross-r${{ matrix.rep }}.log
+      - if: always()
+        run: git checkout -- public/world-v0/app.js
+      - if: always()
+        run: git diff --exit-code
+      - if: always()
+        run: if [ -f /tmp/v25-cross.pid ]; then kill "$(cat /tmp/v25-cross.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-v25-cross-r${{ matrix.rep }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            world-v0-v25-cross-r${{ matrix.rep }}.json
+            world-v0-v25-cross-r${{ matrix.rep }}.log
+            world-v0-v25-cross-r${{ matrix.rep }}-wrangler.log
+
+  silent-recovery:
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node scripts/world-v0-smoothness-materialize-integrated-v25.mjs
+      - name: Start fresh Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-v25-silent-r${{ matrix.rep }}-wrangler.log 2>&1 &
+          echo $! > /tmp/v25-silent.pid
+          for i in {1..80}; do if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi; sleep 0.25; done
+          exit 1
+      - name: Prove 14s traffic silence recovers without false ActorSession loss
+        env:
+          MW_WORLD_V0_V20_SILENT_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_V20_SILENT_OFFLINE_MS: 14000
+          MW_WORLD_V0_V20_SILENT_OUTPUT: world-v0-v25-silent-r${{ matrix.rep }}.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 100s node scripts/world-v0-smoothness-v20-silent-outage-recovery.mjs | tee world-v0-v25-silent-r${{ matrix.rep }}.log
+          grep -q 'WORLD_V0_V20_SILENT_OUTAGE_EXACT_RECOVERY_PASS' world-v0-v25-silent-r${{ matrix.rep }}.log
+      - if: always()
+        run: git checkout -- public/world-v0/app.js
+      - if: always()
+        run: git diff --exit-code
+      - if: always()
+        run: if [ -f /tmp/v25-silent.pid ]; then kill "$(cat /tmp/v25-silent.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-v25-silent-r${{ matrix.rep }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            world-v0-v25-silent-r${{ matrix.rep }}.json
+            world-v0-v25-silent-r${{ matrix.rep }}.log
+            world-v0-v25-silent-r${{ matrix.rep }}-wrangler.log
+
+  hidden-lifecycle:
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node scripts/world-v0-smoothness-materialize-integrated-v25.mjs
+      - name: Build production hidden-lifecycle audit
+        env:
+          MW_WORLD_V0_V25_HIDDEN_PROBE: /tmp/world-v0-v25-hidden-probe.mjs
+        run: |
+          node scripts/world-v0-smoothness-hidden-integrated-v25-transform.mjs
+          node --check /tmp/world-v0-v25-hidden-probe.mjs
+      - name: Start fresh Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-v25-hidden-r${{ matrix.rep }}-wrangler.log 2>&1 &
+          echo $! > /tmp/v25-hidden.pid
+          for i in {1..80}; do if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi; sleep 0.25; done
+          exit 1
+      - name: Prove production hidden lifecycle semantics
+        env:
+          MW_WORLD_V0_V21_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_V21_ALT_BASE: http://localhost:8787
+          MW_WORLD_V0_V21_HIDDEN_MS: 5000
+          MW_WORLD_V0_V21_OUTPUT: world-v0-v25-hidden-r${{ matrix.rep }}.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 100s node /tmp/world-v0-v25-hidden-probe.mjs | tee world-v0-v25-hidden-r${{ matrix.rep }}.log
+          grep -q 'WORLD_V0_V25_HIDDEN_LIFECYCLE_PASS' world-v0-v25-hidden-r${{ matrix.rep }}.log
+      - if: always()
+        run: git checkout -- public/world-v0/app.js
+      - if: always()
+        run: git diff --exit-code
+      - if: always()
+        run: if [ -f /tmp/v25-hidden.pid ]; then kill "$(cat /tmp/v25-hidden.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-v25-hidden-r${{ matrix.rep }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            world-v0-v25-hidden-r${{ matrix.rep }}.json
+            world-v0-v25-hidden-r${{ matrix.rep }}.log
+            world-v0-v25-hidden-r${{ matrix.rep }}-wrangler.log

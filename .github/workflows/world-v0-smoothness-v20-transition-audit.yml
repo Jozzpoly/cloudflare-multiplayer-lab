@@ -6,6 +6,7 @@ on:
       - world-v0-smoothness-reliability-campaign
     paths:
       - .github/workflows/world-v0-smoothness-v20-transition-audit.yml
+      - scripts/world-v0-cross-page-resume-browser-audit.mjs
       - scripts/world-v0-smoothness-v20-silent-outage-recovery.mjs
       - scripts/world-v0-smoothness-materialize-substrate-v20.mjs
   workflow_dispatch:

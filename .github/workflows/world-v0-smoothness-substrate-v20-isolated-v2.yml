@@ -1,0 +1,113 @@
+name: World V0 smoothness substrate V20 isolated qualification v2
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-substrate-v20-isolated-v2.yml
+      - scripts/world-v0-smoothness-v20-isolated-gate.sh
+      - scripts/world-v0-smoothness-materialize-substrate-v20.mjs
+      - scripts/world-v0-session-continuity-r3-smoke.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repo-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize and run full repository check
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-materialize-substrate-v20.mjs
+          node --check public/world-v0/app.js
+          npm run check | tee world-v0-v20-isolated-v2-repo-check.log
+          grep -q 'WORLD_V0_SESSION_CONTINUITY_R3_SMOKE_PASS' world-v0-v20-isolated-v2-repo-check.log
+      - name: Restore canonical source
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove tracked source clean
+        if: always()
+        run: git diff --exit-code
+
+  isolated-gates:
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - product
+          - i1
+          - waiting-room
+          - uncommitted-ready
+          - prestart-partial
+          - prestart-grace
+          - start-window
+          - cross-page
+          - all-drop
+          - i4b
+          - dual-browser
+          - human-entry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TEST_CASE: ${{ matrix.case }}
+      BASE: http://127.0.0.1:8787
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize clean V20 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-materialize-substrate-v20.mjs
+          node --check public/world-v0/app.js
+          ! grep -q '__mwV15' public/world-v0/app.js
+          ! grep -q '__mwV18' public/world-v0/app.js
+      - name: Start fresh isolated Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > "world-v0-v20-${TEST_CASE}-wrangler.log" 2>&1 &
+          echo $! > /tmp/world-v0-v20-wrangler.pid
+          for i in {1..80}; do
+            if curl -fsS "$BASE/api/ping" >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat "world-v0-v20-${TEST_CASE}-wrangler.log"
+          exit 1
+      - name: Run isolated qualification gate
+        shell: bash
+        run: bash scripts/world-v0-smoothness-v20-isolated-gate.sh "$TEST_CASE" "$BASE"
+      - name: Restore canonical runtime
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove tracked source clean
+        if: always()
+        run: git diff --exit-code
+      - name: Stop isolated Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/world-v0-v20-wrangler.pid ]; then kill "$(cat /tmp/world-v0-v20-wrangler.pid)" 2>/dev/null || true; fi
+      - name: Upload isolated evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-v0-v20-isolated-v2-${{ matrix.case }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            world-v0-v20-*.log
+            world-v0-v20-*.json

@@ -1,0 +1,39 @@
+name: World V0 smoothness jump rearm drain barrier falsifier
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-owner-forensics-v25
+    paths:
+      - .github/workflows/world-v0-smoothness-jump-rearm-drain.yml
+      - scripts/world-v0-smoothness-jump-rearm-drain-audit.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  jump-rearm-drain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Prove early rearm permits semantic press overlap
+        env:
+          MW_WORLD_V0_JUMP_DRAIN_OUTPUT: world-v0-smoothness-jump-rearm-drain.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-jump-rearm-drain-audit.mjs | tee world-v0-smoothness-jump-rearm-drain.log
+          grep -q 'JUMP_REARM_MUST_DRAIN_PRIOR_AUTHORED_TRUE_WINDOW' world-v0-smoothness-jump-rearm-drain.log
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-jump-rearm-drain-${{ github.run_id }}
+          path: |
+            world-v0-smoothness-jump-rearm-drain.json
+            world-v0-smoothness-jump-rearm-drain.log

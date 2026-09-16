@@ -33,6 +33,10 @@ const maxQueueDepth = Number(ordered.maxQueueDepth || 0);
 const maxActualDelayMs = Number(ordered.maxActualDelayMs || 0);
 const consumedQueued = Number(ordered.byType?.world_v0_consumed || 0);
 const controlIntervals = Number(source.controlCadence?.validIntervals || 0);
+const stressCadenceRatio = Number(source.cadence?.validRatio || 0);
+const stressCadenceIntervals = Number(source.cadence?.validIntervals || 0);
+const stressSteps = Number(source.stressInfo?.steps || 0);
+const stressMs = Number(source.stressMs || 0);
 
 const common = {
   recognizedMode: mode === "baseline" || mode === "ceiling",
@@ -43,6 +47,9 @@ const common = {
   orderedBacklogFullyDrained: queueDepth === 0,
   requestedDelayMateriallyObserved: maxActualDelayMs >= requestedDelayMs * 0.8,
   controlCadenceQualified: controlIntervals >= 50,
+  stressCadenceRatioQualified: stressCadenceRatio >= 0.75,
+  stressCadenceEvidenceQualified: stressCadenceIntervals >= 180,
+  stressInputStepsQualified: stressSteps >= stressMs / 20,
   guardObservationsPresent: Number(v15.guardObservations || 0) > 0,
   advanceObservationsPresent: Number(v15.advanceObservations || 0) > 0,
   rawPeerProtocolClean: rawPeerErrors.length === 0,
@@ -73,9 +80,9 @@ const comparable = Object.values(common).every(Boolean);
 const modePass = comparable && Object.values(modeSpecific).every(Boolean);
 
 const result = {
-  revision: "world-v0-smoothness-ordered-ceiling-v17-analysis-v1",
+  revision: "world-v0-smoothness-ordered-ceiling-v17-analysis-v2-stress-cadence-qualified",
   sourceRevision: source.revision ?? null,
-  status: "test-only hard prediction ceiling under legal receive-side FIFO delay; no inbound WebSocket frame may overtake an earlier frame",
+  status: "test-only hard prediction ceiling under legal receive-side FIFO delay; qualification mirrors inherited render-stress cadence gates",
   mode,
   requestedDelayMs,
   stressMs: source.stressMs ?? null,
@@ -119,13 +126,14 @@ const result = {
     rawPeerErrors,
     controlCadence: source.controlCadence ?? null,
     cadence: source.cadence ?? null,
+    stressInfo: source.stressInfo ?? null,
     sampleCount: source.sampleCount ?? null,
   },
   signature: { ...common, ...modeSpecific },
   verdict: modePass
     ? (mode === "baseline"
       ? "ORDERED_CEILING_V17_BASELINE_RESUME_REPRODUCED"
-      : "ORDERED_CEILING_V17_SAFETY_CHARACTERIZED")
+      : "ORDERED_CEILING_V17_QUALIFIED")
     : "ORDERED_CEILING_V17_NOT_COMPARABLE",
 };
 

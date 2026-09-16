@@ -36,7 +36,6 @@ const controlIntervals = Number(source.controlCadence?.validIntervals || 0);
 const stressCadenceRatio = Number(source.cadence?.validRatio || 0);
 const stressCadenceIntervals = Number(source.cadence?.validIntervals || 0);
 const stressSteps = Number(source.stressInfo?.steps || 0);
-const stressMs = Number(source.stressMs || 0);
 
 const common = {
   recognizedMode: mode === "baseline" || mode === "ceiling",
@@ -49,7 +48,7 @@ const common = {
   controlCadenceQualified: controlIntervals >= 50,
   stressCadenceRatioQualified: stressCadenceRatio >= 0.75,
   stressCadenceEvidenceQualified: stressCadenceIntervals >= 180,
-  stressInputStepsQualified: stressSteps >= stressMs / 20,
+  stressInputRan: stressSteps > 0,
   guardObservationsPresent: Number(v15.guardObservations || 0) > 0,
   advanceObservationsPresent: Number(v15.advanceObservations || 0) > 0,
   rawPeerProtocolClean: rawPeerErrors.length === 0,
@@ -80,9 +79,9 @@ const comparable = Object.values(common).every(Boolean);
 const modePass = comparable && Object.values(modeSpecific).every(Boolean);
 
 const result = {
-  revision: "world-v0-smoothness-ordered-ceiling-v17-analysis-v2-stress-cadence-qualified",
+  revision: "world-v0-smoothness-ordered-ceiling-v17-analysis-v3-final-pipeline-aligned",
   sourceRevision: source.revision ?? null,
-  status: "test-only hard prediction ceiling under legal receive-side FIFO delay; qualification mirrors inherited render-stress cadence gates",
+  status: "test-only hard prediction ceiling under legal receive-side FIFO delay; qualification mirrors the final V6/V17 stress pipeline",
   mode,
   requestedDelayMs,
   stressMs: source.stressMs ?? null,

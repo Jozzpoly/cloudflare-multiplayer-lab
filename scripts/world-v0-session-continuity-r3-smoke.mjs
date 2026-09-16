@@ -35,7 +35,7 @@ const actor = {
 };
 
 assert.equal(WORLD_V0_SESSION_CONTINUITY_REVISION, "world-v0-session-continuity-r3-live-rebind");
-assert.equal(WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION, "world-v0-public-room-directory-r4-vacant-capacity");
+assert.equal(WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION, "world-v0-public-room-directory-r5-ongoing-yard");
 assert.equal(writeWorldV0StoredSession(actor, local), true);
 assert.deepEqual(readWorldV0StoredSession("yard-3", local), { ...actor, savedAt: readWorldV0StoredSession("yard-3", local).savedAt });
 assert.equal(readWorldV0StoredSession("yard-2", local), null);

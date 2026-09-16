@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
+// V20 qualification source: semantics intentionally unchanged after canonical baseline repair.
 const path = "public/world-v0/app.js";
 const marker = "WORLD_V0_SMOOTHNESS_SUBSTRATE_V20";
 let source = readFileSync(path, "utf8");

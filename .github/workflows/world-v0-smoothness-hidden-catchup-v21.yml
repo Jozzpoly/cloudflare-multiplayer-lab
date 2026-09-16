@@ -1,0 +1,81 @@
+name: World V0 smoothness hidden catch-up V21
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-hidden-catchup-v21.yml
+      - scripts/world-v0-smoothness-hidden-catchup-v21.mjs
+      - scripts/world-v0-smoothness-materialize-substrate-v20.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hidden-catchup:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [baseline, candidate]
+        rep: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize V20 candidate only
+        if: matrix.mode == 'candidate'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-materialize-substrate-v20.mjs
+          node --check public/world-v0/app.js
+      - name: Start fresh Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-v21-${{ matrix.mode }}-${{ matrix.rep }}-wrangler.log 2>&1 &
+          echo $! > /tmp/v21-wrangler.pid
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-v21-${{ matrix.mode }}-${{ matrix.rep }}-wrangler.log
+          exit 1
+      - name: Characterize natural hidden-tab catch-up
+        env:
+          MW_WORLD_V0_V21_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_V21_ALT_BASE: http://localhost:8787
+          MW_WORLD_V0_V21_HIDDEN_MS: 5000
+          MW_WORLD_V0_V21_OUTPUT: world-v0-v21-${{ matrix.mode }}-${{ matrix.rep }}.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 100s node scripts/world-v0-smoothness-hidden-catchup-v21.mjs | tee world-v0-v21-${{ matrix.mode }}-${{ matrix.rep }}.log
+          grep -q 'WORLD_V0_V21_HIDDEN_CATCHUP_CHARACTERIZED' world-v0-v21-${{ matrix.mode }}-${{ matrix.rep }}.log
+      - name: Restore canonical runtime
+        if: always() && matrix.mode == 'candidate'
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove tracked source clean
+        if: always()
+        run: git diff --exit-code
+      - name: Stop Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/v21-wrangler.pid ]; then kill "$(cat /tmp/v21-wrangler.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-v21-${{ matrix.mode }}-${{ matrix.rep }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            world-v0-v21-${{ matrix.mode }}-${{ matrix.rep }}.json
+            world-v0-v21-${{ matrix.mode }}-${{ matrix.rep }}.log
+            world-v0-v21-${{ matrix.mode }}-${{ matrix.rep }}-wrangler.log

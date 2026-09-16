@@ -1673,11 +1673,13 @@ function compareStateGuard(boundaryTick, guard) {
     throw new Error(`FOUNDATION_STATE_DIVERGENCE B(${boundaryTick}) ${difference.netEntityId || difference.field}.${difference.component || ""}`);
   }
   metrics.guardMatches += 1;
+  commitRemotePresentationBoundary(boundaryTick);
 }
 
 function storeDiagnostic(boundaryTick) {
   if (!localState?.sim) return;
   diagnosticSamples.set(boundaryTick, capturePackedDiagnostic(localState.sim));
+  recordRemotePresentationBoundary(boundaryTick);
   const pending = pendingStateGuards.get(boundaryTick);
   if (pending) compareStateGuard(boundaryTick, pending);
   for (const tick of [...diagnosticSamples.keys()]) {
@@ -1829,7 +1831,25 @@ function maybeCorrect(candidates, reason) {
   return correctFrom(target, reason);
 }
 
+// WORLD_V0_SMOOTHNESS_SUBSTRATE_V20: coalesce correction transactions without weakening exact state.
+const pendingCorrectionTicks = new Set();
+function queueCorrection(candidates) {
+  for (const tick of candidates) {
+    if (Number.isInteger(tick) && tick >= 0) pendingCorrectionTicks.add(tick);
+  }
+}
+function flushQueuedCorrections(barrier) {
+  if (!pendingCorrectionTicks.size) return false;
+  const candidates = [...pendingCorrectionTicks];
+  pendingCorrectionTicks.clear();
+  const target = earliestChangedTick(candidates);
+  if (target === null) return false;
+  return correctFrom(target, "coalesced:" + barrier);
+}
+
 function destroyLocalState() {
+  pendingCorrectionTicks.clear();
+  resetRemotePresentationState();
   if (!localState) return;
   try {
     if (localState.history.active) {
@@ -1967,7 +1987,7 @@ function handlePeerRecords(message) {
       candidates.push(record.targetTick);
     }
   }
-  maybeCorrect(candidates, "peer-record");
+  queueCorrection(candidates);
 }
 
 function handleConsumed(message) {
@@ -1995,7 +2015,7 @@ function handleConsumed(message) {
   if (selfCanonical) {
     noteCanonicalJumpDelivery(message.targetTick, selfCanonical.jump, selfCanonical.jumpApplied);
   }
-  maybeCorrect([message.targetTick], "authority-consumed");
+  queueCorrection([message.targetTick]);
 }
 
 function handleSnapshot(message) {
@@ -2003,6 +2023,7 @@ function handleSnapshot(message) {
   assertR0MessageTopology(message, "snapshot");
   if (message.revision !== WORLD_V0_EXPECTED_SERVER_REVISION) throw new Error(`snapshot server revision mismatch ${message.revision}`);
   if (!Number.isInteger(message.boundaryTick)) return;
+  flushQueuedCorrections("snapshot");
   compareStateGuard(message.boundaryTick, message.stateGuard);
 }
 
@@ -2420,18 +2441,20 @@ function connect() {
 
 function advancePrediction() {
   if (!localState || !phaseAnchor || runtimeFailed || actorResume.pending || topologyTransitionPending) return;
+  let predictionCeilingBoundary = null;
   if (Number.isInteger(lastAuthorityBoundaryTick) && Number.isInteger(simulation?.clientHistory?.retainTicks)) {
     const silenceTicks = Math.max(0, localState.boundaryTick - lastAuthorityBoundaryTick);
     metrics.maxAuthoritySilenceTicks = Math.max(metrics.maxAuthoritySilenceTicks, silenceTicks);
     const safeBlindTicks = Math.max(1, simulation.clientHistory.retainTicks - AUTHORITY_SILENCE_RETAIN_MARGIN_TICKS);
-    if (silenceTicks >= safeBlindTicks) {
-      beginActorResume("authority_silence_history_guard", { silenceTicks, safeBlindTicks });
-      return;
-    }
+    predictionCeilingBoundary = lastAuthorityBoundaryTick + safeBlindTicks - 1;
+    if (silenceTicks >= safeBlindTicks) return;
   }
   const estimate = authorityTickEstimate();
   if (!Number.isFinite(estimate)) return;
-  const targetBoundary = Math.max(0, Math.floor(estimate + simulation.timing.clientSimulationLeadTicks));
+  const rawTargetBoundary = Math.max(0, Math.floor(estimate + simulation.timing.clientSimulationLeadTicks));
+  const targetBoundary = Number.isInteger(predictionCeilingBoundary)
+    ? Math.min(rawTargetBoundary, predictionCeilingBoundary)
+    : rawTargetBoundary;
   let steps = 0;
   while (localState.boundaryTick < targetBoundary && steps < MAX_PREDICTION_STEPS_PER_FRAME) {
     managedPhysicsStep(localState.boundaryTick, true);
@@ -2461,7 +2484,8 @@ function syncMeshes() {
     syncPresence(selfMesh, position);
   }
   if (remoteBody && remoteMesh) {
-    const position = bodyPosition(remoteBody);
+    const exactPosition = bodyPosition(remoteBody);
+    const position = remotePresentationPosition(performance.now(), exactPosition) || exactPosition;
     remoteMesh.position.fromArray(position);
     remoteMesh.quaternion.fromArray(bodyRotation(remoteBody)).normalize();
     syncPresence(remoteMesh, position);
@@ -2567,6 +2591,8 @@ function buildEvidence() {
     presentation: {
       selfPresence: selfMesh?.userData?.presenceLabel?.userData?.presenceText || null,
       remotePresence: remoteMesh?.userData?.presenceLabel?.userData?.presenceText || null,
+      remoteDisplayedPosition: remoteMesh ? [remoteMesh.position.x, remoteMesh.position.y, remoteMesh.position.z] : null,
+      remotePresentation: remotePresentationEvidence(),
       spatialCueCount,
       cameraPreset: cameraPresetName(),
       cameraFov: camera.fov,
@@ -3114,6 +3140,7 @@ function frame(now) {
       // Keep scheduler ownership even when rAF is healthy; the interval remains the
       // independent progress source when rAF cadence degrades.
       pumpLogicalInputScheduler();
+      flushQueuedCorrections("frame");
       advancePrediction();
       syncMeshes();
     } catch (error) {
@@ -3121,7 +3148,152 @@ function frame(now) {
     }
   }
   updateCamera();
-  renderer.render(scene, camera);
+  if (shouldRenderWorldFrame()) renderer.render(scene, camera);
 }
 requestAnimationFrame(frame);
 updateHud();
+
+// WORLD_V0_INTEGRATED_SMOOTHNESS_V25: production candidate remote presentation state.
+const WORLD_V0_REMOTE_PRESENTATION_REVISION = "world-v0-remote-confirmed-presentation-v1";
+const WORLD_V0_REMOTE_PRESENTATION_DELAY_TICKS = 12;
+const WORLD_V0_REENTRY_RENDER_HOLD_MIN_HIDDEN_MS = 250;
+const WORLD_V0_REENTRY_RENDER_HOLD_MAX_MS = 1500;
+const remotePresentationState = {
+  remoteSessionId: null, samples: new Map(), anchors: [], mode: "exact-bootstrap",
+  targetBoundary: null, newestConfirmedBoundary: null,
+  hiddenAt: null, reentryHold: false, reentryStartedAt: null, lastReentryHoldMs: 0, lastReleaseReason: null,
+};
+function resetRemotePresentationState() {
+  remotePresentationState.remoteSessionId = null;
+  remotePresentationState.samples.clear();
+  remotePresentationState.anchors = [];
+  remotePresentationState.mode = "exact-bootstrap";
+  remotePresentationState.targetBoundary = null;
+  remotePresentationState.newestConfirmedBoundary = null;
+  remotePresentationState.reentryHold = false;
+  remotePresentationState.reentryStartedAt = null;
+  remotePresentationState.lastReentryHoldMs = 0;
+  remotePresentationState.lastReleaseReason = null;
+}
+function ensureRemotePresentationSession() {
+  const sessionId = remoteSessionId || null;
+  if (remotePresentationState.remoteSessionId !== sessionId) {
+    remotePresentationState.remoteSessionId = sessionId;
+    remotePresentationState.samples.clear();
+    remotePresentationState.anchors = [];
+    remotePresentationState.mode = "exact-bootstrap";
+    remotePresentationState.targetBoundary = null;
+    remotePresentationState.newestConfirmedBoundary = null;
+  }
+  return sessionId;
+}
+function recordRemotePresentationBoundary(boundary) {
+  if (!Number.isInteger(boundary)) return;
+  const sessionId = ensureRemotePresentationSession();
+  if (!sessionId || !localState?.sim) return;
+  const body = localState.sim.actorBodies.get(sessionId);
+  if (!body) return;
+  remotePresentationState.samples.set(boundary, { boundary, position: bodyPosition(body) });
+  const cutoff = boundary - 512;
+  for (const tick of remotePresentationState.samples.keys()) if (tick < cutoff) remotePresentationState.samples.delete(tick);
+}
+function commitRemotePresentationBoundary(boundary) {
+  if (!Number.isInteger(boundary)) return;
+  const sessionId = ensureRemotePresentationSession();
+  if (!sessionId) return;
+  const sample = remotePresentationState.samples.get(boundary);
+  if (!sample || remotePresentationState.anchors.some((anchor) => anchor.boundary === boundary)) return;
+  remotePresentationState.anchors.push({ boundary, position: [...sample.position] });
+  remotePresentationState.anchors.sort((a, b) => a.boundary - b.boundary);
+  if (remotePresentationState.anchors.length > 128) remotePresentationState.anchors.splice(0, remotePresentationState.anchors.length - 128);
+  remotePresentationState.newestConfirmedBoundary = remotePresentationState.anchors[remotePresentationState.anchors.length - 1]?.boundary ?? null;
+}
+function remotePresentationPosition(now, exactPosition) {
+  const sessionId = ensureRemotePresentationSession();
+  const anchors = remotePresentationState.anchors;
+  if (!sessionId || anchors.length < 2) {
+    remotePresentationState.mode = "exact-bootstrap";
+    return null;
+  }
+  const phaseEstimate = authorityTickEstimate(now);
+  const leadTicks = Number(simulation?.timing?.clientSimulationLeadTicks ?? 0);
+  if (!Number.isFinite(phaseEstimate) || !Number.isFinite(leadTicks)) {
+    remotePresentationState.mode = "exact-bootstrap";
+    return null;
+  }
+  const target = phaseEstimate + leadTicks - WORLD_V0_REMOTE_PRESENTATION_DELAY_TICKS;
+  remotePresentationState.targetBoundary = target;
+  const earliest = anchors[0];
+  const latest = anchors[anchors.length - 1];
+  remotePresentationState.newestConfirmedBoundary = latest.boundary;
+  if (target <= earliest.boundary) {
+    remotePresentationState.mode = "exact-bootstrap";
+    return null;
+  }
+  if (target >= latest.boundary) {
+    remotePresentationState.mode = Math.abs(target - latest.boundary) < 1e-9 ? "latest-exact" : "underrun-hold";
+    return [...latest.position];
+  }
+  for (let index = anchors.length - 1; index >= 1; index -= 1) {
+    const to = anchors[index];
+    const from = anchors[index - 1];
+    if (from.boundary <= target && target <= to.boundary) {
+      const alpha = (target - from.boundary) / Math.max(1, to.boundary - from.boundary);
+      remotePresentationState.mode = "interpolate";
+      return [
+        from.position[0] + (to.position[0] - from.position[0]) * alpha,
+        from.position[1] + (to.position[1] - from.position[1]) * alpha,
+        from.position[2] + (to.position[2] - from.position[2]) * alpha,
+      ];
+    }
+  }
+  remotePresentationState.mode = "underrun-hold";
+  return exactPosition ? [...exactPosition] : null;
+}
+function releaseReentryRenderHold(reason) {
+  if (!remotePresentationState.reentryHold) return;
+  const now = performance.now();
+  remotePresentationState.lastReentryHoldMs = remotePresentationState.reentryStartedAt === null ? 0 : Math.max(0, now - remotePresentationState.reentryStartedAt);
+  remotePresentationState.lastReleaseReason = reason;
+  remotePresentationState.reentryHold = false;
+  remotePresentationState.reentryStartedAt = null;
+}
+function shouldRenderWorldFrame() {
+  if (!remotePresentationState.reentryHold) return true;
+  if (runtimeFailed) { releaseReentryRenderHold("runtime-failed"); return true; }
+  const elapsed = remotePresentationState.reentryStartedAt === null ? 0 : performance.now() - remotePresentationState.reentryStartedAt;
+  if (elapsed >= WORLD_V0_REENTRY_RENDER_HOLD_MAX_MS) { releaseReentryRenderHold("timeout"); return true; }
+  const local = Number.isInteger(localState?.boundaryTick) ? localState.boundaryTick : null;
+  const authority = Number.isInteger(metrics.latestAuthorityBoundary) ? metrics.latestAuthorityBoundary : null;
+  const exactReady = Number.isInteger(local) && Number.isInteger(authority) && local >= authority - 4;
+  const presentationReady = !remoteSessionId || remotePresentationState.mode === "interpolate" || remotePresentationState.mode === "latest-exact";
+  if (exactReady && presentationReady) { releaseReentryRenderHold("ready"); return true; }
+  return false;
+}
+document.addEventListener("visibilitychange", () => {
+  const now = performance.now();
+  if (document.visibilityState !== "visible") {
+    remotePresentationState.hiddenAt = now;
+    return;
+  }
+  const hiddenMs = remotePresentationState.hiddenAt === null ? 0 : Math.max(0, now - remotePresentationState.hiddenAt);
+  remotePresentationState.hiddenAt = null;
+  if (hiddenMs >= WORLD_V0_REENTRY_RENDER_HOLD_MIN_HIDDEN_MS && localState) {
+    remotePresentationState.reentryHold = true;
+    remotePresentationState.reentryStartedAt = now;
+    remotePresentationState.lastReleaseReason = null;
+  }
+});
+function remotePresentationEvidence() {
+  return {
+    revision: WORLD_V0_REMOTE_PRESENTATION_REVISION,
+    delayTicks: WORLD_V0_REMOTE_PRESENTATION_DELAY_TICKS,
+    mode: remotePresentationState.mode,
+    confirmedAnchorCount: remotePresentationState.anchors.length,
+    newestConfirmedBoundary: remotePresentationState.newestConfirmedBoundary,
+    targetBoundary: remotePresentationState.targetBoundary,
+    reentryHold: remotePresentationState.reentryHold,
+    lastReentryHoldMs: remotePresentationState.lastReentryHoldMs,
+    lastReleaseReason: remotePresentationState.lastReleaseReason,
+  };
+}

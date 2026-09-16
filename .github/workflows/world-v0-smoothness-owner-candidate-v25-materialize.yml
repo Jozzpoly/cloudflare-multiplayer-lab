@@ -36,10 +36,10 @@ jobs:
             exit 1
           fi
           git diff --check
-          git diff --exit-code -- public/world-v0/app.js && {
+          if git diff --quiet -- public/world-v0/app.js; then
             echo 'V25 materialization unexpectedly produced no runtime diff' >&2
             exit 1
-          }
+          fi
       - name: Run full repository check on materialized runtime
         run: npm run check
       - name: Commit only materialized runtime

@@ -1,0 +1,40 @@
+name: World V0 smoothness jump sequence association falsifier
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-owner-forensics-v25
+    paths:
+      - .github/workflows/world-v0-smoothness-jump-sequence-association.yml
+      - scripts/world-v0-smoothness-jump-sequence-association-audit.mjs
+      - public/world-v0/app.js
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  jump-sequence-association:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Prove stale canonical true can falsely confirm a newer press
+        env:
+          MW_WORLD_V0_JUMP_ASSOCIATION_OUTPUT: world-v0-smoothness-jump-sequence-association.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-jump-sequence-association-audit.mjs | tee world-v0-smoothness-jump-sequence-association.log
+          grep -q 'JUMP_PENDING_SEQUENCE_CAN_BE_FALSELY_CONFIRMED_BY_STALE_CANONICAL_TRUE' world-v0-smoothness-jump-sequence-association.log
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-jump-sequence-association-${{ github.run_id }}
+          path: |
+            world-v0-smoothness-jump-sequence-association.json
+            world-v0-smoothness-jump-sequence-association.log

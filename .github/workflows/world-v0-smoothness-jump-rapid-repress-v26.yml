@@ -1,0 +1,76 @@
+name: World V0 smoothness rapid re-press V25 versus V26
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-owner-forensics-v25
+    paths:
+      - .github/workflows/world-v0-smoothness-jump-rapid-repress-v26.yml
+      - scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rapid-repress:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [baseline, v26]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Prepare runtime variant
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp public/world-v0/app.js /tmp/world-v0-app.js
+          if [ "${{ matrix.mode }}" = "v26" ]; then
+            node scripts/world-v0-smoothness-install-jump-drain-v26.mjs
+          fi
+      - name: Start local Workerd runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-rapid-${{ matrix.mode }}-wrangler.log 2>&1 &
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-rapid-${{ matrix.mode }}-wrangler.log
+          exit 1
+      - name: Exercise rapid jump re-press under ordered outbound latency
+        env:
+          MW_WORLD_V0_RAPID_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RAPID_MODE: ${{ matrix.mode }}
+          MW_WORLD_V0_RAPID_OUTPUT: world-v0-rapid-${{ matrix.mode }}.json
+          MW_WORLD_V0_RAPID_DELAY_MS: 90
+          MW_WORLD_V0_RAPID_STRESS_MS: 4000
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout 180s node scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs 2>&1 | tee world-v0-rapid-${{ matrix.mode }}.log
+          test ${PIPESTATUS[0]} -eq 0
+      - name: Restore runtime and prove isolation
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/world-v0-app.js public/world-v0/app.js
+          git diff --exit-code
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-jump-rapid-${{ matrix.mode }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-rapid-${{ matrix.mode }}.json
+            world-v0-rapid-${{ matrix.mode }}.log
+            world-v0-rapid-${{ matrix.mode }}-wrangler.log

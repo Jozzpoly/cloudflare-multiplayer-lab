@@ -127,7 +127,18 @@ async function waitFor(client, expression, label, timeout = TIMEOUT_MS) {
     } catch (error) { last = error instanceof Error ? error.message : String(error); }
     await sleep(120);
   }
-  throw new Error(`${label} timeout: ${JSON.stringify(last)}`);
+  let diagnostic = null;
+  try {
+    diagnostic = await evaluate(client, `(() => ({
+      session: window.__sharedYardV0Session?.() ?? null,
+      evidence: window.__sharedYardV0Evidence?.() ?? null,
+      entry: window.__sharedYardV0PublicRoomEntry?.() ?? null,
+      body: document.body?.innerText?.slice(0, 1800) ?? "",
+    }))()`);
+  } catch (error) {
+    diagnostic = { diagnosticReadFailed: error instanceof Error ? error.message : String(error) };
+  }
+  throw new Error(`${label} timeout: ${JSON.stringify(last)} diagnostic=${JSON.stringify(diagnostic)}`);
 }
 
 async function roomDirectory() {
@@ -143,14 +154,14 @@ async function boot(client) {
 }
 
 async function enterRoom(client, name) {
-  await evaluate(client, `(() => {
+  return await evaluate(client, `(() => {
     const input = document.querySelector("#callsign");
     input.value = ${JSON.stringify(name)};
     input.dispatchEvent(new Event("input", { bubbles: true }));
     const button = document.querySelector('.public-room-card[data-room-id=${JSON.stringify(ROOM_ID)}]');
     if (!button || button.disabled) return { ok: false, text: button?.textContent || null };
     button.click();
-    return { ok: true };
+    return { ok: true, text: button.textContent || null };
   })()`);
 }
 
@@ -165,9 +176,22 @@ try {
   await boot(owner);
   await boot(peer);
 
-  await enterRoom(owner, "Owner-A");
-  await waitFor(owner, `window.__sharedYardV0Session?.().networkState === "waiting for peer"`, "owner waiting");
-  await enterRoom(peer, "Peer-B");
+  const ownerEntry = await enterRoom(owner, "Owner-A");
+  assert(ownerEntry?.ok === true, `owner room entry rejected ${JSON.stringify(ownerEntry)}`);
+  const ownerSolo = await waitFor(owner, `(() => {
+    const s = window.__sharedYardV0Session?.();
+    const e = window.__sharedYardV0Evidence?.();
+    return s?.networkState === "solo · ready" && e && !e.runtimeFailed && e.identity?.worldEpoch &&
+      e.session?.actorSessionId && e.session?.selfNetEntityId ? {
+        networkState: s.networkState,
+        worldEpoch: e.identity.worldEpoch,
+        actorSessionId: e.session.actorSessionId,
+        netEntityId: e.session.selfNetEntityId,
+      } : false;
+  })()`, "owner stable solo-ready");
+
+  const peerEntry = await enterRoom(peer, "Peer-B");
+  assert(peerEntry?.ok === true, `peer room entry rejected ${JSON.stringify(peerEntry)}`);
 
   const live = `(() => {
     const e = window.__sharedYardV0Evidence?.();
@@ -194,10 +218,15 @@ try {
   let reservedRoom = null;
   while (Date.now() - reservedStarted < 8000) {
     reservedRoom = await roomDirectory();
-    if (reservedRoom?.occupancy === 2 && reservedRoom?.connected === 1 && reservedRoom?.reserved === 1 && reservedRoom?.state === "live-reserved") break;
+    if (reservedRoom?.occupancy === 2 && reservedRoom?.connected === 1 && reservedRoom?.reserved === 1 &&
+        reservedRoom?.protectedReserved === 1 && reservedRoom?.state === "live-protected-reserved") break;
     await sleep(150);
   }
-  assert(reservedRoom?.occupancy === 2 && reservedRoom?.connected === 1 && reservedRoom?.reserved === 1, `reserved directory mismatch ${JSON.stringify(reservedRoom)}`);
+  assert(
+    reservedRoom?.occupancy === 2 && reservedRoom?.connected === 1 && reservedRoom?.reserved === 1 &&
+      reservedRoom?.protectedReserved === 1 && reservedRoom?.state === "live-protected-reserved",
+    `protected reserved directory mismatch ${JSON.stringify(reservedRoom)}`,
+  );
 
   const ownerBoundaryAfterCloseTarget = original.boundary + 12;
   await waitFor(owner, `(() => {
@@ -216,7 +245,7 @@ try {
       room, text: button.textContent, callsign: document.querySelector("#callsign")?.value || null,
     } : false;
   })()`, "resume card available");
-  assert(resumeCard.room.connected === 1 && resumeCard.room.reserved === 1, `resume room presence ${JSON.stringify(resumeCard.room)}`);
+  assert(resumeCard.room.connected === 1 && resumeCard.room.reserved === 1 && resumeCard.room.protectedReserved === 1, `resume room presence ${JSON.stringify(resumeCard.room)}`);
 
   await evaluate(peer, `document.querySelector('.public-room-card[data-room-id=${JSON.stringify(ROOM_ID)}]').click()`);
   await waitFor(peer, `(() => {
@@ -240,6 +269,9 @@ try {
 
   Object.assign(result, {
     verdict: "WORLD_V0_CROSS_PAGE_RESUME_PASS",
+    ownerEntry,
+    ownerSolo,
+    peerEntry,
     original,
     reservedRoom,
     resumeCard,

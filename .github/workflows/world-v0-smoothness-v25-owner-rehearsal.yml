@@ -1,0 +1,109 @@
+name: World V0 smoothness V25 owner rehearsal
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-reliability-campaign
+    paths:
+      - .github/workflows/world-v0-smoothness-v25-owner-rehearsal.yml
+      - scripts/world-v0-smoothness-v25-owner-rehearsal-analyze.mjs
+      - scripts/world-v0-smoothness-materialize-substrate-v20.mjs
+      - scripts/world-v0-smoothness-materialize-integrated-v25.mjs
+      - scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs
+      - scripts/world-v0-smoothness-render-discontinuity-v4-probe.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v3.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v5.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v6.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  displayed-motion:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [v20, v25]
+        rep: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Materialize candidate and test-only sampler
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.mode }}" == "v25" ]]; then
+            node scripts/world-v0-smoothness-materialize-integrated-v25.mjs
+          else
+            node scripts/world-v0-smoothness-materialize-substrate-v20.mjs
+          fi
+          node scripts/world-v0-smoothness-install-render-probe-v3.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v5.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v6.mjs
+          node scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs /tmp/world-v0-v25-owner-rehearsal-probe.mjs
+          node --check public/world-v0/app.js
+          node --check /tmp/world-v0-v25-owner-rehearsal-probe.mjs
+          node --check scripts/world-v0-smoothness-v25-owner-rehearsal-analyze.mjs
+      - name: Start fresh Workerd
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}-wrangler.log 2>&1 &
+          echo $! > /tmp/v25-owner-wrangler.pid
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}-wrangler.log
+          exit 1
+      - name: Capture active-peer displayed motion
+        env:
+          MW_WORLD_V0_RENDER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RENDER_LATENCY_MS: 90
+          MW_WORLD_V0_RENDER_STRESS_MS: 9000
+          MW_WORLD_V0_RENDER_OUTPUT: world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 240s node /tmp/world-v0-v25-owner-rehearsal-probe.mjs | tee world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}.log
+          test -s world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}.json
+      - name: Analyze displayed trajectory
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}.json
+          node scripts/world-v0-smoothness-v25-owner-rehearsal-analyze.mjs \
+            world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}.json \
+            world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}-analysis.json \
+            | tee world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}-analysis.log
+          grep -q 'WORLD_V0_V25_DISPLAYED_MOTION_CHARACTERIZED' world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}-analysis.log
+      - name: Restore canonical runtime
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove tracked source clean
+        if: always()
+        run: git diff --exit-code
+      - name: Stop Workerd
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/v25-owner-wrangler.pid ]; then kill "$(cat /tmp/v25-owner-wrangler.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}.json
+            world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}.log
+            world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}-analysis.json
+            world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}-analysis.log
+            world-v0-v25-owner-${{ matrix.mode }}-r${{ matrix.rep }}-wrangler.log

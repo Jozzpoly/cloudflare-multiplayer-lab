@@ -1,42 +1,33 @@
-export const WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION = "world-v0-keyboard-focus-guard-v3-gameplay-space-passthrough";
+export const WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION = "world-v0-keyboard-focus-guard-v3-pointer-focus-release";
 
 const EDITABLE_UI_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 const ACTION_UI_TAGS = new Set(["BUTTON", "SUMMARY", "A"]);
 
-function uiKeyboardOwner(target) {
+function keyboardOwner(target) {
   let current = target;
   while (current && typeof current === "object") {
     const tagName = String(current.tagName || "").toUpperCase();
-    if (EDITABLE_UI_TAGS.has(tagName)) return "editable";
+    if (EDITABLE_UI_TAGS.has(tagName)) return { kind: "editable", element: current };
     if (ACTION_UI_TAGS.has(tagName)) {
-      if (tagName !== "A" || current.href || current.getAttribute?.("href") != null) return "action";
+      if (tagName !== "A" || current.href || current.getAttribute?.("href") != null) return { kind: "action", element: current };
     }
-    if (current.isContentEditable === true) return "editable";
+    if (current.isContentEditable === true) return { kind: "editable", element: current };
     const contentEditable = current.getAttribute?.("contenteditable");
-    if (contentEditable != null && String(contentEditable).toLowerCase() !== "false") return "editable";
+    if (contentEditable != null && String(contentEditable).toLowerCase() !== "false") return { kind: "editable", element: current };
     current = current.parentElement || null;
   }
   return null;
+}
+
+function uiKeyboardOwner(target) {
+  return keyboardOwner(target)?.kind ?? null;
 }
 
 export function worldV0UiOwnsKeyboard(target) {
   return uiKeyboardOwner(target) !== null;
 }
 
-function gameplaySpacePassthrough(target, event = {}) {
-  const code = String(event.code || "");
-  const key = String(event.key || "");
-  if (code !== "Space" && key !== " ") return false;
-  let current = target;
-  while (current && typeof current === "object") {
-    if (String(current.getAttribute?.("data-gameplay-space-passthrough") || "").toLowerCase() === "true") return true;
-    current = current.parentElement || null;
-  }
-  return false;
-}
-
 export function worldV0UiOwnsGameplayKey(target, event = {}) {
-  if (gameplaySpacePassthrough(target, event)) return false;
   const owner = uiKeyboardOwner(target);
   if (owner === "editable") return true;
   if (owner !== "action") return false;
@@ -52,20 +43,23 @@ export function worldV0UiOwnsGameplayKey(target, event = {}) {
 export function installWorldV0KeyboardFocusGuard(root) {
   if (!root?.addEventListener) throw new Error("World V0 keyboard focus guard requires an event target");
   const guard = (event) => {
-    if (gameplaySpacePassthrough(event.target, event)) {
-      // Diagnostics is mouse/Enter-toggleable UI inside a game. Once focused, Space
-      // must remain the jump key instead of toggling <details>. Prevent only the native
-      // summary activation and deliberately let the event continue to gameplay.
-      event.preventDefault();
-      return;
-    }
     if (!worldV0UiOwnsGameplayKey(event.target, event)) return;
     // Do not prevent the browser default. UI keeps its native editing/activation;
     // only later window-level gameplay listeners are suppressed for that key.
     event.stopImmediatePropagation();
   };
+  const releasePointerActionFocus = (event) => {
+    // Pointer activation should not leave a stale action control owning the next
+    // gameplay Space/Enter. Keyboard activation has click detail=0 and keeps focus,
+    // preserving ordinary keyboard accessibility for buttons/links/<summary>.
+    if (!(Number(event.detail) > 0)) return;
+    const owner = keyboardOwner(event.target);
+    if (owner?.kind !== "action") return;
+    owner.element?.blur?.();
+  };
   root.addEventListener("keydown", guard);
   root.addEventListener("keyup", guard);
+  root.addEventListener("click", releasePointerActionFocus);
 }
 
 if (typeof window !== "undefined") installWorldV0KeyboardFocusGuard(window);

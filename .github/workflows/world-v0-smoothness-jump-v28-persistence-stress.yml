@@ -8,6 +8,7 @@ on:
       - .github/workflows/world-v0-smoothness-jump-v28-persistence-stress.yml
       - scripts/world-v0-jump-delivery-persistence-stress.mjs
       - scripts/world-v0-jump-delivery-persistence-audit.mjs
+      - scripts/world-v0-smoothness-install-jump-persistence-precondition-v28.mjs
       - scripts/world-v0-smoothness-install-jump-provenance-v27.mjs
       - scripts/world-v0-smoothness-install-jump-causal-dedupe-v28.mjs
       - scripts/world-v0-smoothness-install-jump-resume-highwater-v28.mjs
@@ -36,13 +37,17 @@ jobs:
           node scripts/world-v0-smoothness-install-jump-resume-highwater-v28.mjs | tee v28-stress-browser-install.log
           npm run typecheck
 
-      - name: Install qualified strict FIFO transport apparatus
+      - name: Install qualified persistence apparatus
         run: |
           set -euo pipefail
           MW_WORLD_V0_STRICT_FIFO_TARGET=world-v0-jump-delivery-persistence-audit.mjs \
             node scripts/world-v0-smoothness-install-strict-fifo-delay-proxy.mjs | tee v28-stress-fifo-install.log
           grep -q 'WORLD_V0_STRICT_FIFO_DELAY_PROXY_INSTALLED' v28-stress-fifo-install.log
           grep -q 'transportRevision: "strict-fifo-single-drain-v1"' scripts/world-v0-jump-delivery-persistence-audit.mjs
+          node scripts/world-v0-smoothness-install-jump-persistence-precondition-v28.mjs | tee v28-stress-precondition-install.log
+          grep -q 'WORLD_V0_JUMP_PERSISTENCE_PRECONDITION_V28_INSTALLED' v28-stress-precondition-install.log
+          node --check scripts/world-v0-jump-delivery-persistence-audit.mjs
+          node --check scripts/world-v0-jump-delivery-persistence-stress.mjs
 
       - name: Start local authority runtime
         shell: bash
@@ -57,30 +62,36 @@ jobs:
           cat v28-stress-wrangler.log
           exit 1
 
-      - name: Run repeated forced-late persistence campaign
+      - name: Run repeated forced-late qualified-airborne persistence campaign
         shell: bash
         run: |
           set -euo pipefail
           # 700 ms exceeds the protocol's entire 32-tick (~533 ms) accepted future horizon.
-          # Therefore a jump record authored only after this delay is enabled cannot arrive
-          # on time by construction; unlike the old 180 ms setting, forced lateness is a
-          # test precondition rather than a timing assumption.
+          # First-press lateness is therefore constructed rather than assumed. For the
+          # second press, only specimens whose first canonical true has jumpApplied=false
+          # count as qualified airborne/no-support evidence; grounded timings are explicit
+          # PRECONDITION_MISS rather than false product failures.
           MW_WORLD_V0_JUMP_DELIVERY_LOSS_DELAY_MS=700 \
           MW_WORLD_V0_JUMP_DELIVERY_RECOVERY_DELAY_MS=45 \
           MW_WORLD_V0_PERSISTENCE_STRESS_VARIANT=v28 \
-          MW_WORLD_V0_PERSISTENCE_STRESS_ITERATIONS=12 \
+          MW_WORLD_V0_PERSISTENCE_STRESS_ITERATIONS=16 \
+          MW_WORLD_V0_PERSISTENCE_STRESS_MIN_QUALIFIED=8 \
           MW_WORLD_V0_PERSISTENCE_STRESS_OUTPUT=v28-persistence-stress.json \
             timeout 900s node scripts/world-v0-jump-delivery-persistence-stress.mjs | tee v28-persistence-stress.log
           node - <<'NODE'
           const fs = require('fs');
           const r = JSON.parse(fs.readFileSync('v28-persistence-stress.json','utf8'));
-          if (r.iterations !== 12) throw new Error(`incomplete campaign ${r.iterations}`);
+          if (r.iterations !== 16) throw new Error(`incomplete campaign ${r.iterations}`);
+          if (r.minQualified !== 8) throw new Error(`wrong qualified threshold ${r.minQualified}`);
           if (r.infrastructureFailures !== 0) throw new Error(`apparatus/infrastructure failures ${r.infrastructureFailures}`);
           if (r.semanticDelayedLandingFailures !== 0) throw new Error(`delayed landing reproduced ${r.semanticDelayedLandingFailures} times`);
-          if (r.passes !== 12) throw new Error(`not all iterations passed: ${r.passes}/12`);
+          if (r.passes < 8) throw new Error(`insufficient qualified airborne specimens ${r.passes}/16`);
+          if (r.passes + r.preconditionMisses !== 16) throw new Error(`unclassified specimens ${JSON.stringify({passes:r.passes, misses:r.preconditionMisses})}`);
+          if (r.campaignVerdict !== 'WORLD_V0_PERSISTENCE_STRESS_QUALIFIED_NO_DELAYED_LANDING') throw new Error(`bad verdict ${r.campaignVerdict}`);
           console.log('V28_PERSISTENCE_STRESS_QUALIFIED', JSON.stringify({
             iterations:r.iterations,
-            passes:r.passes,
+            qualifiedAirborne:r.passes,
+            groundedPreconditionMisses:r.preconditionMisses,
             delayedLanding:r.semanticDelayedLandingFailures,
             infrastructure:r.infrastructureFailures,
             verdict:r.campaignVerdict,
@@ -106,8 +117,8 @@ jobs:
             public/world-v0/app.js \
             src/world-v0-protocol.ts \
             src/world-v0-shared-yard.ts \
-            scripts/world-v0-jump-delivery-persistence-audit.mjs \
-            worker-configuration.d.ts
+            scripts/world-v0-jump-delivery-persistence-audit.mjs
+          rm -f worker-configuration.d.ts
           git diff --exit-code
 
       - name: Upload evidence
@@ -126,3 +137,4 @@ jobs:
             v28-stress-authority-install.log
             v28-stress-browser-install.log
             v28-stress-fifo-install.log
+            v28-stress-precondition-install.log

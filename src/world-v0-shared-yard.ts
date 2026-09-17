@@ -239,6 +239,39 @@ export class SharedYardV0 extends DurableObject<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket" && url.pathname.startsWith("/resume-check/")) {
+      let payload: { playerId?: unknown; resumeToken?: unknown; worldEpoch?: unknown };
+      try {
+        payload = await request.json() as typeof payload;
+      } catch {
+        return json({ ok: false, valid: false, reason: "invalid_json" }, 400);
+      }
+      const playerId = String(payload.playerId ?? "").trim();
+      const resumeToken = String(payload.resumeToken ?? "").trim();
+      const expectedWorldEpoch = String(payload.worldEpoch ?? "").trim();
+      if (!this.world || !this.worldId || !this.worldEpoch) {
+        return json({ ok: true, valid: false, reason: "world_absent", worldEpoch: null });
+      }
+      if (expectedWorldEpoch !== this.worldEpoch) {
+        return json({ ok: true, valid: false, reason: "world_epoch_mismatch", worldEpoch: this.worldEpoch });
+      }
+      const player = [...this.players.values()].find((candidate) =>
+        candidate.resumeToken === resumeToken && candidate.playerId === playerId
+      );
+      if (!player) {
+        return json({ ok: true, valid: false, reason: "resume_authority_missing", worldEpoch: this.worldEpoch });
+      }
+      return json({
+        ok: true,
+        valid: true,
+        reason: "resume_authority_valid",
+        worldEpoch: this.worldEpoch,
+        sessionId: player.sessionId,
+        netEntityId: player.netEntityId,
+        slot: player.slot,
+      });
+    }
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
       const protectedReservedSlots = this.protectedReservedPlayers().map((player) => player.slot);
       const softReservedSlots = this.softReservedPlayers().map((player) => player.slot);

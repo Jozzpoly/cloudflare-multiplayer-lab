@@ -49,12 +49,12 @@ protocol = replaceOnce(
   '          if (sameWorldV0ScheduledInput(existing, {\n            x: record.x, z: record.z, jump: Boolean(record.jump), jumpSequence: record.jumpSequence,\n          })) {',
   'authority duplicate provenance comparison',
 );
-const pendingSetOld = '            this.pending.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });';
-const pendingSetNew = '            this.pending.set(record.targetTick, {\n              x: record.x, z: record.z, jump: Boolean(record.jump), jumpSequence: record.jumpSequence,\n            });';
-if ((protocol.match(new RegExp(pendingSetOld.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&"), "g")) || []).length !== 1) {
-  throw new Error('V27 expected exactly one superseding pending.set seam');
-}
-protocol = protocol.replace(pendingSetOld, pendingSetNew);
+protocol = replaceOnce(
+  protocol,
+  '            // I2: higher batchSeq is later authority for an unconsumed future tick.\n            // Consumed history remains immutable because late is checked above.\n            this.pending.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });\n            status = "superseded";',
+  '            // I2: higher batchSeq is later authority for an unconsumed future tick.\n            // Consumed history remains immutable because late is checked above.\n            this.pending.set(record.targetTick, {\n              x: record.x, z: record.z, jump: Boolean(record.jump), jumpSequence: record.jumpSequence,\n            });\n            status = "superseded";',
+  'authority superseded provenance storage',
+);
 protocol = replaceOnce(
   protocol,
   '          this.pending.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });\n          status = "accepted";',

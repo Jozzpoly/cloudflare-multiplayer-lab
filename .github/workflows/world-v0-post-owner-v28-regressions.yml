@@ -1,0 +1,115 @@
+name: World V0 post-Owner V28 regressions
+
+on:
+  push:
+    branches:
+      - world-v0-post-owner-v28-hardening
+    paths:
+      - .github/workflows/world-v0-post-owner-v28-regressions.yml
+      - scripts/world-v0-private-refresh-continuity-browser-audit.mjs
+      - scripts/world-v0-diagnostic-space-gameplay-browser-audit.mjs
+      - public/world-v0/app.js
+      - public/world-v0/friend-ready.js
+      - public/world-v0/keyboard-focus-guard.js
+      - public/world-v0/index.html
+      - public/world-v0/session-continuity.js
+      - public/world-v0/build-contract.js
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run check
+      - name: Start candidate runtime
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9230 > refresh-wrangler.log 2>&1 &
+          echo $! > refresh-wrangler.pid
+          for i in {1..120}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat refresh-wrangler.log
+          exit 1
+      - name: Private R0 reload must preserve ActorSession
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_PRIVATE_REFRESH_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_PRIVATE_REFRESH_OUTPUT=private-refresh.json \
+            timeout 120s node scripts/world-v0-private-refresh-continuity-browser-audit.mjs | tee private-refresh.log
+          grep -q 'WORLD_V0_PRIVATE_REFRESH_CONTINUITY_PASS' private-refresh.log
+      - name: Stop runtime
+        if: always()
+        run: |
+          set +e
+          if [ -f refresh-wrangler.pid ]; then
+            pid="$(cat refresh-wrangler.pid)"
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            sleep 0.5
+            kill -KILL -- "-$pid" 2>/dev/null || true
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: v28-private-refresh-${{ github.run_id }}
+          path: |
+            private-refresh.json
+            private-refresh.log
+            refresh-wrangler.log
+
+  diagnostic-space:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run check
+      - name: Start candidate runtime
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9231 > diagnostic-wrangler.log 2>&1 &
+          echo $! > diagnostic-wrangler.pid
+          for i in {1..120}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat diagnostic-wrangler.log
+          exit 1
+      - name: Diagnostics click must not steal Space from gameplay
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_DIAGNOSTIC_SPACE_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_DIAGNOSTIC_SPACE_OUTPUT=diagnostic-space.json \
+            timeout 120s node scripts/world-v0-diagnostic-space-gameplay-browser-audit.mjs | tee diagnostic-space.log
+          grep -q 'WORLD_V0_DIAGNOSTIC_SPACE_GAMEPLAY_PASS' diagnostic-space.log
+      - name: Stop runtime
+        if: always()
+        run: |
+          set +e
+          if [ -f diagnostic-wrangler.pid ]; then
+            pid="$(cat diagnostic-wrangler.pid)"
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            sleep 0.5
+            kill -KILL -- "-$pid" 2>/dev/null || true
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: v28-diagnostic-space-${{ github.run_id }}
+          path: |
+            diagnostic-space.json
+            diagnostic-space.log
+            diagnostic-wrangler.log

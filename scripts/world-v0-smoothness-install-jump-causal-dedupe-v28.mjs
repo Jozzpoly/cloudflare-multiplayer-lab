@@ -16,13 +16,16 @@ replaceExact(
 `,
 `  // Legacy fallback for input records without explicit causal provenance.
   previousJumpIntent: boolean;
+  // Highest explicit jump event identity seen in an accepted input batch. This is the
+  // resume allocation high-water, so even an event accepted for a future tick reserves
+  // its identity before a fresh page can reconnect and allocate another press.
+  lastSeenJumpSequence: number;
   // Highest explicit jump event identity canonically consumed in this ActorSession.
-  // It survives transport reconnect because SharedYardPlayer survives resume. Advancing
-  // on canonical consumption (not on physical application) prevents a rejected airborne
-  // press from becoming a delayed landing impulse when stale truth is replayed later.
+  // Advancing on canonical consumption (not on physical application) prevents a rejected
+  // airborne press from becoming a delayed landing impulse when stale truth is replayed.
   lastConsumedJumpSequence: number;
 `,
-"SharedYardPlayer causal high-water",
+"SharedYardPlayer causal high-waters",
 );
 
 replaceExact(
@@ -31,9 +34,46 @@ replaceExact(
 `,
 `        resumeCount: 0,
         previousJumpIntent: false,
+        lastSeenJumpSequence: 0,
         lastConsumedJumpSequence: 0,
 `,
 "new ActorSession causal high-water initialization",
+);
+
+replaceExact(
+`    const acceptance = player.input.acceptBatch(
+      message,
+      this.tick,
+      this.protocolStartTick,
+      WORLD_V0_MAX_FUTURE_TICKS,
+    );
+`,
+`    const acceptance = player.input.acceptBatch(
+      message,
+      this.tick,
+      this.protocolStartTick,
+      WORLD_V0_MAX_FUTURE_TICKS,
+    );
+    if (acceptance.batchStatus === "accepted_batch") {
+      for (const record of message.records) {
+        if (record.jump === true && typeof record.jumpSequence === "number" && Number.isInteger(record.jumpSequence)) {
+          player.lastSeenJumpSequence = Math.max(player.lastSeenJumpSequence, record.jumpSequence);
+        }
+      }
+    }
+`,
+"accepted causal jump high-water",
+);
+
+replaceExact(
+`      resumeCount: player.resumeCount,
+      resumeLastBatchSeq: player.input.stats().lastBatchSeq,
+`,
+`      resumeCount: player.resumeCount,
+      resumeLastBatchSeq: player.input.stats().lastBatchSeq,
+      resumeLastJumpSequence: player.lastSeenJumpSequence,
+`,
+"resume jump allocation high-water",
 );
 
 replaceExact(
@@ -51,6 +91,7 @@ replaceExact(
         if (jumpSequence !== null) {
           if (jumpSequence > player.lastConsumedJumpSequence) {
             player.lastConsumedJumpSequence = jumpSequence;
+            player.lastSeenJumpSequence = Math.max(player.lastSeenJumpSequence, jumpSequence);
             jumpTrigger = true;
           }
         } else {

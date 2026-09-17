@@ -10,6 +10,20 @@ function replaceExact(before, after, label) {
 }
 
 replaceExact(
+`  assert(firstJump.deliveredTick - firstAuthoredTick >= R1_WINDOW_TICKS,
+    \`delivery did not escape old R1 window: first=\${firstAuthoredTick} delivered=\${firstJump.deliveredTick}\`);
+`,
+`  if (firstJump.deliveredTick - firstAuthoredTick < R1_WINDOW_TICKS) {
+    // Transport delay is a stimulus, not proof that this specimen actually escaped
+    // the old six-tick authored window. If authority still consumes inside R1, this
+    // run did not exercise the intended forced-late persistence contract.
+    throw new Error(\`WORLD_V0_PERSISTENCE_FORCED_LOSS_PRECONDITION_MISS first=\${firstAuthoredTick} delivered=\${firstJump.deliveredTick}\`);
+  }
+`,
+"authority-observed forced-loss precondition",
+);
+
+replaceExact(
 `  proxy.setDelay(0);
   await sleep(150);
   const beforeAirPress = await evidence(target);
@@ -54,7 +68,8 @@ replaceExact(
 `,
 `} catch (error) {
   const errorText = error instanceof Error ? error.stack || error.message : String(error);
-  const preconditionMiss = errorText.includes("WORLD_V0_PERSISTENCE_AIRBORNE_PRECONDITION_MISS");
+  const preconditionMiss = errorText.includes("WORLD_V0_PERSISTENCE_AIRBORNE_PRECONDITION_MISS")
+    || errorText.includes("WORLD_V0_PERSISTENCE_FORCED_LOSS_PRECONDITION_MISS");
   if (preconditionMiss) {
     result.verdict = "WORLD_V0_JUMP_DELIVERY_PERSISTENCE_PRECONDITION_MISS";
     result.error = null;
@@ -69,7 +84,7 @@ replaceExact(
   if (!preconditionMiss) process.exitCode = 1;
 } finally {
 `,
-"classify airborne precondition misses",
+"classify persistence precondition misses",
 );
 
 writeFileSync(TARGET, source);

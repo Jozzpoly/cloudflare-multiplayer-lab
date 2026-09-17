@@ -34,7 +34,7 @@ try{
  assert(offerLive.directLinkResumable===true,"same-profile live private link not offered Resume");
  assert(offerLive.enterLabel==="Resume world","same-profile live private link label is not Resume world");
  await c.eval(p2.sessionId,'document.querySelector("#enter").click()');
- await waitFor(c,p2.sessionId,'(() => { const e=window.__sharedYardV0Evidence?.(); return e && !e.runtimeFailed && e.session?.actorSessionId==='+JSON.stringify(e1.session.actorSessionId)+'; })()',"live private rebound");
+ await waitFor(c,p2.sessionId,'(() => { const e=window.__sharedYardV0Evidence?.(); return e && !e.runtimeFailed && e.networkState?.startsWith("live") && e.session?.actorSessionId==='+JSON.stringify(e1.session.actorSessionId)+' && e.lifecycle?.topology?.actors?.length===1 && e.metrics?.guardMismatches===0; })()',"live private rebound");
  const e2=await c.eval(p2.sessionId,"window.__sharedYardV0Evidence()");
  assert(e2.lifecycle.topology.actors.length===1,"live private rebound created extra actor");
  await closePage(c,p1);await closePage(c,p2);
@@ -48,7 +48,7 @@ try{
  result.closeOffer=offerClose;
  assert(offerClose.directLinkResumable===true,"closed private link not offered Resume");
  await c.eval(p4.sessionId,'document.querySelector("#enter").click()');
- await waitFor(c,p4.sessionId,'(() => { const e=window.__sharedYardV0Evidence?.(); return e && !e.runtimeFailed && e.session?.actorSessionId==='+JSON.stringify(e3.session.actorSessionId)+'; })()',"closed private rebound");
+ await waitFor(c,p4.sessionId,'(() => { const e=window.__sharedYardV0Evidence?.(); return e && !e.runtimeFailed && e.networkState?.startsWith("live") && e.session?.actorSessionId==='+JSON.stringify(e3.session.actorSessionId)+' && e.lifecycle?.topology?.actors?.length===1 && e.metrics?.guardMismatches===0; })()',"closed private rebound");
  const e4=await c.eval(p4.sessionId,"window.__sharedYardV0Evidence()");
  assert(e4.identity.worldEpoch===e3.identity.worldEpoch,"closed private rebound rotated epoch");
  assert(e4.session.selfNetEntityId===e3.session.selfNetEntityId,"closed private rebound changed entity");

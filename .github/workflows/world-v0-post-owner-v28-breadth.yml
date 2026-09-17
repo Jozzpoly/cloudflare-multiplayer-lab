@@ -19,6 +19,7 @@ on:
       - scripts/world-v0-jump-v28-peer-rebase-parity-audit.mjs
       - scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs
       - scripts/world-v0-owner-ui-focus-browser-audit.mjs
+      - scripts/world-v0-mobile-input-browser-audit.mjs
   workflow_dispatch:
 
 permissions:
@@ -184,6 +185,11 @@ jobs:
           MW_WORLD_V0_OWNER_UI_BASE=http://127.0.0.1:8787 \
             timeout 100s node scripts/world-v0-owner-ui-focus-browser-audit.mjs | tee breadth-owner-ui.log
           grep -q WORLD_V0_OWNER_UI_FOCUS_BROWSER_PASS breadth-owner-ui.log
+      - name: Real mobile touch gameplay
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_MOBILE_INPUT_BASE=http://127.0.0.1:8787           MW_WORLD_V0_MOBILE_INPUT_OUTPUT=breadth-mobile-input.json             timeout 120s node scripts/world-v0-mobile-input-browser-audit.mjs | tee breadth-mobile-input.log
+          grep -q WORLD_V0_MOBILE_INPUT_PASS breadth-mobile-input.log
       - if: always()
         run: |
           if [ -f breadth-ui.pid ]; then pid="$(cat breadth-ui.pid)"; kill -TERM -- "-$pid" 2>/dev/null || true; fi
@@ -193,4 +199,6 @@ jobs:
           name: v28-breadth-ui-${{ github.run_id }}
           path: |
             breadth-owner-ui.log
+            breadth-mobile-input.json
+            breadth-mobile-input.log
             breadth-ui-wrangler.log

@@ -69,11 +69,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # 700 ms exceeds the protocol's entire 32-tick (~533 ms) accepted future horizon.
-          # First-press lateness is therefore constructed rather than assumed. For the
-          # second press, only specimens whose first canonical true has jumpApplied=false
-          # count as qualified airborne/no-support evidence; grounded timings are explicit
-          # PRECONDITION_MISS rather than false product failures.
+          # 700 ms is a strong ordered transport-delay stimulus, but timing alone is
+          # not evidence that a specimen escaped the old six-tick authored window.
+          # Qualification is authority-observed: first delivery must actually escape
+          # R1, and the second causal press must be canonically rejected by support
+          # (jumpApplied=false). Missed preconditions are excluded rather than treated
+          # as product failures; enough independently qualified specimens are required.
           MW_WORLD_V0_JUMP_DELIVERY_LOSS_DELAY_MS=700 \
           MW_WORLD_V0_JUMP_DELIVERY_RECOVERY_DELAY_MS=45 \
           MW_WORLD_V0_PERSISTENCE_STRESS_VARIANT=v28 \
@@ -88,13 +89,13 @@ jobs:
           if (r.minQualified !== 8) throw new Error(`wrong qualified threshold ${r.minQualified}`);
           if (r.infrastructureFailures !== 0) throw new Error(`apparatus/exactness failures ${r.infrastructureFailures}`);
           if (r.semanticDelayedLandingFailures !== 0) throw new Error(`delayed landing reproduced ${r.semanticDelayedLandingFailures} times`);
-          if (r.passes < 8) throw new Error(`insufficient qualified airborne specimens ${r.passes}/16`);
+          if (r.passes < 8) throw new Error(`insufficient qualified specimens ${r.passes}/16`);
           if (r.passes + r.preconditionMisses !== 16) throw new Error(`unclassified specimens ${JSON.stringify({passes:r.passes, misses:r.preconditionMisses})}`);
           if (r.campaignVerdict !== 'WORLD_V0_PERSISTENCE_STRESS_QUALIFIED_NO_DELAYED_LANDING') throw new Error(`bad verdict ${r.campaignVerdict}`);
           console.log('V28_PERSISTENCE_STRESS_QUALIFIED', JSON.stringify({
             iterations:r.iterations,
-            qualifiedAirborne:r.passes,
-            groundedPreconditionMisses:r.preconditionMisses,
+            qualifiedSpecimens:r.passes,
+            preconditionMisses:r.preconditionMisses,
             delayedLanding:r.semanticDelayedLandingFailures,
             exactnessOrInfrastructure:r.infrastructureFailures,
             verdict:r.campaignVerdict,

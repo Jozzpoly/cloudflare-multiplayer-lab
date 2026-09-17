@@ -1,0 +1,100 @@
+name: World V0 smoothness jump provenance V27 resume collision
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-owner-forensics-v25
+    paths:
+      - .github/workflows/world-v0-smoothness-jump-provenance-v27-resume-collision.yml
+      - scripts/world-v0-jump-provenance-v27-resume-collision-audit.mjs
+      - scripts/world-v0-smoothness-install-jump-provenance-v27.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resume-collision:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install V27 explicit jump provenance in isolated checkout
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-install-jump-provenance-v27.mjs | tee v27-install.log
+          grep -q 'WORLD_V0_JUMP_EXPLICIT_PROVENANCE_V27_INSTALLED' v27-install.log
+
+      - name: Start local authority runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > resume-collision-wrangler.log 2>&1 &
+          echo $! > resume-collision-wrangler.pid
+          for i in {1..100}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat resume-collision-wrangler.log
+          exit 1
+
+      - name: Reproduce cross-page causal identity collision
+        shell: bash
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_JUMP_RESUME_OUTPUT=resume-collision.json \
+            timeout 180s node scripts/world-v0-jump-provenance-v27-resume-collision-audit.mjs | tee resume-collision.log
+          grep -q 'WORLD_V0_JUMP_PROVENANCE_RESUME_COLLISION_REPRODUCED' resume-collision.log
+          node - <<'NODE'
+          const fs = require('fs');
+          const r = JSON.parse(fs.readFileSync('resume-collision.json','utf8'));
+          if (r.verdict !== 'WORLD_V0_JUMP_PROVENANCE_RESUME_COLLISION_REPRODUCED') throw new Error(`bad verdict ${r.verdict}`);
+          if (r.sameActorSession !== true) throw new Error('ActorSession continuity not proven');
+          if (r.firstPress?.pressSequence !== 1 || r.secondPress?.pressSequence !== 1) throw new Error(`sequence collision absent ${JSON.stringify({first:r.firstPress,second:r.secondPress})}`);
+          if (r.afterResume?.pressSequence !== 0) throw new Error(`fresh page did not reset local high-water ${JSON.stringify(r.afterResume)}`);
+          if (r.guardMismatches?.owner !== 0 || r.guardMismatches?.resumedPeer !== 0) throw new Error(`guard mismatch ${JSON.stringify(r.guardMismatches)}`);
+          console.log('RESUME_COLLISION_QUALIFIED', JSON.stringify({
+            actorSessionId:r.session.actorSessionId,
+            first:r.firstPress,
+            afterResume:r.afterResume,
+            second:r.secondPress,
+            duplicatedJumpSequence:r.duplicatedJumpSequence,
+          }));
+          NODE
+
+      - name: Stop runtime
+        if: always()
+        shell: bash
+        run: |
+          if [ -f resume-collision-wrangler.pid ]; then
+            pid=$(cat resume-collision-wrangler.pid)
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            sleep 0.5
+            kill -KILL -- "-$pid" 2>/dev/null || true
+          fi
+
+      - name: Restore canonical product targets
+        if: always()
+        shell: bash
+        run: |
+          git checkout -- public/world-v0/app.js src/world-v0-protocol.ts src/world-v0-shared-yard.ts
+          git diff --exit-code
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-v27-resume-collision-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            resume-collision.json
+            resume-collision.log
+            resume-collision-wrangler.log
+            v27-install.log

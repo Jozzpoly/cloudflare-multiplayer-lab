@@ -188,7 +188,9 @@ jobs:
       - name: Real mobile touch gameplay
         run: |
           set -euo pipefail
-          MW_WORLD_V0_MOBILE_INPUT_BASE=http://127.0.0.1:8787           MW_WORLD_V0_MOBILE_INPUT_OUTPUT=breadth-mobile-input.json             timeout 120s node scripts/world-v0-mobile-input-browser-audit.mjs | tee breadth-mobile-input.log
+          MW_WORLD_V0_MOBILE_INPUT_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_MOBILE_INPUT_OUTPUT=breadth-mobile-input.json \
+            timeout 120s node scripts/world-v0-mobile-input-browser-audit.mjs | tee breadth-mobile-input.log
           grep -q WORLD_V0_MOBILE_INPUT_PASS breadth-mobile-input.log
       - if: always()
         run: |

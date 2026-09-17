@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: world-v0-ongoing-yard-staging
+  group: world-v0-staging-delivery
   cancel-in-progress: false
 
 env:
@@ -116,12 +116,12 @@ jobs:
       - name: Prove remote public Yard solo-to-friend flow in real Chromium
         env:
           MW_WORLD_V0_ONGOING_BASE: ${{ env.STAGING_BASE_URL }}
-          MW_WORLD_V0_ONGOING_OUTPUT: world-v0-ongoing-yard-staging.json
+          MW_WORLD_V0_ONGOING_OUTPUT: world-v0-staging-delivery.json
         shell: bash
         run: |
           set -euo pipefail
-          timeout 130s node scripts/world-v0-ongoing-yard-product-chromium.mjs | tee world-v0-ongoing-yard-staging.log
-          grep -q 'WORLD_V0_ONGOING_YARD_PUBLIC_FLOW_PASS' world-v0-ongoing-yard-staging.log
+          timeout 130s node scripts/world-v0-ongoing-yard-product-chromium.mjs | tee world-v0-staging-delivery.log
+          grep -q 'WORLD_V0_ONGOING_YARD_PUBLIC_FLOW_PASS' world-v0-staging-delivery.log
 
       - name: Upload remote evidence
         if: always()
@@ -130,6 +130,6 @@ jobs:
           name: world-v0-staging-delivery-${{ github.run_id }}
           if-no-files-found: ignore
           path: |
-            world-v0-ongoing-yard-staging.json
-            world-v0-ongoing-yard-staging.log
+            world-v0-staging-delivery.json
+            world-v0-staging-delivery.log
             .wrangler/ongoing-yard-staging-dry-run

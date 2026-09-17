@@ -14,21 +14,7 @@ on:
       - src/world-v0-contract.ts
       - src/world-v0-protocol.ts
       - src/world-v0-shared-yard.ts
-      - scripts/world-v0-ongoing-yard-product-chromium.mjs
-      - scripts/world-v0-private-refresh-continuity-browser-audit.mjs
-      - scripts/world-v0-private-profile-rebind-browser-audit.mjs
-      - scripts/world-v0-diagnostic-space-gameplay-browser-audit.mjs
-      - scripts/world-v0-mobile-input-browser-audit.mjs
-      - scripts/world-v0-ongoing-cross-page-resume-browser-audit.mjs
-      - scripts/world-v0-direct-link-resume-browser-audit.mjs
-      - scripts/world-v0-live-rebind-browser-audit.mjs
-      - scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs
-      - scripts/world-v0-soft-reservation-browser-handoff-audit.mjs
-      - scripts/world-v0-resumed-stayer-handoff-browser-audit.mjs
-      - scripts/world-v0-jump-pending-resume-highwater-v28-audit.mjs
-      - scripts/world-v0-jump-v28-peer-rebase-parity-audit.mjs
-      - scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs
-      - scripts/world-v0-join-failure-clarity-browser-audit.mjs
+      - scripts/world-v0-*
   workflow_dispatch:
 
 permissions:

@@ -23,7 +23,7 @@ async function waitFor(fn, label, timeout = TIMEOUT_MS) {
 }
 
 function rawClient(player) {
-  const ws = new WebSocket(`${WS_BASE}/world-v0/ws?${new URLSearchParams({ run: ROOM, player })}`);
+  const ws = new WebSocket(`${WS_BASE}/world-v0/ws?${new URLSearchParams({ run: ROOM, player, lifecycle: "r0" })}`);
   const messages = [];
   ws.addEventListener("message", async (event) => {
     const raw = typeof event.data === "string" ? event.data : await event.data.text();
@@ -107,18 +107,25 @@ await waitFor(async () => {
 
 const a = rawClient("DirectOutageA");
 const aw = await welcome(a, "A welcome");
-const b = rawClient("DirectOutageB");
-const bw = await welcome(b, "B welcome");
-assert(aw.worldEpoch === bw.worldEpoch, "pair epoch mismatch");
-assert(aw.protocolStartTick == null && bw.protocolStartTick == null, "apparatus expected prestart pair");
+assert(aw.protocolStartTick == null, "R0 actor unexpectedly started before ready");
+assert(aw.topology?.revision === 1 && aw.topology?.actors?.length === 1, "R0 solo topology missing");
 const oldEpoch = aw.worldEpoch;
+a.ws.send(JSON.stringify({
+  type: "world_v0_ready",
+  worldId: aw.worldId,
+  worldEpoch: aw.worldEpoch,
+  simBuildId: aw.simBuildId,
+  clientSimRevision: aw.clientSimRevision,
+  topologyRevision: aw.topology.revision,
+  topologyDigest: aw.topology.digest,
+}));
+await waitFor(() => a.messages.find((m) => m?.type === "world_v0_start" && m.worldEpoch === oldEpoch) || false, "R0 solo start");
 
 a.ws.close(1000, "direct_outage_drop_a");
-b.ws.close(1000, "direct_outage_drop_b");
 await waitFor(async () => {
   const value = await room();
-  return value?.worldEpoch === oldEpoch && value.connected === 0 && value.reserved === 2 ? value : false;
-}, "vacant resumable room");
+  return value?.worldEpoch === oldEpoch && value.occupancy === 1 && value.connected === 0 && value.reserved === 1 ? value : false;
+}, "vacant resumable R0 actor");
 
 const stored = {
   revision: "world-v0-session-continuity-r3-live-rebind",
@@ -205,7 +212,7 @@ try {
   try {
     resumed = await waitFor(async () => {
       const evidence = await cdp.evaluate(page, `window.__sharedYardV0Evidence?.()`);
-      const completed = evidence?.lifecycleEvents?.some((event) => event.type === "actor-resume-prestart-complete");
+      const completed = evidence?.lifecycleEvents?.some((event) => event.type === "actor-resume-complete");
       return evidence?.session?.actorSessionId && evidence?.identity?.worldEpoch === oldEpoch && completed ? evidence : false;
     }, "authority resume after directory outage", 12_000);
   } catch (error) {
@@ -228,10 +235,10 @@ try {
 
   assert(resumed.session?.actorSessionId === aw.selfSessionId, `ActorSession changed after outage resume: ${JSON.stringify(resumed)}`);
   assert(resumed.identity?.worldEpoch === oldEpoch, `WorldEpoch changed after outage resume: ${JSON.stringify(resumed)}`);
-  assert(resumed.lifecycleEvents?.some((event) => event.type === "actor-resume-prestart-complete"), `pre-start authority Resume completion missing: ${JSON.stringify(resumed.lifecycleEvents)}`);
+  assert(resumed.lifecycleEvents?.some((event) => event.type === "actor-resume-complete"), `active R0 authority Resume completion missing: ${JSON.stringify(resumed.lifecycleEvents)}`);
   const resumedRoom = await room();
   assert(resumedRoom?.worldEpoch === oldEpoch, `directory epoch changed after outage Resume: ${JSON.stringify(resumedRoom)}`);
-  assert(resumedRoom?.connected === 1 && resumedRoom?.reserved === 1, `directory presence mismatch after outage Resume: ${JSON.stringify(resumedRoom)}`);
+  assert(resumedRoom?.occupancy === 1 && resumedRoom?.connected === 1 && resumedRoom?.reserved === 0, `directory presence mismatch after outage Resume: ${JSON.stringify(resumedRoom)}`);
 
   console.log("WORLD_V0_DIRECT_RESUME_DIRECTORY_OUTAGE_PASS", JSON.stringify({
     room: ROOM,
@@ -242,7 +249,6 @@ try {
   }));
 } finally {
   try { a.ws.close(1000, "done"); } catch {}
-  try { b.ws.close(1000, "done"); } catch {}
   cdp?.close();
   if (child.exitCode === null) child.kill("SIGKILL");
   try { rmSync(profile, { recursive: true, force: true }); } catch {}

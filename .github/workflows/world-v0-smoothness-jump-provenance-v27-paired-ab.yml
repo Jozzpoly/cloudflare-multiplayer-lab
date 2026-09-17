@@ -9,6 +9,7 @@ on:
       - scripts/world-v0-smoothness-install-jump-provenance-v27.mjs
       - scripts/world-v0-smoothness-install-jump-provenance-v27-rapid-witness.mjs
       - scripts/world-v0-smoothness-install-invalid-message-witness.mjs
+      - scripts/world-v0-smoothness-install-strict-fifo-delay-proxy.mjs
       - scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs
   workflow_dispatch:
 
@@ -71,15 +72,20 @@ jobs:
               grep -q 'WORLD_V0_JUMP_EXPLICIT_PROVENANCE_V27_INSTALLED' "$EVIDENCE/${prefix}-install.log" || return 91
             fi
 
+            node scripts/world-v0-smoothness-install-strict-fifo-delay-proxy.mjs \
+              2>&1 | tee "$EVIDENCE/${prefix}-strict-fifo.log"
+            test ${PIPESTATUS[0]} -eq 0 || return 92
+            grep -q 'WORLD_V0_STRICT_FIFO_DELAY_PROXY_INSTALLED' "$EVIDENCE/${prefix}-strict-fifo.log" || return 93
+
             node scripts/world-v0-smoothness-install-jump-provenance-v27-rapid-witness.mjs \
               2>&1 | tee "$EVIDENCE/${prefix}-rapid-witness.log"
-            test ${PIPESTATUS[0]} -eq 0 || return 92
-            grep -q 'WORLD_V0_JUMP_PROVENANCE_V27_RAPID_WITNESS_INSTALLED' "$EVIDENCE/${prefix}-rapid-witness.log" || return 93
+            test ${PIPESTATUS[0]} -eq 0 || return 94
+            grep -q 'WORLD_V0_JUMP_PROVENANCE_V27_RAPID_WITNESS_INSTALLED' "$EVIDENCE/${prefix}-rapid-witness.log" || return 95
 
             node scripts/world-v0-smoothness-install-invalid-message-witness.mjs \
               2>&1 | tee "$EVIDENCE/${prefix}-server-witness.log"
-            test ${PIPESTATUS[0]} -eq 0 || return 94
-            grep -q 'WORLD_V0_INVALID_MESSAGE_WITNESS_INSTALLED' "$EVIDENCE/${prefix}-server-witness.log" || return 95
+            test ${PIPESTATUS[0]} -eq 0 || return 96
+            grep -q 'WORLD_V0_INVALID_MESSAGE_WITNESS_INSTALLED' "$EVIDENCE/${prefix}-server-witness.log" || return 97
 
             setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port "$port" \
               > "$EVIDENCE/${prefix}-wrangler.log" 2>&1 &
@@ -96,7 +102,7 @@ jobs:
             if [ "$live" -ne 1 ]; then
               stop_runtime "$runtime_pid"
               echo "runtime did not become ready" >> "$EVIDENCE/${prefix}-runner.log"
-              return 96
+              return 98
             fi
 
             set +e
@@ -122,7 +128,7 @@ jobs:
               src/world-v0-protocol.ts \
               src/world-v0-shared-yard.ts \
               scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs
-            git diff --exit-code > "$EVIDENCE/${prefix}-restore-diff.log" 2>&1 || return 97
+            git diff --exit-code > "$EVIDENCE/${prefix}-restore-diff.log" 2>&1 || return 99
             return 0
           }
 
@@ -173,6 +179,12 @@ jobs:
             process.exit(1);
           }
 
+          if (baseline.proxy?.transportRevision !== 'strict-fifo-single-drain-v1' ||
+              v27.proxy?.transportRevision !== 'strict-fifo-single-drain-v1') {
+            console.error('V27_PAIRED_TRANSPORT_NOT_QUALIFIED', JSON.stringify({ specimen, baselineProxy: baseline.proxy, v27Proxy: v27.proxy }));
+            process.exit(1);
+          }
+
           const baselineAmbiguity = (baseline.falseBeforeAuthorshipCount || 0) + (baseline.outsideAuthoredRangeCount || 0);
           if (baselineAmbiguity <= 0) {
             console.error('V27_PAIRED_BASELINE_DID_NOT_REPRODUCE_AMBIGUITY', JSON.stringify({ specimen, baseline }));
@@ -202,6 +214,7 @@ jobs:
               deliveryP95Ms: baseline.deliveryLatencyP95Ms,
               secondPressDeliveryMs: baseline.secondPressDeliveryMs,
               selfJumpFlips: baseline.selfJumpFlips,
+              proxy: baseline.proxy,
             },
             v27: {
               presses: v27.presses,
@@ -220,6 +233,7 @@ jobs:
               deliveryP95Ms: v27.deliveryLatencyP95Ms,
               secondPressDeliveryMs: v27.secondPressDeliveryMs,
               selfJumpFlips: v27.selfJumpFlips,
+              proxy: v27.proxy,
             },
             ratios: {
               presses: safeRatio(v27.presses, baseline.presses),

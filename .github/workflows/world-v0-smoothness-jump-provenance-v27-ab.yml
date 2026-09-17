@@ -1,0 +1,111 @@
+name: World V0 smoothness jump provenance V25 versus V27 A-B
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-owner-forensics-v25
+    paths:
+      - .github/workflows/world-v0-smoothness-jump-provenance-v27-ab.yml
+      - scripts/world-v0-smoothness-install-jump-provenance-v27.mjs
+      - scripts/world-v0-smoothness-install-jump-provenance-v27-rapid-witness.mjs
+      - scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rapid-provenance:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [baseline, v27]
+        specimen: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Prepare isolated runtime variant and provenance witness
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp public/world-v0/app.js /tmp/world-v0-app.js
+          cp src/world-v0-protocol.ts /tmp/world-v0-protocol.ts
+          cp scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs /tmp/world-v0-rapid-probe.mjs
+          if [ "${{ matrix.mode }}" = "v27" ]; then
+            node scripts/world-v0-smoothness-install-jump-provenance-v27.mjs | tee world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}-install.log
+            grep -q 'WORLD_V0_JUMP_EXPLICIT_PROVENANCE_V27_INSTALLED' world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}-install.log
+          fi
+          node scripts/world-v0-smoothness-install-jump-provenance-v27-rapid-witness.mjs | tee world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}-witness.log
+          grep -q 'WORLD_V0_JUMP_PROVENANCE_V27_RAPID_WITNESS_INSTALLED' world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}-witness.log
+      - name: Start local Workerd runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}-wrangler.log 2>&1 &
+          for i in {1..80}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}-wrangler.log
+          exit 1
+      - name: Exercise rapid re-press under ordered outbound latency
+        env:
+          MW_WORLD_V0_RAPID_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RAPID_MODE: ${{ matrix.mode }}
+          MW_WORLD_V0_RAPID_OUTPUT: world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}.json
+          MW_WORLD_V0_RAPID_DELAY_MS: 90
+          MW_WORLD_V0_RAPID_STRESS_MS: 4000
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout 180s node scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs 2>&1 | tee world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}.log
+          test ${PIPESTATUS[0]} -eq 0
+      - name: Print specimen summary
+        if: always()
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = 'world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}.json';
+          if (!fs.existsSync(path)) {
+            console.log('V27_SPECIMEN_MISSING', path);
+            process.exit(0);
+          }
+          const p = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const fields = [
+            'verdict','presses','deliveries','unsafeOverlapCount','falseBeforeAuthorshipCount',
+            'outsideAuthoredRangeCount','staleProvenanceRejections','canonicalProvenanceMismatchCount',
+            'provenanceOnlySupersessions','provenancePressureCount','deliveryLatencyP50Ms',
+            'deliveryLatencyP95Ms','secondPressDeliveryMs','correctionDelta','serverLateDelta',
+            'supersededDelta','maxCorrection','correctionMaxSelf','correctionMaxRemote','maxRewind',
+            'rewindP50','rewindP95','selfJumpFlips','remoteJumpFlips'
+          ];
+          const summary = Object.fromEntries(fields.map((key) => [key, p[key]]));
+          console.log('V27_SPECIMEN_SUMMARY', JSON.stringify(summary));
+          NODE
+      - name: Restore canonical runtime and prove apparatus isolation
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/world-v0-app.js public/world-v0/app.js
+          cp /tmp/world-v0-protocol.ts src/world-v0-protocol.ts
+          cp /tmp/world-v0-rapid-probe.mjs scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs
+          git diff --exit-code
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-smoothness-jump-v27-${{ matrix.mode }}-${{ matrix.specimen }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}.json
+            world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}.log
+            world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}-install.log
+            world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}-witness.log
+            world-v0-v27-${{ matrix.mode }}-${{ matrix.specimen }}-wrangler.log

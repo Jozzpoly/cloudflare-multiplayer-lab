@@ -6,6 +6,19 @@ on:
       - world-v0-post-owner-v28-hardening
     paths:
       - .github/workflows/world-v0-post-owner-v28-breadth.yml
+      - public/world-v0/**
+      - src/world-slice-entry.ts
+      - src/world-v0-contract.ts
+      - src/world-v0-protocol.ts
+      - src/world-v0-shared-yard.ts
+      - scripts/world-v0-ongoing-yard-product-chromium.mjs
+      - scripts/world-v0-resumed-stayer-handoff-browser-audit.mjs
+      - scripts/world-v0-smoothness-hidden-integrated-v25-transform.mjs
+      - scripts/world-v0-smoothness-hidden-catchup-v21.mjs
+      - scripts/world-v0-smoothness-v20-silent-outage-recovery.mjs
+      - scripts/world-v0-jump-v28-peer-rebase-parity-audit.mjs
+      - scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs
+      - scripts/world-v0-owner-ui-focus-browser-audit.mjs
   workflow_dispatch:
 
 permissions:

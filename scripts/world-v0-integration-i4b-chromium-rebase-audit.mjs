@@ -94,11 +94,26 @@ async function startClient(binary, index, url) {
   const info = await waitForDebugger(port);
   const cdp = new Cdp(info.webSocketDebuggerUrl);
   await cdp.opened;
-  const { targetId } = await cdp.call("Target.createTarget", { url });
+  const { targetId } = await cdp.call("Target.createTarget", { url: "about:blank" });
   const { sessionId } = await cdp.call("Target.attachToTarget", { targetId, flatten: true });
   await cdp.call("Runtime.enable", {}, sessionId);
   await cdp.call("Page.enable", {}, sessionId);
   await cdp.call("Network.enable", {}, sessionId);
+  await cdp.call("Page.addScriptToEvaluateOnNewDocument", {
+    source: `(() => {
+      const NativeWebSocket = window.WebSocket;
+      const sockets = [];
+      Object.defineProperty(window, "__mwI4bSockets", { value: sockets, configurable: false });
+      window.WebSocket = new Proxy(NativeWebSocket, {
+        construct(target, args, newTarget) {
+          const socket = Reflect.construct(target, args, newTarget);
+          sockets.push(socket);
+          return socket;
+        },
+      });
+    })();`,
+  }, sessionId);
+  await cdp.call("Page.navigate", { url }, sessionId);
   return { index, port, profile, stderr, child, cdp, sessionId, targetId };
 }
 async function stopClient(client) {
@@ -157,6 +172,14 @@ try {
   assert(beforeA.session.actorSessionId && beforeA.session.actorSessionId !== beforeB.session.actorSessionId, "baseline ActorSession identity missing");
 
   await setOffline(clients[0], true);
+  const closeRequested = await clients[0].cdp.evaluate(clients[0].sessionId, `(() => {
+    const sockets = window.__mwI4bSockets || [];
+    const socket = sockets[sockets.length - 1];
+    if (!socket) return false;
+    socket.close(4000, "i4b_targeted_outage");
+    return true;
+  })()`);
+  assert(closeRequested === true, "client A targeted websocket close stimulus missing");
   await waitFor(clients[0], '(() => window.__sharedYardV0Evidence?.().session?.actorResume?.pending === true)()', "client A actor resume pending", 12_000);
   const droppedA = await evidence(clients[0]);
   const sourceBoundary = droppedA.session.actorResume.sourceBoundary;

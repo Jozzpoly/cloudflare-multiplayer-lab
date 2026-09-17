@@ -31,6 +31,7 @@ import {
   WORLD_V0_SESSION_CONTINUITY_REVISION,
   clearWorldV0StoredSession,
   takeWorldV0ResumeIntent,
+  writeWorldV0ResumeIntent,
   writeWorldV0StoredSession,
 } from "./session-continuity.js";
 import {
@@ -687,9 +688,9 @@ let resumeToken = null;
 let currentTopology = null;
 let topologyTransitionPending = false;
 
-function persistCurrentActorSession() {
-  if (!identity || !selfSessionId || !resumeToken || !selfNetEntityId || !Number.isInteger(selfSlot)) return false;
-  return writeWorldV0StoredSession({
+function currentActorSessionRecord() {
+  if (!identity || !selfSessionId || !resumeToken || !selfNetEntityId || !Number.isInteger(selfSlot)) return null;
+  return {
     runKey,
     playerId: callsign,
     worldEpoch: identity.worldEpoch,
@@ -697,7 +698,18 @@ function persistCurrentActorSession() {
     resumeToken,
     netEntityId: selfNetEntityId,
     slot: selfSlot,
-  });
+  };
+}
+
+function persistCurrentActorSession() {
+  const record = currentActorSessionRecord();
+  return record ? writeWorldV0StoredSession(record) : false;
+}
+
+function armCurrentActorResumeIntentForPageExit() {
+  if (!playing || runtimeFailed || sessionEnd) return false;
+  const record = currentActorSessionRecord();
+  return record ? writeWorldV0ResumeIntent(record) : false;
 }
 
 function clearCurrentStoredActorSession(worldEpoch = identity?.worldEpoch ?? null) {
@@ -2791,7 +2803,10 @@ window.__sharedYardV0LastEvidence = () => {
     return null;
   }
 };
-addEventListener("pagehide", () => persistLastSessionEvidence("pagehide"));
+addEventListener("pagehide", () => {
+  armCurrentActorResumeIntentForPageExit();
+  persistLastSessionEvidence("pagehide");
+});
 document.addEventListener("visibilitychange", () => {
   const now = performance.now();
   recordLifecycle("visibility", { state: document.visibilityState, elapsedSincePreviousMs: Math.max(0, now - visibilityTransitionAt) });

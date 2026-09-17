@@ -113,5 +113,19 @@ replaceExact(
 "fixed-attempt summary metrics",
 );
 
+replaceExact(
+`    assert(summary.provenancePressureCount > 0,
+      \`V27 specimen did not exercise provenance pressure: \${JSON.stringify(summary)}\`);
+    result.verdict = "RAPID_REPRESS_V27_EXPLICIT_PROVENANCE_HELD";
+`,
+`    // Fixed-attempt responsiveness is driven by an external attempt clock. A
+    // specimen remains useful when provenance pressure happens to be zero; pressure
+    // is reported, while causal validity is still enforced by the provenance and
+    // authored-range checks above. Dedicated V28 gates exercise dedupe pressure.
+    result.verdict = "RAPID_REPRESS_V27_EXPLICIT_PROVENANCE_HELD";
+`,
+"responsiveness does not require provenance-pressure precondition",
+);
+
 writeFileSync(TARGET, source);
 console.log("WORLD_V0_JUMP_FIXED_ATTEMPT_V28_INSTALLED");

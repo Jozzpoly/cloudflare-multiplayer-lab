@@ -1,161 +1,174 @@
 # Multi_World — Current State
 
-Status: **WORLD V0 2P BASELINE QUALIFIED / REPOSITORY CLEANUP TERMINAL PASS / 2-BRANCH CANONICAL TOPOLOGY**  
-Grounded: **2026-09-11**
+Status: **WORLD V0 ONGOING YARD + V28 HARDENING QUALIFIED / REPOSITORY CLOSEOUT IN PROGRESS**  
+Grounded: **2026-09-18**
 
-This is the compact technical truth for continuation. Verify live GitHub state when it matters. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable product-intent document and was intentionally unchanged by repository cleanup.
+This is the compact technical truth for continuation. Verify live GitHub state when exact refs, deployment state or destructive cleanup matter. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable product-intent document; the detailed evidence record for this campaign is `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md`.
 
-## 1. Product authority
+## 1. Current product authority
 
-World V0 has a qualified fixed-two-player Shared Yard baseline.
+The current qualified World V0 runtime is:
 
-Exact qualified product:
+`2bb295ba583e1852337e88e89f8cb790e104f70d`
 
-`7755a668d7488f04ecbf42a00fbc96fcb978d544`
+Qualification workflow:
 
-Final qualified delivery:
+`35286869307` — **SUCCESS**
 
-`fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`
+This is no longer the old fixed-two-player waiting-room product. The current product supports an **Ongoing Yard** lifecycle inside the present two-actor envelope:
 
-Final delivery run `34475199474` — **SUCCESS**.  
-Cloudflare Version `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`.  
-Owner final real-device sanity after the bounded UI repair: **3/3 PASS**.
+- the first player can enter alone and immediately inhabit/play in the physical Yard;
+- a second player can later join the same ongoing physical world;
+- ActorSession lifetime is no longer treated as identical to one browser transport;
+- protected and soft reservation states provide bounded reconnect authority while eventually returning capacity;
+- room recovery can retire an old epoch and re-enter a fresh one without leaving false recovery state behind.
 
-Repository cleanup did not modify or redeploy the qualified World V0 product. The last pre-terminal canonical validation head `ddc66a97f61640e25e86f3240ac7753c08f82fe7` retained byte identity for runtime-sensitive paths and passed ordinary CI plus full World V0 Current Validation.
+Server authority, deterministic exact-state guards and the bounded two-actor product envelope remain intact.
 
-## 2. Bulk repository prune — complete
+## 2. Final isolated staging delivery
 
-Repository Cleanup Kit v3.0.0 executed the qualified bulk-prune transaction after exact Owner authorization.
+The exact qualified runtime above was delivered to the isolated staging Worker without opening any Yard/WebSocket.
 
-Owner-authorized transaction:
+Delivery workflow:
 
-`9d210a30fe06c823f5b66845b5cbb356c801018844c56ff0c4ab23614eb35d14`
+`35288291564` — **SUCCESS**
 
-Successful guarded execution: run `34514964756`, final successful job `103000742955`.
+Cloudflare staging Worker:
 
-Evidence established:
+`cloudflare-multiplayer-lab-staging`
 
-- 167 historical branch refs deleted atomically;
-- first GitHub `502` attempt independently proved `ZERO_CHANGE_CONFIRMED` before the exact retry;
-- successful retry reported `PASS_GITHUB_ATOMIC_APPLY_AND_POSTFLIGHT`;
-- recovery rehearsal reconstructed **167/167** selected refs exactly after a self-contained bundle and aggressive Git GC;
-- Cleanup Kit seal run `34517285955` / job `103005756148` succeeded;
-- verified seal SHA `4d2fae1a18613f0c90c4b242edfa68eb26fd66a2`;
-- terminal recovery lineage was subsequently extended through the terminal-closure campaign and now ends at `186d7633fde739098d892491231c9e717da5f871`.
+Cloudflare Version:
 
-Earlier terminal-preparation digests and tokens are historical evidence only and **must not be reused**.
+`3aeb983f-e876-404c-b0bd-245f84c5acfb`
 
-## 3. Cleanup Kit v3 donor audit changed the closure model
+Public asset byte identity was proven for:
 
-Owner supplied the final v3.0.0 distribution ZIP. Its 32-file checksum set and official 47/47 tests pass, and all six runtime modules are byte-identical to the six modules actually executed in Multi_World. The earlier distribution-provenance gap is therefore closed for executed runtime source bytes.
+- `world-v0/app.js` — SHA-256 `82a748b1444c484f81a8180acb92fec429837589f9a5585707c70640d59d4f55`;
+- `world-v0/entry.js` — SHA-256 `6f6018b7eb85d0d67d64c76c8de3e7b19106a390439463f3115632b81ca9de9e`;
+- `world-v0/build-contract.js` — SHA-256 `5cb8a5f9439a1fa29fd8dde564f25fb2e6753daaa649fb74b6b5097bb250634c`.
 
-The package is nevertheless not accepted as final authority. Adversarial testing found reproducible defects, including:
+`/api/ping` returned HTTP 200. CI did not pre-touch Owner Yard identities.
 
-- unexpected refs after seal do not invalidate `verify`;
-- `--allow-live` is name-only rather than exact-identity policy;
-- exported `buildClosure()` is broken;
-- external-payload detection is tip-tree-only rather than history-wide;
-- v3 has no stable terminal state after helper retirement;
-- its semantic recovery catalog can hide transient historical work.
+## 3. Owner perceptual evidence
 
-Multi_World was retrospectively checked against the safety-relevant history-wide gap: 443 unique historical commits / 867 blobs were scanned; **0 historical Git LFS pointers and 0 gitlinks/submodules** were found. The executed 167-ref prune therefore did not fall into that blind spot.
+The Owner judged current foreground smoothness broadly acceptable: remaining visual impurities were below a level he could objectively identify by eye.
 
-The semantic gap is real in this repository: 20/167 retired refs contain transient-only paths missing from final net diffs; 59/167 have commits omitted by the five-recent-commit summary; three refs show `changedFileCount=0` despite real historical work. Final aggregate recovery therefore includes a history-aware semantic index.
+That judgement opened the post-Owner hardening tranche rather than ending work immediately. Two concrete regressions were then reproduced and repaired:
 
-## 4. Terminal repository topology — complete
+1. private refresh/re-entry could create a new actor while the prior ActorSession remained as an empty shell;
+2. pointer focus on Diagnostics could capture Space and toggle the panel instead of jumping.
 
-Terminal closure transaction:
+These were reproduced RED before repair. Ordinary `npm run check` had passed, exposing a validation-routing gap as well as two product defects.
 
-`532e99c69fc72ff748b0303f9eae317a10fe10ae54907e4330495da6d77d1711`
+There has **not** been a new two-human perceptual test after the post-Owner hardening repairs. Do not upgrade the Owner judgement into a universal visual-smoothness guarantee.
 
-Frozen terminal runner tip:
+## 4. Post-Owner hardening now defended
 
-`f668e4aeeac0208bee7c49ac6e9c40d740dff21e`
+Evidence supports:
 
-Successful terminal execution: workflow run `34536413299`, attempt 3, job `103073656253` — **SUCCESS**.
+- private page refresh preserving the same ActorSession / NetEntity / WorldEpoch when authority still exists;
+- private same-profile direct-link rebound through authority-checked resume;
+- foreign profiles not acquiring private ActorSession authority;
+- pointer-clicked action controls returning keyboard ownership to gameplay while keyboard-origin UI activation remains accessible;
+- R0 room-recovery bookkeeping closing correctly after late-join bootstrap;
+- public close/reopen Resume;
+- direct-link Resume;
+- directory uncertainty remaining fail-closed rather than silently converting Resume into fresh admission;
+- protected -> soft reservation -> capacity handoff;
+- resumed-stayer recovery through epoch replacement;
+- actual mobile touch joystick, jump and camera-gimbal control;
+- capacity-full errors being distinct from connection/handshake failures.
 
-Terminal evidence:
+## 5. V28 causal/exactness evidence after hardening
 
-- `PASS_GITHUB_TERMINAL_UPDATE_REFS_ATOMIC_CAS`;
-- `PASS_TERMINAL_ATOMIC_APPLY_AND_FRESH_MIRROR`;
-- independent terminal constraints passed;
-- fresh-mirror recovery verified **167/167** historical refs;
-- final aggregate archive: `186d7633fde739098d892491231c9e717da5f871`;
-- final live branch namespace contains exactly **two branches**:
-  - `main`;
-  - `archive/repository-cleanup-v3-2026-09-10`.
+Exact final-runtime run `35286869307` requalified the causal jump/rebase substrate on the hardening runtime:
 
-Three immutable World V0 checkpoints formerly represented as branches are now annotated tags:
+- forced-late persistence: **15 qualified / 1 precondition miss / 0 semantic failures / 0 infrastructure or exactness failures**;
+- pending jump Resume: sequence 7 / high-water 7;
+- peer/rebase parity: sequence 41 / causal watermark 41;
+- real Chromium exact rebase: 128-tick gap / guard mismatches 0;
+- full repository gate: PASS;
+- test apparatus restored and tracked checkout clean.
 
-- `world-v0-qualified-2p-baseline-2026-09-10` -> `7755a668d7488f04ecbf42a00fbc96fcb978d544`;
-- `world-v0-final-delivery-2026-09-10` -> `fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`;
-- `world-v0-pre-safe-stop-main-2026-09-10` -> `829deef82c71780d2d661e7a7e82685739d7b23d`.
+The runtime-sensitive hardening delta from frozen V28 is exactly six files:
 
-Terminal-consumption marker:
+1. `public/world-v0/app.js`
+2. `public/world-v0/build-contract.js`
+3. `public/world-v0/friend-ready.js`
+4. `public/world-v0/keyboard-focus-guard.js`
+5. `src/world-slice-entry.ts`
+6. `src/world-v0-shared-yard.ts`
 
-- `repository-cleanup-terminal-2026-09-10` -> aggregate archive `186d7633fde739098d892491231c9e717da5f871`.
+Movement physics, scheduled-input protocol, state guard and simulation contract did not drift in that tranche.
 
-Cleanup helper and terminal-runner branch refs were retired only after their exact tips were preserved in aggregate archive ancestry.
+## 6. Current remote-presentation evidence
 
-## 5. Terminal-closure lessons / reusable process model
+Current-runtime remote-motion characterization run `35286302929` passed 2/2 under mutable-future pressure with exact guard mismatches 0 and authority-silence resumes 0.
 
-The terminal campaign exposed a workflow-design lesson that should be reused in future repository automation without copying Multi_World-specific machinery.
+Representative displayed remote-position steps were approximately:
 
-Owner authorization should bind to **semantic scope and invariants**, while execution digests remain provenance/evidence identities. Implementation-preserving changes and machine-proven authorization-equivalent retries should not repeatedly consume Owner attention. New Owner authorization is required only when destructive scope, protected identities, recovery guarantees or other material semantics change.
+- strong-pressure specimen: p95 4.39 cm, p99 6.40 cm, max 8.42 cm;
+- lighter specimen: p95 0.55 cm, p99 5.41 cm, max 11.30 cm.
 
-A useful execution classification is:
+No material remote-motion regression from the Owner-accepted V25 envelope was demonstrated. This is mechanism evidence, not a final perceptual SLO or proof that the temporal/presentation architecture is permanent.
 
-- **implementation-preserving** — technical repair, retry or transport change; no new Owner judgement;
-- **authorization-equivalent** — execution identity changes but machine-checkable destructive/protective semantics remain equivalent or stronger; authorization may carry forward with recorded evidence;
-- **authorization-changing** — material scope or safety semantics change; stop for Owner judgement.
+## 7. Repository closeout state
 
-The campaign also established a capability-recovery rule: failure of one connector/tool path is not evidence that the action is impossible. Before escalating work to the Owner, classify the failure and check bounded alternative native capabilities. Escalate only when an actual capability, authority or Owner-judgement boundary is reached.
+The previous 2026-09-10 cleanup archive remains historically valid, but it is no longer the whole repository story.
 
-These are donor principles for later projects such as `LLM Live NPC`; they are not a requirement to transplant this repository's cleanup implementation.
+A new aggregate archive preserves the exact tips that existed before this closeout:
 
-## 6. Platform-state interpretation
+`archive/multi-world-history-2026-09-18`
 
-A read-only Actions registry audit found 183 registered workflows, with 171 historical non-main registrations still marked `active`, but **zero historical-residue executions after the bulk-prune cutoff**. Treat this primarily as GitHub registry/UI hygiene debt, not as evidence of 171 hidden active automations. Historical run/artifact evidence must remain preserved.
+archive commit:
 
-Closure distinguishes: destructive safety, recoverability, provenance, semantic discoverability, canonical-product integrity, platform execution state and UI hygiene. Cosmetic registry state is not allowed to masquerade as a safety blocker.
+`af20c830a91e4f9eb358e67b3b480fd46fcb740e`
 
-## 7. Baseline earned / not earned
+Postflight proved every then-live branch tip had `behind_by=0` relative to that aggregate archive. This includes the multiplayer-foundation research/recovery lines, Ongoing Yard research, V25/V28 candidate/delivery/forensics lines and the earlier repository-cleanup archive.
 
-Within the fixed-two-player envelope, evidence supports the shared authoritative physical world, responsive browser simulation/prediction, scheduled canonical input, exact state guards, jump delivery persistence, ActorSession continuity, public Yard capacity semantics, bounded transport-loss recovery, and qualified desktop/mobile human entry.
+The live validation apparatus has since been consolidated from roughly 90 workflows to four repository workflows:
 
-Do not silently upgrade this into capabilities not demonstrated:
+- `ci.yml`;
+- `workflow-pipeline-safety-audit.yml`;
+- `world-v0-current-validation.yml`;
+- `world-v0-staging-delivery.yml`.
 
-- no durable reconstruction of a lost physical WorldEpoch;
-- no account/cloud identity or cross-device private-session transfer;
-- no persistent continuously-open world;
-- no arbitrary dynamic roster mutation inside one epoch;
-- no 3+ scalability yet;
-- no seamless MMO-style actor succession;
-- no guarantee through arbitrary permanent network loss;
-- fixed two-actor topology remains a known architectural constraint.
+Historical smoothness experiment workflows and one-shot probe/install scripts were removed from the live tree after archival. Two current test-only persistence helpers remain because they still support deep causal falsification.
 
-## 8. Current execution order
+**Branch-ref pruning is not yet declared complete in this document.** Exact final closeout refs must be re-archived after the final docs/cleanup tip, main must be integrated and validated, and only then may obsolete live refs be removed.
 
-Repository cleanup is closed. Do not reopen cleanup work merely to preserve momentum.
+## 8. Qualified claims and explicit nonclaims
 
-Next:
+Qualified within the current two-actor envelope:
 
-1. keep the qualified World V0 product/runtime frozen until a new product frontier is deliberately opened;
-2. verify this docs-only post-cleanup `main` descendant through ordinary CI;
-3. close repository-cleanup issue #41 with terminal evidence;
-4. re-ground `MULTI_WORLD_PROJECT_SOUL.md` together with this current-state document;
-5. then deliberately frame the next multiplayer architecture frontier before implementation.
+- one authoritative shared physical Yard;
+- responsive browser-side prediction with exact authoritative correction;
+- solo-first Ongoing Yard -> later second actor;
+- ActorSession continuity across bounded transport/page disruption;
+- causal jump identity across replay/resume/rebase;
+- bounded protected/soft reservation lifecycle;
+- executable desktop and mobile controls;
+- current failure messages distinguishing capacity from transport/handshake failure.
 
-## 9. Deferred near-term product requirement
+Still **not** claimed:
 
-After repository closure, the next important product requirement remains:
+- durable reconstruction of a lost physical WorldEpoch after process/state loss;
+- account/cloud identity or cross-device private-session transfer;
+- a persistent continuously-open world;
+- arbitrary 3+ actor topology;
+- MMO-style roster mutation;
+- correctness through permanent network loss;
+- that present remote-presentation delay/policy is final forever;
+- that current Owner perceptual evidence substitutes for future multi-human play testing.
 
-> A player should be able to enter a Yard alone, immediately inhabit and play in the physical world, and wait there for another player.
+## 9. Current execution order
 
-The current pre-start `Waiting in this Yard` shell is a frozen fixed-2P lifecycle limitation, not the desired next experience.
+1. finish validation of the cleaned live validation spine on the closeout branch;
+2. update canonical docs and final archive ancestry to include the final closeout tip;
+3. integrate the cleaned product to `main` as one squash-style product consolidation rather than replaying hundreds of experimental commits;
+4. require current validation on exact integrated `main`;
+5. close or archive superseded research PR/ref surfaces only after provenance is proven;
+6. reduce live branch namespace to the deliberately retained canonical refs;
+7. only then frame the next product frontier.
 
-Design this together with:
-
-`world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
-
-Do not treat this requirement alone as authorization for a broad persistent-world / 3+ / MMO redesign.
+Do **not** continue the smoothness/reliability laboratory merely for momentum. The next frontier should be chosen from Owner-visible product pressure after this closeout, not assumed from the architecture.

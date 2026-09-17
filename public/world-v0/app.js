@@ -1056,6 +1056,18 @@ function roomRecoverySnapshot() {
   };
 }
 
+function completeRoomRecovery(recoveredEpoch, sourceEpoch = roomRecovery.sourceEpoch) {
+  if (!roomRecovery.pending) return false;
+  clearRoomRecoveryTimer();
+  roomRecovery.pending = false;
+  roomRecovery.reason = null;
+  roomRecovery.attempts = 0;
+  roomRecovery.lastRecoveredEpoch = recoveredEpoch;
+  roomRecovery.sourceEpoch = null;
+  recordLifecycle("room-recovered", { roomId: runKey, sourceEpoch, recoveredEpoch });
+  return true;
+}
+
 function reconnectSameRoom() {
   if (!roomRecovery.pending || runtimeFailed) return false;
   if (document.visibilityState !== "visible") return false;
@@ -2306,20 +2318,19 @@ function handleMessage(message) {
         topologyRevision: currentTopology.revision,
         topologyDigest: currentTopology.digest,
       });
-      clearNotice();
+      if (recoveringRoom) {
+        completeRoomRecovery(message.worldEpoch, sourceEpoch);
+        showNotice("Back in the same Yard");
+      } else {
+        clearNotice();
+      }
       syncMeshes();
       return;
     }
 
     networkState = message.waitingForPeer ? "waiting for peer" : (lifecycleR0 ? "solo · synchronizing" : "peer joined");
     if (recoveringRoom) {
-      clearRoomRecoveryTimer();
-      roomRecovery.pending = false;
-      roomRecovery.reason = null;
-      roomRecovery.attempts = 0;
-      roomRecovery.lastRecoveredEpoch = message.worldEpoch;
-      roomRecovery.sourceEpoch = null;
-      recordLifecycle("room-recovered", { roomId: runKey, sourceEpoch, recoveredEpoch: message.worldEpoch });
+      completeRoomRecovery(message.worldEpoch, sourceEpoch);
       showNotice(message.waitingForPeer ? "Back in the same Yard · waiting for friend" : "Back in the same Yard");
     }
     return;

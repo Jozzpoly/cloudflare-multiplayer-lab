@@ -226,3 +226,118 @@ Closeout must:
 6. remove obsolete branch refs only after archive/provenance and post-integration validation are independently proven.
 
 The purpose of cleanup is to make the next frontier easier to reason about, not to erase the evidence that produced the current runtime.
+
+
+## 10. Exact final staging delivery
+
+After final runtime qualification, the exact runtime `2bb295ba583e1852337e88e89f8cb790e104f70d` was delivered to the isolated staging Worker.
+
+Workflow run:
+
+`35288291564` — **SUCCESS**
+
+Cloudflare Version:
+
+`3aeb983f-e876-404c-b0bd-245f84c5acfb`
+
+The delivery workflow explicitly checked out the qualified runtime SHA rather than the docs/closeout branch tip, proved the hardening branch still pointed to that exact SHA, validated the isolated staging contract, performed a dry run, deployed only the staging Worker and then fetched only public static assets plus `/api/ping`.
+
+No `/world-v0/ws` request or Yard identity was opened by the delivery gate.
+
+Remote byte identity:
+
+- `world-v0/app.js` — 139581 bytes, SHA-256 `82a748b1444c484f81a8180acb92fec429837589f9a5585707c70640d59d4f55`;
+- `world-v0/entry.js` — 1000 bytes, SHA-256 `6f6018b7eb85d0d67d64c76c8de3e7b19106a390439463f3115632b81ca9de9e`;
+- `world-v0/build-contract.js` — 789 bytes, SHA-256 `5cb8a5f9439a1fa29fd8dde564f25fb2e6753daaa649fb74b6b5097bb250634c`.
+
+Verdict:
+
+`WORLD_V0_POST_OWNER_V28_FINAL_STAGING_EXACT_DELIVERY_PASS`
+
+Artifact ID:
+
+`10525485521`
+
+## 11. Aggregate archive before destructive namespace cleanup
+
+Before deleting any branch refs, a non-destructive aggregate history commit was created:
+
+`af20c830a91e4f9eb358e67b3b480fd46fcb740e`
+
+branch:
+
+`archive/multi-world-history-2026-09-18`
+
+Its parent set preserves the closeout/runtime lineage plus exact tips from:
+
+- the previous 2026-09-10 repository-cleanup archive;
+- multiplayer-foundation research and recovery lines;
+- lifecycle/Ongoing Yard research;
+- V25 and V28 Owner candidates;
+- V28 delivery and forensics;
+- V25 staging;
+- the smoothness reliability campaign.
+
+A postflight comparison against every then-live branch proved **`behind_by=0` for every branch tip** relative to the aggregate archive. Therefore no branch-ref deletion is authorized by this record unless the final closeout tip is first added to archive ancestry as well.
+
+## 12. Live validation-spine cleanup
+
+After archival, experimental apparatus was removed from the live repository tree rather than kept as permanent product infrastructure.
+
+Cleanup commit:
+
+`321b1166080241c06899902df9d9988520d98b57`
+
+The live workflow surface was reduced from roughly 90 workflows to four:
+
+- `.github/workflows/ci.yml`;
+- `.github/workflows/workflow-pipeline-safety-audit.yml`;
+- `.github/workflows/world-v0-current-validation.yml`;
+- `.github/workflows/world-v0-staging-delivery.yml`.
+
+The cleanup removed **87 historical World V0 workflows** and **93 one-shot smoothness scripts** from the live tree. Historical copies remain reachable from archive history.
+
+Two smoothness-named test helpers remain because the retained deep persistence falsifier still uses them:
+
+- `scripts/world-v0-smoothness-install-strict-fifo-delay-proxy.mjs`;
+- `scripts/world-v0-smoothness-install-jump-persistence-precondition-v28.mjs`.
+
+The new `World V0 Current Validation` is centered on the actual current product rather than historical fixed-2P waiting-room assumptions. It covers repository checks, Ongoing Yard product flow, real mobile input, Diagnostics focus ownership, private continuity, public Resume/rebind, directory uncertainty, soft-reservation/stayer handoff, causal high-water/rebase exactness and join-failure clarity.
+
+Pipeline false-green audit run `35288659803` passed on the cleaned tree.
+
+Branch-ref cleanup remains a later destructive step and is not claimed complete here.
+
+
+## 13. Final cleaned-tree qualification
+
+A second hygiene pass retired campaign-introduced jump/research apparatus that no longer belongs in the live product tree, while preserving the current falsifiers used by the validation spine. Historical research documents superseded by this closeout record were likewise removed from the live tree; all remain archive-reachable.
+
+Final closeout hygiene commit before documentation freeze:
+
+`0b42844e17d1997db44dcad2c97cce88bd0008f4`
+
+The current-validation trigger was deliberately broadened to `scripts/world-v0-*` so future World V0 test/apparatus changes cannot silently receive only syntax coverage.
+
+Exact cleaned-tree validation:
+
+`35288980392` — **SUCCESS / 8 of 8 current jobs GREEN**
+
+Covered families:
+
+- repository gate / `npm run check`;
+- Ongoing Yard product + Diagnostics + real mobile touch input;
+- private refresh + same-profile private rebound;
+- direct public Resume + live same-profile rebound / foreign-profile truth;
+- ongoing cross-page Resume + directory uncertainty;
+- soft reservation handoff + resumed-stayer recovery;
+- pending causal high-water + peer/rebase parity + real Chromium exact rebase;
+- capacity-full vs handshake-failure clarity.
+
+A first run of the same validation spine had one direct-link browser boot timeout while the other seven jobs passed. An exact-job rerun passed, and the subsequent final clean-tree run passed that job on first attempt. This is retained as an apparatus/boot flake, not normalized into a product defect.
+
+Blob-identity postflight between qualified runtime `2bb295ba583e1852337e88e89f8cb790e104f70d` and cleaned closeout `0b42844e17d1997db44dcad2c97cce88bd0008f4` was **10/10 equal** for the six runtime-sensitive hardening files, `package.json`, `package-lock.json`, `src/world-v0-protocol.ts` and `src/world-v0-contract.ts`.
+
+This establishes the closeout invariant:
+
+> cleanup changed evidence/workflow/document surfaces, not the qualified product runtime.

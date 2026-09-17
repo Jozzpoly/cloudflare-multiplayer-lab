@@ -139,11 +139,13 @@ try {
   const afterW = await cdp.evaluate(desktop, `window.__sharedYardV0PlayableControl().rawInput`);
   assert(Math.hypot(Number(afterW?.x || 0), Number(afterW?.z || 0)) < 0.01, `W keyup did not neutralize input ${JSON.stringify(afterW)}`);
 
+  const diagnosticsOpenBeforeSpace = await cdp.evaluate(desktop, `document.querySelector("#hud").open`);
   await cdp.evaluate(desktop, `window.__ownerUiKeyTrace=[]`);
   await key(cdp, desktop, "keyDown", " ", "Space", 32, " ");
   await key(cdp, desktop, "keyUp", " ", "Space", 32);
-  const spaceTrace = await cdp.evaluate(desktop, `window.__ownerUiKeyTrace.slice()`);
-  assert(!spaceTrace.some((e) => e.code === "Space"), `Diagnostics activation Space leaked to gameplay ${JSON.stringify(spaceTrace)}`);
+  const spaceState = await cdp.evaluate(desktop, `({ trace: window.__ownerUiKeyTrace.slice(), open: document.querySelector("#hud").open })`);
+  assert(spaceState.trace.some((e) => e.code === "Space"), `Diagnostics focus still swallowed gameplay Space ${JSON.stringify(spaceState)}`);
+  assert(spaceState.open === diagnosticsOpenBeforeSpace, `Diagnostics focus let Space toggle native details ${JSON.stringify(spaceState)}`);
 
   await cdp.evaluate(desktop, `(() => { window.__ownerUiKeyTrace=[]; const i=document.querySelector("#callsign"); i.value=""; i.focus(); return true; })()`);
   await key(cdp, desktop, "keyDown", "w", "KeyW", 87, "w");

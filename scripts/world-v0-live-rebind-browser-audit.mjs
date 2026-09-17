@@ -194,7 +194,13 @@ try {
   await bootDirectory(peerBrowser, peerPage);
 
   await enterRoom(ownerBrowser, ownerPage, "Owner-A");
-  await waitFor(ownerBrowser, ownerPage, `window.__sharedYardV0Session?.().networkState === "waiting for peer"`, "owner waiting");
+  await waitFor(ownerBrowser, ownerPage, `(() => {
+    const e = window.__sharedYardV0Evidence?.();
+    return e && !e.runtimeFailed && e.lifecycle?.r0 === true &&
+      e.lifecycle?.topology?.revision === 1 && e.lifecycle.topology.actors?.length === 1 &&
+      e.presentation?.remotePresence == null && e.metrics?.guardMismatches === 0 &&
+      Number.isInteger(e.protocolStartTick) && e.localBoundaryTick >= e.protocolStartTick + 24;
+  })()`, "owner live solo R0");
   await enterRoom(peerBrowser, peerPage, "Peer-B");
 
   const live = `(() => {

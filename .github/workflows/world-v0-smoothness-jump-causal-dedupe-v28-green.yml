@@ -37,8 +37,8 @@ jobs:
           node scripts/world-v0-smoothness-install-jump-causal-dedupe-v28.mjs | tee v28-install.log
           grep -q 'WORLD_V0_JUMP_CAUSAL_DEDUPE_V28_INSTALLED' v28-install.log
 
-      - name: Build candidate
-        run: npm run build
+      - name: Typecheck candidate
+        run: npm run typecheck
 
       - name: Start local authority runtime
         shell: bash

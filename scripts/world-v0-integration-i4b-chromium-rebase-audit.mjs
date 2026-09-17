@@ -1,3 +1,4 @@
+import net from "node:net";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +10,10 @@ import {
 import { WORLD_V0_EXPECTED_SIM_BUILD_ID } from "../public/world-v0/build-contract.js";
 
 const BASE = process.env.MW_WORLD_V0_I4B_BASE ?? "http://127.0.0.1:8796";
-const PAGE = `${BASE}/world-v0/`;
+const TARGET = new URL(BASE);
+const CUT_PROXY_PORT = Number(process.env.MW_WORLD_V0_I4B_PROXY_PORT || 8797);
+const PAGE_A = `http://127.0.0.1:${CUT_PROXY_PORT}/world-v0/`;
+const PAGE_B = `${BASE}/world-v0/`;
 const OUTPUT = process.env.MW_WORLD_V0_I4B_OUTPUT || "world-v0-i4b-chromium-rebase.json";
 const PORTS = [9232, 9233];
 const TIMEOUT_MS = 45_000;
@@ -17,6 +21,64 @@ const OFFLINE_MS = Number(process.env.MW_WORLD_V0_I4B_OFFLINE_MS || 1500);
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function assert(condition, message) { if (!condition) throw new Error(message); }
+
+function createCutProxy() {
+  let blocked = false;
+  const pairs = new Set();
+  const server = net.createServer((client) => {
+    client.setNoDelay(true);
+    if (blocked) {
+      client.destroy();
+      return;
+    }
+    const upstream = net.connect({
+      host: TARGET.hostname,
+      port: Number(TARGET.port || 80),
+    });
+    upstream.setNoDelay(true);
+    const pair = { client, upstream };
+    pairs.add(pair);
+    const retire = () => {
+      pairs.delete(pair);
+      try { client.destroy(); } catch {}
+      try { upstream.destroy(); } catch {}
+    };
+    client.on("error", retire);
+    upstream.on("error", retire);
+    client.on("close", () => { pairs.delete(pair); try { upstream.destroy(); } catch {} });
+    upstream.on("close", () => { pairs.delete(pair); try { client.destroy(); } catch {} });
+    client.pipe(upstream);
+    upstream.pipe(client);
+  });
+  return {
+    async listen() {
+      await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(CUT_PROXY_PORT, "127.0.0.1", resolve);
+      });
+    },
+    setBlocked(value) {
+      blocked = Boolean(value);
+      if (blocked) {
+        for (const pair of [...pairs]) {
+          try { pair.client.destroy(); } catch {}
+          try { pair.upstream.destroy(); } catch {}
+        }
+        pairs.clear();
+      }
+    },
+    snapshot() { return { blocked, activePairs: pairs.size, port: CUT_PROXY_PORT }; },
+    async close() {
+      for (const pair of [...pairs]) {
+        try { pair.client.destroy(); } catch {}
+        try { pair.upstream.destroy(); } catch {}
+      }
+      pairs.clear();
+      await new Promise((resolve) => server.close(resolve));
+    },
+  };
+}
+
 function findChrome() {
   const override = process.env.CHROME_BIN?.trim();
   if (override) return override;
@@ -94,11 +156,26 @@ async function startClient(binary, index, url) {
   const info = await waitForDebugger(port);
   const cdp = new Cdp(info.webSocketDebuggerUrl);
   await cdp.opened;
-  const { targetId } = await cdp.call("Target.createTarget", { url });
+  const { targetId } = await cdp.call("Target.createTarget", { url: "about:blank" });
   const { sessionId } = await cdp.call("Target.attachToTarget", { targetId, flatten: true });
   await cdp.call("Runtime.enable", {}, sessionId);
   await cdp.call("Page.enable", {}, sessionId);
   await cdp.call("Network.enable", {}, sessionId);
+  await cdp.call("Page.addScriptToEvaluateOnNewDocument", {
+    source: `(() => {
+      const NativeWebSocket = window.WebSocket;
+      const sockets = [];
+      Object.defineProperty(window, "__mwI4bSockets", { value: sockets, configurable: false });
+      window.WebSocket = new Proxy(NativeWebSocket, {
+        construct(target, args, newTarget) {
+          const socket = Reflect.construct(target, args, newTarget);
+          sockets.push(socket);
+          return socket;
+        },
+      });
+    })();`,
+  }, sessionId);
+  await cdp.call("Page.navigate", { url }, sessionId);
   return { index, port, profile, stderr, child, cdp, sessionId, targetId };
 }
 async function stopClient(client) {
@@ -123,25 +200,17 @@ async function waitFor(client, expression, label, timeoutMs = TIMEOUT_MS) {
   }
   throw new Error(`${label} timeout · last=${JSON.stringify(last)}`);
 }
-async function setOffline(client, offline) {
-  await client.cdp.call("Network.emulateNetworkConditions", {
-    offline,
-    latency: 0,
-    downloadThroughput: offline ? 0 : -1,
-    uploadThroughput: offline ? 0 : -1,
-    connectionType: offline ? "none" : "wifi",
-  }, client.sessionId);
-}
-
 const chrome = findChrome();
 const version = chromeVersion(chrome);
 const clients = [];
+const cutProxy = createCutProxy();
 let runKey = null;
 try {
+  await cutProxy.listen();
   const suffix = Date.now().toString(36).slice(-7);
   runKey = `i4b-${suffix}`;
-  clients.push(await startClient(chrome, 0, `${PAGE}?player=I4BA-${suffix}&run=${runKey}`));
-  clients.push(await startClient(chrome, 1, `${PAGE}?player=I4BB-${suffix}&run=${runKey}`));
+  clients.push(await startClient(chrome, 0, `${PAGE_A}?player=I4BA-${suffix}&run=${runKey}`));
+  clients.push(await startClient(chrome, 1, `${PAGE_B}?player=I4BB-${suffix}&run=${runKey}`));
   await Promise.all(clients.map((client, index) => waitFor(client,
     'document.readyState === "complete" && typeof window.__sharedYardV0Evidence === "function" && !document.querySelector("#enter")?.disabled',
     `client ${index} boot`)));
@@ -156,7 +225,7 @@ try {
   assert(beforeA.identity.worldEpoch === beforeB.identity.worldEpoch, "baseline epoch disagreement");
   assert(beforeA.session.actorSessionId && beforeA.session.actorSessionId !== beforeB.session.actorSessionId, "baseline ActorSession identity missing");
 
-  await setOffline(clients[0], true);
+  cutProxy.setBlocked(true);
   await waitFor(clients[0], '(() => window.__sharedYardV0Evidence?.().session?.actorResume?.pending === true)()', "client A actor resume pending", 12_000);
   const droppedA = await evidence(clients[0]);
   const sourceBoundary = droppedA.session.actorResume.sourceBoundary;
@@ -168,7 +237,7 @@ try {
   assert(duringB.identity.worldEpoch === beforeB.identity.worldEpoch, "healthy peer epoch rotated during A drop");
   assert(duringB.metrics.guardMismatches === 0, "healthy peer exact-state mismatch during A drop");
 
-  await setOffline(clients[0], false);
+  cutProxy.setBlocked(false);
   await waitFor(clients[0], `(() => {
     const e=window.__sharedYardV0Evidence?.();
     if (!e || e.runtimeFailed || e.session.actorResume.pending || e.metrics.guardMismatches !== 0) return false;
@@ -258,6 +327,7 @@ try {
   console.error(diagnostic.error);
   process.exitCode = 1;
 } finally {
-  try { if (clients[0]) await setOffline(clients[0], false); } catch {}
+  try { cutProxy.setBlocked(false); } catch {}
   await Promise.all(clients.map(stopClient));
+  await cutProxy.close();
 }

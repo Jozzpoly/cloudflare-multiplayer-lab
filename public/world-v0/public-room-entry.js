@@ -1,5 +1,5 @@
-export const WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION = "world-v0-public-room-entry-r3-presence-capacity";
-export const WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION = "world-v0-public-room-directory-r4-vacant-capacity";
+export const WORLD_V0_PUBLIC_ROOM_ENTRY_REVISION = "world-v0-public-room-entry-r4-ongoing-yard";
+export const WORLD_V0_PUBLIC_ROOM_DIRECTORY_REVISION = "world-v0-public-room-directory-r5-ongoing-yard";
 export const WORLD_V0_PUBLIC_ROOM_IDS = Object.freeze(["yard-1", "yard-2", "yard-3"]);
 
 function normalizedSlotList(value, capacity, id, label) {
@@ -71,7 +71,7 @@ export function normalizeWorldV0PublicRoomDirectory(payload) {
       capacity,
       state: String(room.state || "unavailable"),
       joinable: room.joinable === true,
-      joinPath: String(room.joinPath || `/world-v0/?run=${encodeURIComponent(id)}`),
+      joinPath: String(room.joinPath || `/world-v0/?run=${encodeURIComponent(id)}&lifecycle=r0`),
       worldEpoch: room.worldEpoch ?? null,
       failure: room.failure ?? null,
     };
@@ -156,6 +156,9 @@ export function worldV0PublicRoomPresentation(room, { resumable = false, session
   }
   if (room.occupancy === 0) {
     return { status: `${occupancy} · Empty`, action: "Enter", joinable: true, tone: "empty" };
+  }
+  if (room.state === "live") {
+    return { status: `${connected}/${room.capacity} online · Live`, action: "Join", joinable: true, tone: "waiting" };
   }
   return { status: `${occupancy} · Waiting`, action: "Join", joinable: true, tone: "waiting" };
 }

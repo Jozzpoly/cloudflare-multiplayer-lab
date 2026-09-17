@@ -214,9 +214,13 @@ try {
   await bootDirectory(peerBrowser, peerPage);
 
   await enterRoom(ownerBrowser, ownerPage, "Owner-A");
-  await waitFor(ownerBrowser, ownerPage,
-    `window.__sharedYardV0Session?.().networkState === "waiting for peer"`,
-    "owner waiting");
+  await waitFor(ownerBrowser, ownerPage, `(() => {
+    const e = window.__sharedYardV0Evidence?.();
+    return e && !e.runtimeFailed && e.lifecycle?.r0 === true &&
+      e.lifecycle?.topology?.revision === 1 && e.lifecycle.topology.actors?.length === 1 &&
+      e.presentation?.remotePresence == null && e.metrics?.guardMismatches === 0 &&
+      Number.isInteger(e.protocolStartTick) && e.localBoundaryTick >= e.protocolStartTick + 24;
+  })()`, "owner live solo R0");
   await enterRoom(peerBrowser, peerPage, "Peer-B");
 
   const live = `(() => {
@@ -239,8 +243,8 @@ try {
   };
 
   // Red-team the persisted token while the original ActorSession transport is still live.
-  // A second tab may know the token, but it must not be offered Resume until the seat is
-  // actually represented as reserved/offline by the authority-backed directory.
+  // R3 deliberately allows same-owner live rebound: possession of the private token may
+  // offer Resume immediately, but opening the page alone must not steal the ActorSession.
   activeProbePage = await attachPage(peerBrowser, DIRECT_URL);
   await bootDirect(peerBrowser, activeProbePage);
   const activeProbe = await evaluate(peerBrowser, activeProbePage, `({

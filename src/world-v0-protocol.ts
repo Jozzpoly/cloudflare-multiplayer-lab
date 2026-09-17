@@ -18,15 +18,22 @@ export type WorldV0Identity = {
   clientSimRevision: string;
 };
 
+// WORLD_V0_LIFECYCLE_R0_TOPOLOGY_PROTOCOL_V1
+export type WorldV0TopologyIdentity = {
+  topologyRevision: number;
+  topologyDigest: string;
+};
+
 export type WorldV0InputValue = { x: number; z: number; jump?: boolean };
-export type WorldV0InputRecord = WorldV0InputValue & { targetTick: number };
-export type WorldV0InputBatch = WorldV0Identity & {
+export type WorldV0InputRecord = WorldV0InputValue & { targetTick: number; jumpSequence?: number };
+type WorldV0ScheduledInput = WorldV0InputValue & { jumpSequence?: number };
+export type WorldV0InputBatch = WorldV0Identity & Partial<WorldV0TopologyIdentity> & {
   type: "world_v0_input_batch";
   batchSeq: number;
   records: WorldV0InputRecord[];
 };
 export type WorldV0Ping = { type: "world_v0_ping"; id: string };
-export type WorldV0Ready = WorldV0Identity & { type: "world_v0_ready" };
+export type WorldV0Ready = WorldV0Identity & Partial<WorldV0TopologyIdentity> & { type: "world_v0_ready" };
 export type WorldV0ClientMessage = WorldV0InputBatch | WorldV0Ping | WorldV0Ready;
 
 export type WorldV0RecordStatus =
@@ -42,6 +49,7 @@ export type WorldV0RecordAcceptance = {
   x: number;
   z: number;
   jump: boolean;
+  jumpSequence?: number;
   status: WorldV0RecordStatus;
 };
 
@@ -53,6 +61,7 @@ export type WorldV0BatchAcceptance = {
 
 export type WorldV0ConsumedInput = WorldV0InputValue & {
   targetTick: number;
+  jumpSequence?: number;
   fresh: boolean;
   source: "fresh" | "held" | "lease_expired";
   missingStreak: number;
@@ -96,6 +105,18 @@ function parseIdentity(value: Record<string, unknown>): WorldV0Identity | null {
     simBuildId: value.simBuildId,
     clientSimRevision: value.clientSimRevision,
   };
+}
+
+function parseOptionalTopologyIdentity(
+  value: Record<string, unknown>,
+): WorldV0TopologyIdentity | undefined | null {
+  const hasRevision = "topologyRevision" in value;
+  const hasDigest = "topologyDigest" in value;
+  if (!hasRevision && !hasDigest) return undefined;
+  if (!hasRevision || !hasDigest) return null;
+  if (!isFiniteInteger(value.topologyRevision) || value.topologyRevision <= 0) return null;
+  if (!isIdentityString(value.topologyDigest)) return null;
+  return { topologyRevision: value.topologyRevision, topologyDigest: value.topologyDigest };
 }
 
 export function expectedWorldV0Identity(worldId: string, worldEpoch: string): WorldV0Identity {
@@ -144,12 +165,17 @@ export function parseWorldV0ClientMessage(raw: string): WorldV0ClientMessage | n
 
   if (record.type === "world_v0_ready") {
     const identity = parseIdentity(record);
-    return identity ? { type: "world_v0_ready", ...identity } : null;
+    if (!identity) return null;
+    const topology = parseOptionalTopologyIdentity(record);
+    if (topology === null) return null;
+    return { type: "world_v0_ready", ...identity, ...(topology ?? {}) };
   }
 
   if (record.type !== "world_v0_input_batch") return null;
   const identity = parseIdentity(record);
   if (!identity) return null;
+  const topology = parseOptionalTopologyIdentity(record);
+  if (topology === null) return null;
   if (!isFiniteInteger(record.batchSeq) || record.batchSeq <= 0) return null;
   if (!Array.isArray(record.records)) return null;
   if (record.records.length < 1 || record.records.length > WORLD_V0_INPUT_BATCH_SIZE) return null;
@@ -161,19 +187,31 @@ export function parseWorldV0ClientMessage(raw: string): WorldV0ClientMessage | n
     if (!isFiniteInteger(inputRecord.targetTick) || inputRecord.targetTick < 0) return null;
     if (typeof inputRecord.x !== "number" || typeof inputRecord.z !== "number") return null;
     if ("jump" in inputRecord && typeof inputRecord.jump !== "boolean") return null;
+    const jumpSequence = "jumpSequence" in inputRecord ? inputRecord.jumpSequence : undefined;
+    if (jumpSequence !== undefined && (!isFiniteInteger(jumpSequence) || jumpSequence <= 0)) return null;
     const input = normalizeWorldV0Input(inputRecord.x, inputRecord.z, inputRecord.jump === true);
-    records.push({ targetTick: inputRecord.targetTick, x: input.x, z: input.z, jump: Boolean(input.jump) });
+    records.push({
+      targetTick: inputRecord.targetTick,
+      x: input.x,
+      z: input.z,
+      jump: Boolean(input.jump),
+      ...(jumpSequence !== undefined ? { jumpSequence } : {}),
+    });
   }
 
   for (let index = 1; index < records.length; index += 1) {
     if (records[index].targetTick !== records[index - 1].targetTick + 1) return null;
   }
 
-  return { type: "world_v0_input_batch", ...identity, batchSeq: record.batchSeq, records };
+  return { type: "world_v0_input_batch", ...identity, ...(topology ?? {}), batchSeq: record.batchSeq, records };
+}
+
+function sameWorldV0ScheduledInput(a: WorldV0ScheduledInput, b: WorldV0ScheduledInput): boolean {
+  return sameWorldV0Input(a, b) && (a.jumpSequence ?? null) === (b.jumpSequence ?? null);
 }
 
 export class WorldV0ScheduledInputBuffer {
-  private readonly pending = new Map<number, WorldV0InputValue>();
+  private readonly pending = new Map<number, WorldV0ScheduledInput>();
   private consumed: WorldV0InputValue = { x: 0, z: 0, jump: false };
   private lastBatchSeq = 0;
   private acceptedRecords = 0;
@@ -215,18 +253,24 @@ export class WorldV0ScheduledInputBuffer {
       } else {
         const existing = this.pending.get(record.targetTick);
         if (existing) {
-          if (sameWorldV0Input(existing, { x: record.x, z: record.z, jump: Boolean(record.jump) })) {
+          if (sameWorldV0ScheduledInput(existing, {
+            x: record.x, z: record.z, jump: Boolean(record.jump), jumpSequence: record.jumpSequence,
+          })) {
             status = "duplicate_same";
             this.duplicateSameRecords += 1;
           } else {
             // I2: higher batchSeq is later authority for an unconsumed future tick.
             // Consumed history remains immutable because late is checked above.
-            this.pending.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });
+            this.pending.set(record.targetTick, {
+              x: record.x, z: record.z, jump: Boolean(record.jump), jumpSequence: record.jumpSequence,
+            });
             status = "superseded";
             this.supersededRecords += 1;
           }
         } else {
-          this.pending.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });
+          this.pending.set(record.targetTick, {
+            x: record.x, z: record.z, jump: Boolean(record.jump), jumpSequence: record.jumpSequence,
+          });
           status = "accepted";
           this.acceptedRecords += 1;
         }
@@ -247,7 +291,11 @@ export class WorldV0ScheduledInputBuffer {
       this.consumed = { x: pending.x, z: pending.z, jump: false };
       this.missingStreak = 0;
       this.consumedFresh += 1;
-      return { targetTick, x: pending.x, z: pending.z, jump: Boolean(pending.jump), fresh: true, source: "fresh", missingStreak: 0 };
+      return {
+        targetTick, x: pending.x, z: pending.z, jump: Boolean(pending.jump),
+        ...(Number.isInteger(pending.jumpSequence) ? { jumpSequence: pending.jumpSequence } : {}),
+        fresh: true, source: "fresh", missingStreak: 0,
+      };
     }
 
     this.consumedMissing += 1;
@@ -275,6 +323,12 @@ export class WorldV0ScheduledInputBuffer {
       source: "held",
       missingStreak: this.missingStreak,
     };
+  }
+
+  resetForTopology(): void {
+    this.pending.clear();
+    this.consumed = { x: 0, z: 0, jump: false };
+    this.missingStreak = 0;
   }
 
   stats(): WorldV0InputBufferStats {

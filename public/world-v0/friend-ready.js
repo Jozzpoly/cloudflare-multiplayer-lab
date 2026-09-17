@@ -265,12 +265,71 @@ async function refreshPublicRooms() {
   return directoryRequest;
 }
 
+function presentDeepLinkResume(session, statusText) {
+  deepLinkResumeSession = session;
+  callsignInput.value = session.playerId;
+  renderHumanNameHelp();
+  enterButton.textContent = "Resume world";
+  bootStatus.textContent = statusText;
+  return session;
+}
+
+async function resolvePrivateDirectLinkResume(run, stored) {
+  bootStatus.textContent = "Checking your previous private Yard session…";
+  enterButton.textContent = "Checking session…";
+  try {
+    const response = await fetch("/api/world-v0/resume-check", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({
+        run,
+        playerId: stored.playerId,
+        resumeToken: stored.resumeToken,
+        worldEpoch: stored.worldEpoch,
+      }),
+      signal: AbortSignal.timeout(2500),
+    });
+    if (response.ok) {
+      const verdict = await response.json();
+      if (verdict?.ok === true && verdict.valid === true) {
+        const identityMatches = verdict.worldEpoch === stored.worldEpoch &&
+          verdict.sessionId === stored.sessionId &&
+          verdict.netEntityId === stored.netEntityId &&
+          verdict.slot === stored.slot;
+        if (identityMatches) {
+          return presentDeepLinkResume(stored, "This private Yard kept your player · resume the same session");
+        }
+        clearWorldV0StoredSession(run, stored.worldEpoch);
+        deepLinkResumeSession = null;
+        enterButton.textContent = entryCopy.enterLabel;
+        bootStatus.textContent = entryCopy.status;
+        return null;
+      }
+      if (verdict?.ok === true && verdict.valid === false) {
+        clearWorldV0StoredSession(run, stored.worldEpoch);
+        deepLinkResumeSession = null;
+        enterButton.textContent = entryCopy.enterLabel;
+        bootStatus.textContent = entryCopy.status;
+        return null;
+      }
+    }
+  } catch {
+    // Network uncertainty is not proof that private resume authority expired.
+  }
+  return presentDeepLinkResume(
+    stored,
+    "Previous private Yard session found locally · Resume will verify it with the world",
+  );
+}
+
 async function resolveDirectLinkResume() {
-  if (entryMode !== "invite" || !isCanonicalPublicYard(rawInviteRun)) return null;
+  if (entryMode !== "invite" || !rawInviteRun) return null;
   const run = rawInviteRun.trim();
+  if (!validWorldV0RoomKey(run)) return null;
   const stored = readWorldV0StoredSession(run);
   if (!stored) return null;
-
+  if (!isCanonicalPublicYard(run)) return resolvePrivateDirectLinkResume(run, stored);
   bootStatus.textContent = "Checking your previous Yard session…";
   enterButton.textContent = "Checking session…";
   let authorityDisprovedStoredSession = false;

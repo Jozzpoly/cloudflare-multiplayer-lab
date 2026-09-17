@@ -156,7 +156,9 @@ async function waitRoom(predicate, label, timeout = TIMEOUT_MS) {
       last = await roomDirectory();
       if (last && predicate(last)) return last;
     } catch (error) { last = { error: error instanceof Error ? error.message : String(error) }; }
-    await sleep(180);
+    // Directory observation touches all public Durable Objects. Poll sparsely enough
+    // that this test does not starve the simulation ticks whose grace it measures.
+    await sleep(500);
   }
   throw new Error(`${label} timeout: ${JSON.stringify(last)}`);
 }
@@ -225,7 +227,13 @@ try {
   await bootDirectory(cBrowser, cPage);
 
   await enterRoom(aBrowser, aPage, "Owner-A");
-  await waitFor(aBrowser, aPage, `window.__sharedYardV0Session?.().networkState === "waiting for peer"`, "A waiting for peer");
+  await waitFor(aBrowser, aPage, `(() => {
+    const e = window.__sharedYardV0Evidence?.();
+    return e && !e.runtimeFailed && e.lifecycle?.r0 === true &&
+      e.lifecycle?.topology?.revision === 1 && e.lifecycle.topology.actors?.length === 1 &&
+      e.presentation?.remotePresence == null && e.metrics?.guardMismatches === 0 &&
+      Number.isInteger(e.protocolStartTick) && e.localBoundaryTick >= e.protocolStartTick + 24;
+  })()`, "A live solo R0");
   await enterRoom(bBrowser, bPage, "Peer-B");
 
   await waitFor(aBrowser, aPage, liveExpression(), "A initial live");

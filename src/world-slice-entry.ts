@@ -84,6 +84,38 @@ async function sharedYardV0WebSocketResponse(request: Request, env: Env): Promis
   return world.fetch(request);
 }
 
+async function sharedYardV0ResumeCheckResponse(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { "allow": "POST" } });
+  }
+  let payload: { run?: unknown; playerId?: unknown; resumeToken?: unknown; worldEpoch?: unknown };
+  try {
+    payload = await request.json() as typeof payload;
+  } catch {
+    return new Response(JSON.stringify({ ok: false, error: "invalid_json" }), {
+      status: 400,
+      headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
+    });
+  }
+  const run = String(payload.run ?? "").trim();
+  const playerId = String(payload.playerId ?? "").trim();
+  const resumeToken = String(payload.resumeToken ?? "").trim();
+  const worldEpoch = String(payload.worldEpoch ?? "").trim();
+  if (!/^[A-Za-z0-9_-]{1,20}$/.test(run) || !/^[A-Za-z0-9_-]{1,24}$/.test(playerId) ||
+      resumeToken.length < 1 || resumeToken.length > 512 || worldEpoch.length < 1 || worldEpoch.length > 512) {
+    return new Response(JSON.stringify({ ok: false, error: "invalid_resume_check" }), {
+      status: 400,
+      headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
+    });
+  }
+  const stub = sharedYardV0Stub(env, `shared-yard-v0-${run}`);
+  return stub.fetch(new Request(`https://world-v0.internal/resume-check/${encodeURIComponent(run)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ playerId, resumeToken, worldEpoch }),
+  }));
+}
+
 function normalizedSlots(value: unknown): number[] {
   return Array.isArray(value)
     ? [...new Set(value.filter((slot) => Number.isInteger(slot) && Number(slot) >= 0 && Number(slot) < WORLD_V0_PUBLIC_ROOM_CAPACITY).map(Number))].sort((a, b) => a - b)
@@ -106,6 +138,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         protocolStartTick?: number | null;
         worldEpoch?: string | null;
         simBuildId?: string | null;
+        lifecycleMode?: string | null;
         failure?: string | null;
       };
       const occupancy = Number.isFinite(status.players) ? Number(status.players) : 0;
@@ -124,10 +157,12 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
       const protectedReserved = protectedReservedSlots.length;
       const softReserved = softReservedSlots.length;
       const active = status.protocolStartTick !== null && status.protocolStartTick !== undefined;
+      const ongoingLifecycle = status.lifecycleMode === "r0";
       const fullyVacantResumable = occupancy === WORLD_V0_PUBLIC_ROOM_CAPACITY && connected === 0 && reserved === occupancy && reserved > 0;
       const replacementCapable = connected < WORLD_V0_PUBLIC_ROOM_CAPACITY && (
         fullyVacantResumable || (active && softReserved > 0 && protectedReserved === 0)
       );
+      const openSeat = occupancy < WORLD_V0_PUBLIC_ROOM_CAPACITY;
       const state = active
         ? fullyVacantResumable
           ? "live-vacant-resumable"
@@ -155,8 +190,8 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         replacementCapable,
         capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
         state,
-        joinable: !status.failure && ((!active && occupancy < WORLD_V0_PUBLIC_ROOM_CAPACITY) || replacementCapable),
-        joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}`,
+        joinable: !status.failure && ((!active && openSeat) || (active && ongoingLifecycle && openSeat) || replacementCapable),
+        joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}&lifecycle=r0`,
         worldEpoch: status.worldEpoch ?? null,
         simBuildId: status.simBuildId ?? null,
         failure: status.failure ?? null,
@@ -177,7 +212,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
         capacity: WORLD_V0_PUBLIC_ROOM_CAPACITY,
         state: "unavailable",
         joinable: false,
-        joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}`,
+        joinPath: `/world-v0/?run=${encodeURIComponent(room.id)}&lifecycle=r0`,
         worldEpoch: null,
         simBuildId: null,
         failure: error instanceof Error ? error.message : String(error),
@@ -186,7 +221,7 @@ async function sharedYardV0PublicRoomDirectoryResponse(env: Env): Promise<Respon
   }));
 
   return new Response(JSON.stringify({
-    revision: "world-v0-public-room-directory-r4-vacant-capacity",
+    revision: "world-v0-public-room-directory-r5-ongoing-yard",
     generatedAt: new Date().toISOString(),
     rooms,
   }), {
@@ -202,6 +237,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/api/world0") return worldSlice0ApiResponse(request, env);
     if (url.pathname === "/api/world-v0/rooms" && env.SHARED_YARD_V0) return sharedYardV0PublicRoomDirectoryResponse(env);
+    if (url.pathname === "/api/world-v0/resume-check" && env.SHARED_YARD_V0) return sharedYardV0ResumeCheckResponse(request, env);
     if (url.pathname === "/world0/ws") return worldSlice0WebSocketResponse(request, env);
     if (url.pathname === "/world0-f5/ws") return worldSliceF5WebSocketResponse(request, env);
     if (url.pathname === "/world-v0/ws" && env.SHARED_YARD_V0) return sharedYardV0WebSocketResponse(request, env);

@@ -1,22 +1,26 @@
-export const WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION = "world-v0-keyboard-focus-guard-v2-semantic-ownership";
+export const WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION = "world-v0-keyboard-focus-guard-v3-pointer-focus-release";
 
 const EDITABLE_UI_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 const ACTION_UI_TAGS = new Set(["BUTTON", "SUMMARY", "A"]);
 
-function uiKeyboardOwner(target) {
+function keyboardOwner(target) {
   let current = target;
   while (current && typeof current === "object") {
     const tagName = String(current.tagName || "").toUpperCase();
-    if (EDITABLE_UI_TAGS.has(tagName)) return "editable";
+    if (EDITABLE_UI_TAGS.has(tagName)) return { kind: "editable", element: current };
     if (ACTION_UI_TAGS.has(tagName)) {
-      if (tagName !== "A" || current.href || current.getAttribute?.("href") != null) return "action";
+      if (tagName !== "A" || current.href || current.getAttribute?.("href") != null) return { kind: "action", element: current };
     }
-    if (current.isContentEditable === true) return "editable";
+    if (current.isContentEditable === true) return { kind: "editable", element: current };
     const contentEditable = current.getAttribute?.("contenteditable");
-    if (contentEditable != null && String(contentEditable).toLowerCase() !== "false") return "editable";
+    if (contentEditable != null && String(contentEditable).toLowerCase() !== "false") return { kind: "editable", element: current };
     current = current.parentElement || null;
   }
   return null;
+}
+
+function uiKeyboardOwner(target) {
+  return keyboardOwner(target)?.kind ?? null;
 }
 
 export function worldV0UiOwnsKeyboard(target) {
@@ -44,8 +48,18 @@ export function installWorldV0KeyboardFocusGuard(root) {
     // only later window-level gameplay listeners are suppressed for that key.
     event.stopImmediatePropagation();
   };
+  const releasePointerActionFocus = (event) => {
+    // Pointer activation should not leave a stale action control owning the next
+    // gameplay Space/Enter. Keyboard activation has click detail=0 and keeps focus,
+    // preserving ordinary keyboard accessibility for buttons/links/<summary>.
+    if (!(Number(event.detail) > 0)) return;
+    const owner = keyboardOwner(event.target);
+    if (owner?.kind !== "action") return;
+    owner.element?.blur?.();
+  };
   root.addEventListener("keydown", guard);
   root.addEventListener("keyup", guard);
+  root.addEventListener("click", releasePointerActionFocus);
 }
 
 if (typeof window !== "undefined") installWorldV0KeyboardFocusGuard(window);

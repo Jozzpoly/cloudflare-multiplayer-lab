@@ -6,7 +6,7 @@ import {
   worldV0UiOwnsKeyboard,
 } from "../public/world-v0/keyboard-focus-guard.js";
 
-assert.equal(WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION, "world-v0-keyboard-focus-guard-v2-semantic-ownership");
+assert.equal(WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION, "world-v0-keyboard-focus-guard-v3-pointer-focus-release");
 assert.equal(worldV0UiOwnsKeyboard({ tagName: "INPUT" }), true);
 assert.equal(worldV0UiOwnsKeyboard({ tagName: "TEXTAREA" }), true);
 assert.equal(worldV0UiOwnsKeyboard({ tagName: "SELECT" }), true);
@@ -32,6 +32,7 @@ const root = {
 installWorldV0KeyboardFocusGuard(root);
 assert.equal(typeof listeners.get("keydown"), "function");
 assert.equal(typeof listeners.get("keyup"), "function");
+assert.equal(typeof listeners.get("click"), "function");
 
 function dispatch(type, target, event) {
   let stopped = 0;
@@ -46,8 +47,15 @@ function dispatch(type, target, event) {
 for (const type of ["keydown", "keyup"]) {
   assert.equal(dispatch(type, { tagName: "INPUT" }, { code: "KeyW", key: "w" }), 1, `editable input must own ${type}`);
   assert.equal(dispatch(type, { tagName: "SUMMARY" }, { code: "KeyW", key: "w" }), 0, `summary focus must release WASD ${type}`);
-  assert.equal(dispatch(type, { tagName: "SUMMARY" }, { code: "Space", key: " " }), 1, `summary must own Space ${type}`);
+  assert.equal(dispatch(type, { tagName: "SUMMARY" }, { code: "Space", key: " " }), 1, `keyboard-focused summary must own Space ${type}`);
   assert.equal(dispatch(type, { tagName: "CANVAS" }, { code: "KeyW", key: "w" }), 0, `gameplay surface must receive ${type}`);
 }
+
+let blurred = 0;
+const pointerSummary = { tagName: "SUMMARY", blur() { blurred += 1; } };
+listeners.get("click")({ target: pointerSummary, detail: 1 });
+assert.equal(blurred, 1, "pointer-clicked action must release stale focus");
+listeners.get("click")({ target: pointerSummary, detail: 0 });
+assert.equal(blurred, 1, "keyboard-activated action must retain focus");
 
 console.log("WORLD_V0_KEYBOARD_FOCUS_GUARD_PASS");

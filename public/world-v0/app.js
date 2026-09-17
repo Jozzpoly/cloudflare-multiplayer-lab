@@ -31,6 +31,7 @@ import {
   WORLD_V0_SESSION_CONTINUITY_REVISION,
   clearWorldV0StoredSession,
   takeWorldV0ResumeIntent,
+  writeWorldV0ResumeIntent,
   writeWorldV0StoredSession,
 } from "./session-continuity.js";
 import {
@@ -95,6 +96,7 @@ if (required.some((value) => !value)) throw new Error("Shared Yard V0 UI incompl
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
 const RUN_KEY_PATTERN = /^[A-Za-z0-9_-]{1,20}$/;
 const urlParams = new URL(location.href).searchParams;
+const lifecycleR0 = urlParams.get("lifecycle") === "r0"; // WORLD_V0_LIFECYCLE_R0_BROWSER_V1
 const storedCallsign = localStorage.getItem("shared-yard-v0-callsign") || "";
 const storedRun = localStorage.getItem("shared-yard-v0-run") || "";
 const randomRun = `yard-${Math.random().toString(36).slice(2, 8)}`;
@@ -444,12 +446,16 @@ function noteJumpAuthoredTick(targetTick) {
     : targetTick;
 }
 
-function noteCanonicalJumpDelivery(targetTick, jump, jumpApplied) {
+function noteCanonicalJumpDelivery(targetTick, jump, jumpApplied, jumpSequence = null) {
   if (jumpApplied && jumpDelivery.lastAppliedTick !== targetTick) {
     jumpDelivery.appliedCount += 1;
     jumpDelivery.lastAppliedTick = targetTick;
   }
-  if (jumpDelivery.pending && jump) {
+  const matchingPendingSequence = jumpDelivery.pending
+    && jump
+    && Number.isInteger(jumpSequence)
+    && jumpSequence === jumpDelivery.pendingSequence;
+  if (matchingPendingSequence) {
     jumpDelivery.pending = false;
     jumpDelivery.deliveredSequence = jumpDelivery.pendingSequence;
     jumpDelivery.pendingSequence = null;
@@ -459,6 +465,15 @@ function noteCanonicalJumpDelivery(targetTick, jump, jumpApplied) {
       sequence: jumpDelivery.deliveredSequence,
       targetTick,
       jumpApplied: Boolean(jumpApplied),
+      jumpSequence,
+      provenanceRevision: "world-v0-jump-explicit-provenance-v27",
+    });
+  } else if (jumpDelivery.pending && jump) {
+    recordLifecycle("jump-delivery-stale-provenance", {
+      pendingSequence: jumpDelivery.pendingSequence,
+      targetTick,
+      jumpSequence: Number.isInteger(jumpSequence) ? jumpSequence : null,
+      provenanceRevision: "world-v0-jump-explicit-provenance-v27",
     });
   }
   if (!jumpDelivery.pending && !jump && !jumpDelivery.edgeArmed) {
@@ -468,9 +483,6 @@ function noteCanonicalJumpDelivery(targetTick, jump, jumpApplied) {
   }
 }
 
-// I3 logical input authorship scheduler. This is deliberately a same-main-thread
-// fixed logical clock: it decouples canonical intent production from rAF while the
-// event loop is runnable, without claiming survival of a fully blocked main thread.
 function stopLogicalInputScheduler() {
   if (logicalInputTimer) clearInterval(logicalInputTimer);
   logicalInputTimer = null;
@@ -493,6 +505,8 @@ function pumpLogicalInputScheduler() {
   logicalInputPumps += 1;
   const movement = currentInput();
   const jumpIntent = jumpDelivery.pending;
+  const jumpSequence = jumpIntent ? jumpDelivery.pendingSequence : null;
+  if (jumpIntent && !Number.isInteger(jumpSequence)) throw new Error("pending jump missing sequence provenance");
   const revisions = [];
 
   for (let tick = startTick; tick <= authoredThrough; tick += 1) {
@@ -501,7 +515,8 @@ function pumpLogicalInputScheduler() {
     if (!existing) {
       const next = { x: movement.x, z: movement.z, jump: jumpIntent };
       intendedSelf.set(tick, next);
-      queueInputRecord(tick, next);
+      intendedJumpSequence.set(tick, jumpSequence);
+      queueInputRecord(tick, next, jumpSequence);
       logicalInputAuthored += 1;
       continue;
     }
@@ -514,16 +529,23 @@ function pumpLogicalInputScheduler() {
       // future true records back to false so the next press requires a new edge.
       jump: jumpIntent,
     };
-    if (sameInput(existing, next)) continue;
+    const existingJumpSequence = intendedJumpSequence.get(tick) ?? null;
+    if (sameInput(existing, next) && existingJumpSequence === jumpSequence) continue;
     intendedSelf.set(tick, next);
+    intendedJumpSequence.set(tick, jumpSequence);
 
     const unsent = pendingBatch.find((record) => record.targetTick === tick);
     if (unsent) {
       unsent.x = next.x;
       unsent.z = next.z;
       unsent.jump = Boolean(next.jump);
+      if (Number.isInteger(jumpSequence)) unsent.jumpSequence = jumpSequence;
+      else delete unsent.jumpSequence;
     } else {
-      revisions.push({ targetTick: tick, x: next.x, z: next.z, jump: Boolean(next.jump) });
+      revisions.push({
+        targetTick: tick, x: next.x, z: next.z, jump: Boolean(next.jump),
+        ...(Number.isInteger(jumpSequence) ? { jumpSequence } : {}),
+      });
       logicalInputSuperseded += 1;
     }
   }
@@ -663,10 +685,12 @@ let selfNetEntityId = null;
 let remoteNetEntityId = null;
 let selfSlot = null;
 let resumeToken = null;
+let currentTopology = null;
+let topologyTransitionPending = false;
 
-function persistCurrentActorSession() {
-  if (!identity || !selfSessionId || !resumeToken || !selfNetEntityId || !Number.isInteger(selfSlot)) return false;
-  return writeWorldV0StoredSession({
+function currentActorSessionRecord() {
+  if (!identity || !selfSessionId || !resumeToken || !selfNetEntityId || !Number.isInteger(selfSlot)) return null;
+  return {
     runKey,
     playerId: callsign,
     worldEpoch: identity.worldEpoch,
@@ -674,7 +698,18 @@ function persistCurrentActorSession() {
     resumeToken,
     netEntityId: selfNetEntityId,
     slot: selfSlot,
-  });
+  };
+}
+
+function persistCurrentActorSession() {
+  const record = currentActorSessionRecord();
+  return record ? writeWorldV0StoredSession(record) : false;
+}
+
+function armCurrentActorResumeIntentForPageExit() {
+  if (!playing || runtimeFailed || sessionEnd) return false;
+  const record = currentActorSessionRecord();
+  return record ? writeWorldV0ResumeIntent(record) : false;
 }
 
 function clearCurrentStoredActorSession(worldEpoch = identity?.worldEpoch ?? null) {
@@ -721,10 +756,65 @@ const correctionEvents = [];
 const longFrameEvents = [];
 const lifecycleEvents = [];
 const intendedSelf = new Map();
+const intendedJumpSequence = new Map(); // V27 causal metadata; never part of physics/state guard
 const peerRemote = new Map();
 const consumedByTick = new Map();
 const usedByTick = new Map();
+const jumpCausalSeed = new Map(); // V28 discrete replay state at current history seed boundary
 const diagnosticSamples = new Map();
+
+function normalizedJumpSequence(value) {
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function adoptJumpCausalSeed(entries, phase) {
+  if (!Array.isArray(entries)) throw new Error(phase + " missing jump causal high-water");
+  const next = new Map();
+  for (const entry of entries) {
+    if (!entry || typeof entry.sessionId !== "string" || !entry.sessionId) throw new Error(phase + " invalid jump causal session");
+    if (!Number.isInteger(entry.lastConsumedJumpSequence) || entry.lastConsumedJumpSequence < 0) {
+      throw new Error(phase + " invalid jump causal high-water");
+    }
+    if (next.has(entry.sessionId)) throw new Error(phase + " duplicate jump causal session");
+    next.set(entry.sessionId, entry.lastConsumedJumpSequence);
+  }
+  jumpCausalSeed.clear();
+  for (const [sessionId, highWater] of next) jumpCausalSeed.set(sessionId, highWater);
+}
+
+function resetJumpCausalSeedFromStart(players) {
+  if (!Array.isArray(players)) throw new Error("world-start missing players for jump causal seed");
+  adoptJumpCausalSeed(players.map((player) => ({
+    sessionId: player.sessionId,
+    lastConsumedJumpSequence: 0,
+  })), "world-start");
+}
+
+function causalHighWaterBefore(previous, role, sessionId) {
+  const retained = previous?.jumpCausalHighWater?.[role];
+  if (Number.isInteger(retained) && retained >= 0) return retained;
+  return Number.isInteger(jumpCausalSeed.get(sessionId)) ? jumpCausalSeed.get(sessionId) : 0;
+}
+
+function causalJumpStep(input, previousInput, priorHighWater) {
+  const sequence = normalizedJumpSequence(input?.jumpSequence);
+  if (Boolean(input?.jump) && sequence !== null) {
+    return {
+      trigger: sequence > priorHighWater,
+      highWater: Math.max(priorHighWater, sequence),
+    };
+  }
+  // Compatibility fallback for unsequenced traffic only. V28-authored input is
+  // expected to carry explicit provenance on jump=true records.
+  return {
+    trigger: Boolean(input?.jump) && !Boolean(previousInput?.jump),
+    highWater: priorHighWater,
+  };
+}
+
+function sameResolvedInput(a, c) {
+  return sameInput(a, c) && normalizedJumpSequence(a?.jumpSequence) === normalizedJumpSequence(c?.jumpSequence);
+}
 const pendingStateGuards = new Map();
 
 const metrics = {
@@ -768,6 +858,7 @@ function buildInviteUrl() {
   url.hash = "";
   const key = sessionRunKey();
   if (RUN_KEY_PATTERN.test(key)) url.searchParams.set("run", key);
+  if (lifecycleR0) url.searchParams.set("lifecycle", "r0");
   return url.toString();
 }
 
@@ -965,6 +1056,18 @@ function roomRecoverySnapshot() {
   };
 }
 
+function completeRoomRecovery(recoveredEpoch, sourceEpoch = roomRecovery.sourceEpoch) {
+  if (!roomRecovery.pending) return false;
+  clearRoomRecoveryTimer();
+  roomRecovery.pending = false;
+  roomRecovery.reason = null;
+  roomRecovery.attempts = 0;
+  roomRecovery.lastRecoveredEpoch = recoveredEpoch;
+  roomRecovery.sourceEpoch = null;
+  recordLifecycle("room-recovered", { roomId: runKey, sourceEpoch, recoveredEpoch });
+  return true;
+}
+
 function reconnectSameRoom() {
   if (!roomRecovery.pending || runtimeFailed) return false;
   if (document.visibilityState !== "visible") return false;
@@ -1065,6 +1168,87 @@ function assertMessageIdentity(message, phase) {
 function identityFields() {
   if (!identity) throw new Error("world identity unavailable");
   return { ...identity };
+}
+
+function normalizeR0Topology(value, phase) {
+  if (!lifecycleR0) return null;
+  if (!value || typeof value !== "object") throw new Error(`${phase} missing R0 topology`);
+  if (!Number.isInteger(value.revision) || value.revision <= 0) throw new Error(`${phase} invalid topology revision`);
+  if (typeof value.digest !== "string" || !/^[0-9a-f]{8}$/.test(value.digest)) throw new Error(`${phase} invalid topology digest`);
+  if (!Array.isArray(value.actors) || value.actors.length < 1 || value.actors.length > 2) throw new Error(`${phase} invalid topology actors`);
+  const actors = value.actors.map((actor) => ({
+    sessionId: actor?.sessionId,
+    netEntityId: actor?.netEntityId,
+    slot: actor?.slot,
+  }));
+  if (actors.some((actor) => typeof actor.sessionId !== "string" || !actor.sessionId || typeof actor.netEntityId !== "string" || !actor.netEntityId || !Number.isInteger(actor.slot))) {
+    throw new Error(`${phase} malformed topology actor`);
+  }
+  if (new Set(actors.map((actor) => actor.sessionId)).size !== actors.length || new Set(actors.map((actor) => actor.netEntityId)).size !== actors.length) {
+    throw new Error(`${phase} duplicate topology actor`);
+  }
+  if (!Array.isArray(value.entityOrder) || value.entityOrder.length !== actors.length + 12) throw new Error(`${phase} invalid topology entity order`);
+  const entityOrder = value.entityOrder.map((entry) => String(entry));
+  if (new Set(entityOrder).size !== entityOrder.length) throw new Error(`${phase} duplicate topology entity`);
+  for (let index = 0; index < actors.length; index += 1) {
+    if (entityOrder[index] !== actors[index].netEntityId) throw new Error(`${phase} topology actor order mismatch`);
+  }
+  return {
+    modeRevision: value.modeRevision || null,
+    revision: value.revision,
+    digest: value.digest,
+    actors,
+    entityOrder,
+  };
+}
+
+function sameR0Topology(a, c) {
+  return Boolean(a && c && a.revision === c.revision && a.digest === c.digest);
+}
+
+function updateRemoteFromR0Topology() {
+  if (!lifecycleR0 || !currentTopology || !selfSessionId) return;
+  const remote = currentTopology.actors.find((actor) => actor.sessionId !== selfSessionId) || null;
+  remoteSessionId = remote?.sessionId || null;
+  remoteNetEntityId = remote?.netEntityId || null;
+}
+
+function adoptR0Topology(value, phase, { allowChange = false } = {}) {
+  if (!lifecycleR0) return null;
+  const next = normalizeR0Topology(value, phase);
+  if (currentTopology && !sameR0Topology(currentTopology, next) && !allowChange) {
+    throw new Error(`${phase} unexpected topology drift ${currentTopology.revision}/${currentTopology.digest} -> ${next.revision}/${next.digest}`);
+  }
+  currentTopology = next;
+  updateRemoteFromR0Topology();
+  return next;
+}
+
+function assertR0MessageTopology(message, phase) {
+  if (!lifecycleR0) return null;
+  const observed = normalizeR0Topology(message?.topology, phase);
+  if (!currentTopology || !sameR0Topology(currentTopology, observed)) {
+    throw new Error(`${phase} topology drift ${currentTopology?.revision ?? "none"}/${currentTopology?.digest ?? "none"} -> ${observed.revision}/${observed.digest}`);
+  }
+  return observed;
+}
+
+function r0TopologyIdentityFields() {
+  if (!lifecycleR0) return {};
+  if (!currentTopology) throw new Error("R0 topology identity unavailable");
+  return {
+    topologyRevision: currentTopology.revision,
+    topologyDigest: currentTopology.digest,
+  };
+}
+
+function r0EntityDefs(topology) {
+  const actorByNet = new Map(topology.actors.map((actor) => [actor.netEntityId, actor]));
+  return topology.entityOrder.map((netEntityId) => {
+    const actor = actorByNet.get(netEntityId);
+    if (actor) return { netEntityId, locator: netEntityId, kind: "actor", slot: actor.slot, sessionId: actor.sessionId };
+    return { netEntityId, locator: `prop:${netEntityId}`, kind: "prop", propId: netEntityId };
+  });
 }
 
 function bodyPosition(body) {
@@ -1205,12 +1389,20 @@ function authorityEntityDefsFromState(state) {
 function createSimulationFromState(state) {
   const players = [...(state?.players || [])].sort((a, c) => (a.slot ?? 0) - (c.slot ?? 0));
   const props = [...(state?.props || [])];
-  if (players.length !== 2) throw new Error(`Shared Yard start requires exactly two players, got ${players.length}`);
+  if (players.length < 1 || players.length > 2) throw new Error(`Shared Yard start requires one or two players, got ${players.length}`);
   const self = players.find((player) => player.sessionId === selfSessionId);
-  const remote = players.find((player) => player.sessionId !== selfSessionId);
-  if (!self || !remote) throw new Error("Shared Yard start state missing actor");
-  remoteSessionId = remote.sessionId;
-  remoteNetEntityId = remote.netEntityId;
+  const remote = players.find((player) => player.sessionId !== selfSessionId) || null;
+  if (!self) throw new Error("Shared Yard start state missing self actor");
+  if (!lifecycleR0 && !remote) throw new Error("Shared Yard fixed-2P start state missing remote actor");
+  if (lifecycleR0) {
+    if (!currentTopology) throw new Error("R0 start missing topology");
+    const sessions = new Set(players.map((player) => player.sessionId));
+    if (currentTopology.actors.length !== players.length || currentTopology.actors.some((actor) => !sessions.has(actor.sessionId))) {
+      throw new Error("R0 state/topology actor mismatch");
+    }
+  }
+  remoteSessionId = remote?.sessionId || null;
+  remoteNetEntityId = remote?.netEntityId || null;
 
   const wd = b3.b3DefaultWorldDef();
   wd.gravity = [...simulation.arena.gravity];
@@ -1246,7 +1438,7 @@ function createSimulationFromState(state) {
     propBodies,
     netBodies,
     entityDefs,
-    netEntityOrder: [...simulation.netEntityOrder],
+    netEntityOrder: lifecycleR0 ? [...currentTopology.entityOrder] : [...simulation.netEntityOrder],
     ownerPlayer: 0,
   };
 }
@@ -1297,13 +1489,21 @@ function applyAuthorityRebase(seed, bootstrapState = null) {
   if (!seed || seed.revision !== AUTHORITY_REBASE_SEED_REVISION) throw new Error("authority rebase seed revision mismatch");
   if (!Number.isInteger(seed.boundaryTick) || seed.boundaryTick < 0) throw new Error("authority rebase boundary invalid");
   if (!seed.stateGuard || seed.stateGuard.revision !== WORLD_V0_EXPECTED_STATE_GUARD_REVISION) throw new Error("authority rebase state guard invalid");
+  const rebaseTopology = lifecycleR0 ? normalizeR0Topology(seed.topology, "authority-rebase") : null;
+  if (rebaseTopology && (seed.stateGuard.topologyRevision !== rebaseTopology.revision || seed.stateGuard.topologyDigest !== rebaseTopology.digest)) {
+    throw new Error("authority rebase topology/state-guard mismatch");
+  }
   const bytes = decodeBase64Bytes(seed.bytesBase64);
   if (!Number.isInteger(seed.byteLength) || bytes.byteLength !== seed.byteLength) throw new Error("authority rebase byte length mismatch");
   const hash = u32Hex(b3.b3Bytes_Fnv1a32(bytes));
   if (hash !== seed.fnv1a32) throw new Error("authority rebase checksum mismatch " + hash + " != " + seed.fnv1a32);
 
-  const entityDefs = localState?.sim?.entityDefs ?? authorityEntityDefsFromState(bootstrapState);
-  const netEntityOrder = localState?.sim?.netEntityOrder ?? simulation.netEntityOrder;
+  const entityDefs = rebaseTopology
+    ? r0EntityDefs(rebaseTopology)
+    : (localState?.sim?.entityDefs ?? authorityEntityDefsFromState(bootstrapState));
+  const netEntityOrder = rebaseTopology
+    ? [...rebaseTopology.entityOrder]
+    : (localState?.sim?.netEntityOrder ?? simulation.netEntityOrder);
   const player = b3.b3RecPlayer_CreateFromBytes(bytes, 1);
   if (!player) throw new Error("authority rebase player create failed");
   let next = null;
@@ -1313,7 +1513,7 @@ function applyAuthorityRebase(seed, bootstrapState = null) {
     const difference = firstWorldV0StateDifference(
       seed.stateGuard.packed,
       packed,
-      simulation.netEntityOrder,
+      next.netEntityOrder,
       simulation.stateComponents,
     );
     if (difference) throw new Error("authority rebase exact-state mismatch " + (difference.netEntityId || difference.field) + "." + (difference.component || ""));
@@ -1326,12 +1526,19 @@ function applyAuthorityRebase(seed, bootstrapState = null) {
   const sourceBoundary = actorResume.sourceBoundary;
   destroyLocalState();
   intendedSelf.clear();
+  intendedJumpSequence.clear();
   peerRemote.clear();
   consumedByTick.clear();
   usedByTick.clear();
+  adoptJumpCausalSeed(seed.jumpCausalHighWater, "authority-rebase");
   diagnosticSamples.clear();
   pendingStateGuards.clear();
   pendingBatch = [];
+  if (rebaseTopology) {
+    currentTopology = rebaseTopology;
+    topologyTransitionPending = false;
+    updateRemoteFromR0Topology();
+  }
   createHistoryAtBoundary(next, seed.boundaryTick, "authority-rebase");
   compareStateGuard(seed.boundaryTick, seed.stateGuard);
   phaseAnchor = { tick: seed.boundaryTick, at: performance.now() };
@@ -1346,6 +1553,8 @@ function applyAuthorityRebase(seed, bootstrapState = null) {
     gapTicks: metrics.latestRebaseGapTicks,
     byteLength: bytes.byteLength,
     fnv1a32: hash,
+    topologyRevision: currentTopology?.revision ?? null,
+    topologyDigest: currentTopology?.digest ?? null,
   });
 }
 
@@ -1430,9 +1639,19 @@ function resolveInputsForTick(tick, previous) {
   const remoteRecord = remoteAuth || peerRemote.get(tick) || null;
   const self = selfRecord || previous.self;
   const remote = remoteRecord || previous.remote;
+  const selfSequence = selfAuth
+    ? normalizedJumpSequence(selfAuth.jumpSequence)
+    : normalizedJumpSequence(intendedJumpSequence.get(tick));
+  const remoteSequence = normalizedJumpSequence(remoteRecord?.jumpSequence);
   return {
-    self: { x: self.x, z: self.z, jump: Boolean(selfRecord?.jump) },
-    remote: { x: remote.x, z: remote.z, jump: Boolean(remoteRecord?.jump) },
+    self: {
+      x: self.x, z: self.z, jump: Boolean(selfRecord?.jump),
+      ...(selfSequence !== null ? { jumpSequence: selfSequence } : {}),
+    },
+    remote: {
+      x: remote.x, z: remote.z, jump: Boolean(remoteRecord?.jump),
+      ...(remoteSequence !== null ? { jumpSequence: remoteSequence } : {}),
+    },
   };
 }
 
@@ -1440,7 +1659,7 @@ function usedInputsChangedAt(tick) {
   const used = usedByTick.get(tick);
   if (!used) return false;
   const resolved = resolveInputsForTick(tick, previousUsedInput(tick));
-  return !sameInput(used.self, resolved.self) || !sameInput(used.remote, resolved.remote);
+  return !sameResolvedInput(used.self, resolved.self) || !sameResolvedInput(used.remote, resolved.remote);
 }
 
 function truncateUsedFrom(targetTick) {
@@ -1453,16 +1672,28 @@ function applyResolvedTick(sim, tick, allowGenerateSelf) {
   void allowGenerateSelf;
   const previous = previousUsedInput(tick);
   const resolved = resolveInputsForTick(tick, previous);
-  // Keep the raw multi-tick jump intent in usedByTick, but turn it into one physical
-  // impulse at simulation time. Replay/correction reconstructs the same rising edge.
-  const selfJumpTrigger = Boolean(resolved.self.jump) && !Boolean(previous.self.jump);
-  const remoteJumpTrigger = Boolean(resolved.remote.jump) && !Boolean(previous.remote.jump);
-  usedByTick.set(tick, { self: { ...resolved.self }, remote: { ...resolved.remote } });
+  // V28: physical jump edges are causal-event edges, not boolean edges. Keep the
+  // consumed event high-water in the replay timeline so a rewind reconstructs the
+  // same discrete state the authority used for true(seqN) -> false -> true(seqN).
+  const selfPriorHighWater = causalHighWaterBefore(previous, "self", selfSessionId);
+  const remotePriorHighWater = causalHighWaterBefore(previous, "remote", remoteSessionId);
+  const selfJump = causalJumpStep(resolved.self, previous.self, selfPriorHighWater);
+  const remoteJump = causalJumpStep(resolved.remote, previous.remote, remotePriorHighWater);
+  const selfJumpTrigger = selfJump.trigger;
+  const remoteJumpTrigger = remoteJump.trigger;
+  usedByTick.set(tick, {
+    self: { ...resolved.self },
+    remote: { ...resolved.remote },
+    jumpCausalHighWater: { self: selfJump.highWater, remote: remoteJump.highWater },
+  });
   const selfBody = sim.actorBodies.get(selfSessionId);
-  const remoteBody = sim.actorBodies.get(remoteSessionId);
-  if (!selfBody || !remoteBody) throw new Error("predicted actor mapping incomplete");
+  if (!selfBody) throw new Error("predicted self actor mapping incomplete");
   applyIntent(selfBody, { ...resolved.self, jump: selfJumpTrigger });
-  applyIntent(remoteBody, { ...resolved.remote, jump: remoteJumpTrigger });
+  if (remoteSessionId) {
+    const remoteBody = sim.actorBodies.get(remoteSessionId);
+    if (!remoteBody) throw new Error("predicted remote actor mapping incomplete");
+    applyIntent(remoteBody, { ...resolved.remote, jump: remoteJumpTrigger });
+  }
 }
 
 function createHistoryAtBoundary(sim, boundaryTick, reason) {
@@ -1535,16 +1766,23 @@ function rotateIfNeeded(boundaryTick) {
 function compareStateGuard(boundaryTick, guard) {
   if (!guard) throw new Error(`missing authority state guard at B(${boundaryTick})`);
   if (guard.revision !== WORLD_V0_EXPECTED_STATE_GUARD_REVISION) throw new Error(`state guard revision mismatch ${guard.revision}`);
+  if (lifecycleR0) {
+    if (!currentTopology) throw new Error("state guard before R0 topology");
+    if (guard.topologyRevision !== currentTopology.revision || guard.topologyDigest !== currentTopology.digest) {
+      throw new Error(`state guard topology mismatch ${guard.topologyRevision}/${guard.topologyDigest}`);
+    }
+  }
   const predicted = diagnosticSamples.get(boundaryTick);
   if (!predicted) {
     pendingStateGuards.set(boundaryTick, guard);
     metrics.guardPending = pendingStateGuards.size;
     return;
   }
+  const netEntityOrder = localState?.sim?.netEntityOrder ?? simulation.netEntityOrder;
   const difference = firstWorldV0StateDifference(
     guard.packed,
     predicted,
-    simulation.netEntityOrder,
+    netEntityOrder,
     simulation.stateComponents,
   );
   pendingStateGuards.delete(boundaryTick);
@@ -1555,11 +1793,13 @@ function compareStateGuard(boundaryTick, guard) {
     throw new Error(`FOUNDATION_STATE_DIVERGENCE B(${boundaryTick}) ${difference.netEntityId || difference.field}.${difference.component || ""}`);
   }
   metrics.guardMatches += 1;
+  commitRemotePresentationBoundary(boundaryTick);
 }
 
 function storeDiagnostic(boundaryTick) {
   if (!localState?.sim) return;
   diagnosticSamples.set(boundaryTick, capturePackedDiagnostic(localState.sim));
+  recordRemotePresentationBoundary(boundaryTick);
   const pending = pendingStateGuards.get(boundaryTick);
   if (pending) compareStateGuard(boundaryTick, pending);
   for (const tick of [...diagnosticSamples.keys()]) {
@@ -1589,6 +1829,7 @@ function trimHistory() {
   localState.history.segments = kept;
   for (const tick of [...usedByTick.keys()]) if (tick < cutoff - 1) usedByTick.delete(tick);
   for (const tick of [...intendedSelf.keys()]) if (tick < cutoff - 1) intendedSelf.delete(tick);
+  for (const tick of [...intendedJumpSequence.keys()]) if (tick < cutoff - 1) intendedJumpSequence.delete(tick);
   for (const tick of [...peerRemote.keys()]) if (tick < cutoff - 1) peerRemote.delete(tick);
   for (const tick of [...consumedByTick.keys()]) if (tick < cutoff - 1) consumedByTick.delete(tick);
   updateRetainedBytes();
@@ -1711,7 +1952,25 @@ function maybeCorrect(candidates, reason) {
   return correctFrom(target, reason);
 }
 
+// WORLD_V0_SMOOTHNESS_SUBSTRATE_V20: coalesce correction transactions without weakening exact state.
+const pendingCorrectionTicks = new Set();
+function queueCorrection(candidates) {
+  for (const tick of candidates) {
+    if (Number.isInteger(tick) && tick >= 0) pendingCorrectionTicks.add(tick);
+  }
+}
+function flushQueuedCorrections(barrier) {
+  if (!pendingCorrectionTicks.size) return false;
+  const candidates = [...pendingCorrectionTicks];
+  pendingCorrectionTicks.clear();
+  const target = earliestChangedTick(candidates);
+  if (target === null) return false;
+  return correctFrom(target, "coalesced:" + barrier);
+}
+
 function destroyLocalState() {
+  pendingCorrectionTicks.clear();
+  resetRemotePresentationState();
   if (!localState) return;
   try {
     if (localState.history.active) {
@@ -1733,6 +1992,7 @@ function socketUrl() {
   const url = new URL(`${protocol}//${location.host}/world-v0/ws`);
   url.searchParams.set("player", callsign);
   url.searchParams.set("run", runKey);
+  if (lifecycleR0) url.searchParams.set("lifecycle", "r0");
   if (actorResume.pending && resumeToken) url.searchParams.set("resume", resumeToken);
   return url.toString();
 }
@@ -1754,6 +2014,7 @@ function sendInputRevisionRecords(records) {
     socket.send(JSON.stringify({
       type: "world_v0_input_batch",
       ...identityFields(),
+      ...r0TopologyIdentityFields(),
       batchSeq,
       records: chunk,
     }));
@@ -1772,15 +2033,19 @@ function flushPendingInputBatch() {
   socket.send(JSON.stringify({
     type: "world_v0_input_batch",
     ...identityFields(),
+    ...r0TopologyIdentityFields(),
     batchSeq,
     records,
   }));
 }
 
-function queueInputRecord(targetTick, input) {
+function queueInputRecord(targetTick, input, jumpSequence = null) {
   const previousPending = pendingBatch[pendingBatch.length - 1];
   if (previousPending && targetTick !== previousPending.targetTick + 1) flushPendingInputBatch();
-  pendingBatch.push({ targetTick, x: input.x, z: input.z, jump: Boolean(input.jump) });
+  pendingBatch.push({
+    targetTick, x: input.x, z: input.z, jump: Boolean(input.jump),
+    ...(Number.isInteger(jumpSequence) ? { jumpSequence } : {}),
+  });
   if (pendingBatch.length >= simulation.timing.inputBatchSize) flushPendingInputBatch();
 }
 
@@ -1820,6 +2085,7 @@ function updatePhaseFromStart(message, receivedAt) {
 
 function classifyBatchAck(message) {
   assertMessageIdentity(message, "batch-ack");
+  assertR0MessageTopology(message, "batch-ack");
   if (message.batchStatus === "stale_batch") metrics.serverRejected += 1;
   for (const record of message.records || []) {
     if (record.status === "late") metrics.serverLate += 1;
@@ -1829,26 +2095,32 @@ function classifyBatchAck(message) {
 
 function handlePeerRecords(message) {
   assertMessageIdentity(message, "peer-records");
+  assertR0MessageTopology(message, "peer-records");
   if (!remoteSessionId || message.senderSessionId !== remoteSessionId) return;
   if (remoteNetEntityId && message.senderNetEntityId !== remoteNetEntityId) throw new Error("remote NetEntityId drift");
   const candidates = [];
   for (const record of message.records || []) {
     if (!Number.isInteger(record.targetTick) || !Number.isFinite(record.x) || !Number.isFinite(record.z)) continue;
     const existing = peerRemote.get(record.targetTick);
-    const next = { x: record.x, z: record.z, jump: Boolean(record.jump) };
+    const jumpSequence = normalizedJumpSequence(record.jumpSequence);
+    const next = {
+      x: record.x, z: record.z, jump: Boolean(record.jump),
+      ...(jumpSequence !== null ? { jumpSequence } : {}),
+    };
     // I2 future-intent supersession: WebSocket relay order mirrors authority batchSeq order.
     // A changed, still-correctable tick replaces the earlier prefill and reuses the existing
     // prediction correction path; identical relay data stays idempotent.
-    if (!existing || !sameInput(existing, next)) {
+    if (!existing || !sameResolvedInput(existing, next)) {
       peerRemote.set(record.targetTick, next);
       candidates.push(record.targetTick);
     }
   }
-  maybeCorrect(candidates, "peer-record");
+  queueCorrection(candidates);
 }
 
 function handleConsumed(message) {
   assertMessageIdentity(message, "consumed");
+  assertR0MessageTopology(message, "consumed");
   if (!Number.isInteger(message.targetTick)) return;
   const map = new Map();
   let selfCanonical = null;
@@ -1858,26 +2130,36 @@ function handleConsumed(message) {
       x: player.x,
       z: player.z,
       jump: Boolean(player.jump),
+      ...(normalizedJumpSequence(player.jumpSequence) !== null ? { jumpSequence: player.jumpSequence } : {}),
       jumpApplied: Boolean(player.jumpApplied),
       fresh: Boolean(player.fresh),
       source: player.source,
       missingStreak: player.missingStreak,
     };
     map.set(player.sessionId, next);
-    if (player.sessionId === selfSessionId) selfCanonical = next;
+    if (player.sessionId === selfSessionId) {
+      selfCanonical = {
+        ...next,
+        jumpSequence: Number.isInteger(player.jumpSequence) ? player.jumpSequence : null,
+      };
+    }
     if (player.source === "lease_expired") metrics.leaseExpiredSeen += 1;
   }
   consumedByTick.set(message.targetTick, map);
   if (selfCanonical) {
-    noteCanonicalJumpDelivery(message.targetTick, selfCanonical.jump, selfCanonical.jumpApplied);
+    noteCanonicalJumpDelivery(
+      message.targetTick, selfCanonical.jump, selfCanonical.jumpApplied, selfCanonical.jumpSequence ?? null,
+    );
   }
-  maybeCorrect([message.targetTick], "authority-consumed");
+  queueCorrection([message.targetTick]);
 }
 
 function handleSnapshot(message) {
   assertMessageIdentity(message, "snapshot");
+  assertR0MessageTopology(message, "snapshot");
   if (message.revision !== WORLD_V0_EXPECTED_SERVER_REVISION) throw new Error(`snapshot server revision mismatch ${message.revision}`);
   if (!Number.isInteger(message.boundaryTick)) return;
+  flushQueuedCorrections("snapshot");
   compareStateGuard(message.boundaryTick, message.stateGuard);
 }
 
@@ -1889,17 +2171,18 @@ function handleStart(message) {
   if (message.boundaryTick !== 0 || message.state?.boundaryTick !== 0) throw new Error(`World V0 requires clean B(0), got ${message.boundaryTick}`);
 
   simulation = contract;
+  if (lifecycleR0) adoptR0Topology(message.topology, "start");
   destroyLocalState();
   intendedSelf.clear();
+  intendedJumpSequence.clear();
   peerRemote.clear();
   consumedByTick.clear();
   usedByTick.clear();
   diagnosticSamples.clear();
   pendingStateGuards.clear();
   protocolStartTick = message.protocolStartTick;
-  // Fresh epochs start with authority previousJumpIntent=false, so a new physical
-  // edge is immediately legal. Resumes deliberately do not use this fresh arm.
   resetJumpDeliveryForFreshRun();
+  resetJumpCausalSeedFromStart(message.state?.players || []);
   buildArenaVisual(contract);
   const sim = createSimulationFromState(message.state);
   buildSpatialCues(message.state);
@@ -1908,13 +2191,17 @@ function handleStart(message) {
   updatePhaseFromStart(message, performance.now());
   startLogicalInputScheduler();
   if (!selfMesh) selfMesh = createPlayerMesh(true);
-  if (!remoteMesh) remoteMesh = createPlayerMesh(false);
+  if (remoteSessionId && !remoteMesh) remoteMesh = createPlayerMesh(false);
   sessionEnd = null;
-  networkState = "live · Shared Yard V0";
+  networkState = lifecycleR0 && !remoteSessionId ? "live · solo Shared Yard" : "live · Shared Yard V0";
   jumpButton.classList.remove("hidden");
   joystick.classList.add("active");
   cameraGimbal.classList.add("active");
-  recordLifecycle("world-start", { protocolStartTick });
+  recordLifecycle("world-start", {
+    protocolStartTick,
+    topologyRevision: currentTopology?.revision ?? null,
+    topologyDigest: currentTopology?.digest ?? null,
+  });
   clearNotice();
   syncMeshes();
 }
@@ -1931,16 +2218,22 @@ function handleMessage(message) {
       throw new Error(`room recovery reused ended epoch ${sourceEpoch}`);
     }
     simulation = assertSimulationContract(message.simulation, "welcome");
+    if (lifecycleR0) adoptR0Topology(message.topology, "welcome");
     if (message.resumed) {
       if (!resumingActor || !priorSessionId || !priorResumeToken) throw new Error("unexpected resumed welcome");
       if (message.selfSessionId !== priorSessionId) throw new Error("resumed ActorSession identity drift");
       if (message.resumeToken !== priorResumeToken) throw new Error("resumed private token drift");
       if (!Number.isInteger(message.resumeLastBatchSeq) || message.resumeLastBatchSeq < 0) throw new Error("resumed batch sequence invalid");
+      if (!Number.isInteger(message.resumeLastJumpSequence) || message.resumeLastJumpSequence < 0) throw new Error("resumed jump sequence invalid");
 
       const hadLocalState = Boolean(localState?.sim);
       const resumedIntoActiveRun = Number.isInteger(message.protocolStartTick);
       if (hadLocalState && !resumedIntoActiveRun) throw new Error("active ActorSession resumed into unscheduled protocol");
       batchSeq = Math.max(batchSeq, message.resumeLastBatchSeq);
+      // Causal event identity belongs to the ActorSession, not this JS page. Authority
+      // returns the highest identity it has already seen in an accepted batch, including
+      // still-pending future inputs, so a fresh page cannot collide with in-flight truth.
+      jumpDelivery.pressSequence = Math.max(jumpDelivery.pressSequence, message.resumeLastJumpSequence);
 
       if (resumedIntoActiveRun) {
         if (!message.rebaseSeed || !Number.isInteger(message.rebaseSeed.boundaryTick)) throw new Error("active ActorSession resume missing authority rebase seed");
@@ -1961,6 +2254,7 @@ function handleMessage(message) {
       selfNetEntityId = message.selfNetEntityId;
       selfSlot = message.slot;
       resumeToken = message.resumeToken;
+      updateRemoteFromR0Topology();
       persistCurrentActorSession();
       clearActorResumeTimer();
       actorResume.pending = false;
@@ -1984,7 +2278,7 @@ function handleMessage(message) {
         clearNotice();
         syncMeshes();
       } else {
-        networkState = message.waitingForPeer ? "waiting for peer" : "peer joined";
+        networkState = message.waitingForPeer ? "waiting for peer" : (lifecycleR0 ? "solo · ready" : "peer joined");
         jumpButton.classList.add("hidden");
         joystick.classList.remove("active");
         cameraGimbal.classList.remove("active");
@@ -1999,16 +2293,44 @@ function handleMessage(message) {
     selfSessionId = message.selfSessionId;
     selfNetEntityId = message.selfNetEntityId;
     selfSlot = message.slot;
+    updateRemoteFromR0Topology();
     persistCurrentActorSession();
-    networkState = message.waitingForPeer ? "waiting for peer" : "peer joined";
+
+    const lateJoinIntoR0 = lifecycleR0 && Number.isInteger(message.protocolStartTick);
+    if (lateJoinIntoR0) {
+      if (!message.rebaseSeed || !Number.isInteger(message.rebaseSeed.boundaryTick)) throw new Error("R0 late join missing authority rebase seed");
+      if (message.state?.boundaryTick !== message.rebaseSeed.boundaryTick) throw new Error("R0 late join state/rebase boundary mismatch");
+      protocolStartTick = message.protocolStartTick;
+      buildArenaVisual(simulation);
+      buildSpatialCues(message.state);
+      resetJumpDeliveryForFreshRun();
+      applyAuthorityRebase(message.rebaseSeed, message.state);
+      playing = true;
+      sessionEnd = null;
+      networkState = "live · joined running Shared Yard";
+      jumpButton.classList.remove("hidden");
+      joystick.classList.add("active");
+      cameraGimbal.classList.add("active");
+      socket.send(JSON.stringify({ type: "world_v0_ready", ...identityFields(), ...r0TopologyIdentityFields() }));
+      startLogicalInputScheduler();
+      recordLifecycle("r0-late-join-bootstrap", {
+        boundaryTick: localState.boundaryTick,
+        topologyRevision: currentTopology.revision,
+        topologyDigest: currentTopology.digest,
+      });
+      if (recoveringRoom) {
+        completeRoomRecovery(message.worldEpoch, sourceEpoch);
+        showNotice("Back in the same Yard");
+      } else {
+        clearNotice();
+      }
+      syncMeshes();
+      return;
+    }
+
+    networkState = message.waitingForPeer ? "waiting for peer" : (lifecycleR0 ? "solo · synchronizing" : "peer joined");
     if (recoveringRoom) {
-      clearRoomRecoveryTimer();
-      roomRecovery.pending = false;
-      roomRecovery.reason = null;
-      roomRecovery.attempts = 0;
-      roomRecovery.lastRecoveredEpoch = message.worldEpoch;
-      roomRecovery.sourceEpoch = null;
-      recordLifecycle("room-recovered", { roomId: runKey, sourceEpoch, recoveredEpoch: message.worldEpoch });
+      completeRoomRecovery(message.worldEpoch, sourceEpoch);
       showNotice(message.waitingForPeer ? "Back in the same Yard · waiting for friend" : "Back in the same Yard");
     }
     return;
@@ -2016,10 +2338,29 @@ function handleMessage(message) {
   if (message.type === "world_v0_roster") {
     assertMessageIdentity(message, "roster");
     const players = message.players || [];
-    const remote = players.find((player) => player.sessionId !== selfSessionId);
-    if (remote) {
-      remoteSessionId = remote.sessionId;
-      remoteNetEntityId = remote.netEntityId;
+    const remote = players.find((player) => player.sessionId !== selfSessionId) || null;
+    remoteSessionId = remote?.sessionId || null;
+    remoteNetEntityId = remote?.netEntityId || null;
+    if (lifecycleR0) {
+      const observed = normalizeR0Topology(message.topology, "roster");
+      if (currentTopology && !sameR0Topology(currentTopology, observed) && Number.isInteger(protocolStartTick)) {
+        topologyTransitionPending = true;
+        stopLogicalInputScheduler();
+        pendingBatch = [];
+        networkState = "topology rebase pending";
+        recordLifecycle("r0-topology-transition-observed", {
+          fromRevision: currentTopology.revision,
+          toRevision: observed.revision,
+          toDigest: observed.digest,
+        });
+        return;
+      }
+      if (!currentTopology) adoptR0Topology(observed, "roster-initial", { allowChange: true });
+      if (socket?.readyState === WebSocket.OPEN && !Number.isInteger(protocolStartTick)) {
+        networkState = "solo · ready";
+        socket.send(JSON.stringify({ type: "world_v0_ready", ...identityFields(), ...r0TopologyIdentityFields() }));
+      }
+      return;
     }
     if (players.length === 2 && socket?.readyState === WebSocket.OPEN && !Number.isInteger(protocolStartTick)) {
       networkState = "both connected · ready";
@@ -2029,7 +2370,33 @@ function handleMessage(message) {
   }
   if (message.type === "world_v0_ready_ack") {
     assertMessageIdentity(message, "ready-ack");
-    networkState = "ready · awaiting start";
+    assertR0MessageTopology(message, "ready-ack");
+    networkState = lifecycleR0 && Number.isInteger(protocolStartTick) ? "live · Shared Yard V0" : "ready · awaiting start";
+    return;
+  }
+  if (message.type === "world_v0_topology_changed") {
+    if (!lifecycleR0) throw new Error("unexpected topology change outside R0");
+    assertMessageIdentity(message, "topology-changed");
+    const observed = normalizeR0Topology(message.topology, "topology-changed");
+    if (!message.rebaseSeed) throw new Error("topology change missing authority rebase seed");
+    if (currentTopology && sameR0Topology(currentTopology, observed) && localState && localState.boundaryTick >= message.rebaseSeed.boundaryTick) {
+      recordLifecycle("r0-topology-change-already-applied", { topologyRevision: observed.revision, boundaryTick: message.rebaseSeed.boundaryTick });
+      return;
+    }
+    stopLogicalInputScheduler();
+    pendingBatch = [];
+    topologyTransitionPending = true;
+    applyAuthorityRebase(message.rebaseSeed);
+    playing = true;
+    networkState = "live · topology rebased";
+    startLogicalInputScheduler();
+    recordLifecycle("r0-topology-rebase-complete", {
+      boundaryTick: localState.boundaryTick,
+      topologyRevision: currentTopology.revision,
+      topologyDigest: currentTopology.digest,
+    });
+    clearNotice();
+    syncMeshes();
     return;
   }
   if (message.type === "world_v0_start") return handleStart(message);
@@ -2072,6 +2439,22 @@ function handleMessage(message) {
   }
   if (message.type === "world_v0_error") {
     if (identity && message.worldEpoch) assertMessageIdentity(message, "server-error");
+    if (lifecycleR0 && message.error === "topology_identity_mismatch") {
+      const receivedRevision = message.receivedTopology?.revision;
+      if (currentTopology && Number.isInteger(receivedRevision) && receivedRevision < currentTopology.revision) {
+        recordLifecycle("r0-stale-topology-rejection-observed", { receivedRevision, currentRevision: currentTopology.revision });
+        return;
+      }
+      topologyTransitionPending = true;
+      stopLogicalInputScheduler();
+      pendingBatch = [];
+      networkState = "topology rebase pending";
+      recordLifecycle("r0-topology-mismatch-waiting-rebase", {
+        receivedRevision: receivedRevision ?? null,
+        expectedRevision: message.expectedTopology?.revision ?? null,
+      });
+      return;
+    }
     throw new Error(`World V0 server: ${message.error}`);
   }
 }
@@ -2199,19 +2582,21 @@ function connect() {
 }
 
 function advancePrediction() {
-  if (!localState || !phaseAnchor || runtimeFailed || actorResume.pending) return;
+  if (!localState || !phaseAnchor || runtimeFailed || actorResume.pending || topologyTransitionPending) return;
+  let predictionCeilingBoundary = null;
   if (Number.isInteger(lastAuthorityBoundaryTick) && Number.isInteger(simulation?.clientHistory?.retainTicks)) {
     const silenceTicks = Math.max(0, localState.boundaryTick - lastAuthorityBoundaryTick);
     metrics.maxAuthoritySilenceTicks = Math.max(metrics.maxAuthoritySilenceTicks, silenceTicks);
     const safeBlindTicks = Math.max(1, simulation.clientHistory.retainTicks - AUTHORITY_SILENCE_RETAIN_MARGIN_TICKS);
-    if (silenceTicks >= safeBlindTicks) {
-      beginActorResume("authority_silence_history_guard", { silenceTicks, safeBlindTicks });
-      return;
-    }
+    predictionCeilingBoundary = lastAuthorityBoundaryTick + safeBlindTicks - 1;
+    if (silenceTicks >= safeBlindTicks) return;
   }
   const estimate = authorityTickEstimate();
   if (!Number.isFinite(estimate)) return;
-  const targetBoundary = Math.max(0, Math.floor(estimate + simulation.timing.clientSimulationLeadTicks));
+  const rawTargetBoundary = Math.max(0, Math.floor(estimate + simulation.timing.clientSimulationLeadTicks));
+  const targetBoundary = Number.isInteger(predictionCeilingBoundary)
+    ? Math.min(rawTargetBoundary, predictionCeilingBoundary)
+    : rawTargetBoundary;
   let steps = 0;
   while (localState.boundaryTick < targetBoundary && steps < MAX_PREDICTION_STEPS_PER_FRAME) {
     managedPhysicsStep(localState.boundaryTick, true);
@@ -2229,19 +2614,20 @@ function syncPresence(mesh, position) {
 }
 
 function syncMeshes() {
-  if (!localState?.sim || !selfSessionId || !remoteSessionId) return;
+  if (!localState?.sim || !selfSessionId) return;
   if (!selfMesh) selfMesh = createPlayerMesh(true);
-  if (!remoteMesh) remoteMesh = createPlayerMesh(false);
+  if (remoteSessionId && !remoteMesh) remoteMesh = createPlayerMesh(false);
   const selfBody = localState.sim.actorBodies.get(selfSessionId);
-  const remoteBody = localState.sim.actorBodies.get(remoteSessionId);
+  const remoteBody = remoteSessionId ? localState.sim.actorBodies.get(remoteSessionId) : null;
   if (selfBody) {
     const position = bodyPosition(selfBody);
     selfMesh.position.fromArray(position);
     selfMesh.quaternion.fromArray(bodyRotation(selfBody)).normalize();
     syncPresence(selfMesh, position);
   }
-  if (remoteBody) {
-    const position = bodyPosition(remoteBody);
+  if (remoteBody && remoteMesh) {
+    const exactPosition = bodyPosition(remoteBody);
+    const position = remotePresentationPosition(performance.now(), exactPosition) || exactPosition;
     remoteMesh.position.fromArray(position);
     remoteMesh.quaternion.fromArray(bodyRotation(remoteBody)).normalize();
     syncPresence(remoteMesh, position);
@@ -2315,6 +2701,11 @@ function buildEvidence() {
     clientSimRevision: WORLD_V0_CLIENT_SIM_REVISION,
     expectedSimBuildId: WORLD_V0_EXPECTED_SIM_BUILD_ID,
     identity: identity ? { ...identity } : null,
+    lifecycle: {
+      r0: lifecycleR0,
+      topologyTransitionPending,
+      topology: currentTopology ? { ...currentTopology, actors: currentTopology.actors.map((actor) => ({ ...actor })), entityOrder: [...currentTopology.entityOrder] } : null,
+    },
     runKey,
     networkState,
     runtimeFailed,
@@ -2334,9 +2725,16 @@ function buildEvidence() {
     },
     localBoundaryTick: localState?.boundaryTick ?? null,
     protocolStartTick,
+    livePhysics: {
+      netEntityOrder: localState?.sim?.netEntityOrder ? [...localState.sim.netEntityOrder] : null,
+      selfPosition: selfSessionId && localState?.sim?.actorBodies.get(selfSessionId) ? bodyPosition(localState.sim.actorBodies.get(selfSessionId)) : null,
+      remotePosition: remoteSessionId && localState?.sim?.actorBodies.get(remoteSessionId) ? bodyPosition(localState.sim.actorBodies.get(remoteSessionId)) : null,
+    },
     presentation: {
       selfPresence: selfMesh?.userData?.presenceLabel?.userData?.presenceText || null,
       remotePresence: remoteMesh?.userData?.presenceLabel?.userData?.presenceText || null,
+      remoteDisplayedPosition: remoteMesh ? [remoteMesh.position.x, remoteMesh.position.y, remoteMesh.position.z] : null,
+      remotePresentation: remotePresentationEvidence(),
       spatialCueCount,
       cameraPreset: cameraPresetName(),
       cameraFov: camera.fov,
@@ -2416,7 +2814,10 @@ window.__sharedYardV0LastEvidence = () => {
     return null;
   }
 };
-addEventListener("pagehide", () => persistLastSessionEvidence("pagehide"));
+addEventListener("pagehide", () => {
+  armCurrentActorResumeIntentForPageExit();
+  persistLastSessionEvidence("pagehide");
+});
 document.addEventListener("visibilitychange", () => {
   const now = performance.now();
   recordLifecycle("visibility", { state: document.visibilityState, elapsedSincePreviousMs: Math.max(0, now - visibilityTransitionAt) });
@@ -2481,9 +2882,11 @@ function resetProtocolState({ preserveRoomRecovery = false } = {}) {
   logicalInputSuperseded = 0;
   destroyLocalState();
   intendedSelf.clear();
+  intendedJumpSequence.clear();
   peerRemote.clear();
   consumedByTick.clear();
   usedByTick.clear();
+  jumpCausalSeed.clear();
   diagnosticSamples.clear();
   pendingStateGuards.clear();
   correctionEvents.splice(0);
@@ -2494,6 +2897,8 @@ function resetProtocolState({ preserveRoomRecovery = false } = {}) {
   pendingBatch = [];
   batchSeq = 0;
   identity = null;
+  currentTopology = null;
+  topologyTransitionPending = false;
   selfSessionId = null;
   remoteSessionId = null;
   selfNetEntityId = null;
@@ -2582,6 +2987,7 @@ function enterWorld() {
   shareUrl.search = "";
   shareUrl.hash = "";
   shareUrl.searchParams.set("run", runKey);
+  if (lifecycleR0) shareUrl.searchParams.set("lifecycle", "r0");
   history.replaceState(null, "", shareUrl);
   const resumeIntent = takeWorldV0ResumeIntent({ runKey, playerId: callsign });
   resetProtocolState();
@@ -2881,6 +3287,7 @@ function frame(now) {
       // Keep scheduler ownership even when rAF is healthy; the interval remains the
       // independent progress source when rAF cadence degrades.
       pumpLogicalInputScheduler();
+      flushQueuedCorrections("frame");
       advancePrediction();
       syncMeshes();
     } catch (error) {
@@ -2888,7 +3295,152 @@ function frame(now) {
     }
   }
   updateCamera();
-  renderer.render(scene, camera);
+  if (shouldRenderWorldFrame()) renderer.render(scene, camera);
 }
 requestAnimationFrame(frame);
 updateHud();
+
+// WORLD_V0_INTEGRATED_SMOOTHNESS_V25: production candidate remote presentation state.
+const WORLD_V0_REMOTE_PRESENTATION_REVISION = "world-v0-remote-confirmed-presentation-v1";
+const WORLD_V0_REMOTE_PRESENTATION_DELAY_TICKS = 12;
+const WORLD_V0_REENTRY_RENDER_HOLD_MIN_HIDDEN_MS = 250;
+const WORLD_V0_REENTRY_RENDER_HOLD_MAX_MS = 1500;
+const remotePresentationState = {
+  remoteSessionId: null, samples: new Map(), anchors: [], mode: "exact-bootstrap",
+  targetBoundary: null, newestConfirmedBoundary: null,
+  hiddenAt: null, reentryHold: false, reentryStartedAt: null, lastReentryHoldMs: 0, lastReleaseReason: null,
+};
+function resetRemotePresentationState() {
+  remotePresentationState.remoteSessionId = null;
+  remotePresentationState.samples.clear();
+  remotePresentationState.anchors = [];
+  remotePresentationState.mode = "exact-bootstrap";
+  remotePresentationState.targetBoundary = null;
+  remotePresentationState.newestConfirmedBoundary = null;
+  remotePresentationState.reentryHold = false;
+  remotePresentationState.reentryStartedAt = null;
+  remotePresentationState.lastReentryHoldMs = 0;
+  remotePresentationState.lastReleaseReason = null;
+}
+function ensureRemotePresentationSession() {
+  const sessionId = remoteSessionId || null;
+  if (remotePresentationState.remoteSessionId !== sessionId) {
+    remotePresentationState.remoteSessionId = sessionId;
+    remotePresentationState.samples.clear();
+    remotePresentationState.anchors = [];
+    remotePresentationState.mode = "exact-bootstrap";
+    remotePresentationState.targetBoundary = null;
+    remotePresentationState.newestConfirmedBoundary = null;
+  }
+  return sessionId;
+}
+function recordRemotePresentationBoundary(boundary) {
+  if (!Number.isInteger(boundary)) return;
+  const sessionId = ensureRemotePresentationSession();
+  if (!sessionId || !localState?.sim) return;
+  const body = localState.sim.actorBodies.get(sessionId);
+  if (!body) return;
+  remotePresentationState.samples.set(boundary, { boundary, position: bodyPosition(body) });
+  const cutoff = boundary - 512;
+  for (const tick of remotePresentationState.samples.keys()) if (tick < cutoff) remotePresentationState.samples.delete(tick);
+}
+function commitRemotePresentationBoundary(boundary) {
+  if (!Number.isInteger(boundary)) return;
+  const sessionId = ensureRemotePresentationSession();
+  if (!sessionId) return;
+  const sample = remotePresentationState.samples.get(boundary);
+  if (!sample || remotePresentationState.anchors.some((anchor) => anchor.boundary === boundary)) return;
+  remotePresentationState.anchors.push({ boundary, position: [...sample.position] });
+  remotePresentationState.anchors.sort((a, b) => a.boundary - b.boundary);
+  if (remotePresentationState.anchors.length > 128) remotePresentationState.anchors.splice(0, remotePresentationState.anchors.length - 128);
+  remotePresentationState.newestConfirmedBoundary = remotePresentationState.anchors[remotePresentationState.anchors.length - 1]?.boundary ?? null;
+}
+function remotePresentationPosition(now, exactPosition) {
+  const sessionId = ensureRemotePresentationSession();
+  const anchors = remotePresentationState.anchors;
+  if (!sessionId || anchors.length < 2) {
+    remotePresentationState.mode = "exact-bootstrap";
+    return null;
+  }
+  const phaseEstimate = authorityTickEstimate(now);
+  const leadTicks = Number(simulation?.timing?.clientSimulationLeadTicks ?? 0);
+  if (!Number.isFinite(phaseEstimate) || !Number.isFinite(leadTicks)) {
+    remotePresentationState.mode = "exact-bootstrap";
+    return null;
+  }
+  const target = phaseEstimate + leadTicks - WORLD_V0_REMOTE_PRESENTATION_DELAY_TICKS;
+  remotePresentationState.targetBoundary = target;
+  const earliest = anchors[0];
+  const latest = anchors[anchors.length - 1];
+  remotePresentationState.newestConfirmedBoundary = latest.boundary;
+  if (target <= earliest.boundary) {
+    remotePresentationState.mode = "exact-bootstrap";
+    return null;
+  }
+  if (target >= latest.boundary) {
+    remotePresentationState.mode = Math.abs(target - latest.boundary) < 1e-9 ? "latest-exact" : "underrun-hold";
+    return [...latest.position];
+  }
+  for (let index = anchors.length - 1; index >= 1; index -= 1) {
+    const to = anchors[index];
+    const from = anchors[index - 1];
+    if (from.boundary <= target && target <= to.boundary) {
+      const alpha = (target - from.boundary) / Math.max(1, to.boundary - from.boundary);
+      remotePresentationState.mode = "interpolate";
+      return [
+        from.position[0] + (to.position[0] - from.position[0]) * alpha,
+        from.position[1] + (to.position[1] - from.position[1]) * alpha,
+        from.position[2] + (to.position[2] - from.position[2]) * alpha,
+      ];
+    }
+  }
+  remotePresentationState.mode = "underrun-hold";
+  return exactPosition ? [...exactPosition] : null;
+}
+function releaseReentryRenderHold(reason) {
+  if (!remotePresentationState.reentryHold) return;
+  const now = performance.now();
+  remotePresentationState.lastReentryHoldMs = remotePresentationState.reentryStartedAt === null ? 0 : Math.max(0, now - remotePresentationState.reentryStartedAt);
+  remotePresentationState.lastReleaseReason = reason;
+  remotePresentationState.reentryHold = false;
+  remotePresentationState.reentryStartedAt = null;
+}
+function shouldRenderWorldFrame() {
+  if (!remotePresentationState.reentryHold) return true;
+  if (runtimeFailed) { releaseReentryRenderHold("runtime-failed"); return true; }
+  const elapsed = remotePresentationState.reentryStartedAt === null ? 0 : performance.now() - remotePresentationState.reentryStartedAt;
+  if (elapsed >= WORLD_V0_REENTRY_RENDER_HOLD_MAX_MS) { releaseReentryRenderHold("timeout"); return true; }
+  const local = Number.isInteger(localState?.boundaryTick) ? localState.boundaryTick : null;
+  const authority = Number.isInteger(metrics.latestAuthorityBoundary) ? metrics.latestAuthorityBoundary : null;
+  const exactReady = Number.isInteger(local) && Number.isInteger(authority) && local >= authority - 4;
+  const presentationReady = !remoteSessionId || remotePresentationState.mode === "interpolate" || remotePresentationState.mode === "latest-exact";
+  if (exactReady && presentationReady) { releaseReentryRenderHold("ready"); return true; }
+  return false;
+}
+document.addEventListener("visibilitychange", () => {
+  const now = performance.now();
+  if (document.visibilityState !== "visible") {
+    remotePresentationState.hiddenAt = now;
+    return;
+  }
+  const hiddenMs = remotePresentationState.hiddenAt === null ? 0 : Math.max(0, now - remotePresentationState.hiddenAt);
+  remotePresentationState.hiddenAt = null;
+  if (hiddenMs >= WORLD_V0_REENTRY_RENDER_HOLD_MIN_HIDDEN_MS && localState) {
+    remotePresentationState.reentryHold = true;
+    remotePresentationState.reentryStartedAt = now;
+    remotePresentationState.lastReleaseReason = null;
+  }
+});
+function remotePresentationEvidence() {
+  return {
+    revision: WORLD_V0_REMOTE_PRESENTATION_REVISION,
+    delayTicks: WORLD_V0_REMOTE_PRESENTATION_DELAY_TICKS,
+    mode: remotePresentationState.mode,
+    confirmedAnchorCount: remotePresentationState.anchors.length,
+    newestConfirmedBoundary: remotePresentationState.newestConfirmedBoundary,
+    targetBoundary: remotePresentationState.targetBoundary,
+    reentryHold: remotePresentationState.reentryHold,
+    lastReentryHoldMs: remotePresentationState.lastReentryHoldMs,
+    lastReleaseReason: remotePresentationState.lastReleaseReason,
+  };
+}

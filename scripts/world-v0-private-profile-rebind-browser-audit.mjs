@@ -9,6 +9,7 @@ class Cdp{constructor(url){this.ws=new WebSocket(url);this.next=1;this.pending=n
 async function debuggerUrl(port){const d=Date.now()+20000;while(Date.now()<d){try{const r=await fetch("http://127.0.0.1:"+port+"/json/version");if(r.ok){const j=await r.json();if(j.webSocketDebuggerUrl)return j.webSocketDebuggerUrl;}}catch{}await sleep(100);}throw new Error("debugger unavailable");}
 async function waitFor(c,s,e,l,t=30000){const d=Date.now()+t;let last=null;while(Date.now()<d){try{last=await c.eval(s,e);if(last)return last;}catch(x){last=x instanceof Error?x.message:String(x);}await sleep(100);}throw new Error(l+" timeout "+JSON.stringify(last));}
 async function page(c,url){const q=await c.call("Target.createTarget",{url});const a=await c.call("Target.attachToTarget",{targetId:q.targetId,flatten:true});await c.call("Runtime.enable",{},a.sessionId);await c.call("Page.enable",{},a.sessionId);await waitFor(c,a.sessionId,'document.readyState==="complete" && document.querySelector("#enter")?.disabled===false && typeof window.__sharedYardV0Evidence==="function"',"boot");return{targetId:q.targetId,sessionId:a.sessionId};}
+async function pageWithInit(c,url,source){const q=await c.call("Target.createTarget",{url:"about:blank"});const a=await c.call("Target.attachToTarget",{targetId:q.targetId,flatten:true});await c.call("Runtime.enable",{},a.sessionId);await c.call("Page.enable",{},a.sessionId);await c.call("Page.addScriptToEvaluateOnNewDocument",{source},a.sessionId);await c.call("Page.navigate",{url},a.sessionId);await waitFor(c,a.sessionId,'document.readyState==="complete" && document.querySelector("#enter")?.disabled===false && typeof window.__sharedYardV0Evidence==="function"',"boot");return{targetId:q.targetId,sessionId:a.sessionId};}
 async function enter(c,p,name){await c.eval(p.sessionId,'(() => { const i=document.querySelector("#callsign"); i.value='+JSON.stringify(name)+'; i.dispatchEvent(new Event("input",{bubbles:true})); document.querySelector("#enter").click(); return true; })()');await waitFor(c,p.sessionId,'(() => { const e=window.__sharedYardV0Evidence?.(); return e && !e.runtimeFailed && e.networkState?.startsWith("live") && e.localBoundaryTick>(e.protocolStartTick??0)+20; })()',"live",45000);}
 async function closePage(c,p){try{await c.call("Target.closeTarget",{targetId:p.targetId});}catch{}await sleep(250);}
 
@@ -17,6 +18,8 @@ const OUTPUT=process.env.MW_WORLD_V0_PRIVATE_REBIND_OUTPUT||"world-v0-private-re
 const suffix=Date.now().toString(36).slice(-5);
 const runLive=("private-live-"+suffix).slice(0,20);
 const runClose=("private-close-"+suffix).slice(0,20);
+const runStale=("private-stale-"+suffix).slice(0,20);
+const runForeign=("private-none-"+suffix).slice(0,20);
 const PORT=9903, profile=mkdtempSync(join(tmpdir(),"mw-private-rebind-")), bin=chrome();
 const child=spawn(bin,["--headless=new","--no-sandbox","--disable-dev-shm-usage","--disable-background-timer-throttling","--disable-backgrounding-occluded-windows","--disable-renderer-backgrounding","--remote-debugging-port="+PORT,"--remote-debugging-address=127.0.0.1","--user-data-dir="+profile,"about:blank"],{stdio:["ignore","ignore","pipe"]});
 let c=null; const result={verdict:"WORLD_V0_PRIVATE_PROFILE_REBIND_FAIL",generatedAt:new Date().toISOString()};
@@ -50,7 +53,37 @@ try{
  assert(e4.identity.worldEpoch===e3.identity.worldEpoch,"closed private rebound rotated epoch");
  assert(e4.session.selfNetEntityId===e3.session.selfNetEntityId,"closed private rebound changed entity");
  assert(e4.lifecycle.topology.actors.length===1,"closed private rebound left shell actor");
+ await closePage(c,p4);
+
+ const staleUrl=BASE+"/world-v0/?run="+runStale+"&lifecycle=r0";
+ const p5=await page(c,staleUrl);await enter(c,p5,"PrivateOwner");
+ const staleSeed=await c.eval(p5.sessionId,"window.__sharedYardV0Evidence()");
+ const corruptTokenSource=`(() => {
+   const key="shared-yard-v0-actor-sessions-v1";
+   const parsed=JSON.parse(localStorage.getItem(key)||"{}");
+   if (parsed.sessions && parsed.sessions[${JSON.stringify(runStale)}]) {
+     parsed.sessions[${JSON.stringify(runStale)}].resumeToken="definitely-invalid-private-resume-token";
+     localStorage.setItem(key,JSON.stringify(parsed));
+   }
+ })();`;
+ const p6=await pageWithInit(c,staleUrl,corruptTokenSource);
+ const staleOffer=await c.eval(p6.sessionId,'({entry:window.__sharedYardV0FriendEntry(),stored:JSON.parse(localStorage.getItem("shared-yard-v0-actor-sessions-v1")||"{}")})');
+ result.staleOffer=staleOffer.entry;
+ assert(staleOffer.entry.directLinkResumable===false,"invalid private token was offered Resume");
+ assert(!staleOffer.stored.sessions?.[runStale],"invalid private ActorSession record was not cleared after authority rejection");
+ const staleStillLive=await c.eval(p5.sessionId,"window.__sharedYardV0Evidence()");
+ assert(staleStillLive.session.actorSessionId===staleSeed.session.actorSessionId,"invalid-token probe disturbed live authority owner");
+ await closePage(c,p6);await closePage(c,p5);
+
+ const foreignUrl=BASE+"/world-v0/?run="+runForeign+"&lifecycle=r0";
+ const p7=await page(c,foreignUrl);await enter(c,p7,"PrivateOwner");
+ const noRecordSource=`localStorage.removeItem("shared-yard-v0-actor-sessions-v1"); sessionStorage.clear();`;
+ const p8=await pageWithInit(c,foreignUrl,noRecordSource);
+ const foreignOffer=await c.eval(p8.sessionId,"window.__sharedYardV0FriendEntry()");
+ result.noLocalAuthorityOffer=foreignOffer;
+ assert(foreignOffer.directLinkResumable===false,"private link without local resume authority was offered Resume");
+ await closePage(c,p8);await closePage(c,p7);
+
  Object.assign(result,{verdict:"WORLD_V0_PRIVATE_PROFILE_REBIND_PASS",live:{session:e2.session.actorSessionId,topology:e2.lifecycle.topology.revision},closed:{session:e4.session.actorSessionId,topology:e4.lifecycle.topology.revision}});
  console.log(result.verdict,JSON.stringify(result));
- await closePage(c,p4);
 }catch(error){result.error=error instanceof Error?error.stack||error.message:String(error);console.error(result.error);process.exitCode=1;}finally{writeFileSync(OUTPUT,JSON.stringify(result,null,2));c?.close();if(child.exitCode===null)child.kill("SIGKILL");try{rmSync(profile,{recursive:true,force:true});}catch{}}

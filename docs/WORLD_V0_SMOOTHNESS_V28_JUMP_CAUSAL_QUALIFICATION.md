@@ -122,3 +122,33 @@ The next work must not silently mutate the candidate. Owner preview/deployment, 
 The broader V25 feel/jerk investigation remains open after V28; qualification of jump semantics is not a claim that the overall movement/presentation problem is solved.
 
 Do not overwrite or mutate the frozen V25 Owner candidate.
+
+
+## Exact isolated staging delivery
+
+Owner-test staging delivery completed successfully after candidate qualification.
+
+Delivery branch:
+`world-v0-smoothness-owner-delivery-v28`
+
+Delivery workflow run:
+`35281437865`
+
+Exact candidate consumed:
+`1e42dfd6bed9ea1df0451ae5e651e63be1615bf5`
+
+Cloudflare target:
+`cloudflare-multiplayer-lab-staging`
+
+Cloudflare Version ID:
+`4eade3fa-8478-4de7-8c8a-db809f1c89d3`
+
+Remote verification:
+- `world-v0/app.js`: byte-identical, SHA-256 `0ffffdea3cd3ff74d5b3962d543e36d5dd80745c557b119735598d4d158c5f01`,
+- `world-v0/entry.js`: byte-identical, SHA-256 `6f6018b7eb85d0d67d64c76c8de3e7b19106a390439463f3115632b81ca9de9e`,
+- `world-v0/build-contract.js`: byte-identical, SHA-256 `95958127dc91d107a12152d8e943adbb1562793c0d0865f19c4e8e1980d0b32a`,
+- public health endpoint: HTTP 200.
+
+The delivery workflow deliberately did **not** open `/world-v0/ws` or enter any Yard. Therefore it did not pre-touch the private Owner run identity intended for the next Owner-first test.
+
+Staging delivery status: **PASS — READY FOR OWNER-FIRST TEST**.

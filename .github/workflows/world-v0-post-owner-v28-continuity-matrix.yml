@@ -1,0 +1,172 @@
+name: World V0 post-Owner V28 continuity matrix
+
+on:
+  push:
+    branches:
+      - world-v0-post-owner-v28-hardening
+    paths:
+      - .github/workflows/world-v0-post-owner-v28-continuity-matrix.yml
+      - public/world-v0/**
+      - src/world-slice-entry.ts
+      - src/world-v0-contract.ts
+      - src/world-v0-protocol.ts
+      - src/world-v0-shared-yard.ts
+      - scripts/world-v0-ongoing-cross-page-resume-browser-audit.mjs
+      - scripts/world-v0-direct-link-resume-browser-audit.mjs
+      - scripts/world-v0-live-rebind-browser-audit.mjs
+      - scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs
+      - scripts/world-v0-soft-reservation-browser-handoff-audit.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ongoing-cross-page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npm run check
+      - name: Start runtime
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9250 > matrix-cross-wrangler.log 2>&1 &
+          echo $! > matrix-cross.pid
+          for i in {1..120}; do curl -fsS http://127.0.0.1:8787/api/ping >/dev/null && exit 0; sleep 0.25; done
+          cat matrix-cross-wrangler.log; exit 1
+      - name: Ongoing public Yard close and resume
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_ONGOING_CROSS_PAGE_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_ONGOING_CROSS_PAGE_ROOM=yard-1 \
+          MW_WORLD_V0_ONGOING_CROSS_PAGE_OUTPUT=matrix-cross.json \
+            timeout 150s node scripts/world-v0-ongoing-cross-page-resume-browser-audit.mjs | tee matrix-cross.log
+          grep -q WORLD_V0_ONGOING_CROSS_PAGE_RESUME_PASS matrix-cross.log
+      - if: always()
+        run: |
+          if [ -f matrix-cross.pid ]; then pid="$(cat matrix-cross.pid)"; kill -TERM -- "-$pid" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: v28-continuity-cross-${{ github.run_id }}
+          path: |
+            matrix-cross.json
+            matrix-cross.log
+            matrix-cross-wrangler.log
+
+  direct-and-live-rebind:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Start runtime
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9251 > matrix-rebind-wrangler.log 2>&1 &
+          echo $! > matrix-rebind.pid
+          for i in {1..120}; do curl -fsS http://127.0.0.1:8787/api/ping >/dev/null && exit 0; sleep 0.25; done
+          cat matrix-rebind-wrangler.log; exit 1
+      - name: Direct link resume
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_DIRECT_RESUME_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_DIRECT_RESUME_ROOM=yard-2 \
+          MW_WORLD_V0_DIRECT_RESUME_OUTPUT=matrix-direct.json \
+            timeout 150s node scripts/world-v0-direct-link-resume-browser-audit.mjs | tee matrix-direct.log
+          grep -q WORLD_V0_DIRECT_LINK_RESUME_PASS matrix-direct.log
+      - name: Same-profile live rebind and foreign-profile truth
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_LIVE_REBIND_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_LIVE_REBIND_ROOM=yard-3 \
+          MW_WORLD_V0_LIVE_REBIND_OUTPUT=matrix-live-rebind.json \
+            timeout 150s node scripts/world-v0-live-rebind-browser-audit.mjs | tee matrix-live-rebind.log
+          grep -q WORLD_V0_LIVE_REBIND_PASS matrix-live-rebind.log
+      - if: always()
+        run: |
+          if [ -f matrix-rebind.pid ]; then pid="$(cat matrix-rebind.pid)"; kill -TERM -- "-$pid" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: v28-continuity-rebind-${{ github.run_id }}
+          path: |
+            matrix-direct.json
+            matrix-direct.log
+            matrix-live-rebind.json
+            matrix-live-rebind.log
+            matrix-rebind-wrangler.log
+
+  directory-outage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Start runtime
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9252 > matrix-outage-wrangler.log 2>&1 &
+          echo $! > matrix-outage.pid
+          for i in {1..120}; do curl -fsS http://127.0.0.1:8787/api/ping >/dev/null && exit 0; sleep 0.25; done
+          cat matrix-outage-wrangler.log; exit 1
+      - name: Directory outage must remain fail-closed
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_DIRECT_OUTAGE_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_DIRECT_OUTAGE_ROOM=yard-2 \
+            timeout 150s node scripts/world-v0-direct-resume-directory-outage-browser-audit.mjs | tee matrix-outage.log
+          grep -q WORLD_V0_DIRECT_RESUME_DIRECTORY_OUTAGE_PASS matrix-outage.log
+      - if: always()
+        run: |
+          if [ -f matrix-outage.pid ]; then pid="$(cat matrix-outage.pid)"; kill -TERM -- "-$pid" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: v28-continuity-outage-${{ github.run_id }}
+          path: |
+            matrix-outage.log
+            matrix-outage-wrangler.log
+
+  soft-reservation-handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Start runtime
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9253 > matrix-soft-wrangler.log 2>&1 &
+          echo $! > matrix-soft.pid
+          for i in {1..120}; do curl -fsS http://127.0.0.1:8787/api/ping >/dev/null && exit 0; sleep 0.25; done
+          cat matrix-soft-wrangler.log; exit 1
+      - name: Soft reservation capacity handoff
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_SOFT_BROWSER_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_SOFT_BROWSER_ROOM=yard-3 \
+          MW_WORLD_V0_SOFT_BROWSER_OUTPUT=matrix-soft.json \
+            timeout 180s node scripts/world-v0-soft-reservation-browser-handoff-audit.mjs | tee matrix-soft.log
+          grep -q WORLD_V0_SOFT_RESERVATION_BROWSER_HANDOFF_PASS matrix-soft.log
+      - if: always()
+        run: |
+          if [ -f matrix-soft.pid ]; then pid="$(cat matrix-soft.pid)"; kill -TERM -- "-$pid" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: v28-continuity-soft-${{ github.run_id }}
+          path: |
+            matrix-soft.json
+            matrix-soft.log
+            matrix-soft-wrangler.log

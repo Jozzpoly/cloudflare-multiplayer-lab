@@ -17,6 +17,8 @@ on:
       - public/world-v0/index.html
       - public/world-v0/session-continuity.js
       - public/world-v0/build-contract.js
+      - src/world-slice-entry.ts
+      - src/world-v0-shared-yard.ts
   workflow_dispatch:
 
 permissions:

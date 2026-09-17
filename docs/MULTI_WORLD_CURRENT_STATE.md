@@ -1,6 +1,6 @@
 # Multi_World — Current State
 
-Status: **WORLD V0 ONGOING YARD + V28 HARDENING QUALIFIED / REPOSITORY CLOSEOUT IN PROGRESS**  
+Status: **WORLD V0 ONGOING YARD + V28 HARDENING QUALIFIED / CLEAN VALIDATION SPINE GREEN / MAIN INTEGRATION PENDING**  
 Grounded: **2026-09-18**
 
 This is the compact technical truth for continuation. Verify live GitHub state when exact refs, deployment state or destructive cleanup matter. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable product-intent document; the detailed evidence record for this campaign is `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md`.
@@ -163,12 +163,12 @@ Still **not** claimed:
 
 ## 9. Current execution order
 
-1. finish validation of the cleaned live validation spine on the closeout branch;
-2. update canonical docs and final archive ancestry to include the final closeout tip;
-3. integrate the cleaned product to `main` as one squash-style product consolidation rather than replaying hundreds of experimental commits;
-4. require current validation on exact integrated `main`;
-5. close or archive superseded research PR/ref surfaces only after provenance is proven;
-6. reduce live branch namespace to the deliberately retained canonical refs;
+1. extend final archive ancestry to include the frozen closeout tip;
+2. integrate the cleaned product to `main` as one squash-style product consolidation rather than replaying hundreds of experimental commits;
+3. require current validation on exact integrated `main`;
+4. close the superseded research PR after its exact head remains archive-reachable;
+5. reduce live branch namespace to `main` plus the deliberate aggregate archive;
+6. update the final repository-topology record;
 7. only then frame the next product frontier.
 
 Do **not** continue the smoothness/reliability laboratory merely for momentum. The next frontier should be chosen from Owner-visible product pressure after this closeout, not assumed from the architecture.

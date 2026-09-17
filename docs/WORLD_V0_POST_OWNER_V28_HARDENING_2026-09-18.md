@@ -307,3 +307,37 @@ The new `World V0 Current Validation` is centered on the actual current product 
 Pipeline false-green audit run `35288659803` passed on the cleaned tree.
 
 Branch-ref cleanup remains a later destructive step and is not claimed complete here.
+
+
+## 13. Final cleaned-tree qualification
+
+A second hygiene pass retired campaign-introduced jump/research apparatus that no longer belongs in the live product tree, while preserving the current falsifiers used by the validation spine. Historical research documents superseded by this closeout record were likewise removed from the live tree; all remain archive-reachable.
+
+Final closeout hygiene commit before documentation freeze:
+
+`0b42844e17d1997db44dcad2c97cce88bd0008f4`
+
+The current-validation trigger was deliberately broadened to `scripts/world-v0-*` so future World V0 test/apparatus changes cannot silently receive only syntax coverage.
+
+Exact cleaned-tree validation:
+
+`35288980392` — **SUCCESS / 8 of 8 current jobs GREEN**
+
+Covered families:
+
+- repository gate / `npm run check`;
+- Ongoing Yard product + Diagnostics + real mobile touch input;
+- private refresh + same-profile private rebound;
+- direct public Resume + live same-profile rebound / foreign-profile truth;
+- ongoing cross-page Resume + directory uncertainty;
+- soft reservation handoff + resumed-stayer recovery;
+- pending causal high-water + peer/rebase parity + real Chromium exact rebase;
+- capacity-full vs handshake-failure clarity.
+
+A first run of the same validation spine had one direct-link browser boot timeout while the other seven jobs passed. An exact-job rerun passed, and the subsequent final clean-tree run passed that job on first attempt. This is retained as an apparatus/boot flake, not normalized into a product defect.
+
+Blob-identity postflight between qualified runtime `2bb295ba583e1852337e88e89f8cb790e104f70d` and cleaned closeout `0b42844e17d1997db44dcad2c97cce88bd0008f4` was **10/10 equal** for the six runtime-sensitive hardening files, `package.json`, `package-lock.json`, `src/world-v0-protocol.ts` and `src/world-v0-contract.ts`.
+
+This establishes the closeout invariant:
+
+> cleanup changed evidence/workflow/document surfaces, not the qualified product runtime.

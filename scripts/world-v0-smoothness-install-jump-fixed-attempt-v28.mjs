@@ -10,10 +10,10 @@ function replaceExact(before, after, label) {
 }
 
 replaceExact(
-`const STRESS_MS = Number(process.env.MW_WORLD_V0_RAPID_STRESS_MS || "4000");
+`const STRESS_MS = Number(process.env.MW_WORLD_V0_RAPID_STRESS_MS || 4000);
 `,
-`const STRESS_MS = Number(process.env.MW_WORLD_V0_RAPID_STRESS_MS || "4000");
-const ATTEMPT_MS = Number(process.env.MW_WORLD_V0_RAPID_ATTEMPT_MS || "200");
+`const STRESS_MS = Number(process.env.MW_WORLD_V0_RAPID_STRESS_MS || 4000);
+const ATTEMPT_MS = Number(process.env.MW_WORLD_V0_RAPID_ATTEMPT_MS || 200);
 `,
 "fixed-attempt cadence option",
 );
@@ -24,7 +24,7 @@ replaceExact(
 `  const state = {
     attempts: [], presses: [], deliveries: [], transitions: [],
     lastSig: null, lastDeliveredSequence: 0, startedAt: performance.now(),
-    attemptIntervalMs: \${ATTEMPT_MS}, nextAttemptAt: performance.now(),
+    attemptIntervalMs: ${ATTEMPT_MS}, nextAttemptAt: performance.now(),
   };
 `,
 "rapid driver fixed-attempt state",

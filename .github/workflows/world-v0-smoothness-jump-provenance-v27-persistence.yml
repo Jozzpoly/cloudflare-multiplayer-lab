@@ -15,7 +15,11 @@ permissions:
   contents: read
 
 jobs:
-  v27-persistence:
+  persistence:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, v27]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -27,11 +31,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install V27 explicit provenance in isolated checkout
+      - name: Install V27 explicit provenance when selected
+        if: matrix.variant == 'v27'
         run: |
           set -euo pipefail
           node scripts/world-v0-smoothness-install-jump-provenance-v27.mjs | tee v27-install.log
           grep -q 'WORLD_V0_JUMP_EXPLICIT_PROVENANCE_V27_INSTALLED' v27-install.log
+
+      - name: Record baseline product selection
+        if: matrix.variant == 'baseline'
+        run: echo 'BASELINE_V25_PRODUCT_UNMODIFIED' | tee v27-install.log
 
       - name: Install qualified strict FIFO transport into persistence audit
         run: |
@@ -45,32 +54,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > v27-persistence-wrangler.log 2>&1 &
-          echo $! > v27-persistence-wrangler.pid
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > persistence-${{ matrix.variant }}-wrangler.log 2>&1 &
+          echo $! > persistence-${{ matrix.variant }}-wrangler.pid
           for i in {1..100}; do
             if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
             sleep 0.25
           done
-          cat v27-persistence-wrangler.log
+          cat persistence-${{ matrix.variant }}-wrangler.log
           exit 1
 
       - name: Run persistence and airborne semantic audit
         shell: bash
         run: |
           set -euo pipefail
-          MW_WORLD_V0_JUMP_DELIVERY_OUTPUT=v27-persistence.json \
-            timeout 180s node scripts/world-v0-jump-delivery-persistence-audit.mjs | tee v27-persistence.log
-          grep -q 'WORLD_V0_JUMP_DELIVERY_PERSISTENCE_PASS' v27-persistence.log
+          MW_WORLD_V0_JUMP_DELIVERY_OUTPUT=persistence-${{ matrix.variant }}.json \
+            timeout 180s node scripts/world-v0-jump-delivery-persistence-audit.mjs | tee persistence-${{ matrix.variant }}.log
+          grep -q 'WORLD_V0_JUMP_DELIVERY_PERSISTENCE_PASS' persistence-${{ matrix.variant }}.log
           node - <<'NODE'
           const fs = require('fs');
-          const r = JSON.parse(fs.readFileSync('v27-persistence.json','utf8'));
+          const variant = '${{ matrix.variant }}';
+          const r = JSON.parse(fs.readFileSync(`persistence-${variant}.json`,'utf8'));
           if (r.verdict !== 'WORLD_V0_JUMP_DELIVERY_PERSISTENCE_PASS') throw new Error(`bad verdict ${r.verdict}`);
           if (r.guardMismatches !== 0) throw new Error(`guard mismatches ${r.guardMismatches}`);
           if (r.proxy?.after?.transportRevision !== 'strict-fifo-single-drain-v1') throw new Error(`transport not qualified ${JSON.stringify(r.proxy?.after)}`);
           if (r.firstPress?.lastDeliveredApplied !== true) throw new Error('grounded press was not applied');
           if (r.airbornePress?.lastDeliveredApplied !== false) throw new Error('airborne press gained physical impulse');
           if (r.appliedCountFinal !== r.appliedCountBefore + 1) throw new Error('airborne press became delayed landing impulse');
-          console.log('V27_PERSISTENCE_SEMANTICS_QUALIFIED', JSON.stringify({
+          console.log('PERSISTENCE_SEMANTICS_QUALIFIED', JSON.stringify({
+            variant,
             firstPress:r.firstPress,
             airbornePress:r.airbornePress,
             serverLateBefore:r.serverLateBefore,
@@ -83,8 +94,8 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if [ -f v27-persistence-wrangler.pid ]; then
-            pid=$(cat v27-persistence-wrangler.pid)
+          if [ -f persistence-${{ matrix.variant }}-wrangler.pid ]; then
+            pid=$(cat persistence-${{ matrix.variant }}-wrangler.pid)
             kill -TERM -- "-$pid" 2>/dev/null || true
             sleep 0.5
             kill -KILL -- "-$pid" 2>/dev/null || true
@@ -105,11 +116,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: world-v0-v27-persistence-${{ github.run_id }}
+          name: world-v0-persistence-${{ matrix.variant }}-${{ github.run_id }}
           if-no-files-found: warn
           path: |
-            v27-persistence.json
-            v27-persistence.log
-            v27-persistence-wrangler.log
+            persistence-${{ matrix.variant }}.json
+            persistence-${{ matrix.variant }}.log
+            persistence-${{ matrix.variant }}-wrangler.log
             v27-install.log
             fifo-install.log

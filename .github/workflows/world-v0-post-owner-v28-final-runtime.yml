@@ -1,0 +1,162 @@
+name: World V0 post-Owner V28 final runtime qualification
+
+on:
+  push:
+    branches:
+      - world-v0-post-owner-v28-hardening
+    paths:
+      - .github/workflows/world-v0-post-owner-v28-final-runtime.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  final-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: npm ci
+
+      - name: Prove bounded runtime delta from frozen V28
+        run: |
+          set -euo pipefail
+          BASE=1e42dfd6bed9ea1df0451ae5e651e63be1615bf5
+          git merge-base --is-ancestor "$BASE" HEAD
+          git diff --exit-code "$BASE" -- package.json package-lock.json
+          git diff --name-only "$BASE" -- public/world-v0 src | sort > /tmp/runtime-delta.txt
+          cat > /tmp/runtime-expected.txt <<'EOF'
+          public/world-v0/app.js
+          public/world-v0/build-contract.js
+          public/world-v0/friend-ready.js
+          public/world-v0/keyboard-focus-guard.js
+          src/world-slice-entry.ts
+          src/world-v0-shared-yard.ts
+          EOF
+          diff -u /tmp/runtime-expected.txt /tmp/runtime-delta.txt
+          grep -q 'shared-yard-v0-browser-ui-v22-post-owner-hardening' public/world-v0/build-contract.js
+          grep -q 'function causalJumpStep(' public/world-v0/app.js
+          grep -q 'jumpCausalHighWater: this.sortedPlayers()' src/world-v0-shared-yard.ts
+          echo "POST_OWNER_RUNTIME_DELTA_BOUNDED"
+
+      - name: Full repository gate
+        run: npm run check
+
+      - name: Install persistence apparatus only
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_STRICT_FIFO_TARGET=world-v0-jump-delivery-persistence-audit.mjs \
+            node scripts/world-v0-smoothness-install-strict-fifo-delay-proxy.mjs | tee final-fifo-install.log
+          grep -q WORLD_V0_STRICT_FIFO_DELAY_PROXY_INSTALLED final-fifo-install.log
+          node scripts/world-v0-smoothness-install-jump-persistence-precondition-v28.mjs | tee final-precondition-install.log
+          grep -q WORLD_V0_JUMP_PERSISTENCE_PRECONDITION_V28_INSTALLED final-precondition-install.log
+
+      - name: Start exact hardening runtime
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9280 > final-runtime-wrangler.log 2>&1 &
+          echo $! > final-runtime.pid
+          for i in {1..120}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat final-runtime-wrangler.log
+          exit 1
+
+      - name: Requalify forced-late jump persistence
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_JUMP_DELIVERY_LOSS_DELAY_MS=700 \
+          MW_WORLD_V0_JUMP_DELIVERY_RECOVERY_DELAY_MS=45 \
+          MW_WORLD_V0_PERSISTENCE_STRESS_VARIANT=post-owner-v28 \
+          MW_WORLD_V0_PERSISTENCE_STRESS_ITERATIONS=16 \
+          MW_WORLD_V0_PERSISTENCE_STRESS_MIN_QUALIFIED=8 \
+          MW_WORLD_V0_PERSISTENCE_STRESS_OUTPUT=final-persistence.json \
+            timeout 900s node scripts/world-v0-jump-delivery-persistence-stress.mjs | tee final-persistence.log
+          node - <<'NODE'
+          const fs=require('fs');
+          const r=JSON.parse(fs.readFileSync('final-persistence.json','utf8'));
+          if (r.infrastructureFailures !== 0) throw new Error('infrastructure/exactness failures '+r.infrastructureFailures);
+          if (r.semanticDelayedLandingFailures !== 0) throw new Error('delayed landing failures '+r.semanticDelayedLandingFailures);
+          if (r.passes < 8) throw new Error('insufficient qualified '+r.passes);
+          if (r.passes + r.preconditionMisses !== 16) throw new Error('unclassified specimens');
+          if (r.campaignVerdict !== 'WORLD_V0_PERSISTENCE_STRESS_QUALIFIED_NO_DELAYED_LANDING') throw new Error(r.campaignVerdict);
+          console.log('POST_OWNER_V28_PERSISTENCE_PASS',JSON.stringify({qualified:r.passes,misses:r.preconditionMisses}));
+          NODE
+
+      - name: Requalify causal resume and authority rebase
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_PENDING_RESUME_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_PENDING_RESUME_OUTPUT=final-pending-resume.json \
+            timeout 120s node scripts/world-v0-jump-pending-resume-highwater-v28-audit.mjs | tee final-pending-resume.log
+          grep -q WORLD_V0_JUMP_PENDING_RESUME_HIGHWATER_V28_PASS final-pending-resume.log
+
+          MW_WORLD_V0_V28_PARITY_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_V28_PARITY_OUTPUT=final-peer-rebase.json \
+            timeout 120s node scripts/world-v0-jump-v28-peer-rebase-parity-audit.mjs | tee final-peer-rebase.log
+          grep -q WORLD_V0_JUMP_V28_PEER_REBASE_PARITY_PASS final-peer-rebase.log
+
+          MW_WORLD_V0_I4B_BASE=http://127.0.0.1:8787 \
+          MW_WORLD_V0_I4B_PROXY_PORT=8797 \
+          MW_WORLD_V0_I4B_OUTPUT=final-i4b-rebase.json \
+            timeout 150s node scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs | tee final-i4b-rebase.log
+          grep -q WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS final-i4b-rebase.log
+
+      - name: Final runtime verdict
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const p=JSON.parse(fs.readFileSync('final-persistence.json','utf8'));
+          const r=JSON.parse(fs.readFileSync('final-pending-resume.json','utf8'));
+          const x=JSON.parse(fs.readFileSync('final-peer-rebase.json','utf8'));
+          const b=JSON.parse(fs.readFileSync('final-i4b-rebase.json','utf8'));
+          if (r.verdict !== 'WORLD_V0_JUMP_PENDING_RESUME_HIGHWATER_V28_PASS') throw new Error(r.verdict);
+          if (x.verdict !== 'WORLD_V0_JUMP_V28_PEER_REBASE_PARITY_PASS') throw new Error(x.verdict);
+          if (b.verdict !== 'WORLD_V0_INTEGRATION_I4B_REAL_CHROMIUM_EXACT_REBASE_PASS') throw new Error(b.verdict);
+          console.log('WORLD_V0_POST_OWNER_V28_FINAL_RUNTIME_PASS',JSON.stringify({
+            head:process.env.GITHUB_SHA,
+            persistence:{qualified:p.passes,misses:p.preconditionMisses},
+            pendingResume:{sequence:r.canonical?.jumpSequence,highWater:r.resumeLastJumpSequence},
+            peerRebase:{sequence:x.sequence,watermark:x.resumed?.selfLastConsumedJumpSequence},
+            browserRebase:{gapTicks:b.gap?.gapTicks,guardMismatches:b.exactness?.guardMismatches}
+          }));
+          NODE
+
+      - name: Stop runtime and restore test apparatus
+        if: always()
+        run: |
+          set +e
+          if [ -f final-runtime.pid ]; then
+            pid="$(cat final-runtime.pid)"
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            sleep 0.5
+            kill -KILL -- "-$pid" 2>/dev/null || true
+          fi
+          git checkout -- scripts/world-v0-jump-delivery-persistence-audit.mjs
+          rm -f worker-configuration.d.ts
+          git diff --exit-code
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: world-v0-post-owner-v28-final-runtime-${{ github.run_id }}
+          path: |
+            final-persistence.json
+            final-persistence.log
+            persistence-stress-post-owner-v28-*.json
+            persistence-stress-post-owner-v28-*.log
+            final-pending-resume.json
+            final-pending-resume.log
+            final-peer-rebase.json
+            final-peer-rebase.log
+            final-i4b-rebase.json
+            final-i4b-rebase.log
+            final-runtime-wrangler.log
+            final-fifo-install.log
+            final-precondition-install.log

@@ -12,6 +12,7 @@ on:
       - scripts/world-v0-smoothness-install-jump-provenance-v27.mjs
       - scripts/world-v0-smoothness-install-jump-causal-dedupe-v28.mjs
       - scripts/world-v0-smoothness-install-jump-resume-highwater-v28.mjs
+      - scripts/world-v0-smoothness-install-jump-client-parity-v28.mjs
       - scripts/world-v0-smoothness-install-strict-fifo-delay-proxy.mjs
   workflow_dispatch:
 
@@ -29,12 +30,14 @@ jobs:
           node-version: 22
       - run: npm ci
 
-      - name: Install integrated V28 candidate
+      - name: Install integrated V28 candidate with browser replay parity
         run: |
           set -euo pipefail
           node scripts/world-v0-smoothness-install-jump-provenance-v27.mjs | tee v28-stress-v27-install.log
           node scripts/world-v0-smoothness-install-jump-causal-dedupe-v28.mjs | tee v28-stress-authority-install.log
           node scripts/world-v0-smoothness-install-jump-resume-highwater-v28.mjs | tee v28-stress-browser-install.log
+          node scripts/world-v0-smoothness-install-jump-client-parity-v28.mjs | tee v28-stress-parity-install.log
+          grep -q 'WORLD_V0_JUMP_CLIENT_CAUSAL_PARITY_V28_INSTALLED' v28-stress-parity-install.log
           npm run typecheck
 
       - name: Install qualified persistence apparatus
@@ -83,7 +86,7 @@ jobs:
           const r = JSON.parse(fs.readFileSync('v28-persistence-stress.json','utf8'));
           if (r.iterations !== 16) throw new Error(`incomplete campaign ${r.iterations}`);
           if (r.minQualified !== 8) throw new Error(`wrong qualified threshold ${r.minQualified}`);
-          if (r.infrastructureFailures !== 0) throw new Error(`apparatus/infrastructure failures ${r.infrastructureFailures}`);
+          if (r.infrastructureFailures !== 0) throw new Error(`apparatus/exactness failures ${r.infrastructureFailures}`);
           if (r.semanticDelayedLandingFailures !== 0) throw new Error(`delayed landing reproduced ${r.semanticDelayedLandingFailures} times`);
           if (r.passes < 8) throw new Error(`insufficient qualified airborne specimens ${r.passes}/16`);
           if (r.passes + r.preconditionMisses !== 16) throw new Error(`unclassified specimens ${JSON.stringify({passes:r.passes, misses:r.preconditionMisses})}`);
@@ -93,7 +96,7 @@ jobs:
             qualifiedAirborne:r.passes,
             groundedPreconditionMisses:r.preconditionMisses,
             delayedLanding:r.semanticDelayedLandingFailures,
-            infrastructure:r.infrastructureFailures,
+            exactnessOrInfrastructure:r.infrastructureFailures,
             verdict:r.campaignVerdict,
           }));
           NODE
@@ -136,5 +139,6 @@ jobs:
             v28-stress-v27-install.log
             v28-stress-authority-install.log
             v28-stress-browser-install.log
+            v28-stress-parity-install.log
             v28-stress-fifo-install.log
             v28-stress-precondition-install.log

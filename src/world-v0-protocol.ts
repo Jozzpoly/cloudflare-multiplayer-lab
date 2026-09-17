@@ -25,7 +25,8 @@ export type WorldV0TopologyIdentity = {
 };
 
 export type WorldV0InputValue = { x: number; z: number; jump?: boolean };
-export type WorldV0InputRecord = WorldV0InputValue & { targetTick: number };
+export type WorldV0InputRecord = WorldV0InputValue & { targetTick: number; jumpSequence?: number };
+type WorldV0ScheduledInput = WorldV0InputValue & { jumpSequence?: number };
 export type WorldV0InputBatch = WorldV0Identity & Partial<WorldV0TopologyIdentity> & {
   type: "world_v0_input_batch";
   batchSeq: number;
@@ -48,6 +49,7 @@ export type WorldV0RecordAcceptance = {
   x: number;
   z: number;
   jump: boolean;
+  jumpSequence?: number;
   status: WorldV0RecordStatus;
 };
 
@@ -59,6 +61,7 @@ export type WorldV0BatchAcceptance = {
 
 export type WorldV0ConsumedInput = WorldV0InputValue & {
   targetTick: number;
+  jumpSequence?: number;
   fresh: boolean;
   source: "fresh" | "held" | "lease_expired";
   missingStreak: number;
@@ -184,8 +187,16 @@ export function parseWorldV0ClientMessage(raw: string): WorldV0ClientMessage | n
     if (!isFiniteInteger(inputRecord.targetTick) || inputRecord.targetTick < 0) return null;
     if (typeof inputRecord.x !== "number" || typeof inputRecord.z !== "number") return null;
     if ("jump" in inputRecord && typeof inputRecord.jump !== "boolean") return null;
+    const jumpSequence = "jumpSequence" in inputRecord ? inputRecord.jumpSequence : undefined;
+    if (jumpSequence !== undefined && (!isFiniteInteger(jumpSequence) || jumpSequence <= 0)) return null;
     const input = normalizeWorldV0Input(inputRecord.x, inputRecord.z, inputRecord.jump === true);
-    records.push({ targetTick: inputRecord.targetTick, x: input.x, z: input.z, jump: Boolean(input.jump) });
+    records.push({
+      targetTick: inputRecord.targetTick,
+      x: input.x,
+      z: input.z,
+      jump: Boolean(input.jump),
+      ...(jumpSequence !== undefined ? { jumpSequence } : {}),
+    });
   }
 
   for (let index = 1; index < records.length; index += 1) {
@@ -195,8 +206,12 @@ export function parseWorldV0ClientMessage(raw: string): WorldV0ClientMessage | n
   return { type: "world_v0_input_batch", ...identity, ...(topology ?? {}), batchSeq: record.batchSeq, records };
 }
 
+function sameWorldV0ScheduledInput(a: WorldV0ScheduledInput, b: WorldV0ScheduledInput): boolean {
+  return sameWorldV0Input(a, b) && (a.jumpSequence ?? null) === (b.jumpSequence ?? null);
+}
+
 export class WorldV0ScheduledInputBuffer {
-  private readonly pending = new Map<number, WorldV0InputValue>();
+  private readonly pending = new Map<number, WorldV0ScheduledInput>();
   private consumed: WorldV0InputValue = { x: 0, z: 0, jump: false };
   private lastBatchSeq = 0;
   private acceptedRecords = 0;
@@ -238,18 +253,24 @@ export class WorldV0ScheduledInputBuffer {
       } else {
         const existing = this.pending.get(record.targetTick);
         if (existing) {
-          if (sameWorldV0Input(existing, { x: record.x, z: record.z, jump: Boolean(record.jump) })) {
+          if (sameWorldV0ScheduledInput(existing, {
+            x: record.x, z: record.z, jump: Boolean(record.jump), jumpSequence: record.jumpSequence,
+          })) {
             status = "duplicate_same";
             this.duplicateSameRecords += 1;
           } else {
             // I2: higher batchSeq is later authority for an unconsumed future tick.
             // Consumed history remains immutable because late is checked above.
-            this.pending.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });
+            this.pending.set(record.targetTick, {
+              x: record.x, z: record.z, jump: Boolean(record.jump), jumpSequence: record.jumpSequence,
+            });
             status = "superseded";
             this.supersededRecords += 1;
           }
         } else {
-          this.pending.set(record.targetTick, { x: record.x, z: record.z, jump: Boolean(record.jump) });
+          this.pending.set(record.targetTick, {
+            x: record.x, z: record.z, jump: Boolean(record.jump), jumpSequence: record.jumpSequence,
+          });
           status = "accepted";
           this.acceptedRecords += 1;
         }
@@ -270,7 +291,11 @@ export class WorldV0ScheduledInputBuffer {
       this.consumed = { x: pending.x, z: pending.z, jump: false };
       this.missingStreak = 0;
       this.consumedFresh += 1;
-      return { targetTick, x: pending.x, z: pending.z, jump: Boolean(pending.jump), fresh: true, source: "fresh", missingStreak: 0 };
+      return {
+        targetTick, x: pending.x, z: pending.z, jump: Boolean(pending.jump),
+        ...(Number.isInteger(pending.jumpSequence) ? { jumpSequence: pending.jumpSequence } : {}),
+        fresh: true, source: "fresh", missingStreak: 0,
+      };
     }
 
     this.consumedMissing += 1;

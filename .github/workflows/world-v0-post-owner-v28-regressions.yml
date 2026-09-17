@@ -8,6 +8,8 @@ on:
       - .github/workflows/world-v0-post-owner-v28-regressions.yml
       - scripts/world-v0-private-refresh-continuity-browser-audit.mjs
       - scripts/world-v0-diagnostic-space-gameplay-browser-audit.mjs
+      - scripts/world-v0-keyboard-focus-guard-smoke.mjs
+      - scripts/world-v0-owner-ui-focus-browser-audit.mjs
       - public/world-v0/app.js
       - public/world-v0/friend-ready.js
       - public/world-v0/keyboard-focus-guard.js

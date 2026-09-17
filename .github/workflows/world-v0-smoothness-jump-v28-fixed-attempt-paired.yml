@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/world-v0-smoothness-jump-v28-fixed-attempt-paired.yml
       - scripts/world-v0-smoothness-install-jump-fixed-attempt-v28.mjs
+      - scripts/world-v0-smoothness-install-jump-client-parity-v28.mjs
   workflow_dispatch:
 
 permissions:
@@ -72,6 +73,11 @@ jobs:
               node scripts/world-v0-smoothness-install-jump-resume-highwater-v28.mjs \
                 2>&1 | tee "$EVIDENCE/${prefix}-resume-install.log"
               test ${PIPESTATUS[0]} -eq 0 || return 92
+              node scripts/world-v0-smoothness-install-jump-client-parity-v28.mjs \
+                2>&1 | tee "$EVIDENCE/${prefix}-parity-install.log"
+              test ${PIPESTATUS[0]} -eq 0 || return 101
+              grep -q 'WORLD_V0_JUMP_CLIENT_CAUSAL_PARITY_V28_INSTALLED' "$EVIDENCE/${prefix}-parity-install.log" || return 102
+              npm run typecheck > "$EVIDENCE/${prefix}-typecheck.log" 2>&1 || return 103
             fi
 
             node scripts/world-v0-smoothness-install-strict-fifo-delay-proxy.mjs \
@@ -159,6 +165,7 @@ jobs:
               throw new Error(`${name} causal semantics failed`);
             }
             if ((r.wireInvalidCount||0)!==0) throw new Error(`${name} invalid outbound wire frames`);
+            if (r.after?.metrics?.guardMismatches > 0 || r.runtimeFailed === true) throw new Error(`${name} exactness/runtime failed`);
           }
           if (Math.abs(v27.attempts - v28.attempts) > 1) throw new Error(`attempt schedule diverged ${v27.attempts} vs ${v28.attempts}`);
           const ratio = (a,b) => Number.isFinite(a)&&Number.isFinite(b)&&b>0 ? a/b : null;

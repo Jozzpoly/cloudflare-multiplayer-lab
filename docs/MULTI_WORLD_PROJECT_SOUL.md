@@ -178,30 +178,26 @@ The project must remain operable even when a particular executor/tool is tempora
 
 ## Current stage boundary
 
-The project has now demonstrated and qualified a fixed-two-player Shared Yard baseline with:
+World V0 has now crossed two product frontiers inside the current small two-actor envelope:
 
-- one server-authoritative physical world shared by two real players;
-- responsive local browser simulation/prediction while retaining authoritative shared consequence;
-- scheduled canonical input and bounded transport-loss recovery;
-- ActorSession continuity across transport interruption;
-- qualified desktop/mobile human entry;
-- real-device Owner sanity on the final fixed-2P delivery.
+1. the earlier fixed-two-player authoritative Shared Yard established shared physical truth, responsive local embodiment, scheduled canonical input, exact state guards and bounded ActorSession recovery;
+2. the Ongoing Yard tranche then separated world lifetime from a fixed start roster far enough that one player can enter alone, immediately inhabit the physical world, and a second player can later join that same ongoing reality.
 
-That means the earlier frontier — preserving immediate local embodiment when another independently controlled player becomes a delayed physical cause — has been crossed **within the qualified fixed-2P envelope**. Do not keep treating it as the current unknown.
+The subsequent V25 -> V28 smoothness / causal-input campaign and post-Owner hardening established a stronger current baseline rather than opening a new architectural mandate. Current evidence supports causal jump identity through replay/resume/rebase, bounded recovery and reservation semantics, real desktop/mobile control, private same-profile refresh/rebound, and an Owner-accepted foreground smoothness envelope whose remaining visible impurities were below his objective threshold at the time of test.
 
-The next conceptual level is lifecycle independence:
+That means **solo -> later peer is no longer the next unknown**. Do not keep re-solving it by momentum, and do not automatically turn the reliability laboratory into the project itself.
 
-> **Can a Yard already exist as a playable physical world with one present actor, then admit a second actor into that same ongoing physical reality without treating the world's lifetime as identical to a fixed roster's lifetime?**
+The immediate stage is closure:
 
-The immediate product-facing falsifier is deliberately small:
+> **preserve the earned runtime, evidence and research; collapse experimental apparatus into a small current validation spine; make canonical docs truthful; integrate a clean product state; then choose the next product-facing frontier deliberately.**
 
-> **A player can enter a Yard alone, move and interact with the physical world immediately, wait there, and later experience another player joining that same ongoing Yard.**
+The next substantial frontier is intentionally **not predetermined here**. Plausible future pressures include a third actor, richer shared physical affordances, stronger continuity of the place beyond short sessions, or another Owner-visible need discovered through play. None of those is currently authorized merely because the substrate could support research in that direction.
 
-Use this pressure to investigate the separation:
+Before implementation resumes, ask the product question first:
 
-`world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
+> **What new shared-world experience would now teach us the most or make the Yard materially more worth inhabiting?**
 
-This is **not** authorization to build general persistence, arbitrary dynamic rosters, 3+ scalability or MMO infrastructure. The first job is to discover which assumptions in the fixed-2P lifecycle actually prevent the one-player-to-two-player experience, and falsify the smallest useful relaxation.
+Then use the existing evidence discipline to earn only the architecture that question actually requires.
 
 ---
 

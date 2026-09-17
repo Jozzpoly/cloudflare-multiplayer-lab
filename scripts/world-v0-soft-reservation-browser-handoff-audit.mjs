@@ -156,7 +156,9 @@ async function waitRoom(predicate, label, timeout = TIMEOUT_MS) {
       last = await roomDirectory();
       if (last && predicate(last)) return last;
     } catch (error) { last = { error: error instanceof Error ? error.message : String(error) }; }
-    await sleep(180);
+    // Directory observation touches all public Durable Objects. Poll sparsely enough
+    // that this test does not starve the simulation ticks whose grace it measures.
+    await sleep(500);
   }
   throw new Error(`${label} timeout: ${JSON.stringify(last)}`);
 }

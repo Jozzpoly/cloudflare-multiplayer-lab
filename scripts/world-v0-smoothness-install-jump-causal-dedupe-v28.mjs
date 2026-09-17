@@ -16,9 +16,10 @@ replaceExact(
 `,
 `  // Legacy fallback for input records without explicit causal provenance.
   previousJumpIntent: boolean;
-  // Highest explicit jump event identity seen in an accepted input batch. This is the
-  // resume allocation high-water, so even an event accepted for a future tick reserves
-  // its identity before a fresh page can reconnect and allocate another press.
+  // Highest explicit jump event identity accepted as future authority truth. This is
+  // the resume allocation high-water, so an accepted future event reserves its identity
+  // before a fresh page can reconnect and allocate another press. Rejected records do
+  // not reserve identity because they never entered the authority input timeline.
   lastSeenJumpSequence: number;
   // Highest explicit jump event identity canonically consumed in this ActorSession.
   // Advancing on canonical consumption (not on physical application) prevents a rejected
@@ -55,8 +56,14 @@ replaceExact(
       WORLD_V0_MAX_FUTURE_TICKS,
     );
     if (acceptance.batchStatus === "accepted_batch") {
-      for (const record of message.records) {
-        if (record.jump === true && typeof record.jumpSequence === "number" && Number.isInteger(record.jumpSequence)) {
+      for (const record of acceptance.records) {
+        const reservesAuthorityTruth = record.status === "accepted" || record.status === "superseded";
+        if (
+          reservesAuthorityTruth &&
+          record.jump === true &&
+          typeof record.jumpSequence === "number" &&
+          Number.isInteger(record.jumpSequence)
+        ) {
           player.lastSeenJumpSequence = Math.max(player.lastSeenJumpSequence, record.jumpSequence);
         }
       }

@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/world-v0-smoothness-jump-v28-peer-rebase-parity.yml
       - scripts/world-v0-jump-v28-peer-rebase-parity-audit.mjs
+      - scripts/world-v0-integration-i4b-chromium-rebase-audit.mjs
   workflow_dispatch:
 
 permissions:

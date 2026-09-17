@@ -445,12 +445,16 @@ function noteJumpAuthoredTick(targetTick) {
     : targetTick;
 }
 
-function noteCanonicalJumpDelivery(targetTick, jump, jumpApplied) {
+function noteCanonicalJumpDelivery(targetTick, jump, jumpApplied, jumpSequence = null) {
   if (jumpApplied && jumpDelivery.lastAppliedTick !== targetTick) {
     jumpDelivery.appliedCount += 1;
     jumpDelivery.lastAppliedTick = targetTick;
   }
-  if (jumpDelivery.pending && jump) {
+  const matchingPendingSequence = jumpDelivery.pending
+    && jump
+    && Number.isInteger(jumpSequence)
+    && jumpSequence === jumpDelivery.pendingSequence;
+  if (matchingPendingSequence) {
     jumpDelivery.pending = false;
     jumpDelivery.deliveredSequence = jumpDelivery.pendingSequence;
     jumpDelivery.pendingSequence = null;
@@ -460,6 +464,15 @@ function noteCanonicalJumpDelivery(targetTick, jump, jumpApplied) {
       sequence: jumpDelivery.deliveredSequence,
       targetTick,
       jumpApplied: Boolean(jumpApplied),
+      jumpSequence,
+      provenanceRevision: "world-v0-jump-explicit-provenance-v27",
+    });
+  } else if (jumpDelivery.pending && jump) {
+    recordLifecycle("jump-delivery-stale-provenance", {
+      pendingSequence: jumpDelivery.pendingSequence,
+      targetTick,
+      jumpSequence: Number.isInteger(jumpSequence) ? jumpSequence : null,
+      provenanceRevision: "world-v0-jump-explicit-provenance-v27",
     });
   }
   if (!jumpDelivery.pending && !jump && !jumpDelivery.edgeArmed) {
@@ -469,9 +482,6 @@ function noteCanonicalJumpDelivery(targetTick, jump, jumpApplied) {
   }
 }
 
-// I3 logical input authorship scheduler. This is deliberately a same-main-thread
-// fixed logical clock: it decouples canonical intent production from rAF while the
-// event loop is runnable, without claiming survival of a fully blocked main thread.
 function stopLogicalInputScheduler() {
   if (logicalInputTimer) clearInterval(logicalInputTimer);
   logicalInputTimer = null;
@@ -494,6 +504,8 @@ function pumpLogicalInputScheduler() {
   logicalInputPumps += 1;
   const movement = currentInput();
   const jumpIntent = jumpDelivery.pending;
+  const jumpSequence = jumpIntent ? jumpDelivery.pendingSequence : null;
+  if (jumpIntent && !Number.isInteger(jumpSequence)) throw new Error("pending jump missing sequence provenance");
   const revisions = [];
 
   for (let tick = startTick; tick <= authoredThrough; tick += 1) {
@@ -502,7 +514,8 @@ function pumpLogicalInputScheduler() {
     if (!existing) {
       const next = { x: movement.x, z: movement.z, jump: jumpIntent };
       intendedSelf.set(tick, next);
-      queueInputRecord(tick, next);
+      intendedJumpSequence.set(tick, jumpSequence);
+      queueInputRecord(tick, next, jumpSequence);
       logicalInputAuthored += 1;
       continue;
     }
@@ -515,16 +528,23 @@ function pumpLogicalInputScheduler() {
       // future true records back to false so the next press requires a new edge.
       jump: jumpIntent,
     };
-    if (sameInput(existing, next)) continue;
+    const existingJumpSequence = intendedJumpSequence.get(tick) ?? null;
+    if (sameInput(existing, next) && existingJumpSequence === jumpSequence) continue;
     intendedSelf.set(tick, next);
+    intendedJumpSequence.set(tick, jumpSequence);
 
     const unsent = pendingBatch.find((record) => record.targetTick === tick);
     if (unsent) {
       unsent.x = next.x;
       unsent.z = next.z;
       unsent.jump = Boolean(next.jump);
+      if (Number.isInteger(jumpSequence)) unsent.jumpSequence = jumpSequence;
+      else delete unsent.jumpSequence;
     } else {
-      revisions.push({ targetTick: tick, x: next.x, z: next.z, jump: Boolean(next.jump) });
+      revisions.push({
+        targetTick: tick, x: next.x, z: next.z, jump: Boolean(next.jump),
+        ...(Number.isInteger(jumpSequence) ? { jumpSequence } : {}),
+      });
       logicalInputSuperseded += 1;
     }
   }
@@ -724,10 +744,65 @@ const correctionEvents = [];
 const longFrameEvents = [];
 const lifecycleEvents = [];
 const intendedSelf = new Map();
+const intendedJumpSequence = new Map(); // V27 causal metadata; never part of physics/state guard
 const peerRemote = new Map();
 const consumedByTick = new Map();
 const usedByTick = new Map();
+const jumpCausalSeed = new Map(); // V28 discrete replay state at current history seed boundary
 const diagnosticSamples = new Map();
+
+function normalizedJumpSequence(value) {
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function adoptJumpCausalSeed(entries, phase) {
+  if (!Array.isArray(entries)) throw new Error(phase + " missing jump causal high-water");
+  const next = new Map();
+  for (const entry of entries) {
+    if (!entry || typeof entry.sessionId !== "string" || !entry.sessionId) throw new Error(phase + " invalid jump causal session");
+    if (!Number.isInteger(entry.lastConsumedJumpSequence) || entry.lastConsumedJumpSequence < 0) {
+      throw new Error(phase + " invalid jump causal high-water");
+    }
+    if (next.has(entry.sessionId)) throw new Error(phase + " duplicate jump causal session");
+    next.set(entry.sessionId, entry.lastConsumedJumpSequence);
+  }
+  jumpCausalSeed.clear();
+  for (const [sessionId, highWater] of next) jumpCausalSeed.set(sessionId, highWater);
+}
+
+function resetJumpCausalSeedFromStart(players) {
+  if (!Array.isArray(players)) throw new Error("world-start missing players for jump causal seed");
+  adoptJumpCausalSeed(players.map((player) => ({
+    sessionId: player.sessionId,
+    lastConsumedJumpSequence: 0,
+  })), "world-start");
+}
+
+function causalHighWaterBefore(previous, role, sessionId) {
+  const retained = previous?.jumpCausalHighWater?.[role];
+  if (Number.isInteger(retained) && retained >= 0) return retained;
+  return Number.isInteger(jumpCausalSeed.get(sessionId)) ? jumpCausalSeed.get(sessionId) : 0;
+}
+
+function causalJumpStep(input, previousInput, priorHighWater) {
+  const sequence = normalizedJumpSequence(input?.jumpSequence);
+  if (Boolean(input?.jump) && sequence !== null) {
+    return {
+      trigger: sequence > priorHighWater,
+      highWater: Math.max(priorHighWater, sequence),
+    };
+  }
+  // Compatibility fallback for unsequenced traffic only. V28-authored input is
+  // expected to carry explicit provenance on jump=true records.
+  return {
+    trigger: Boolean(input?.jump) && !Boolean(previousInput?.jump),
+    highWater: priorHighWater,
+  };
+}
+
+function sameResolvedInput(a, c) {
+  return sameInput(a, c) && normalizedJumpSequence(a?.jumpSequence) === normalizedJumpSequence(c?.jumpSequence);
+}
 const pendingStateGuards = new Map();
 
 const metrics = {
@@ -1427,9 +1502,11 @@ function applyAuthorityRebase(seed, bootstrapState = null) {
   const sourceBoundary = actorResume.sourceBoundary;
   destroyLocalState();
   intendedSelf.clear();
+  intendedJumpSequence.clear();
   peerRemote.clear();
   consumedByTick.clear();
   usedByTick.clear();
+  adoptJumpCausalSeed(seed.jumpCausalHighWater, "authority-rebase");
   diagnosticSamples.clear();
   pendingStateGuards.clear();
   pendingBatch = [];
@@ -1538,9 +1615,19 @@ function resolveInputsForTick(tick, previous) {
   const remoteRecord = remoteAuth || peerRemote.get(tick) || null;
   const self = selfRecord || previous.self;
   const remote = remoteRecord || previous.remote;
+  const selfSequence = selfAuth
+    ? normalizedJumpSequence(selfAuth.jumpSequence)
+    : normalizedJumpSequence(intendedJumpSequence.get(tick));
+  const remoteSequence = normalizedJumpSequence(remoteRecord?.jumpSequence);
   return {
-    self: { x: self.x, z: self.z, jump: Boolean(selfRecord?.jump) },
-    remote: { x: remote.x, z: remote.z, jump: Boolean(remoteRecord?.jump) },
+    self: {
+      x: self.x, z: self.z, jump: Boolean(selfRecord?.jump),
+      ...(selfSequence !== null ? { jumpSequence: selfSequence } : {}),
+    },
+    remote: {
+      x: remote.x, z: remote.z, jump: Boolean(remoteRecord?.jump),
+      ...(remoteSequence !== null ? { jumpSequence: remoteSequence } : {}),
+    },
   };
 }
 
@@ -1548,7 +1635,7 @@ function usedInputsChangedAt(tick) {
   const used = usedByTick.get(tick);
   if (!used) return false;
   const resolved = resolveInputsForTick(tick, previousUsedInput(tick));
-  return !sameInput(used.self, resolved.self) || !sameInput(used.remote, resolved.remote);
+  return !sameResolvedInput(used.self, resolved.self) || !sameResolvedInput(used.remote, resolved.remote);
 }
 
 function truncateUsedFrom(targetTick) {
@@ -1561,11 +1648,20 @@ function applyResolvedTick(sim, tick, allowGenerateSelf) {
   void allowGenerateSelf;
   const previous = previousUsedInput(tick);
   const resolved = resolveInputsForTick(tick, previous);
-  // Keep the raw multi-tick jump intent in usedByTick, but turn it into one physical
-  // impulse at simulation time. Replay/correction reconstructs the same rising edge.
-  const selfJumpTrigger = Boolean(resolved.self.jump) && !Boolean(previous.self.jump);
-  const remoteJumpTrigger = Boolean(resolved.remote.jump) && !Boolean(previous.remote.jump);
-  usedByTick.set(tick, { self: { ...resolved.self }, remote: { ...resolved.remote } });
+  // V28: physical jump edges are causal-event edges, not boolean edges. Keep the
+  // consumed event high-water in the replay timeline so a rewind reconstructs the
+  // same discrete state the authority used for true(seqN) -> false -> true(seqN).
+  const selfPriorHighWater = causalHighWaterBefore(previous, "self", selfSessionId);
+  const remotePriorHighWater = causalHighWaterBefore(previous, "remote", remoteSessionId);
+  const selfJump = causalJumpStep(resolved.self, previous.self, selfPriorHighWater);
+  const remoteJump = causalJumpStep(resolved.remote, previous.remote, remotePriorHighWater);
+  const selfJumpTrigger = selfJump.trigger;
+  const remoteJumpTrigger = remoteJump.trigger;
+  usedByTick.set(tick, {
+    self: { ...resolved.self },
+    remote: { ...resolved.remote },
+    jumpCausalHighWater: { self: selfJump.highWater, remote: remoteJump.highWater },
+  });
   const selfBody = sim.actorBodies.get(selfSessionId);
   if (!selfBody) throw new Error("predicted self actor mapping incomplete");
   applyIntent(selfBody, { ...resolved.self, jump: selfJumpTrigger });
@@ -1709,6 +1805,7 @@ function trimHistory() {
   localState.history.segments = kept;
   for (const tick of [...usedByTick.keys()]) if (tick < cutoff - 1) usedByTick.delete(tick);
   for (const tick of [...intendedSelf.keys()]) if (tick < cutoff - 1) intendedSelf.delete(tick);
+  for (const tick of [...intendedJumpSequence.keys()]) if (tick < cutoff - 1) intendedJumpSequence.delete(tick);
   for (const tick of [...peerRemote.keys()]) if (tick < cutoff - 1) peerRemote.delete(tick);
   for (const tick of [...consumedByTick.keys()]) if (tick < cutoff - 1) consumedByTick.delete(tick);
   updateRetainedBytes();
@@ -1918,10 +2015,13 @@ function flushPendingInputBatch() {
   }));
 }
 
-function queueInputRecord(targetTick, input) {
+function queueInputRecord(targetTick, input, jumpSequence = null) {
   const previousPending = pendingBatch[pendingBatch.length - 1];
   if (previousPending && targetTick !== previousPending.targetTick + 1) flushPendingInputBatch();
-  pendingBatch.push({ targetTick, x: input.x, z: input.z, jump: Boolean(input.jump) });
+  pendingBatch.push({
+    targetTick, x: input.x, z: input.z, jump: Boolean(input.jump),
+    ...(Number.isInteger(jumpSequence) ? { jumpSequence } : {}),
+  });
   if (pendingBatch.length >= simulation.timing.inputBatchSize) flushPendingInputBatch();
 }
 
@@ -1978,11 +2078,15 @@ function handlePeerRecords(message) {
   for (const record of message.records || []) {
     if (!Number.isInteger(record.targetTick) || !Number.isFinite(record.x) || !Number.isFinite(record.z)) continue;
     const existing = peerRemote.get(record.targetTick);
-    const next = { x: record.x, z: record.z, jump: Boolean(record.jump) };
+    const jumpSequence = normalizedJumpSequence(record.jumpSequence);
+    const next = {
+      x: record.x, z: record.z, jump: Boolean(record.jump),
+      ...(jumpSequence !== null ? { jumpSequence } : {}),
+    };
     // I2 future-intent supersession: WebSocket relay order mirrors authority batchSeq order.
     // A changed, still-correctable tick replaces the earlier prefill and reuses the existing
     // prediction correction path; identical relay data stays idempotent.
-    if (!existing || !sameInput(existing, next)) {
+    if (!existing || !sameResolvedInput(existing, next)) {
       peerRemote.set(record.targetTick, next);
       candidates.push(record.targetTick);
     }
@@ -2002,18 +2106,26 @@ function handleConsumed(message) {
       x: player.x,
       z: player.z,
       jump: Boolean(player.jump),
+      ...(normalizedJumpSequence(player.jumpSequence) !== null ? { jumpSequence: player.jumpSequence } : {}),
       jumpApplied: Boolean(player.jumpApplied),
       fresh: Boolean(player.fresh),
       source: player.source,
       missingStreak: player.missingStreak,
     };
     map.set(player.sessionId, next);
-    if (player.sessionId === selfSessionId) selfCanonical = next;
+    if (player.sessionId === selfSessionId) {
+      selfCanonical = {
+        ...next,
+        jumpSequence: Number.isInteger(player.jumpSequence) ? player.jumpSequence : null,
+      };
+    }
     if (player.source === "lease_expired") metrics.leaseExpiredSeen += 1;
   }
   consumedByTick.set(message.targetTick, map);
   if (selfCanonical) {
-    noteCanonicalJumpDelivery(message.targetTick, selfCanonical.jump, selfCanonical.jumpApplied);
+    noteCanonicalJumpDelivery(
+      message.targetTick, selfCanonical.jump, selfCanonical.jumpApplied, selfCanonical.jumpSequence ?? null,
+    );
   }
   queueCorrection([message.targetTick]);
 }
@@ -2038,6 +2150,7 @@ function handleStart(message) {
   if (lifecycleR0) adoptR0Topology(message.topology, "start");
   destroyLocalState();
   intendedSelf.clear();
+  intendedJumpSequence.clear();
   peerRemote.clear();
   consumedByTick.clear();
   usedByTick.clear();
@@ -2045,6 +2158,7 @@ function handleStart(message) {
   pendingStateGuards.clear();
   protocolStartTick = message.protocolStartTick;
   resetJumpDeliveryForFreshRun();
+  resetJumpCausalSeedFromStart(message.state?.players || []);
   buildArenaVisual(contract);
   const sim = createSimulationFromState(message.state);
   buildSpatialCues(message.state);
@@ -2086,11 +2200,16 @@ function handleMessage(message) {
       if (message.selfSessionId !== priorSessionId) throw new Error("resumed ActorSession identity drift");
       if (message.resumeToken !== priorResumeToken) throw new Error("resumed private token drift");
       if (!Number.isInteger(message.resumeLastBatchSeq) || message.resumeLastBatchSeq < 0) throw new Error("resumed batch sequence invalid");
+      if (!Number.isInteger(message.resumeLastJumpSequence) || message.resumeLastJumpSequence < 0) throw new Error("resumed jump sequence invalid");
 
       const hadLocalState = Boolean(localState?.sim);
       const resumedIntoActiveRun = Number.isInteger(message.protocolStartTick);
       if (hadLocalState && !resumedIntoActiveRun) throw new Error("active ActorSession resumed into unscheduled protocol");
       batchSeq = Math.max(batchSeq, message.resumeLastBatchSeq);
+      // Causal event identity belongs to the ActorSession, not this JS page. Authority
+      // returns the highest identity it has already seen in an accepted batch, including
+      // still-pending future inputs, so a fresh page cannot collide with in-flight truth.
+      jumpDelivery.pressSequence = Math.max(jumpDelivery.pressSequence, message.resumeLastJumpSequence);
 
       if (resumedIntoActiveRun) {
         if (!message.rebaseSeed || !Number.isInteger(message.rebaseSeed.boundaryTick)) throw new Error("active ActorSession resume missing authority rebase seed");
@@ -2737,9 +2856,11 @@ function resetProtocolState({ preserveRoomRecovery = false } = {}) {
   logicalInputSuperseded = 0;
   destroyLocalState();
   intendedSelf.clear();
+  intendedJumpSequence.clear();
   peerRemote.clear();
   consumedByTick.clear();
   usedByTick.clear();
+  jumpCausalSeed.clear();
   diagnosticSamples.clear();
   pendingStateGuards.clear();
   correctionEvents.splice(0);

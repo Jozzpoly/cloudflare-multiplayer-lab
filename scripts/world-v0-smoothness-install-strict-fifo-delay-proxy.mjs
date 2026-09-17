@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
-const path = new URL("./world-v0-smoothness-jump-rapid-repress-probe.mjs", import.meta.url);
+const targetName = process.env.MW_WORLD_V0_STRICT_FIFO_TARGET?.trim() || "world-v0-smoothness-jump-rapid-repress-probe.mjs";
+if (!/^[a-zA-Z0-9._-]+$/.test(targetName)) throw new Error(`invalid strict FIFO target: ${targetName}`);
+const path = new URL(`./${targetName}`, import.meta.url);
 let source = readFileSync(path, "utf8");
 
 const startMarker = "function createOrderedDelayProxy() {";
@@ -96,4 +98,4 @@ const replacement = `function createOrderedDelayProxy() {
 source = source.slice(0, start) + replacement + source.slice(end);
 if (!source.includes('transportRevision: "strict-fifo-single-drain-v1"')) throw new Error("strict FIFO proxy marker missing");
 writeFileSync(path, source);
-console.log("WORLD_V0_STRICT_FIFO_DELAY_PROXY_INSTALLED");
+console.log("WORLD_V0_STRICT_FIFO_DELAY_PROXY_INSTALLED", targetName);

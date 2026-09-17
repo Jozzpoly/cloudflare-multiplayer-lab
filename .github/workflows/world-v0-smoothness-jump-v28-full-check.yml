@@ -44,7 +44,8 @@ jobs:
         if: always()
         shell: bash
         run: |
-          git checkout -- public/world-v0/app.js src/world-v0-protocol.ts src/world-v0-shared-yard.ts worker-configuration.d.ts
+          git checkout -- public/world-v0/app.js src/world-v0-protocol.ts src/world-v0-shared-yard.ts
+          rm -f worker-configuration.d.ts
           git diff --exit-code
 
       - name: Upload evidence

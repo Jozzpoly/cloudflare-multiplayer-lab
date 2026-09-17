@@ -1,0 +1,97 @@
+name: World V0 post-Owner current remote motion
+
+on:
+  push:
+    branches:
+      - world-v0-post-owner-v28-hardening
+    paths:
+      - .github/workflows/world-v0-post-owner-v28-remote-motion.yml
+      - public/world-v0/app.js
+      - public/world-v0/build-contract.js
+      - src/world-v0-shared-yard.ts
+      - src/world-v0-protocol.ts
+      - scripts/world-v0-smoothness-render-discontinuity-v4-probe.mjs
+      - scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v3.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v5.mjs
+      - scripts/world-v0-smoothness-install-render-probe-v6.mjs
+      - scripts/world-v0-smoothness-v25-owner-rehearsal-analyze.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  current-remote-motion:
+    strategy:
+      fail-fast: false
+      matrix:
+        rep: [1, 2]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Install test-only presentation probes on current runtime
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-install-render-probe-v3.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v5.mjs
+          node scripts/world-v0-smoothness-install-render-probe-v6.mjs
+          node scripts/world-v0-smoothness-render-active-peer-v6-transform.mjs /tmp/post-owner-remote-motion.mjs
+          node --check public/world-v0/app.js
+          node --check /tmp/post-owner-remote-motion.mjs
+      - name: Start exact current runtime with test hooks
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9260 > remote-motion-r${{ matrix.rep }}-wrangler.log 2>&1 &
+          echo $! > remote-motion.pid
+          for i in {1..120}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat remote-motion-r${{ matrix.rep }}-wrangler.log
+          exit 1
+      - name: Characterize displayed remote motion under mutable-future pressure
+        env:
+          MW_WORLD_V0_RENDER_BASE: http://127.0.0.1:8787
+          MW_WORLD_V0_RENDER_LATENCY_MS: 90
+          MW_WORLD_V0_RENDER_STRESS_MS: 9000
+          MW_WORLD_V0_RENDER_OUTPUT: post-owner-remote-motion-r${{ matrix.rep }}.json
+        run: |
+          set -euo pipefail
+          timeout 180s node /tmp/post-owner-remote-motion.mjs | tee post-owner-remote-motion-r${{ matrix.rep }}.log
+          test -s post-owner-remote-motion-r${{ matrix.rep }}.json
+          node scripts/world-v0-smoothness-v25-owner-rehearsal-analyze.mjs \
+            post-owner-remote-motion-r${{ matrix.rep }}.json \
+            post-owner-remote-motion-r${{ matrix.rep }}-analysis.json \
+            | tee post-owner-remote-motion-r${{ matrix.rep }}-analysis.log
+          grep -q WORLD_V0_V25_DISPLAYED_MOTION_CHARACTERIZED post-owner-remote-motion-r${{ matrix.rep }}-analysis.log
+      - name: Restore test-only hooks
+        if: always()
+        run: git checkout -- public/world-v0/app.js
+      - name: Prove tracked checkout clean
+        if: always()
+        run: git diff --exit-code
+      - name: Stop runtime
+        if: always()
+        run: |
+          set +e
+          if [ -f remote-motion.pid ]; then
+            pid="$(cat remote-motion.pid)"
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            sleep 0.5
+            kill -KILL -- "-$pid" 2>/dev/null || true
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: v28-post-owner-remote-motion-r${{ matrix.rep }}-${{ github.run_id }}
+          path: |
+            post-owner-remote-motion-r${{ matrix.rep }}.json
+            post-owner-remote-motion-r${{ matrix.rep }}.log
+            post-owner-remote-motion-r${{ matrix.rep }}-analysis.json
+            post-owner-remote-motion-r${{ matrix.rep }}-analysis.log
+            remote-motion-r${{ matrix.rep }}-wrangler.log

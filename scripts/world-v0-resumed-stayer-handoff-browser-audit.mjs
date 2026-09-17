@@ -187,7 +187,13 @@ try {
   await bootDirectory(bBrowser, bPage);
 
   await enterRoom(aBrowser, aPage, "RSH-A");
-  await waitFor(aBrowser, aPage, `window.__sharedYardV0Session?.().networkState === "waiting for peer"`, "A waiting");
+  await waitFor(aBrowser, aPage, `(() => {
+    const e = window.__sharedYardV0Evidence?.();
+    return e && !e.runtimeFailed && e.lifecycle?.r0 === true &&
+      e.lifecycle?.topology?.revision === 1 && e.lifecycle.topology.actors?.length === 1 &&
+      e.presentation?.remotePresence == null && e.metrics?.guardMismatches === 0 &&
+      Number.isInteger(e.protocolStartTick) && e.localBoundaryTick >= e.protocolStartTick + 36;
+  })()`, "A live solo R0");
   await enterRoom(bBrowser, bPage, "RSH-B");
   await waitFor(aBrowser, aPage, livePredicate, "A initial live");
   await waitFor(bBrowser, bPage, livePredicate, "B initial live");

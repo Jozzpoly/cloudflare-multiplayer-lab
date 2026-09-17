@@ -73,9 +73,17 @@ type SharedYardPlayer = {
   input: WorldV0ScheduledInputBuffer;
   socket: WebSocket | null;
   resumeCount: number;
-  // Raw canonical jump intent from the previous authority tick. Physical jump is
-  // edge-triggered so a multi-tick transport-durable intent window yields one impulse.
+  // Legacy fallback for input records without explicit causal provenance.
   previousJumpIntent: boolean;
+  // Highest explicit jump event identity accepted as future authority truth. This is
+  // the resume allocation high-water, so an accepted future event reserves its identity
+  // before a fresh page can reconnect and allocate another press. Rejected records do
+  // not reserve identity because they never entered the authority input timeline.
+  lastSeenJumpSequence: number;
+  // Highest explicit jump event identity canonically consumed in this ActorSession.
+  // Advancing on canonical consumption (not on physical application) prevents a rejected
+  // airborne press from becoming a delayed landing impulse when stale truth is replayed.
+  lastConsumedJumpSequence: number;
 };
 
 type SharedYardSceneSample = {
@@ -365,6 +373,19 @@ export class SharedYardV0 extends DurableObject<Env> {
       this.protocolStartTick,
       WORLD_V0_MAX_FUTURE_TICKS,
     );
+    if (acceptance.batchStatus === "accepted_batch") {
+      for (const record of acceptance.records) {
+        const reservesAuthorityTruth = record.status === "accepted" || record.status === "superseded";
+        if (
+          reservesAuthorityTruth &&
+          record.jump === true &&
+          typeof record.jumpSequence === "number" &&
+          Number.isInteger(record.jumpSequence)
+        ) {
+          player.lastSeenJumpSequence = Math.max(player.lastSeenJumpSequence, record.jumpSequence);
+        }
+      }
+    }
     const accepted = acceptance.records.filter((record) =>
       record.status === "accepted" || record.status === "superseded"
     );
@@ -375,7 +396,10 @@ export class SharedYardV0 extends DurableObject<Env> {
         senderPlayerId: player.playerId,
         senderNetEntityId: player.netEntityId,
         batchSeq: message.batchSeq,
-        records: accepted.map(({ targetTick, x, z, jump }) => ({ targetTick, x, z, jump: Boolean(jump) })),
+        records: accepted.map(({ targetTick, x, z, jump, jumpSequence }) => ({
+          targetTick, x, z, jump: Boolean(jump),
+          ...(Number.isInteger(jumpSequence) ? { jumpSequence } : {}),
+        })),
         relayBoundaryTick: this.tick,
         serverTime: Date.now(),
         ...this.topologyEnvelope(),
@@ -476,6 +500,8 @@ export class SharedYardV0 extends DurableObject<Env> {
         socket: null,
         resumeCount: 0,
         previousJumpIntent: false,
+        lastSeenJumpSequence: 0,
+        lastConsumedJumpSequence: 0,
       };
       this.players.set(player.sessionId, player);
       if (this.lifecycleR0) {
@@ -522,6 +548,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       resumed,
       resumeCount: player.resumeCount,
       resumeLastBatchSeq: player.input.stats().lastBatchSeq,
+      resumeLastJumpSequence: player.lastSeenJumpSequence,
       rebaseSeed,
       slot: player.slot,
       waitingForPeer: !this.lifecycleR0 && this.connectedPlayerCount() < MAX_PLAYERS,
@@ -749,7 +776,24 @@ export class SharedYardV0 extends DurableObject<Env> {
         ? player.input.consume(targetTick)
         : { targetTick, x: 0, z: 0, jump: false, fresh: false, source: "held" as const, missingStreak: 0 };
       const jumpIntent = Boolean(input.jump);
-      const jumpTrigger = active && jumpIntent && !player.previousJumpIntent;
+      const jumpSequence = typeof input.jumpSequence === "number" && Number.isInteger(input.jumpSequence)
+        ? input.jumpSequence
+        : null;
+      let jumpTrigger = false;
+      if (active && jumpIntent) {
+        if (jumpSequence !== null) {
+          if (jumpSequence > player.lastConsumedJumpSequence) {
+            player.lastConsumedJumpSequence = jumpSequence;
+            player.lastSeenJumpSequence = Math.max(player.lastSeenJumpSequence, jumpSequence);
+            jumpTrigger = true;
+          }
+        } else {
+          // Compatibility fallback only. V28 browser input is expected to carry an
+          // ActorSession-wide causal sequence; unsequenced legacy traffic retains the
+          // historical boolean-edge behavior rather than silently changing semantics.
+          jumpTrigger = !player.previousJumpIntent;
+        }
+      }
       player.previousJumpIntent = active ? jumpIntent : false;
       const jumpApplied = this.applyIntent(player.body, input.x, input.z, jumpTrigger);
       consumed.push({
@@ -916,6 +960,12 @@ export class SharedYardV0 extends DurableObject<Env> {
         fnv1a32: encodeU32Hex(Number(b3.b3Bytes_Fnv1a32(bytes)) >>> 0),
         bytesBase64: encodeBytesBase64(bytes),
         stateGuard: state.stateGuard,
+        // Box3D bytes contain physical state but not the discrete causal event
+        // watermark. Rebase must seed both or later replay can manufacture a jump.
+        jumpCausalHighWater: this.sortedPlayers().map((player) => ({
+          sessionId: player.sessionId,
+          lastConsumedJumpSequence: player.lastConsumedJumpSequence,
+        })),
         ...(this.lifecycleR0 ? { topology: this.topologyPayload() } : {}),
       };
     } finally {

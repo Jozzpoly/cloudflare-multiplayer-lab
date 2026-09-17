@@ -1,0 +1,210 @@
+name: World V0 smoothness jump V28 fixed-attempt paired
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-owner-forensics-v25
+    paths:
+      - .github/workflows/world-v0-smoothness-jump-v28-fixed-attempt-paired.yml
+      - scripts/world-v0-smoothness-install-jump-fixed-attempt-v28.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixed-attempt-paired:
+    strategy:
+      fail-fast: false
+      matrix:
+        specimen: [1, 2, 3]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Prepare same-runner V27 and V28 worktrees
+        shell: bash
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../mw-v28-fixed-v27 HEAD
+          git worktree add --detach ../mw-v28-fixed-v28 HEAD
+          (cd ../mw-v28-fixed-v27 && npm ci)
+          (cd ../mw-v28-fixed-v28 && npm ci)
+          mkdir -p paired-evidence
+
+      - name: Run V27 then V28 with the same external attempt cadence
+        shell: bash
+        run: |
+          set -uo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          EVIDENCE="$ROOT/paired-evidence"
+
+          stop_runtime() {
+            local pid="${1:-}"
+            if [ -n "$pid" ]; then
+              kill -TERM -- "-$pid" 2>/dev/null || true
+              sleep 0.5
+              kill -KILL -- "-$pid" 2>/dev/null || true
+              wait "$pid" 2>/dev/null || true
+            fi
+          }
+
+          run_variant() {
+            local variant="$1"
+            local dir="$2"
+            local port="$3"
+            local prefix="v28-fixed-${{ matrix.specimen }}-${variant}"
+            local runtime_pid=""
+
+            cd "$dir"
+            node scripts/world-v0-smoothness-install-jump-provenance-v27.mjs \
+              2>&1 | tee "$EVIDENCE/${prefix}-v27-install.log"
+            test ${PIPESTATUS[0]} -eq 0 || return 90
+
+            if [ "$variant" = "v28" ]; then
+              node scripts/world-v0-smoothness-install-jump-causal-dedupe-v28.mjs \
+                2>&1 | tee "$EVIDENCE/${prefix}-authority-install.log"
+              test ${PIPESTATUS[0]} -eq 0 || return 91
+              node scripts/world-v0-smoothness-install-jump-resume-highwater-v28.mjs \
+                2>&1 | tee "$EVIDENCE/${prefix}-resume-install.log"
+              test ${PIPESTATUS[0]} -eq 0 || return 92
+            fi
+
+            node scripts/world-v0-smoothness-install-strict-fifo-delay-proxy.mjs \
+              2>&1 | tee "$EVIDENCE/${prefix}-strict-fifo.log"
+            test ${PIPESTATUS[0]} -eq 0 || return 93
+            grep -q 'WORLD_V0_STRICT_FIFO_DELAY_PROXY_INSTALLED' "$EVIDENCE/${prefix}-strict-fifo.log" || return 94
+
+            node scripts/world-v0-smoothness-install-jump-provenance-v27-rapid-witness.mjs \
+              2>&1 | tee "$EVIDENCE/${prefix}-rapid-witness.log"
+            test ${PIPESTATUS[0]} -eq 0 || return 95
+            node scripts/world-v0-smoothness-install-jump-fixed-attempt-v28.mjs \
+              2>&1 | tee "$EVIDENCE/${prefix}-fixed-attempt.log"
+            test ${PIPESTATUS[0]} -eq 0 || return 96
+            grep -q 'WORLD_V0_JUMP_FIXED_ATTEMPT_V28_INSTALLED' "$EVIDENCE/${prefix}-fixed-attempt.log" || return 97
+            node --check scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs || return 98
+
+            setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port "$port" \
+              > "$EVIDENCE/${prefix}-wrangler.log" 2>&1 &
+            runtime_pid=$!
+            local live=0
+            for i in {1..100}; do
+              if curl -fsS "http://127.0.0.1:${port}/api/ping" >/dev/null; then live=1; break; fi
+              sleep 0.25
+            done
+            if [ "$live" -ne 1 ]; then stop_runtime "$runtime_pid"; return 99; fi
+
+            set +e
+            MW_WORLD_V0_RAPID_BASE="http://127.0.0.1:${port}" \
+            MW_WORLD_V0_RAPID_MODE=v27 \
+            MW_WORLD_V0_RAPID_OUTPUT="$EVIDENCE/${prefix}.json" \
+            MW_WORLD_V0_RAPID_DELAY_MS=90 \
+            MW_WORLD_V0_RAPID_STRESS_MS=6000 \
+            MW_WORLD_V0_RAPID_ATTEMPT_MS=200 \
+              timeout 180s node scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs \
+              2>&1 | tee "$EVIDENCE/${prefix}.log"
+            local probe_status=${PIPESTATUS[0]}
+            set -e
+            printf '%s\n' "$probe_status" > "$EVIDENCE/${prefix}.status"
+
+            stop_runtime "$runtime_pid"
+            runtime_pid=""
+
+            git checkout -- \
+              public/world-v0/app.js \
+              src/world-v0-protocol.ts \
+              src/world-v0-shared-yard.ts \
+              scripts/world-v0-smoothness-jump-rapid-repress-probe.mjs
+            rm -f worker-configuration.d.ts
+            git diff --exit-code > "$EVIDENCE/${prefix}-restore-diff.log" 2>&1 || return 100
+            return 0
+          }
+
+          set +e
+          run_variant v27 "$ROOT/../mw-v28-fixed-v27" 8787
+          v27_runner=$?
+          run_variant v28 "$ROOT/../mw-v28-fixed-v28" 8788
+          v28_runner=$?
+          set -e
+          printf '%s\n' "$v27_runner" > "$EVIDENCE/v28-fixed-${{ matrix.specimen }}-v27.runner-status"
+          printf '%s\n' "$v28_runner" > "$EVIDENCE/v28-fixed-${{ matrix.specimen }}-v28.runner-status"
+
+      - name: Evaluate fixed-attempt causal responsiveness measurement
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const specimen = '${{ matrix.specimen }}';
+          const dir = 'paired-evidence';
+          const prefix = (variant) => `${dir}/v28-fixed-${specimen}-${variant}`;
+          const int = (p) => fs.existsSync(p) ? Number(fs.readFileSync(p,'utf8').trim()) : 999;
+          const json = (p) => fs.existsSync(p) ? JSON.parse(fs.readFileSync(p,'utf8')) : null;
+          const v27 = json(`${prefix('v27')}.json`);
+          const v28 = json(`${prefix('v28')}.json`);
+          const states = {
+            v27Runner:int(`${prefix('v27')}.runner-status`), v28Runner:int(`${prefix('v28')}.runner-status`),
+            v27Probe:int(`${prefix('v27')}.status`), v28Probe:int(`${prefix('v28')}.status`),
+          };
+          if (Object.values(states).some((x) => x !== 0) || !v27 || !v28) {
+            throw new Error(`paired specimen invalid ${JSON.stringify({specimen,states,v27:v27?.error,v28:v28?.error})}`);
+          }
+          for (const [name, r] of [['v27',v27],['v28',v28]]) {
+            if (r.proxy?.transportRevision !== 'strict-fifo-single-drain-v1') throw new Error(`${name} transport unqualified`);
+            if (r.attemptIntervalMs !== 200 || r.attempts < 25) throw new Error(`${name} fixed-attempt apparatus incomplete ${JSON.stringify({attempts:r.attempts,interval:r.attemptIntervalMs})}`);
+            if ((r.falseBeforeAuthorshipCount||0)!==0 || (r.outsideAuthoredRangeCount||0)!==0 || (r.canonicalProvenanceMismatchCount||0)!==0) {
+              throw new Error(`${name} causal semantics failed`);
+            }
+            if ((r.wireInvalidCount||0)!==0) throw new Error(`${name} invalid outbound wire frames`);
+          }
+          if (Math.abs(v27.attempts - v28.attempts) > 1) throw new Error(`attempt schedule diverged ${v27.attempts} vs ${v28.attempts}`);
+          const ratio = (a,b) => Number.isFinite(a)&&Number.isFinite(b)&&b>0 ? a/b : null;
+          const result = {
+            specimen,
+            status:'V28_FIXED_ATTEMPT_MEASUREMENT_VALID_NOT_PROMOTED',
+            v27:{
+              attempts:v27.attempts, accepted:v27.acceptedAttempts, acceptanceRatio:v27.acceptanceRatio,
+              deliveries:v27.deliveries, pendingRejects:v27.rejectedPendingAttempts, unarmedRejects:v27.rejectedUnarmedAttempts,
+              deliveryP50Ms:v27.deliveryLatencyP50Ms, deliveryP95Ms:v27.deliveryLatencyP95Ms,
+              corrections:v27.correctionDelta, serverLate:v27.serverLateDelta, applied:v27.appliedDelta,
+              staleProvenance:v27.staleProvenanceRejections, provenancePressure:v27.provenancePressureCount,
+            },
+            v28:{
+              attempts:v28.attempts, accepted:v28.acceptedAttempts, acceptanceRatio:v28.acceptanceRatio,
+              deliveries:v28.deliveries, pendingRejects:v28.rejectedPendingAttempts, unarmedRejects:v28.rejectedUnarmedAttempts,
+              deliveryP50Ms:v28.deliveryLatencyP50Ms, deliveryP95Ms:v28.deliveryLatencyP95Ms,
+              corrections:v28.correctionDelta, serverLate:v28.serverLateDelta, applied:v28.appliedDelta,
+              staleProvenance:v28.staleProvenanceRejections, provenancePressure:v28.provenancePressureCount,
+            },
+            ratios:{
+              accepted:ratio(v28.acceptedAttempts,v27.acceptedAttempts),
+              acceptanceRatio:ratio(v28.acceptanceRatio,v27.acceptanceRatio),
+              deliveries:ratio(v28.deliveries,v27.deliveries),
+              deliveryP50:ratio(v28.deliveryLatencyP50Ms,v27.deliveryLatencyP50Ms),
+              deliveryP95:ratio(v28.deliveryLatencyP95Ms,v27.deliveryLatencyP95Ms),
+            },
+          };
+          console.log('V28_FIXED_ATTEMPT_PAIRED_MEASUREMENT', JSON.stringify(result));
+          NODE
+
+      - name: Prove root checkout stayed canonical
+        if: always()
+        run: git diff --exit-code
+
+      - name: Upload paired evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-v28-fixed-attempt-${{ matrix.specimen }}-${{ github.run_id }}
+          if-no-files-found: error
+          path: paired-evidence/
+
+      - name: Remove worktrees
+        if: always()
+        run: |
+          git worktree remove --force ../mw-v28-fixed-v27 || true
+          git worktree remove --force ../mw-v28-fixed-v28 || true
+          git worktree prune

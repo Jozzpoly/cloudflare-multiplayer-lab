@@ -24,7 +24,7 @@ replaceExact(
 `  const state = {
     attempts: [], presses: [], deliveries: [], transitions: [],
     lastSig: null, lastDeliveredSequence: 0, startedAt: performance.now(),
-    attemptIntervalMs: ${ATTEMPT_MS}, nextAttemptAt: performance.now(),
+    attemptIntervalMs: \${ATTEMPT_MS}, nextAttemptAt: performance.now(),
   };
 `,
 "rapid driver fixed-attempt state",

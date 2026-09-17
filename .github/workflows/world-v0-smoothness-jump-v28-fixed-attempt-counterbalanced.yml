@@ -6,6 +6,7 @@ on:
       - world-v0-smoothness-owner-forensics-v25
     paths:
       - .github/workflows/world-v0-smoothness-jump-v28-fixed-attempt-counterbalanced.yml
+      - scripts/world-v0-smoothness-install-jump-fixed-attempt-v28.mjs
   workflow_dispatch:
 
 permissions:

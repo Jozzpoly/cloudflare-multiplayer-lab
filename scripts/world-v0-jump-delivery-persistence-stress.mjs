@@ -2,11 +2,18 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const iterations = Number.parseInt(process.env.MW_WORLD_V0_PERSISTENCE_STRESS_ITERATIONS || "12", 10);
+const minQualified = Number.parseInt(
+  process.env.MW_WORLD_V0_PERSISTENCE_STRESS_MIN_QUALIFIED || String(Math.min(6, iterations)),
+  10,
+);
 const variant = process.env.MW_WORLD_V0_PERSISTENCE_STRESS_VARIANT || "unknown";
 const output = process.env.MW_WORLD_V0_PERSISTENCE_STRESS_OUTPUT || `persistence-stress-${variant}.json`;
 const audit = new URL("./world-v0-jump-delivery-persistence-audit.mjs", import.meta.url).pathname;
 
 if (!Number.isInteger(iterations) || iterations < 1 || iterations > 40) throw new Error(`invalid iterations ${iterations}`);
+if (!Number.isInteger(minQualified) || minQualified < 1 || minQualified > iterations) {
+  throw new Error(`invalid minimum qualified specimens ${minQualified}/${iterations}`);
+}
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const results = [];
@@ -29,21 +36,23 @@ for (let index = 1; index <= iterations; index += 1) {
     try { evidence = JSON.parse(readFileSync(jsonPath, "utf8")); } catch {}
   }
 
+  const pass = evidence?.verdict === "WORLD_V0_JUMP_DELIVERY_PERSISTENCE_PASS" && run.status === 0;
+  const preconditionMiss = evidence?.verdict === "WORLD_V0_JUMP_DELIVERY_PERSISTENCE_PRECONDITION_MISS" && run.status === 0;
   const semanticDelayedLanding = Boolean(
-    evidence && (
+    !preconditionMiss && evidence && (
       /delayed landing impulse/i.test(evidence.error || "") ||
       (Number.isInteger(evidence.appliedCountBefore) && Number.isInteger(evidence.appliedCountFinal) &&
         evidence.appliedCountFinal !== evidence.appliedCountBefore + 1)
     )
   );
-  const pass = evidence?.verdict === "WORLD_V0_JUMP_DELIVERY_PERSISTENCE_PASS" && run.status === 0;
-  const infrastructureFailure = !pass && !semanticDelayedLanding;
+  const infrastructureFailure = !pass && !preconditionMiss && !semanticDelayedLanding;
   const row = {
     index,
     durationMs: Date.now() - startedAt,
     exitStatus: run.status,
     signal: run.signal,
     pass,
+    preconditionMiss,
     semanticDelayedLanding,
     infrastructureFailure,
     verdict: evidence?.verdict ?? null,
@@ -56,29 +65,37 @@ for (let index = 1; index <= iterations; index += 1) {
     appliedCountFinal: evidence?.appliedCountFinal ?? null,
     serverLateBefore: evidence?.serverLateBefore ?? null,
     serverLateAfter: evidence?.serverLateAfter ?? null,
-    transportRevision: evidence?.proxy?.after?.transportRevision ?? null,
+    transportRevision: evidence?.proxy?.after?.transportRevision ?? evidence?.proxy?.transportRevision ?? null,
   };
   results.push(row);
   console.log("PERSISTENCE_STRESS_ITERATION", JSON.stringify(row));
   await sleep(400);
 }
 
+const passes = results.filter((x) => x.pass).length;
+const preconditionMisses = results.filter((x) => x.preconditionMiss).length;
+const semanticDelayedLandingFailures = results.filter((x) => x.semanticDelayedLanding).length;
+const infrastructureFailures = results.filter((x) => x.infrastructureFailure).length;
 const summary = {
-  revision: "world-v0-jump-delivery-persistence-stress-v1",
+  revision: "world-v0-jump-delivery-persistence-stress-v2-qualified-airborne",
   generatedAt: new Date().toISOString(),
   variant,
   iterations,
-  passes: results.filter((x) => x.pass).length,
-  semanticDelayedLandingFailures: results.filter((x) => x.semanticDelayedLanding).length,
-  infrastructureFailures: results.filter((x) => x.infrastructureFailure).length,
-  campaignVerdict: results.some((x) => x.infrastructureFailure)
+  minQualified,
+  passes,
+  preconditionMisses,
+  semanticDelayedLandingFailures,
+  infrastructureFailures,
+  campaignVerdict: infrastructureFailures > 0
     ? "WORLD_V0_PERSISTENCE_STRESS_INVALID_INFRA_FAILURE"
-    : results.some((x) => x.semanticDelayedLanding)
+    : semanticDelayedLandingFailures > 0
       ? "WORLD_V0_PERSISTENCE_STRESS_DELAYED_LANDING_REPRODUCED"
-      : "WORLD_V0_PERSISTENCE_STRESS_NO_DELAYED_LANDING_OBSERVED",
+      : passes < minQualified
+        ? "WORLD_V0_PERSISTENCE_STRESS_INSUFFICIENT_AIRBORNE_SPECIMENS"
+        : "WORLD_V0_PERSISTENCE_STRESS_QUALIFIED_NO_DELAYED_LANDING",
   results,
 };
 writeFileSync(output, JSON.stringify(summary, null, 2));
 console.log(JSON.stringify(summary, null, 2));
 console.log(summary.campaignVerdict);
-if (summary.infrastructureFailures > 0) process.exitCode = 2;
+if (infrastructureFailures > 0 || semanticDelayedLandingFailures > 0 || passes < minQualified) process.exitCode = 2;

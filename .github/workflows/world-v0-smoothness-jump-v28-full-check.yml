@@ -9,6 +9,7 @@ on:
       - scripts/world-v0-smoothness-install-jump-provenance-v27.mjs
       - scripts/world-v0-smoothness-install-jump-causal-dedupe-v28.mjs
       - scripts/world-v0-smoothness-install-jump-resume-highwater-v28.mjs
+      - scripts/world-v0-smoothness-install-jump-client-parity-v28.mjs
   workflow_dispatch:
 
 permissions:
@@ -25,15 +26,17 @@ jobs:
           node-version: 22
       - run: npm ci
 
-      - name: Install integrated V28 candidate
+      - name: Install complete V28 candidate
         run: |
           set -euo pipefail
           node scripts/world-v0-smoothness-install-jump-provenance-v27.mjs | tee v28-full-v27-install.log
           node scripts/world-v0-smoothness-install-jump-causal-dedupe-v28.mjs | tee v28-full-authority-install.log
           node scripts/world-v0-smoothness-install-jump-resume-highwater-v28.mjs | tee v28-full-browser-install.log
+          node scripts/world-v0-smoothness-install-jump-client-parity-v28.mjs | tee v28-full-parity-install.log
           grep -q 'WORLD_V0_JUMP_EXPLICIT_PROVENANCE_V27_INSTALLED' v28-full-v27-install.log
           grep -q 'WORLD_V0_JUMP_CAUSAL_DEDUPE_V28_INSTALLED' v28-full-authority-install.log
           grep -q 'WORLD_V0_JUMP_RESUME_HIGHWATER_V28_INSTALLED' v28-full-browser-install.log
+          grep -q 'WORLD_V0_JUMP_CLIENT_CAUSAL_PARITY_V28_INSTALLED' v28-full-parity-install.log
 
       - name: Run complete repository gate
         run: |
@@ -59,3 +62,4 @@ jobs:
             v28-full-v27-install.log
             v28-full-authority-install.log
             v28-full-browser-install.log
+            v28-full-parity-install.log

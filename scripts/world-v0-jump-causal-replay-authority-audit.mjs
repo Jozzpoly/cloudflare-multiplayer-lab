@@ -1,3 +1,5 @@
+import { writeFileSync } from "node:fs";
+
 const BASE = (process.env.MW_WORLD_V0_CAUSAL_REPLAY_BASE || "http://127.0.0.1:8787").replace(/\/$/, "");
 const OUTPUT = process.env.MW_WORLD_V0_CAUSAL_REPLAY_OUTPUT || "world-v0-jump-causal-replay-authority.json";
 const EXPECT_PROVENANCE = process.env.MW_WORLD_V0_CAUSAL_EXPECT_PROVENANCE === "1";
@@ -205,10 +207,6 @@ try {
   assert(sawAirborne && airbornePeakY >= baselineY + 0.3,
     `airborne phase not proven baseline=${baselineY} peak=${airbornePeakY}`);
 
-  // Deterministic replay of stale causal truth: the same logical press identity is
-  // replayed only after the actor has physically landed. A causal authority must
-  // reject/dedupe it; the current boolean-edge authority is expected to misread it
-  // as a fresh edge after the intervening canonical false.
   const secondTick = Math.max(a.boundaryTick, landed.boundaryTick) + INPUT_LEAD;
   const replayBatch = a.sendBatch([
     { targetTick: secondTick, x: 0, z: 0, jump: true, jumpSequence: 1 },
@@ -268,18 +266,7 @@ try {
   console.error(result.error);
   process.exitCode = 1;
 } finally {
-  writeFileSyncCompat(OUTPUT, JSON.stringify(result, null, 2));
+  writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
   a.close();
   b.close();
-}
-
-function writeFileSyncCompat(path, text) {
-  // Keep this audit dependency-free and Node 22 friendly.
-  const fs = requireCompat();
-  fs.writeFileSync(path, text);
-}
-
-function requireCompat() {
-  // ESM-safe lazy bridge without adding repository dependencies.
-  return globalThis.__mwFsCompat;
 }

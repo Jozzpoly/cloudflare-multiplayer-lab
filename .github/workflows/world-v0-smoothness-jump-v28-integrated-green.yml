@@ -1,0 +1,134 @@
+name: World V0 smoothness jump V28 integrated GREEN
+
+on:
+  push:
+    branches:
+      - world-v0-smoothness-owner-forensics-v25
+    paths:
+      - .github/workflows/world-v0-smoothness-jump-v28-integrated-green.yml
+      - scripts/world-v0-jump-causal-dedupe-v28-audit.mjs
+      - scripts/world-v0-jump-resume-highwater-v28-audit.mjs
+      - scripts/world-v0-jump-provenance-v27-resume-collision-audit.mjs
+      - scripts/world-v0-smoothness-install-jump-provenance-v27.mjs
+      - scripts/world-v0-smoothness-install-jump-causal-dedupe-v28.mjs
+      - scripts/world-v0-smoothness-install-jump-resume-highwater-v28.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integrated-green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+
+      - name: Install V27 provenance substrate
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-install-jump-provenance-v27.mjs | tee v28-v27-install.log
+          grep -q 'WORLD_V0_JUMP_EXPLICIT_PROVENANCE_V27_INSTALLED' v28-v27-install.log
+
+      - name: Install V28 authority causal semantics
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-install-jump-causal-dedupe-v28.mjs | tee v28-authority-install.log
+          grep -q 'WORLD_V0_JUMP_CAUSAL_DEDUPE_V28_INSTALLED' v28-authority-install.log
+
+      - name: Install V28 browser resume high-water
+        run: |
+          set -euo pipefail
+          node scripts/world-v0-smoothness-install-jump-resume-highwater-v28.mjs | tee v28-browser-install.log
+          grep -q 'WORLD_V0_JUMP_RESUME_HIGHWATER_V28_INSTALLED' v28-browser-install.log
+          node --check scripts/world-v0-jump-resume-highwater-v28-audit.mjs
+
+      - name: Typecheck integrated candidate
+        run: npm run typecheck
+
+      - name: Start local authority runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 > v28-integrated-wrangler.log 2>&1 &
+          echo $! > v28-integrated-wrangler.pid
+          for i in {1..100}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then exit 0; fi
+            sleep 0.25
+          done
+          cat v28-integrated-wrangler.log
+          exit 1
+
+      - name: Reprove authority causal dedupe
+        shell: bash
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_V28_OUTPUT=v28-integrated-authority.json \
+            timeout 120s node scripts/world-v0-jump-causal-dedupe-v28-audit.mjs | tee v28-integrated-authority.log
+          grep -q 'WORLD_V0_JUMP_CAUSAL_DEDUPE_V28_PASS' v28-integrated-authority.log
+
+      - name: Prove cross-page ActorSession jump high-water
+        shell: bash
+        run: |
+          set -euo pipefail
+          MW_WORLD_V0_JUMP_RESUME_HIGHWATER_OUTPUT=v28-integrated-resume.json \
+            timeout 180s node scripts/world-v0-jump-resume-highwater-v28-audit.mjs | tee v28-integrated-resume.log
+          grep -q 'WORLD_V0_JUMP_RESUME_HIGHWATER_V28_PASS' v28-integrated-resume.log
+          node - <<'NODE'
+          const fs = require('fs');
+          const a = JSON.parse(fs.readFileSync('v28-integrated-authority.json','utf8'));
+          const r = JSON.parse(fs.readFileSync('v28-integrated-resume.json','utf8'));
+          if (a.verdict !== 'WORLD_V0_JUMP_CAUSAL_DEDUPE_V28_PASS') throw new Error(`authority ${a.verdict}`);
+          if (a.first?.jumpApplied !== true || a.replaySameSequence?.jumpApplied !== false || a.freshNextSequence?.jumpApplied !== true) {
+            throw new Error(`authority causal contract invalid ${JSON.stringify(a)}`);
+          }
+          if (r.verdict !== 'WORLD_V0_JUMP_RESUME_HIGHWATER_V28_PASS') throw new Error(`resume ${r.verdict}`);
+          if (r.sameActorSession !== true) throw new Error('fresh page changed ActorSession');
+          if (r.afterResume?.pressSequence !== 1) throw new Error(`resume high-water ${JSON.stringify(r.afterResume)}`);
+          if (r.secondPress?.pressSequence !== 2 || r.secondPress?.deliveredSequence !== 2) {
+            throw new Error(`next physical press identity ${JSON.stringify(r.secondPress)}`);
+          }
+          if (r.guardMismatches?.owner !== 0 || r.guardMismatches?.resumedPeer !== 0) throw new Error(`guard mismatch ${JSON.stringify(r.guardMismatches)}`);
+          console.log('V28_INTEGRATED_GREEN_QUALIFIED', JSON.stringify({
+            authority:{first:a.first,replay:a.replaySameSequence,fresh:a.freshNextSequence},
+            resume:{highWater:r.afterResume.pressSequence,next:r.secondPress.pressSequence},
+          }));
+          NODE
+
+      - name: Stop runtime
+        if: always()
+        shell: bash
+        run: |
+          if [ -f v28-integrated-wrangler.pid ]; then
+            pid=$(cat v28-integrated-wrangler.pid)
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            sleep 0.5
+            kill -KILL -- "-$pid" 2>/dev/null || true
+          fi
+
+      - name: Restore canonical product targets
+        if: always()
+        shell: bash
+        run: |
+          git checkout -- public/world-v0/app.js src/world-v0-protocol.ts src/world-v0-shared-yard.ts
+          git diff --exit-code
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: world-v0-v28-integrated-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            v28-integrated-authority.json
+            v28-integrated-authority.log
+            v28-integrated-resume.json
+            v28-integrated-resume.log
+            v28-integrated-wrangler.log
+            v28-v27-install.log
+            v28-authority-install.log
+            v28-browser-install.log

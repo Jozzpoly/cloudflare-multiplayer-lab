@@ -106,11 +106,11 @@ jobs:
           prepare_variant v28 "$V28"
 
           cd "$V27"
-          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 \
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9230 \
             > "$EVIDENCE/v27-wrangler.log" 2>&1 &
           V27_PID=$!
           cd "$V28"
-          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8788 \
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8788 --inspector-port 9231 \
             > "$EVIDENCE/v28-wrangler.log" 2>&1 &
           V28_PID=$!
           cd "$ROOT"
@@ -146,8 +146,6 @@ jobs:
             sleep 0.6
           }
 
-          # Equalize cold process/browser/runtime effects before recording any data.
-          # Warmup order is itself counterbalanced across matrix specimens.
           if [ "$PATTERN" = "ABBA" ]; then
             run_probe v27 "$V27" 8787 "warm-${SPEC}-1" 3500
             run_probe v28 "$V28" 8788 "warm-${SPEC}-2" 3500

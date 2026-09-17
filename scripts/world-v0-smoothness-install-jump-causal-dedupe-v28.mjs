@@ -43,7 +43,9 @@ replaceExact(
       const jumpApplied = this.applyIntent(player.body, input.x, input.z, jumpTrigger);
 `,
 `      const jumpIntent = Boolean(input.jump);
-      const jumpSequence = Number.isInteger(input.jumpSequence) ? input.jumpSequence : null;
+      const jumpSequence = typeof input.jumpSequence === "number" && Number.isInteger(input.jumpSequence)
+        ? input.jumpSequence
+        : null;
       let jumpTrigger = false;
       if (active && jumpIntent) {
         if (jumpSequence !== null) {

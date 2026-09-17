@@ -2,7 +2,7 @@
 
 Date: 2026-09-17
 
-Status: **QUALIFIED FOR MATERIALIZATION — NOT YET OWNER-PROMOTED**
+Status: **MATERIALIZED OWNER-TEST CANDIDATE QUALIFIED — NOT YET OWNER-APPROVED**
 
 ## Scope
 
@@ -88,14 +88,37 @@ This qualification does **not** prove that V28 removes the broader remaining V25
 
 The qualification also does not claim remote Cloudflare placement behavior, process-loss reconstruction, cross-build replay, or mobile-browser behavior beyond the gates already covered elsewhere.
 
+## Materialized candidate qualification
+
+Branch:
+
+`world-v0-smoothness-owner-candidate-v28`
+
+Exact validated head:
+
+`1e42dfd6bed9ea1df0451ae5e651e63be1615bf5`
+
+Materialized-candidate workflow run `35280794973`: PASS.
+
+This run used the committed V28 runtime directly; it did not install V27/V28 product patches at runtime.
+
+- full repository gate: PASS,
+- forced-late persistence: 16/16 qualified, 0 precondition misses, 0 delayed landing, 0 exactness/infrastructure failures,
+- pending-resume causal identity: sequence 7 / resume high-water 7,
+- peer causal relay + authority rebase watermark: sequence 41 / watermark 41,
+- real Chromium authority rebase: 177-tick gap / 0 guard mismatches,
+- persistence test-only apparatus restored to a clean candidate checkout.
+
+The exact head above is now frozen for Owner testing. Do not commit further changes to that branch unless the qualification is intentionally invalidated and repeated.
+
 ## Decision
 
-**V28 jump-causal tranche: PASS for materialization.**
+**V28 jump-causal tranche: PASS.**
 
-Next gate:
+**V28 materialized Owner-test candidate: QUALIFIED, not yet Owner-approved.**
 
-1. materialize the complete V28 runtime onto a new candidate branch,
-2. run validation against the materialized files without relying on the V28 runtime installers,
-3. only after that consider the branch an Owner-test candidate.
+The next work must not silently mutate the candidate. Owner preview/deployment, if used, should consume exact `1e42dfd6bed9ea1df0451ae5e651e63be1615bf5`.
+
+The broader V25 feel/jerk investigation remains open after V28; qualification of jump semantics is not a claim that the overall movement/presentation problem is solved.
 
 Do not overwrite or mutate the frozen V25 Owner candidate.

@@ -1,4 +1,4 @@
-export const WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION = "world-v0-keyboard-focus-guard-v2-semantic-ownership";
+export const WORLD_V0_KEYBOARD_FOCUS_GUARD_REVISION = "world-v0-keyboard-focus-guard-v3-gameplay-space-passthrough";
 
 const EDITABLE_UI_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 const ACTION_UI_TAGS = new Set(["BUTTON", "SUMMARY", "A"]);
@@ -23,7 +23,20 @@ export function worldV0UiOwnsKeyboard(target) {
   return uiKeyboardOwner(target) !== null;
 }
 
+function gameplaySpacePassthrough(target, event = {}) {
+  const code = String(event.code || "");
+  const key = String(event.key || "");
+  if (code !== "Space" && key !== " ") return false;
+  let current = target;
+  while (current && typeof current === "object") {
+    if (String(current.getAttribute?.("data-gameplay-space-passthrough") || "").toLowerCase() === "true") return true;
+    current = current.parentElement || null;
+  }
+  return false;
+}
+
 export function worldV0UiOwnsGameplayKey(target, event = {}) {
+  if (gameplaySpacePassthrough(target, event)) return false;
   const owner = uiKeyboardOwner(target);
   if (owner === "editable") return true;
   if (owner !== "action") return false;
@@ -39,6 +52,13 @@ export function worldV0UiOwnsGameplayKey(target, event = {}) {
 export function installWorldV0KeyboardFocusGuard(root) {
   if (!root?.addEventListener) throw new Error("World V0 keyboard focus guard requires an event target");
   const guard = (event) => {
+    if (gameplaySpacePassthrough(event.target, event)) {
+      // Diagnostics is mouse/Enter-toggleable UI inside a game. Once focused, Space
+      // must remain the jump key instead of toggling <details>. Prevent only the native
+      // summary activation and deliberately let the event continue to gameplay.
+      event.preventDefault();
+      return;
+    }
     if (!worldV0UiOwnsGameplayKey(event.target, event)) return;
     // Do not prevent the browser default. UI keeps its native editing/activation;
     // only later window-level gameplay listeners are suppressed for that key.

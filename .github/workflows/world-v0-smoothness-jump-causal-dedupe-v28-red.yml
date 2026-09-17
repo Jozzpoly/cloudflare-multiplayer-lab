@@ -47,9 +47,11 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          set +e
           MW_WORLD_V0_V28_OUTPUT=v28-red.json \
             timeout 120s node scripts/world-v0-jump-causal-dedupe-v28-audit.mjs > v28-red.log 2>&1
           status=$?
+          set -e
           cat v28-red.log
           if [ "$status" -eq 0 ]; then
             echo 'V28 desired contract unexpectedly passed on V27'

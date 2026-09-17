@@ -1,11 +1,6 @@
-name: World V0 ongoing Yard staging
+name: World V0 staging delivery
 
 on:
-  push:
-    branches:
-      - world-v0-ongoing-yard
-    paths:
-      - .github/workflows/world-v0-ongoing-yard-staging.yml
   workflow_dispatch:
 
 permissions:
@@ -36,7 +31,7 @@ jobs:
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$GITHUB_SHA"
-          echo "ONGOING_YARD_EXACT_HEAD=$actual"
+          echo "WORLD_V0_STAGING_EXACT_HEAD=$actual"
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -132,7 +127,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: world-v0-ongoing-yard-staging-${{ github.run_id }}
+          name: world-v0-staging-delivery-${{ github.run_id }}
           if-no-files-found: ignore
           path: |
             world-v0-ongoing-yard-staging.json

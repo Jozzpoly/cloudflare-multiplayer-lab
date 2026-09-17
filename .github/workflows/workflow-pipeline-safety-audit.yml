@@ -3,7 +3,8 @@ name: Workflow pipeline false-green audit
 on:
   push:
     branches:
-      - world-v0-smoothness-reliability-campaign
+      - main
+      - world-v0-post-owner-v28-closeout
     paths:
       - .github/workflows/**
       - scripts/workflow-pipeline-safety-audit.mjs

@@ -13,8 +13,13 @@ permissions:
 
 jobs:
   diagnose:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        lead: [8, 10, 12]
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -36,8 +41,11 @@ jobs:
           done
           cat mf6-bootstrap-workerd.log
           exit 1
-      - name: Diagnose L8 L10 L12 cold browser bootstrap
-        run: node scripts/mf6-input-lead-bootstrap-diagnostic.mjs | tee mf6-bootstrap-diagnostic.log
+      - name: Diagnose cold browser bootstrap
+        env:
+          MF6_BOOTSTRAP_LEADS: "${{ matrix.lead }}"
+          MF6_BOOTSTRAP_OUTPUT: "mf6-bootstrap-diagnostic-${{ matrix.lead }}.json"
+        run: node scripts/mf6-input-lead-bootstrap-diagnostic.mjs | tee "mf6-bootstrap-diagnostic-${{ matrix.lead }}.log"
       - name: Stop isolated authority
         if: always()
         shell: bash
@@ -49,9 +57,9 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: mf6-input-lead-bootstrap-diagnostic-${{ github.run_id }}
+          name: mf6-input-lead-bootstrap-${{ matrix.lead }}-${{ github.run_id }}
           if-no-files-found: ignore
           path: |
-            mf6-bootstrap-diagnostic.json
-            mf6-bootstrap-diagnostic.log
+            mf6-bootstrap-diagnostic-*.json
+            mf6-bootstrap-diagnostic-*.log
             mf6-bootstrap-workerd.log

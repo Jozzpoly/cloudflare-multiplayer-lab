@@ -161,8 +161,12 @@ async function runLead(lead,index){
   }
 }
 
+const requestedLeads=(process.env.MF6_BOOTSTRAP_LEADS||"8,10,12")
+  .split(",")
+  .map(value=>Number(value.trim()))
+  .filter(Number.isFinite);
 const results=[];
-for(const [index,lead] of [8,10,12].entries()){
+for(const [index,lead] of requestedLeads.entries()){
   results.push(await runLead(lead,index));
 }
 const output={

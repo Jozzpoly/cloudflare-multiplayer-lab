@@ -10,6 +10,12 @@ const RUN = process.env.MW_MF6_LATENCY_RUN || `m6l-${Date.now().toString(36)}`;
 const OUTPUT = process.env.MW_MF6_LATENCY_OUTPUT || "mf6-browser-latency-jitter.json";
 const PROXY_PORT = Number(process.env.MW_MF6_LATENCY_PROXY_PORT || 8792);
 const PAGE_BASE = `http://127.0.0.1:${PROXY_PORT}`;
+const INPUT_LEAD_PROBE_RAW = process.env.MW_MF6_INPUT_LEAD_PROBE?.trim() || "";
+const INPUT_LEAD_PROBE = INPUT_LEAD_PROBE_RAW === "" ? null : Number(INPUT_LEAD_PROBE_RAW);
+if (INPUT_LEAD_PROBE !== null &&
+    (!Number.isInteger(INPUT_LEAD_PROBE) || INPUT_LEAD_PROBE < 1 || INPUT_LEAD_PROBE > 32)) {
+  throw new Error(`invalid MW_MF6_INPUT_LEAD_PROBE ${INPUT_LEAD_PROBE_RAW}`);
+}
 const DEBUG_PORT = 9400;
 const TIMEOUT_MS = 45_000;
 const EXPECTED_ACTORS = 6;
@@ -242,7 +248,12 @@ const proxy = createShapedTcpProxy({ target: BASE, port: PROXY_PORT, seed: 0x5f3
 let chrome = null;
 let cdp = null;
 let browserSession = null;
-const result = { verdict: "MF6_V28_BROWSER_LATENCY_JITTER_FAIL", run: RUN, generatedAt: new Date().toISOString() };
+const result = {
+  verdict: "MF6_V28_BROWSER_LATENCY_JITTER_FAIL",
+  run: RUN,
+  generatedAt: new Date().toISOString(),
+  requestedInputLeadProbeTicks: INPUT_LEAD_PROBE,
+};
 let lastModerateDiagnostic = null;
 let lastHostileDiagnostic = null;
 
@@ -271,8 +282,12 @@ try {
 
   cdp = new Cdp(await waitDebugger());
   await cdp.opened;
-  const pageUrl = `${PAGE_BASE}/world-v0/?run=${encodeURIComponent(RUN)}&lifecycle=mf6&player=mf6-browser`;
-  const { targetId } = await cdp.call("Target.createTarget", { url: pageUrl });
+  const pageUrl = new URL(`${PAGE_BASE}/world-v0/`);
+  pageUrl.searchParams.set("run", RUN);
+  pageUrl.searchParams.set("lifecycle", "mf6");
+  pageUrl.searchParams.set("player", "mf6-browser");
+  if (INPUT_LEAD_PROBE !== null) pageUrl.searchParams.set("mf6InputLeadProbe", String(INPUT_LEAD_PROBE));
+  const { targetId } = await cdp.call("Target.createTarget", { url: pageUrl.toString() });
   ({ sessionId: browserSession } = await cdp.call("Target.attachToTarget", { targetId, flatten: true }));
   await cdp.call("Runtime.enable", {}, browserSession);
   await cdp.call("Page.enable", {}, browserSession);
@@ -302,6 +317,15 @@ try {
   );
   assert(before.session?.selfNetEntityId === "actor:5", `browser identity ${before.session?.selfNetEntityId}`);
   assert(before.livePhysics.netEntityOrder.length === 18, "browser six-actor entity order mismatch");
+  const expectedInputLead = INPUT_LEAD_PROBE ?? before.inputScheduler?.contractInputLeadTicks;
+  assert(
+    before.inputScheduler?.inputLeadTicks === expectedInputLead,
+    `browser effective input lead ${before.inputScheduler?.inputLeadTicks}, expected ${expectedInputLead}`,
+  );
+  assert(
+    before.inputScheduler?.simulationLeadTicks === 2,
+    `browser simulation lead drift ${before.inputScheduler?.simulationLeadTicks}`,
+  );
 
   const tracked = rawPeers[0];
   const second = rawPeers[1];

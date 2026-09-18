@@ -101,6 +101,14 @@ const lifecycleMode = urlParams.get("lifecycle") === "mf6"
   : (urlParams.get("lifecycle") === "r0" ? "r0" : "fixed-2p");
 const lifecycleMf6 = lifecycleMode === "mf6";
 const lifecycleR0 = lifecycleMode !== "fixed-2p"; // WORLD_V0_LIFECYCLE_R0_BROWSER_V1
+// Diagnostic-only Multiplayer Foundation probe. It is inert outside lifecycle=mf6
+// and never mutates the authority-advertised simulation contract.
+const mf6InputLeadProbeRaw = lifecycleMf6 ? urlParams.get("mf6InputLeadProbe") : null;
+const mf6InputLeadProbe = mf6InputLeadProbeRaw === null ? null : Number(mf6InputLeadProbeRaw);
+if (mf6InputLeadProbe !== null &&
+    (!Number.isInteger(mf6InputLeadProbe) || mf6InputLeadProbe < 1 || mf6InputLeadProbe > 32)) {
+  throw new Error(`invalid mf6InputLeadProbe ${mf6InputLeadProbeRaw}`);
+}
 const storedCallsign = localStorage.getItem("shared-yard-v0-callsign") || "";
 const storedRun = localStorage.getItem("shared-yard-v0-run") || "";
 const randomRun = `yard-${Math.random().toString(36).slice(2, 8)}`;
@@ -492,6 +500,16 @@ function stopLogicalInputScheduler() {
   logicalInputTimer = null;
 }
 
+function effectiveInputAuthorshipLeadTicks() {
+  const contractLead = simulation?.timing?.predictionLeadTicks ?? null;
+  if (!Number.isInteger(contractLead) || mf6InputLeadProbe === null) return contractLead;
+  const maxFutureTicks = simulation?.timing?.maxFutureTicks;
+  if (!Number.isInteger(maxFutureTicks) || mf6InputLeadProbe > maxFutureTicks) {
+    throw new Error(`mf6 input lead probe ${mf6InputLeadProbe} exceeds maxFutureTicks ${maxFutureTicks}`);
+  }
+  return mf6InputLeadProbe;
+}
+
 function pumpLogicalInputScheduler() {
   if (!playing || runtimeFailed || !simulation || protocolStartTick === null || !phaseAnchor) return;
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
@@ -503,7 +521,8 @@ function pumpLogicalInputScheduler() {
   // consume that boundary while the batch is in transport. Prediction horizon is
   // intentionally unchanged; this only removes the unsafe front edge.
   const startTick = Math.max(protocolStartTick, Math.floor(estimate) + 1);
-  const authoredThrough = Math.floor(estimate + simulation.timing.predictionLeadTicks) - 1;
+  const inputAuthorshipLeadTicks = effectiveInputAuthorshipLeadTicks();
+  const authoredThrough = Math.floor(estimate + inputAuthorshipLeadTicks) - 1;
   if (authoredThrough < startTick) return;
 
   logicalInputPumps += 1;
@@ -2813,7 +2832,10 @@ function buildEvidence() {
       authored: logicalInputAuthored,
       superseded: logicalInputSuperseded,
       cadenceMs: STEP_MS,
-      inputLeadTicks: simulation?.timing?.predictionLeadTicks ?? null,
+      contractInputLeadTicks: simulation?.timing?.predictionLeadTicks ?? null,
+      inputLeadTicks: effectiveInputAuthorshipLeadTicks(),
+      inputLeadProbeTicks: mf6InputLeadProbe,
+      inputLeadProbeRevision: "mf6-input-authorship-lead-probe-v1",
       simulationLeadTicks: simulation?.timing?.clientSimulationLeadTicks ?? null,
       ownsCanonicalAuthorship: true,
       jumpDelivery: { ...jumpDelivery },

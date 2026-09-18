@@ -17,6 +17,7 @@ on:
       - scripts/multiplayer-foundation-v2-v28-browser-active-churn-composition.mjs
       - scripts/multiplayer-foundation-v2-v28-browser-active-impairment.mjs
       - scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs
+      - scripts/multiplayer-foundation-v2-v28-input-lead-discriminator.mjs
       - scripts/multiplayer-foundation-v2-blocking-tcp-proxy.mjs
       - scripts/multiplayer-foundation-v2-shaped-tcp-proxy.mjs
       - scripts/multiplayer-foundation-v2-transport-proxy.mjs
@@ -114,17 +115,36 @@ jobs:
           timeout 180s node scripts/multiplayer-foundation-v2-v28-browser-active-impairment.mjs | tee mf6-browser-active-impairment.log
           grep -q MF6_V28_BROWSER_ACTIVE_IMPAIRMENT_PASS mf6-browser-active-impairment.log
 
-      - name: Qualify active N-peer latency jitter
+      - name: Discriminate active N-peer input-authorship horizon under latency jitter
         env:
           MW_MF6_LATENCY_BASE: http://127.0.0.1:8787
-          MW_MF6_LATENCY_RUN: m6l${{ github.run_id }}
-          MW_MF6_LATENCY_OUTPUT: mf6-browser-latency-jitter.json
-          MW_MF6_LATENCY_PROXY_PORT: 8792
         shell: bash
         run: |
           set -euo pipefail
-          timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs | tee mf6-browser-latency-jitter.log
-          grep -q MF6_V28_BROWSER_LATENCY_JITTER_PASS mf6-browser-latency-jitter.log
+          set +e
+          MW_MF6_LATENCY_RUN=m6l8${{ github.run_id }} \
+          MW_MF6_LATENCY_OUTPUT=mf6-browser-latency-jitter-l8.json \
+          MW_MF6_LATENCY_PROXY_PORT=8792 \
+            timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs \
+            | tee mf6-browser-latency-jitter-l8.log
+          l8_status=${PIPESTATUS[0]}
+
+          MW_MF6_LATENCY_RUN=m6l12${{ github.run_id }} \
+          MW_MF6_LATENCY_OUTPUT=mf6-browser-latency-jitter-l12.json \
+          MW_MF6_LATENCY_PROXY_PORT=8792 \
+          MW_MF6_INPUT_LEAD_PROBE=12 \
+            timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs \
+            | tee mf6-browser-latency-jitter-l12.log
+          l12_status=${PIPESTATUS[0]}
+          set -e
+
+          echo "L8_SCRIPT_STATUS=${l8_status}"
+          echo "L12_SCRIPT_STATUS=${l12_status}"
+          node scripts/multiplayer-foundation-v2-v28-input-lead-discriminator.mjs \
+            mf6-browser-latency-jitter-l8.json \
+            mf6-browser-latency-jitter-l12.json \
+            mf6-input-lead-discriminator.json \
+            | tee mf6-input-lead-discriminator.log
 
       - name: Stop isolated authority
         if: always()
@@ -150,6 +170,10 @@ jobs:
             mf6-browser-active-churn-composition.json
             mf6-browser-active-impairment.log
             mf6-browser-active-impairment.json
-            mf6-browser-latency-jitter.log
-            mf6-browser-latency-jitter.json
+            mf6-browser-latency-jitter-l8.log
+            mf6-browser-latency-jitter-l8.json
+            mf6-browser-latency-jitter-l12.log
+            mf6-browser-latency-jitter-l12.json
+            mf6-input-lead-discriminator.log
+            mf6-input-lead-discriminator.json
             mf6-workerd.log

@@ -1,20 +1,20 @@
 # Multi_World — Takeover Index
 
-Status: **POST-CLOSEOUT PRODUCT FRONTIER ENTRYPOINT — VERIFY LIVE**  
+Status: **POST-CLOSEOUT MULTIPLAYER FOUNDATION ENTRYPOINT — VERIFY LIVE**  
 Updated: **2026-09-18**
 
 A fresh continuation should start from the compact current spine below. Do **not** reconstruct the retired research branch forest unless a concrete historical or recovery question requires it.
 
 ## Canonical reading order
 
-1. `MULTI_WORLD_PROJECT_SOUL.md` — durable product intent and decision pressures.
+1. `MULTI_WORLD_PROJECT_SOUL.md` — durable multiplayer-technology mission and decision pressures.
 2. `MULTI_WORLD_CURRENT_STATE.md` — compact current technical/project truth.
 3. `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md` — detailed evidence and closeout record for the current baseline.
 4. GitHub issue #8 — detailed historical campaign checkpoints only when a specific provenance question requires them.
 5. Aggregate archive `archive/multi-world-history-2026-09-18` — machine recovery root for retired branch history.
 6. Earlier 2026-09-10 safe-stop/cleanup documents and issue #41 — historical cleanup provenance, not current startup authority.
 
-## Current product authority
+## Current qualified runtime authority
 
 Qualified runtime:
 
@@ -32,7 +32,7 @@ Cloudflare staging Version:
 
 `3aeb983f-e876-404c-b0bd-245f84c5acfb`
 
-The current product is the **Ongoing Yard + V28 post-Owner hardening** baseline: one player can enter alone and inhabit the physical Yard, a second player can later join the same ongoing world, and the bounded two-actor continuity/recovery/causal-input contracts remain defended.
+The current multiplayer regression/test baseline is **Ongoing Yard + V28 post-Owner hardening**: one player can enter alone and inhabit the physical Yard, a second player can later join the same ongoing world, and the bounded two-actor continuity/recovery/causal-input contracts remain defended.
 
 Product consolidation entered `main` at:
 
@@ -78,15 +78,29 @@ Historical experiment workflows and one-shot materializers remain in Git history
 
 ## Current action
 
-**Do not open another reliability ladder by momentum.**
+**Multi_World is a multiplayer-technology lab. Multiplayer systems are the primary product of this repository.**
 
-Repository closure is complete. The next substantial task is to return to the product question:
+Do not invent gameplay/content feature work as the next frontier. The Shared Yard is a test crucible.
 
-> **What new shared-world experience would now teach us the most or make the Yard materially more worth inhabiting?**
+Repository closeout is complete. The next substantial continuation is to re-ground the archived **Multiplayer Foundation v1** research and continue the already accepted technical direction toward **1–6 dynamic actors**, with emphasis on:
 
-Candidate pressures may include a third actor, richer shared physical affordances, stronger continuity of the place beyond short sessions, or something else exposed by direct Owner/friend play. These are candidates, not a predetermined roadmap.
+- dynamic join/leave and roster mutation;
+- real authority/process recovery;
+- shared active physics;
+- network impairment;
+- browser/mobile lifecycle;
+- browser self+N;
+- bounded fault/load behavior;
+- interest management only when earned by measured pressure;
+- machine evidence followed by real 3–6-human qualification.
 
-Use the existing evidence discipline only after the next product-facing question is chosen. Architecture must be earned by that question rather than becoming the project itself.
+Historical project context indicates that the pre-closeout foundation research already demonstrated part of this territory, including dynamic-actor authority and durable recovery experiments. Treat those as archived evidence to verify, not as permission to rebuild them from scratch.
+
+The immediate question is therefore:
+
+> **What is the next unresolved multiplayer-foundation capability or failure boundary after reconciling the archived 1–6 research with the current qualified Ongoing Yard baseline?**
+
+Architecture is earned by multiplayer evidence. Gameplay additions are out of scope unless they are the minimum test surface required for a specific multiplayer falsifier.
 
 ## Persistent nonclaims
 

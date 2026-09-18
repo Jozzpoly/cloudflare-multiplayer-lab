@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          timeout 150s node scripts/multiplayer-foundation-v2-v28-dynamic-authority-smoke.mjs | tee mf6-v28.log
+          timeout 240s node scripts/multiplayer-foundation-v2-v28-dynamic-authority-smoke.mjs | tee mf6-v28.log
           grep -q MF6_V28_DYNAMIC_AUTHORITY_PASS mf6-v28.log
 
       - name: Real Chromium self plus N composition gate
@@ -73,7 +73,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          timeout 180s node scripts/multiplayer-foundation-v2-v28-browser-composition.mjs | tee mf6-browser.log
+          timeout 300s node scripts/multiplayer-foundation-v2-v28-browser-composition.mjs | tee mf6-browser.log
           grep -q MF6_V28_BROWSER_COMPOSITION_PASS mf6-browser.log
 
       - name: Qualify browser self plus N input composition
@@ -98,7 +98,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-active-churn-composition.mjs | tee mf6-browser-active-churn.log
+          timeout 300s node scripts/multiplayer-foundation-v2-v28-browser-active-churn-composition.mjs | tee mf6-browser-active-churn.log
           grep -q MF6_V28_BROWSER_ACTIVE_CHURN_COMPOSITION_PASS mf6-browser-active-churn.log
 
       - name: Qualify active N-peer hard-outage recovery

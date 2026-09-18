@@ -1,104 +1,102 @@
 # Multi_World — Takeover Index
 
-Status: **TERMINAL REPOSITORY CLOSURE ENTRYPOINT — VERIFY LIVE**  
-Updated: **2026-09-10**
+Status: **POST-CLOSEOUT PRODUCT FRONTIER ENTRYPOINT — VERIFY LIVE**  
+Updated: **2026-09-18**
 
-A fresh continuation should start from the compact canonical spine below. Do not reconstruct the retired branch forest unless a concrete recovery or historical question requires it.
+A fresh continuation should start from the compact current spine below. Do **not** reconstruct the retired research branch forest unless a concrete historical or recovery question requires it.
 
 ## Canonical reading order
 
-1. `MULTI_WORLD_PROJECT_SOUL.md` — durable product intent; unchanged by cleanup.
-2. `MULTI_WORLD_CURRENT_STATE.md` — current technical/project truth.
-3. `WORLD_V0_SAFE_STOP_2026-09-10.md` — cleanup/recovery contract and terminal-closure boundary.
-4. `WORLD_V0_QUALIFIED_BASELINE_GATE.md` — final World V0 qualification record.
-5. GitHub issue #41 — destructive authorization, cleanup execution, donor red-team and closure evidence.
-6. Aggregate recovery archive `archive/repository-cleanup-v3-2026-09-10` — exact machine recovery plus final semantic index once terminal preparation completes.
-7. GitHub issue #8 — detailed historical checkpoints only when needed.
+1. `MULTI_WORLD_PROJECT_SOUL.md` — durable product intent and decision pressures.
+2. `MULTI_WORLD_CURRENT_STATE.md` — compact current technical/project truth.
+3. `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md` — detailed evidence and closeout record for the current baseline.
+4. GitHub issue #8 — detailed historical campaign checkpoints only when a specific provenance question requires them.
+5. Aggregate archive `archive/multi-world-history-2026-09-18` — machine recovery root for retired branch history.
+6. Earlier 2026-09-10 safe-stop/cleanup documents and issue #41 — historical cleanup provenance, not current startup authority.
 
-Older takeover, grounding, probe and campaign documents are provenance, not startup requirements.
+## Current product authority
 
-## Frozen World V0 authority
+Qualified runtime:
 
-Qualified product:
+`2bb295ba583e1852337e88e89f8cb790e104f70d`
 
-`7755a668d7488f04ecbf42a00fbc96fcb978d544`
+Final-runtime qualification:
 
-Final delivery:
+`35286869307` — **SUCCESS**
 
-`fa5e45594f0c39ba4e96c13b4ef783bbaae1ba65`
+Exact isolated staging delivery:
 
-Final delivery run `34475199474` — **SUCCESS**.  
-Cloudflare Version `1cc9a0fd-2fac-4d23-a75d-c66669ddee01`.  
-Owner final real-device sanity: **3/3 PASS**.
+`35288291564` — **SUCCESS**
 
-Cleanup work is repository/platform closure only; it must not modify the frozen qualified runtime.
+Cloudflare staging Version:
 
-## Bulk cleanup — already complete
+`3aeb983f-e876-404c-b0bd-245f84c5acfb`
 
-Formal aggregate archive branch:
+The current product is the **Ongoing Yard + V28 post-Owner hardening** baseline: one player can enter alone and inhabit the physical Yard, a second player can later join the same ongoing world, and the bounded two-actor continuity/recovery/causal-input contracts remain defended.
 
-`archive/repository-cleanup-v3-2026-09-10`
+Product consolidation entered `main` at:
 
-Pre-prune archive anchor:
+`c4020813a22b4e53121baba25852c5ddf955fd18`
 
-`61f202289f0dcbde26cb5d72de67e7a46397c159`
+A later test-only mobile-audit repair at `dd688446afd24f57a35c7248a4db4a9e8d308b7c` passed exact current validation `35289345252`.
 
-Immutable pre-prune tag:
+## Terminal repository topology
 
-`repository-cleanup-v3-pre-prune-2026-09-10`
+The live branch forest has been collapsed.
 
-Qualified recovery rehearsal restored **167/167** selected retirement refs exactly after aggressive GC.
+Before deletion, aggregate archive head:
 
-Owner-authorized bulk transaction:
+`144babc38817593ce38f4977f90c9118fbda8605`
 
-`9d210a30fe06c823f5b66845b5cbb356c801018844c56ff0c4ab23614eb35d14`
+contained every one of the 16 retirement branch tips with `behind_by=0`, and also exact integrated `main@dd688...` in its ancestry.
 
-Successful guarded apply/postflight: run `34514964756`, job `103000742955`.
+Guarded terminal prune:
 
-Cleanup Kit v3 seal: `4d2fae1a18613f0c90c4b242edfa68eb26fd66a2`; seal run `34517285955` SUCCESS.
+- run `35294379269` — **SUCCESS**;
+- job `105443786784` — **SUCCESS**;
+- marker `TERMINAL_BRANCH_PRUNE_PASS`.
 
-The aggregate archive was later advanced to `85378de39a5d41058805e6c887ee977d855d2749` to preserve cleanup apparatus lineage, but subsequent red-team work moved the runner again. Terminal preparation must preserve the newest runner tip.
+Independent postflight proved the branch namespace contains exactly:
 
-## Donor red-team result
+- `main`;
+- `archive/multi-world-history-2026-09-18`.
 
-The Owner-supplied final v3.0.0 ZIP closed the executed-runtime distribution identity gap: all six runtime modules are byte-identical to those actually used in Multi_World.
+The one-shot deletion workflow was then removed from the live tree. Its removal descendant passed CI `35294473644` and workflow-pipeline audit `35294473650`.
 
-Do not restore Cleanup Kit v3 as unquestioned authority. Adversarial testing found real blind spots in post-seal ref drift, name-only allowed refs, exported API coverage, history-wide LFS/submodule detection, terminal helper state and semantic history indexing.
+The archive may have a newer live head after this document was committed so that final closeout documentation is itself preserved. Verify the current archive SHA live when exact recovery matters.
 
-Multi_World retrospective evidence:
+## Retained validation spine
 
-- history-wide safety scan: 443 unique commits / 867 blobs / **0 LFS pointers / 0 gitlinks**;
-- semantic scan: 20 retired refs with transient-only paths, 59 with commits beyond v3's five-recent summary, and three `changedFileCount=0` refs containing real historical work.
+The live repository keeps four workflows:
 
-Therefore exact Git recoverability is strong, but final archive navigation must be upgraded with a history-aware semantic recovery index.
+- `.github/workflows/ci.yml`;
+- `.github/workflows/workflow-pipeline-safety-audit.yml`;
+- `.github/workflows/world-v0-current-validation.yml`;
+- `.github/workflows/world-v0-staging-delivery.yml`.
+
+Historical experiment workflows and one-shot materializers remain in Git history rather than the live product tree.
 
 ## Current action
 
-Do not reopen old World V0 reliability work and do not start the next gameplay architecture yet.
+**Do not open another reliability ladder by momentum.**
 
-Current closure order:
+Repository closure is complete. The next substantial task is to return to the product question:
 
-1. update canonical closure docs without touching qualified runtime;
-2. validate the docs-only `main` descendant;
-3. enrich aggregate archive with history-aware semantic recovery data and preserve latest `main`/helper/runner ancestry;
-4. replace the three immutable World V0 checkpoint branch roles with exact annotated tags;
-5. qualify a terminal runner that remains unchanged between OWNER_STOP preparation and authorized rerun;
-6. freeze one exact final transaction. The obsolete digest `36a281e7...` must never be reused;
-7. stop and obtain a fresh exact Owner authorization;
-8. execute the terminal transaction and prove a stable final state: only `main` + aggregate archive branches, required tags exact, retired refs absent, recovery intact;
-9. close issue #41;
-10. only then review Project Soul and begin the next era.
+> **What new shared-world experience would now teach us the most or make the Yard materially more worth inhabiting?**
 
-## Platform-state rule
+Candidate pressures may include a third actor, richer shared physical affordances, stronger continuity of the place beyond short sessions, or something else exposed by direct Owner/friend play. These are candidates, not a predetermined roadmap.
 
-Historical GitHub Actions registrations marked `active` are not automatically safety blockers. Evidence currently shows zero historical-residue executions after the bulk prune. Distinguish destructive safety/recoverability/provenance from semantic discoverability and registry/UI hygiene.
+Use the existing evidence discipline only after the next product-facing question is chosen. Architecture must be earned by that question rather than becoming the project itself.
 
-## Deferred next-era requirement
+## Persistent nonclaims
 
-After closure, a player should be able to **enter a Yard alone, immediately inhabit/play in the world, and wait there for another player**.
+Current evidence still does not establish:
 
-Treat this together with:
-
-`world lifetime != roster lifetime != ActorSession lifetime != transport/device lifetime`
-
-This is the next architecture seed, not permission to modify the frozen baseline during cleanup.
+- durable reconstruction of a lost physical WorldEpoch after process/state loss;
+- account/cloud identity or cross-device private-session transfer;
+- a persistent continuously-open world;
+- arbitrary 3+ actor topology;
+- MMO-style roster mutation;
+- correctness through permanent network loss;
+- that current remote-presentation policy is final forever;
+- that the existing Owner perceptual judgement replaces future multi-human play evidence.

@@ -2824,6 +2824,9 @@ function buildEvidence() {
       netEntityOrder: localState?.sim?.netEntityOrder ? [...localState.sim.netEntityOrder] : null,
       actorBodyCount: localState?.sim?.actorBodies?.size ?? null,
       actorSessionIds: localState?.sim?.actorBodies ? [...localState.sim.actorBodies.keys()] : null,
+      actorPositions: localState?.sim?.actorBodies
+        ? Object.fromEntries([...localState.sim.actorBodies.entries()].map(([sessionId, body]) => [sessionId, bodyPosition(body)]))
+        : null,
       trackedRemoteSessionId: remoteSessionId,
       trackedRemoteNetEntityId: remoteNetEntityId,
       selfPosition: selfSessionId && localState?.sim?.actorBodies.get(selfSessionId) ? bodyPosition(localState.sim.actorBodies.get(selfSessionId)) : null,

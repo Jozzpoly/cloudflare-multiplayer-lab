@@ -1,7 +1,7 @@
 # Multi_World — Project Soul
 
 Status: **CANONICAL HANDOFF INTENT / PRODUCT DIRECTION, NOT ARCHITECTURE**  
-Grounded: **2026-09-11**
+Grounded: **2026-09-18**
 
 ---
 
@@ -187,9 +187,9 @@ The subsequent V25 -> V28 smoothness / causal-input campaign and post-Owner hard
 
 That means **solo -> later peer is no longer the next unknown**. Do not keep re-solving it by momentum, and do not automatically turn the reliability laboratory into the project itself.
 
-The immediate stage is closure:
+The repository closure described by the previous stage is now complete: the earned runtime is integrated, the live validation spine is compact, canonical state is being kept truthful, and retired campaign history is preserved through one aggregate archive rather than a live branch forest.
 
-> **preserve the earned runtime, evidence and research; collapse experimental apparatus into a small current validation spine; make canonical docs truthful; integrate a clean product state; then choose the next product-facing frontier deliberately.**
+The immediate stage is therefore **product-frontier selection**, not more closure and not another reliability campaign by momentum.
 
 The next substantial frontier is intentionally **not predetermined here**. Plausible future pressures include a third actor, richer shared physical affordances, stronger continuity of the place beyond short sessions, or another Owner-visible need discovered through play. None of those is currently authorized merely because the substrate could support research in that direction.
 

@@ -61,6 +61,7 @@ function summarize(label, result, expectedEffectiveLead) {
     commandWitnessCounts: (diagnostic.commandTrain?.commands || [])
       .map((command) => command.canonicalWitnessCount)
       .filter(Number.isFinite),
+    commandAck: diagnostic.commandAck || [],
     authorityBoundaryDelta: diagnostic.authorityBoundaryDelta ?? null,
     localBoundaryDelta: diagnostic.localBoundaryDelta ?? null,
     rttSamples: rtt.samples ?? null,
@@ -112,6 +113,18 @@ l8.commandOnsetSummary = numericSummary(l8.commandOnsetTicks);
 l12.commandOnsetSummary = numericSummary(l12.commandOnsetTicks);
 l8.commandWitnessCountSummary = numericSummary(l8.commandWitnessCounts);
 l12.commandWitnessCountSummary = numericSummary(l12.commandWitnessCounts);
+l8.commandAckSummary = {
+  viableRecords: numericSummary(l8.commandAck.map((entry) => entry.viableRecords)),
+  lateRecords: numericSummary(l8.commandAck.map((entry) => entry.lateRecords)),
+  maxArrivalMarginTicks: numericSummary(l8.commandAck.map((entry) => entry.maxArrivalMarginTicks)),
+  survivingFutureSpanTicks: numericSummary(l8.commandAck.map((entry) => entry.survivingFutureSpanTicks)),
+};
+l12.commandAckSummary = {
+  viableRecords: numericSummary(l12.commandAck.map((entry) => entry.viableRecords)),
+  lateRecords: numericSummary(l12.commandAck.map((entry) => entry.lateRecords)),
+  maxArrivalMarginTicks: numericSummary(l12.commandAck.map((entry) => entry.maxArrivalMarginTicks)),
+  survivingFutureSpanTicks: numericSummary(l12.commandAck.map((entry) => entry.survivingFutureSpanTicks)),
+};
 
 let classification;
 if (!l8.exact || !l12.exact) {

@@ -783,6 +783,9 @@ const inputArrival = {
   minMarginTicks: null,
   maxMarginTicks: null,
 };
+let inputAckRecordSeq = 0;
+const inputAckSamples = [];
+const INPUT_ACK_SAMPLE_RETAIN = 2048;
 const frameSamples = [];
 const correctionEvents = [];
 const longFrameEvents = [];
@@ -2206,6 +2209,17 @@ function classifyBatchAck(message) {
     if (["before_start", "too_future"].includes(record.status)) metrics.serverRejected += 1;
     if (lifecycleMf6 && Number.isInteger(message.boundaryTick) && Number.isInteger(record.targetTick)) {
       const marginTicks = record.targetTick - message.boundaryTick;
+      inputAckRecordSeq += 1;
+      pushBounded(inputAckSamples, {
+        seq: inputAckRecordSeq,
+        batchSeq: message.batchSeq,
+        authorityBoundaryTick: message.boundaryTick,
+        targetTick: record.targetTick,
+        x: Number(record.x),
+        z: Number(record.z),
+        status: record.status,
+        marginTicks,
+      }, INPUT_ACK_SAMPLE_RETAIN);
       inputArrival.records += 1;
       inputArrival.marginSumTicks += marginTicks;
       if (marginTicks < 0) inputArrival.late += 1;
@@ -2875,6 +2889,12 @@ function buildEvidence() {
         minMarginTicks: inputArrival.minMarginTicks,
         maxMarginTicks: inputArrival.maxMarginTicks,
       },
+      ackTrace: {
+        revision: "mf6-input-ack-trace-v1",
+        latestSeq: inputAckRecordSeq,
+        retained: inputAckSamples.length,
+        records: inputAckSamples.map((sample) => ({ ...sample })),
+      },
       jumpDelivery: { ...jumpDelivery },
     },
     localBoundaryTick: localState?.boundaryTick ?? null,
@@ -3064,6 +3084,8 @@ function resetProtocolState({ preserveRoomRecovery = false } = {}) {
     minMarginTicks: null,
     maxMarginTicks: null,
   });
+  inputAckRecordSeq = 0;
+  inputAckSamples.splice(0);
   pendingBatch = [];
   batchSeq = 0;
   identity = null;

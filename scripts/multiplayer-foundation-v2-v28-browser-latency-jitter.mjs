@@ -194,6 +194,45 @@ function canonicalInputWitness(peer, sessionId, expected, minTargetTick, maxTarg
   return canonicalInputWitnessRange(peer, sessionId, expected, minTargetTick, maxTargetTickExclusive).last;
 }
 
+function commandAckAnalysis(ackRecords, commandTrain, minSeq = 0) {
+  const viableStatuses = new Set(["accepted", "superseded", "duplicate_same"]);
+  return commandTrain.commands.map((command, index) => {
+    const maxTargetTickExclusive = command.maxTargetTickExclusive;
+    const matching = (ackRecords || []).filter((record) =>
+      Number(record.seq) > minSeq &&
+      record.targetTick >= command.startAuthorityBoundary &&
+      record.targetTick < maxTargetTickExclusive &&
+      Math.abs(Number(record.x) - Number(command.expected.x)) <= 1e-6 &&
+      Math.abs(Number(record.z) - Number(command.expected.z)) <= 1e-6
+    );
+    const viable = matching.filter((record) => viableStatuses.has(record.status));
+    const late = matching.filter((record) => record.status === "late");
+    const margins = matching.map((record) => Number(record.marginTicks)).filter(Number.isFinite);
+    const viableMargins = viable.map((record) => Number(record.marginTicks)).filter(Number.isFinite);
+    const statuses = Object.fromEntries(
+      [...new Set(matching.map((record) => record.status))]
+        .map((status) => [status, matching.filter((record) => record.status === status).length]),
+    );
+    return {
+      index,
+      code: command.code,
+      matchingRecords: matching.length,
+      viableRecords: viable.length,
+      lateRecords: late.length,
+      statuses,
+      maxArrivalMarginTicks: margins.length ? Math.max(...margins) : null,
+      maxViableArrivalMarginTicks: viableMargins.length ? Math.max(...viableMargins) : null,
+      minViableTargetTick: viable.length ? Math.min(...viable.map((record) => record.targetTick)) : null,
+      maxViableTargetTick: viable.length ? Math.max(...viable.map((record) => record.targetTick)) : null,
+      survivingFutureSpanTicks: viable.length
+        ? Math.max(...viable.map((record) => record.targetTick)) - command.startAuthorityBoundary
+        : null,
+      deliveredInWindow: command.deliveredInWindow,
+      firstCanonicalOnsetTicks: command.firstCanonicalOnsetTicks,
+    };
+  });
+}
+
 async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSessionId, {
   count = 8,
   holdMs = 700,
@@ -686,6 +725,7 @@ try {
   const hostileStartLocalBoundary = hostileWarmup.localBoundaryTick;
   const hostileStartAuthorityBoundary = hostileWarmup.metrics.latestAuthorityBoundary;
   const hostileStartArrival = { ...(hostileWarmup.inputScheduler?.arrival || {}) };
+  const hostileStartAckSeq = hostileWarmup.inputScheduler?.ackTrace?.latestSeq || 0;
 
   const hostileCommandTrain = await runDirectionalCommandTrain(
     cdp,
@@ -703,6 +743,11 @@ try {
       const proxyState = proxy.snapshot();
       const deliveryRatio = hostileCommandTrain.delivered / hostileCommandTrain.count;
       const currentArrival = e.inputScheduler?.arrival || {};
+      const commandAck = commandAckAnalysis(
+        e.inputScheduler?.ackTrace?.records || [],
+        hostileCommandTrain,
+        hostileStartAckSeq,
+      );
       const arrivalRecordsDelta = Number(currentArrival.records || 0) - Number(hostileStartArrival.records || 0);
       const arrivalLateDelta = Number(currentArrival.late || 0) - Number(hostileStartArrival.late || 0);
       const arrivalSeverelyLateDelta = Number(currentArrival.severelyLate || 0) - Number(hostileStartArrival.severelyLate || 0);
@@ -770,6 +815,7 @@ try {
             .map((command) => command.observedBoundaryLagTicks)
             .filter(Number.isFinite),
         },
+        commandAck,
         commandTrain: hostileCommandTrain,
         proxy: proxyState,
       };

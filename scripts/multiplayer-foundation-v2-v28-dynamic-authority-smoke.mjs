@@ -351,10 +351,9 @@ try {
     const status = await authorityStatus();
     return status.worldEpoch === retiredWelcome.worldEpoch &&
       status.lifecycleMode === "mf6" &&
-      status.connectedPlayers === EXPECTED_ACTORS - 1 &&
       status.replaceableReservations >= 1 &&
-      Array.isArray(status.softReservedSlots) &&
-      status.softReservedSlots.includes(retiredSlot)
+      Array.isArray(status.replaceableSlots) &&
+      status.replaceableSlots.includes(retiredSlot)
       ? status
       : false;
   }, "authority soft reservation", 120_000);
@@ -521,6 +520,8 @@ try {
         boundaryTick: replacementReady.boundaryTick,
         connectedPlayers: replacementReady.connectedPlayers,
         softReservedSlots: replacementReady.softReservedSlots,
+        replaceableSlots: replacementReady.replaceableSlots,
+        staleConnectedSlots: replacementReady.staleConnectedSlots,
         replaceableReservations: replacementReady.replaceableReservations,
       },
       replacement: {

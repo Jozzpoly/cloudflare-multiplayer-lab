@@ -228,3 +228,44 @@ The L10 discriminator and subsequent machine envelope mapping remain autonomous 
 First reverify branch HEAD and latest workflow state.
 
 If unchanged, run the bounded L8/L10/L12 authorship-horizon discriminator. Classify the result using command delivery, first canonical onset, future-horizon survival, ACK arrival margins, actual RTT and exactness. Re-plan from evidence rather than promoting whichever treatment is green.
+
+
+## Run 49 — intermediate L10 result and order confound
+
+Run:
+35365616443
+
+Head:
+9cedb8be7bdfd0adaa0b0124d0cbbbf635b066ed
+
+All non-timing Foundation gates remained GREEN.
+
+Sequential hostile discriminator:
+- L8: 5/8 agency, median RTT about 291.8 ms, mean best per-command arrival margin about -0.125 ticks;
+- L10: 8/8 agency, median RTT about 276.8 ms, mean best per-command arrival margin about +1.25 ticks;
+- L12: 8/8 agency, median RTT about 267.1 ms, mean best per-command arrival margin about +3.875 ticks;
+- exactness preserved for all three;
+- clientSimulationLeadTicks remained 2.
+
+Classification:
+L8_RED_L10_PASS_L12_PASS
+
+The result is material but does not yet locate a clean lead boundary because realized RTT decreased monotonically with treatment order. Lead and transport conditions are partially confounded.
+
+L10 also appears marginal rather than comfortably buffered: its per-command best arrival margins were 0 to +3 ticks.
+
+### Current next discriminator
+
+Before mapping more impairment points or designing policy, remove the order confound.
+
+Run two deterministic counterbalanced fresh-world triplets:
+- sequence A: L8 -> L10 -> L12;
+- sequence B: L12 -> L10 -> L8.
+
+Use the same sustained 8-command train, ACK future-horizon trace, first canonical onset, actual RTT and exact guards.
+
+Interpretation:
+- L8 RED in both positions + L10/L12 PASS in both positions strengthens a real horizon effect independent of first/last run order;
+- mixed results at the same lead mean the tested envelope remains transport-sensitive and should be mapped by actual RTT/margin rather than nominal profile alone.
+
+This counterbalanced campaign intentionally uses a dedicated focused workflow. Re-running the already-stable full dynamic-composition suite for every timing-only probe is no longer the best information/cost trade.

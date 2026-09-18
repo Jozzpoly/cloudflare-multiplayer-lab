@@ -1,6 +1,6 @@
 # Multi_World — Current State
 
-Status: **WORLD V0 ONGOING YARD + V28 HARDENING QUALIFIED / CLEAN VALIDATION SPINE GREEN / MAIN INTEGRATION PENDING**  
+Status: **WORLD V0 ONGOING YARD + V28 HARDENING QUALIFIED / TERMINAL REPOSITORY CLOSEOUT COMPLETE**  
 Grounded: **2026-09-18**
 
 This is the compact technical truth for continuation. Verify live GitHub state when exact refs, deployment state or destructive cleanup matter. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable product-intent document; the detailed evidence record for this campaign is `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md`.
@@ -114,28 +114,61 @@ No material remote-motion regression from the Owner-accepted V25 envelope was de
 
 ## 7. Repository closeout state
 
-The previous 2026-09-10 cleanup archive remains historically valid, but it is no longer the whole repository story.
+The Ongoing Yard + V28 hardening campaign is now integrated and the experimental branch forest has been retired.
 
-A new aggregate archive preserves the exact tips that existed before this closeout:
+Qualified product runtime remains:
+
+`2bb295ba583e1852337e88e89f8cb790e104f70d`
+
+Product consolidation entered `main` at:
+
+`c4020813a22b4e53121baba25852c5ddf955fd18` — `Integrate qualified World V0 Ongoing Yard and V28 hardening`
+
+A subsequent test-only commit:
+
+`dd688446afd24f57a35c7248a4db4a9e8d308b7c` — `Make mobile movement gate scheduler-independent`
+
+removed a scheduler-dependent sleep from the retained real-mobile audit. Exact `main@dd688...` passed:
+
+- CI `35289345255` — SUCCESS;
+- World V0 Current Validation `35289345252` — SUCCESS.
+
+Before destructive ref cleanup, the aggregate recovery branch was extended through both the final V28 closeout and exact integrated `main`:
 
 `archive/multi-world-history-2026-09-18`
 
-archive commit:
+pre-prune recovery head:
 
-`af20c830a91e4f9eb358e67b3b480fd46fcb740e`
+`144babc38817593ce38f4977f90c9118fbda8605`
 
-Postflight proved every then-live branch tip had `behind_by=0` relative to that aggregate archive. This includes the multiplayer-foundation research/recovery lines, Ongoing Yard research, V25/V28 candidate/delivery/forensics lines and the earlier repository-cleanup archive.
+Every one of the 16 obsolete live branch tips had `behind_by=0` relative to that aggregate archive. A guarded one-shot runner then required the exact expected 18-branch namespace, the exact archive SHA and an explicit 16-name deletion allowlist before issuing any DELETE.
 
-The live validation apparatus has since been consolidated from roughly 90 workflows to four repository workflows:
+Terminal prune:
+
+- workflow run `35294379269` — SUCCESS;
+- job `105443786784` — SUCCESS;
+- final marker `TERMINAL_BRANCH_PRUNE_PASS`.
+
+Independent GitHub API postflight then showed exactly two branch refs:
+
+- `main`;
+- `archive/multi-world-history-2026-09-18`.
+
+The one-shot prune workflow was removed from the live tree immediately afterward. Its removal descendant passed:
+
+- Workflow pipeline false-green audit `35294473650` — SUCCESS;
+- CI `35294473644` — SUCCESS.
+
+The aggregate archive may advance again after canonical closeout documentation so that the final documentation descendant is also archive-reachable. Fresh continuations should verify its live head rather than treating the pre-prune SHA above as permanently terminal.
+
+The retained live workflow spine is again four workflows:
 
 - `ci.yml`;
 - `workflow-pipeline-safety-audit.yml`;
 - `world-v0-current-validation.yml`;
 - `world-v0-staging-delivery.yml`.
 
-Historical smoothness experiment workflows and one-shot probe/install scripts were removed from the live tree after archival. Two current test-only persistence helpers remain because they still support deep causal falsification.
-
-**Branch-ref pruning is not yet declared complete in this document.** Exact final closeout refs must be re-archived after the final docs/cleanup tip, main must be integrated and validated, and only then may obsolete live refs be removed.
+Historical research, delivery, staging and cleanup refs remain recoverable through the aggregate archive DAG rather than through a live branch forest.
 
 ## 8. Qualified claims and explicit nonclaims
 
@@ -161,14 +194,14 @@ Still **not** claimed:
 - that present remote-presentation delay/policy is final forever;
 - that current Owner perceptual evidence substitutes for future multi-human play testing.
 
-## 9. Current execution order
+## 9. Current stage boundary
 
-1. extend final archive ancestry to include the frozen closeout tip;
-2. integrate the cleaned product to `main` as one squash-style product consolidation rather than replaying hundreds of experimental commits;
-3. require current validation on exact integrated `main`;
-4. close the superseded research PR after its exact head remains archive-reachable;
-5. reduce live branch namespace to `main` plus the deliberate aggregate archive;
-6. update the final repository-topology record;
-7. only then frame the next product frontier.
+The repository-closeout campaign is finished. Do not reopen V25/V28 smoothness, lifecycle-independence or multiplayer-foundation research merely because their historical apparatus exists in the archive.
 
-Do **not** continue the smoothness/reliability laboratory merely for momentum. The next frontier should be chosen from Owner-visible product pressure after this closeout, not assumed from the architecture.
+The next substantial step is deliberately product-facing:
+
+> **Choose the next shared-world experience that would teach us the most or make the Yard materially more worth inhabiting, then earn only the architecture that experience actually requires.**
+
+Plausible pressures include a third actor, richer shared physical affordances, stronger continuity of the place beyond short sessions, or another Owner-visible need discovered through play. None is pre-authorized by this document.
+
+Before implementation resumes, re-ground in `MULTI_WORLD_PROJECT_SOUL.md`, inspect the current playable Yard, and formulate the next bounded product question. Machine reliability work should follow concrete product pressure rather than create its own roadmap.

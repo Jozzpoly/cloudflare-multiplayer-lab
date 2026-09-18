@@ -9,6 +9,7 @@ on:
       - public/world-v0/app.js
       - scripts/multiplayer-foundation-v2-v28-dynamic-authority-smoke.mjs
       - scripts/multiplayer-foundation-v2-v28-browser-composition.mjs
+      - scripts/multiplayer-foundation-v2-transport-proxy.mjs
       - .github/workflows/multiplayer-foundation-v2-dynamic-composition.yml
 
 permissions:

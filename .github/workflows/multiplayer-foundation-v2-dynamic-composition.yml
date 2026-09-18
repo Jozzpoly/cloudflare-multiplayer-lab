@@ -6,7 +6,9 @@ on:
       - research/multiplayer-foundation-v2-v28-dynamic-composition
     paths:
       - src/world-v0-shared-yard.ts
+      - public/world-v0/app.js
       - scripts/multiplayer-foundation-v2-v28-dynamic-authority-smoke.mjs
+      - scripts/multiplayer-foundation-v2-v28-browser-composition.mjs
       - .github/workflows/multiplayer-foundation-v2-dynamic-composition.yml
 
 permissions:
@@ -52,6 +54,17 @@ jobs:
           timeout 150s node scripts/multiplayer-foundation-v2-v28-dynamic-authority-smoke.mjs | tee mf6-v28.log
           grep -q MF6_V28_DYNAMIC_AUTHORITY_PASS mf6-v28.log
 
+      - name: Real Chromium self plus N composition gate
+        env:
+          MW_MF6_BROWSER_BASE: http://127.0.0.1:8787
+          MW_MF6_BROWSER_RUN: mf6-browser-${{ github.run_id }}
+          MW_MF6_BROWSER_OUTPUT: mf6-browser-composition.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 180s node scripts/multiplayer-foundation-v2-v28-browser-composition.mjs | tee mf6-browser.log
+          grep -q MF6_V28_BROWSER_COMPOSITION_PASS mf6-browser.log
+
       - name: Stop isolated authority
         if: always()
         shell: bash
@@ -68,4 +81,6 @@ jobs:
           if-no-files-found: ignore
           path: |
             mf6-v28.log
+            mf6-browser.log
+            mf6-browser-composition.json
             mf6-workerd.log

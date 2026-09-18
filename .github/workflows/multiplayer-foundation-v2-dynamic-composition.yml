@@ -57,7 +57,7 @@ jobs:
       - name: Real Chromium self plus N composition gate
         env:
           MW_MF6_BROWSER_BASE: http://127.0.0.1:8787
-          MW_MF6_BROWSER_RUN: mf6-browser-${{ github.run_id }}
+          MW_MF6_BROWSER_RUN: m6b${{ github.run_id }}
           MW_MF6_BROWSER_OUTPUT: mf6-browser-composition.json
         shell: bash
         run: |

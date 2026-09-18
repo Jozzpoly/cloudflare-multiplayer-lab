@@ -9,11 +9,13 @@ A fresh continuation should start from the compact current spine below. Do **not
 
 1. root `AGENTS.md` — Owner-locked direction and continuation contract.
 2. `MULTI_WORLD_PROJECT_SOUL.md` — durable multiplayer-technology mission and decision pressures.
-3. `MULTI_WORLD_CURRENT_STATE.md` — compact current technical/project truth.
-4. `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md` — detailed evidence and closeout record for the current baseline.
-5. GitHub issue #8 — detailed historical campaign checkpoints only when a specific provenance question requires them.
-6. Aggregate archive `archive/multi-world-history-2026-09-18` — machine recovery root for retired branch history.
-7. Earlier 2026-09-10 safe-stop/cleanup documents and issue #41 — historical cleanup provenance, not current startup authority.
+3. `MULTIPLAYER_FOUNDATION_PROGRAM_CONTROL.md` — active program hierarchy, adaptive roadmap and meaning of short continuation commands.
+4. `MULTI_WORLD_CURRENT_STATE.md` — compact qualified baseline and major project truth.
+5. `MULTIPLAYER_FOUNDATION_LIVE_STATE.md` — volatile active frontier; reverify exact refs live.
+6. `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md` — detailed evidence and closeout record for the two-actor baseline.
+7. GitHub issue #8 — detailed historical campaign checkpoints only when a specific provenance question requires them.
+8. Aggregate archive `archive/multi-world-history-2026-09-18` — machine recovery root for retired branch history.
+9. Earlier 2026-09-10 safe-stop/cleanup documents and issue #41 — historical cleanup provenance, not current startup authority.
 
 ## Current qualified runtime authority
 
@@ -115,3 +117,17 @@ Current evidence still does not establish:
 - correctness through permanent network loss;
 - that current remote-presentation policy is final forever;
 - that the existing Owner perceptual judgement replaces future multi-human play evidence.
+
+
+## Active program-control rule
+
+Fresh continuations must treat the roadmap as a capability tree, not a frozen work queue.
+
+After recovering mission and live state:
+- reverify volatile execution facts;
+- continue the nearest unresolved child of the active Multiplayer Foundation objective;
+- let fresh evidence re-rank or replace planned experiments;
+- when a child closes, ascend to its parent rather than inventing a sideways program;
+- reserve Owner involvement for genuine human judgement, strategic direction or consequential authorization.
+
+The current exact technical frontier lives in MULTIPLAYER_FOUNDATION_LIVE_STATE.md and is intentionally allowed to change much more frequently than this takeover index.

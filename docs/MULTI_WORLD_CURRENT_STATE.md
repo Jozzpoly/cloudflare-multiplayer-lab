@@ -216,3 +216,16 @@ The next substantial phase is the already accepted **Multiplayer Foundation** di
 Important provenance: a substantial Multiplayer Foundation v1 research line was completed before the Ongoing Yard/V28 closeout and is preserved through aggregate archive ancestry. Fresh continuation must recover and verify those results before reimplementing them. Historical evidence indicates that line had already explored dynamic 1–6 authority and durable recovery questions; exact claims must be re-grounded from its archived commits/evidence before promotion or further architecture.
 
 Do not restart V25/V28 smoothness work without new falsifying evidence. Do not start gameplay-feature work. The next implementation should answer a **multiplayer technology unknown**.
+
+
+## 10. Active Multiplayer Foundation execution pointer
+
+The post-closeout baseline above remains the qualified regression control. Active Multiplayer Foundation research now continues separately on:
+
+research/multiplayer-foundation-v2-v28-dynamic-composition
+
+Use docs/MULTIPLAYER_FOUNDATION_PROGRAM_CONTROL.md for the durable program/roadmap model and docs/MULTIPLAYER_FOUNDATION_LIVE_STATE.md for the current volatile frontier.
+
+As of the latest live-state checkpoint, dynamic 1–6 composition, browser self+N, active same-epoch churn and bounded hard-outage recovery are machine-defended on the research line. The nearest unresolved boundary is authority-realized browser agency under sustained hostile latency/jitter; exact shared truth remains intact while current L8 input authorship becomes overwhelmingly late.
+
+Do not promote that research line to canonical product authority merely because earlier composition gates are green. The current frontier must be resolved and later Foundation qualification must remain scoped to its actual evidence.

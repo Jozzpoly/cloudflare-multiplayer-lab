@@ -42,3 +42,14 @@ If that trace fails, stop the proposed direction rather than inventing a new goa
 - Agent hypotheses and recommendations are not Owner intent unless explicitly adopted.
 
 At new-chat takeover, campaign closeout, major PASS/FAIL, canonical roadmap edit, or Owner correction, re-check this file before changing direction.
+
+
+## Program control plane
+
+For substantial Multiplayer Foundation work, use:
+- docs/MULTIPLAYER_FOUNDATION_PROGRAM_CONTROL.md — durable capability tree, adaptive-roadmap semantics and autonomous continuation method;
+- docs/MULTIPLAYER_FOUNDATION_LIVE_STATE.md — volatile active frontier and exact execution pointer.
+
+Do not front-load historical evidence unless the active unknown needs it. Recover the durable mission, read the live frontier, reverify volatile facts, then act.
+
+A roadmap item is never authority over newer evidence. When a discriminator changes the causal model, update the live frontier and re-rank the capability tree instead of mechanically finishing the old sequence.

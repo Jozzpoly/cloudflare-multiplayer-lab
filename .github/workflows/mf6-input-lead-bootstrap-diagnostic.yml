@@ -45,6 +45,7 @@ jobs:
         env:
           MF6_BOOTSTRAP_LEADS: "${{ matrix.lead }}"
           MF6_BOOTSTRAP_OUTPUT: "mf6-bootstrap-diagnostic-${{ matrix.lead }}.json"
+          MF6_BOOTSTRAP_USE_PROXY: "1"
         run: node scripts/mf6-input-lead-bootstrap-diagnostic.mjs | tee "mf6-bootstrap-diagnostic-${{ matrix.lead }}.log"
       - name: Stop isolated authority
         if: always()

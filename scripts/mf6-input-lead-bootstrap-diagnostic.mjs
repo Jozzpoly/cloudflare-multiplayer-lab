@@ -2,11 +2,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import { createShapedTcpProxy } from "./multiplayer-foundation-v2-shaped-tcp-proxy.mjs";
 
 const BASE=(process.env.MF6_BOOTSTRAP_BASE||"http://127.0.0.1:8787").replace(/\/$/,"");
 const OUTPUT=process.env.MF6_BOOTSTRAP_OUTPUT||"mf6-bootstrap-diagnostic.json";
 const DEBUG_PORT_BASE=Number(process.env.MF6_BOOTSTRAP_DEBUG_PORT||9450);
 const TIMEOUT_MS=30_000;
+const USE_PROXY=process.env.MF6_BOOTSTRAP_USE_PROXY==="1";
+const PROXY_PORT_BASE=Number(process.env.MF6_BOOTSTRAP_PROXY_PORT||8792);
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 
 function findChrome(){
@@ -83,8 +86,15 @@ async function runLead(lead,index){
   let chrome=null;
   let cdp=null;
   let sessionId=null;
+  let proxy=null;
   const startedAt=Date.now();
   try{
+    const pageBase=USE_PROXY ? "http://127.0.0.1:"+(PROXY_PORT_BASE+index) : BASE;
+    if(USE_PROXY){
+      proxy=createShapedTcpProxy({target:BASE,port:PROXY_PORT_BASE+index,seed:0x5f3759df+index});
+      await proxy.listen();
+      proxy.passthrough();
+    }
     chrome=spawn(findChrome(),[
       "--headless=new","--no-sandbox","--disable-dev-shm-usage",
       "--disable-background-networking","--disable-background-timer-throttling",
@@ -108,7 +118,7 @@ async function runLead(lead,index){
     await cdp.call("Network.enable",{},sessionId);
     await cdp.call("Log.enable",{},sessionId);
 
-    const url=new URL(BASE+"/world-v0/");
+    const url=new URL(pageBase+"/world-v0/");
     url.searchParams.set("run","bootdiag-"+lead+"-"+Date.now().toString(36));
     url.searchParams.set("lifecycle","mf6");
     url.searchParams.set("player","mf6-bootstrap");
@@ -151,11 +161,13 @@ async function runLead(lead,index){
       failures,
       exceptions,
       relevantResponses:responses,
+      proxy:proxy?.snapshot()||null,
       chromeStderr:stderr.join("").slice(-8000),
     };
   } finally {
     cdp?.close();
     if(chrome?.exitCode===null)chrome.kill("SIGKILL");
+    try{await proxy?.close();}catch{}
     await sleep(100);
     rmSync(profile,{recursive:true,force:true});
   }

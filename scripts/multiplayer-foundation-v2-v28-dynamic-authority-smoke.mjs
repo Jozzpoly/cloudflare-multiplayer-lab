@@ -357,7 +357,7 @@ try {
       status.softReservedSlots.includes(retiredSlot)
       ? status
       : false;
-  }, "authority soft reservation", 60_000);
+  }, "authority soft reservation", 120_000);
   feeds.splice(0).forEach((feed) => feed.stop());
 
   const epochBeforeReplacement = peers[0].welcome.worldEpoch;

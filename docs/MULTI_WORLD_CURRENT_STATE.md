@@ -3,9 +3,9 @@
 Status: **WORLD V0 ONGOING YARD + V28 HARDENING QUALIFIED / TERMINAL REPOSITORY CLOSEOUT COMPLETE**  
 Grounded: **2026-09-18**
 
-This is the compact technical truth for continuation. Verify live GitHub state when exact refs, deployment state or destructive cleanup matter. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable product-intent document; the detailed evidence record for this campaign is `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md`.
+This is the compact technical truth for continuation. Verify live GitHub state when exact refs, deployment state or destructive cleanup matter. `MULTI_WORLD_PROJECT_SOUL.md` remains the durable multiplayer-technology intent document; the detailed evidence record for this campaign is `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md`.
 
-## 1. Current product authority
+## 1. Current qualified runtime authority
 
 The current qualified World V0 runtime is:
 
@@ -15,7 +15,7 @@ Qualification workflow:
 
 `35286869307` — **SUCCESS**
 
-This is no longer the old fixed-two-player waiting-room product. The current product supports an **Ongoing Yard** lifecycle inside the present two-actor envelope:
+This is no longer the old fixed-two-player waiting-room baseline. The current **test baseline** supports an **Ongoing Yard** lifecycle inside the present two-actor envelope:
 
 - the first player can enter alone and immediately inhabit/play in the physical Yard;
 - a second player can later join the same ongoing physical world;
@@ -196,12 +196,23 @@ Still **not** claimed:
 
 ## 9. Current stage boundary
 
-The repository-closeout campaign is finished. Do not reopen V25/V28 smoothness, lifecycle-independence or multiplayer-foundation research merely because their historical apparatus exists in the archive.
+The repository-closeout campaign is finished.
 
-The next substantial step is deliberately product-facing:
+The current two-actor Ongoing Yard + V28 runtime is a **qualified multiplayer regression/test baseline**, not the project's feature roadmap.
 
-> **Choose the next shared-world experience that would teach us the most or make the Yard materially more worth inhabiting, then earn only the architecture that experience actually requires.**
+The repository's primary product is multiplayer/shared-world technology. Gameplay and scene affordances are permitted here only when they are necessary to falsify or qualify a multiplayer mechanism. Do **not** invent content/features merely to make the Yard more game-like.
 
-Plausible pressures include a third actor, richer shared physical affordances, stronger continuity of the place beyond short sessions, or another Owner-visible need discovered through play. None is pre-authorized by this document.
+The next substantial phase is the already accepted **Multiplayer Foundation** direction toward an early **1–6 dynamic-actor** envelope. The technical problem family includes:
 
-Before implementation resumes, re-ground in `MULTI_WORLD_PROJECT_SOUL.md`, inspect the current playable Yard, and formulate the next bounded product question. Machine reliability work should follow concrete product pressure rather than create its own roadmap.
+- dynamic admission, join/leave and roster mutation;
+- ActorSession / transport / world-lifetime separation;
+- authority continuity and exact recovery across transport and runtime/process disruption;
+- shared active physics under real network impairment;
+- browser/mobile/platform lifecycle;
+- browser self+N execution;
+- bounded load/fault pressure and interest-management questions when evidence earns them;
+- machine qualification followed by real 3–6-human validation.
+
+Important provenance: a substantial Multiplayer Foundation v1 research line was completed before the Ongoing Yard/V28 closeout and is preserved through aggregate archive ancestry. Fresh continuation must recover and verify those results before reimplementing them. Historical evidence indicates that line had already explored dynamic 1–6 authority and durable recovery questions; exact claims must be re-grounded from its archived commits/evidence before promotion or further architecture.
+
+Do not restart V25/V28 smoothness work without new falsifying evidence. Do not start gameplay-feature work. The next implementation should answer a **multiplayer technology unknown**.

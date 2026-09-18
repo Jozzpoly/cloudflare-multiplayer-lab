@@ -105,6 +105,37 @@ function sendBatch(peer, targetTick, vector, topologyOverride = null, jump = fal
   return batchSeq;
 }
 
+function startSustainedFeed(peer, vector) {
+  let nextTarget = Math.max(peer.latestBoundary + 2, 1);
+  let running = true;
+  const timer = setInterval(() => {
+    if (!running || peer.ws.readyState !== WebSocket.OPEN || !peer.identity || !peer.topology) return;
+    if (nextTarget < peer.latestBoundary + 2) nextTarget = peer.latestBoundary + 2;
+    const horizon = peer.latestBoundary + 8;
+    while (nextTarget + 1 <= horizon) {
+      sendBatch(peer, nextTarget, vector);
+      nextTarget += 2;
+    }
+  }, 35);
+  return {
+    stop() {
+      if (!running) return;
+      running = false;
+      clearInterval(timer);
+    },
+  };
+}
+
+async function resumeAuthority(playerId, resumeToken, worldEpoch) {
+  const response = await fetch(`${BASE}/api/world-v0/resume-check`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ run: RUN, playerId, resumeToken, worldEpoch }),
+  });
+  assert(response.ok, `resume-check HTTP ${response.status}`);
+  return response.json();
+}
+
 async function openPeer(index) {
   const peer = makePeer(index);
   await waitFor(() => peer.welcome || false, `peer ${index} welcome`);
@@ -115,6 +146,7 @@ async function openPeer(index) {
 }
 
 const peers = [];
+const feeds = [];
 const evidence = {
   verdict: "MF6_V28_DYNAMIC_AUTHORITY_FAIL",
   run: RUN,
@@ -267,6 +299,142 @@ try {
   seventh.addEventListener("close", () => { if (!seventhOpened) seventhFailed = true; });
   await waitFor(() => seventhFailed || seventhOpened, "seventh admission result", 8_000);
   assert(!seventhOpened, "seventh actor unexpectedly admitted");
+  try { seventh.close(1000, "mf6_capacity_probe_done"); } catch {}
+
+  // Composition frontier 2: transport loss must not retire identity immediately.
+  // After the existing bounded reservation horizon, a fresh join may reclaim the
+  // placement slot in mf6, but never the retired actor identity.
+  const retiredPeer = peers[2];
+  const retiredWelcome = retiredPeer.welcome;
+  const retiredActorId = retiredWelcome.selfNetEntityId;
+  const retiredSlot = retiredWelcome.slot;
+  const retiredSessionId = retiredWelcome.selfSessionId;
+  const retiredResumeToken = retiredWelcome.resumeToken;
+  assert(retiredActorId === "actor:2" && retiredSlot === 2, "unexpected retirement target identity");
+
+  for (const [index, peer] of peers.entries()) {
+    if (peer === retiredPeer) continue;
+    feeds.push(startSustainedFeed(peer, vectors[index]));
+  }
+  retiredPeer.ws.close(1000, "mf6_retire_transport_loss");
+  await waitFor(() => retiredPeer.closed || false, "retired peer transport close");
+
+  // The production reservation horizon is intentionally retained here. This gate
+  // tests actual V28 lifecycle semantics, not a shortened research-only timeout.
+  await sleep(22_000);
+  feeds.splice(0).forEach((feed) => feed.stop());
+
+  const epochBeforeReplacement = peers[0].welcome.worldEpoch;
+  const replacement = await openPeer(6);
+  peers.push(replacement);
+  assert(replacement.welcome.worldEpoch === epochBeforeReplacement, "replacement rotated WorldEpoch");
+  assert(replacement.welcome.slot === retiredSlot, `replacement slot ${replacement.welcome.slot} != ${retiredSlot}`);
+  assert(replacement.welcome.selfNetEntityId === "actor:6",
+    `replacement reincarnated identity as ${replacement.welcome.selfNetEntityId}`);
+  assert(replacement.welcome.selfSessionId !== retiredSessionId, "replacement reused retired ActorSession");
+
+  await waitFor(
+    () => peers.filter((peer) => peer !== retiredPeer).every((peer) => peer.topology?.revision === 8) || false,
+    "replacement topology revision 8",
+  );
+  const replacementTopology = replacement.topology;
+  const replacementActorIds = replacementTopology.actors.map((actor) => actor.netEntityId);
+  assert(replacementTopology.actors.length === EXPECTED_ACTORS, "replacement topology actor count");
+  assert(replacementTopology.entityOrder.length === EXPECTED_ACTORS + EXPECTED_PROPS, "replacement entity coverage");
+  assert(!replacementActorIds.includes(retiredActorId), "retired actor identity remained live");
+  assert(replacementActorIds.includes("actor:6"), "replacement actor identity missing");
+  assert(new Set(replacementActorIds).size === EXPECTED_ACTORS, "replacement topology duplicate identity");
+  const replacementActor = replacementTopology.actors.find((actor) => actor.netEntityId === "actor:6");
+  assert(replacementActor?.slot === retiredSlot, "replacement did not reuse retired placement slot");
+  assert(replacementActor?.actorOrdinal === 6, "replacement actor ordinal is not monotonic");
+
+  const staleResume = await resumeAuthority(retiredPeer.playerId, retiredResumeToken, epochBeforeReplacement);
+  assert(staleResume.valid === false && staleResume.reason === "resume_authority_missing",
+    `retired resume authority survived: ${JSON.stringify(staleResume)}`);
+
+  sendReady(replacement);
+  await waitFor(
+    () => replacement.messages.find((m) => m.type === "world_v0_ready_ack" && m.topology?.revision === 8) || false,
+    "replacement ready ack",
+  );
+
+  // A pre-churn topology identity must now fail closed.
+  const postChurnTarget = Math.max(...peers.filter((peer) => peer !== retiredPeer).map((p) => p.latestBoundary)) + 10;
+  const postChurnStaleSeq = sendBatch(peers[0], postChurnTarget, [0.2, 0], finalTopology);
+  const postChurnStaleError = await waitFor(
+    () => peers[0].messages.find((m) =>
+      m.type === "world_v0_error" &&
+      m.error === "topology_identity_mismatch" &&
+      m.receivedTopology?.revision === 6 &&
+      m.expectedTopology?.revision === 8
+    ) || false,
+    "pre-churn topology rejection",
+  );
+
+  const livePeers = peers.filter((peer) => peer !== retiredPeer);
+  const postVectors = [
+    [0.30, 0],
+    [-0.30, 0],
+    [0, -0.30],
+    [0.22, 0.22],
+    [-0.22, -0.22],
+    [0, 0.30],
+  ];
+  const postBatches = livePeers.map((peer, index) => ({
+    peer,
+    batchSeq: sendBatch(peer, postChurnTarget, postVectors[index], null, peer === replacement),
+  }));
+  for (const { peer, batchSeq } of postBatches) {
+    const ack = await waitFor(
+      () => peer.messages.find((m) => m.type === "world_v0_batch_ack" && m.batchSeq === batchSeq) || false,
+      `${peer.playerId} post-churn batch ack`,
+    );
+    assert(ack.batchStatus === "accepted_batch", `${peer.playerId} post-churn batch status ${ack.batchStatus}`);
+  }
+
+  const postConsumed = await waitFor(
+    () => livePeers[0].messages.find((m) =>
+      m.type === "world_v0_consumed" &&
+      m.targetTick >= postChurnTarget &&
+      m.topology?.revision === 8 &&
+      m.players?.length === EXPECTED_ACTORS
+    ) || false,
+    "post-churn six-actor canonical consumption",
+  );
+  assert(!postConsumed.players.some((p) => p.netEntityId === retiredActorId), "retired actor still consumed");
+  assert(postConsumed.players.some((p) => p.netEntityId === "actor:6"), "replacement actor missing from consumption");
+  const replacementConsumed = postConsumed.players.find((p) => p.netEntityId === "actor:6");
+  assert(Number.isInteger(replacementConsumed?.jumpSequence), "replacement jump causal identity missing");
+
+  const postGuardByBoundary = new Map();
+  const postGuardDeadline = Date.now() + TIMEOUT_MS;
+  let postSharedGuard = null;
+  while (Date.now() < postGuardDeadline && !postSharedGuard) {
+    for (const peer of livePeers) {
+      for (const message of peer.messages) {
+        if (
+          message.type !== "world_v0_snapshot" ||
+          message.boundaryTick < postChurnTarget + 2 ||
+          message.topology?.revision !== 8 ||
+          typeof message.stateGuard?.packed !== "string"
+        ) continue;
+        let entry = postGuardByBoundary.get(message.boundaryTick);
+        if (!entry) {
+          entry = new Map();
+          postGuardByBoundary.set(message.boundaryTick, entry);
+        }
+        entry.set(peer.playerId, message.stateGuard.packed);
+        if (entry.size === EXPECTED_ACTORS && new Set(entry.values()).size === 1) {
+          postSharedGuard = { boundaryTick: message.boundaryTick, packed: [...entry.values()][0] };
+          break;
+        }
+      }
+      if (postSharedGuard) break;
+    }
+    if (!postSharedGuard) await sleep(25);
+  }
+  assert(postSharedGuard, "no shared post-churn six-peer exact authority guard");
+  assert(postSharedGuard.packed.length === EXPECTED_GUARD_HEX, "post-churn guard length mismatch");
 
   Object.assign(evidence, {
     verdict: "MF6_V28_DYNAMIC_AUTHORITY_PASS",
@@ -301,11 +469,45 @@ try {
       hexLength: sharedGuard.packed.length,
     },
     capacity: { admitted: EXPECTED_ACTORS, seventhRejected: true },
-    nonClaim: "Local Workerd/WebSocket authority composition only. No browser self+N, churn/retirement, impairment, deployed-edge, performance, or human 3-6 qualification is claimed.",
+    churn: {
+      worldEpochPreserved: replacement.welcome.worldEpoch === epochBeforeReplacement,
+      retired: {
+        actorId: retiredActorId,
+        actorSessionId: retiredSessionId,
+        slot: retiredSlot,
+        staleResumeRejected: true,
+      },
+      replacement: {
+        actorId: replacement.welcome.selfNetEntityId,
+        actorOrdinal: replacementActor.actorOrdinal,
+        slot: replacement.welcome.slot,
+        actorSessionId: replacement.welcome.selfSessionId,
+      },
+      topologyRevisionBefore: finalTopology.revision,
+      topologyRevisionAfter: replacementTopology.revision,
+      actorIdsAfter: replacementActorIds,
+      staleTopologyRejected: {
+        batchSeq: postChurnStaleSeq,
+        expectedRevision: postChurnStaleError.expectedTopology.revision,
+      },
+      canonicalConsumption: {
+        targetTick: postConsumed.targetTick,
+        actorCount: postConsumed.players.length,
+        replacementJumpSequence: replacementConsumed.jumpSequence,
+      },
+      sharedGuard: {
+        boundaryTick: postSharedGuard.boundaryTick,
+        hexLength: postSharedGuard.packed.length,
+      },
+    },
+    nonClaim: "Local Workerd/WebSocket authority composition only. Browser self+N, network impairment, deployed-edge, performance, and human 3-6 qualification remain unproven.",
   });
   console.log("MF6_V28_DYNAMIC_AUTHORITY_EVIDENCE", JSON.stringify(evidence));
   console.log(evidence.verdict);
 } finally {
+  feeds.splice(0).forEach((feed) => {
+    try { feed.stop(); } catch {}
+  });
   for (const peer of peers) {
     try { peer.ws.close(1000, "mf6_probe_done"); } catch {}
   }

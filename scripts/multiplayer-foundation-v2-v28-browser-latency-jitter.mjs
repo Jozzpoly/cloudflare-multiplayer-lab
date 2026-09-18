@@ -163,18 +163,19 @@ function distance3(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
-function canonicalInputWitness(peer, sessionId, expected, minTargetTick, maxTargetTickExclusive = Infinity) {
-  if (!peer || !sessionId || !expected) return null;
-  for (let index = peer.messages.length - 1; index >= 0; index -= 1) {
-    const message = peer.messages[index];
+function canonicalInputWitnessRange(peer, sessionId, expected, minTargetTick, maxTargetTickExclusive = Infinity) {
+  if (!peer || !sessionId || !expected) return { first: null, last: null, count: 0 };
+  let first = null;
+  let last = null;
+  let count = 0;
+  for (const message of peer.messages) {
     if (message?.type !== "world_v0_consumed" || !Number.isInteger(message.targetTick)) continue;
-    if (message.targetTick < minTargetTick) break;
-    if (message.targetTick >= maxTargetTickExclusive) continue;
+    if (message.targetTick < minTargetTick || message.targetTick >= maxTargetTickExclusive) continue;
     const player = (message.players || []).find((candidate) => candidate?.sessionId === sessionId);
     if (!player || !player.fresh) continue;
     if (Math.abs(Number(player.x) - Number(expected.x)) > 1e-6) continue;
     if (Math.abs(Number(player.z) - Number(expected.z)) > 1e-6) continue;
-    return {
+    const witness = {
       targetTick: message.targetTick,
       boundaryTick: message.boundaryTick,
       x: player.x,
@@ -182,8 +183,15 @@ function canonicalInputWitness(peer, sessionId, expected, minTargetTick, maxTarg
       source: player.source,
       fresh: Boolean(player.fresh),
     };
+    if (!first) first = witness;
+    last = witness;
+    count += 1;
   }
-  return null;
+  return { first, last, count };
+}
+
+function canonicalInputWitness(peer, sessionId, expected, minTargetTick, maxTargetTickExclusive = Infinity) {
+  return canonicalInputWitnessRange(peer, sessionId, expected, minTargetTick, maxTargetTickExclusive).last;
 }
 
 async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSessionId, {
@@ -292,7 +300,7 @@ async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSes
     const maxTargetTickExclusive = index + 1 < commands.length
       ? commands[index + 1].startAuthorityBoundary
       : endAuthorityBoundary;
-    const canonicalWitness = canonicalInputWitness(
+    const witnessRange = canonicalInputWitnessRange(
       authorityPeer,
       selfSessionId,
       command.expected,
@@ -302,8 +310,16 @@ async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSes
     return {
       ...command,
       maxTargetTickExclusive,
-      canonicalWitness,
-      deliveredInWindow: Boolean(canonicalWitness),
+      canonicalWitness: witnessRange.last,
+      firstCanonicalWitness: witnessRange.first,
+      canonicalWitnessCount: witnessRange.count,
+      firstCanonicalOnsetTicks: witnessRange.first
+        ? witnessRange.first.targetTick - command.startAuthorityBoundary
+        : null,
+      lastCanonicalOffsetTicks: witnessRange.last
+        ? witnessRange.last.targetTick - command.startAuthorityBoundary
+        : null,
+      deliveredInWindow: Boolean(witnessRange.first),
     };
   });
 

@@ -55,6 +55,12 @@ function summarize(label, result, expectedEffectiveLead) {
       estimateLagTicks: diagnostic.phaseError?.estimateLagTicks || [],
       observedBoundaryLagTicks: diagnostic.phaseError?.observedBoundaryLagTicks || [],
     },
+    commandOnsetTicks: (diagnostic.commandTrain?.commands || [])
+      .map((command) => command.firstCanonicalOnsetTicks)
+      .filter(Number.isFinite),
+    commandWitnessCounts: (diagnostic.commandTrain?.commands || [])
+      .map((command) => command.canonicalWitnessCount)
+      .filter(Number.isFinite),
     authorityBoundaryDelta: diagnostic.authorityBoundaryDelta ?? null,
     localBoundaryDelta: diagnostic.localBoundaryDelta ?? null,
     rttSamples: rtt.samples ?? null,
@@ -102,6 +108,10 @@ l8.phaseError.estimateLagSummary = numericSummary(l8.phaseError.estimateLagTicks
 l8.phaseError.observedBoundaryLagSummary = numericSummary(l8.phaseError.observedBoundaryLagTicks);
 l12.phaseError.estimateLagSummary = numericSummary(l12.phaseError.estimateLagTicks);
 l12.phaseError.observedBoundaryLagSummary = numericSummary(l12.phaseError.observedBoundaryLagTicks);
+l8.commandOnsetSummary = numericSummary(l8.commandOnsetTicks);
+l12.commandOnsetSummary = numericSummary(l12.commandOnsetTicks);
+l8.commandWitnessCountSummary = numericSummary(l8.commandWitnessCounts);
+l12.commandWitnessCountSummary = numericSummary(l12.commandWitnessCounts);
 
 let classification;
 if (!l8.exact || !l12.exact) {

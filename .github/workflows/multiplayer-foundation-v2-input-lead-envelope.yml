@@ -70,12 +70,17 @@ jobs:
         run: |
           set -euo pipefail
           id="$REP$LEAD"
+          run_key="m$LEAD$REP-${{ github.run_id }}"
           output="mf6-isolated-$id.json"
+          if [ "${#run_key}" -gt 20 ]; then
+            echo "MF6_SPECIMEN_RUN_KEY_INVALID length=${#run_key} key=$run_key"
+            exit 1
+          fi
           set +e
           if [ "$LEAD" = "8" ]; then
-            MW_MF6_LATENCY_RUN="m6iso-$id-${{ github.run_id }}"             MW_MF6_LATENCY_OUTPUT="$output"             MW_MF6_LATENCY_PROXY_PORT=8792               timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs               | tee "mf6-isolated-$id.log"
+            MW_MF6_LATENCY_RUN="$run_key"             MW_MF6_LATENCY_OUTPUT="$output"             MW_MF6_LATENCY_PROXY_PORT=8792               timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs               | tee "mf6-isolated-$id.log"
           else
-            MW_MF6_INPUT_LEAD_PROBE="$LEAD"             MW_MF6_LATENCY_RUN="m6iso-$id-${{ github.run_id }}"             MW_MF6_LATENCY_OUTPUT="$output"             MW_MF6_LATENCY_PROXY_PORT=8792               timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs               | tee "mf6-isolated-$id.log"
+            MW_MF6_INPUT_LEAD_PROBE="$LEAD"             MW_MF6_LATENCY_RUN="$run_key"             MW_MF6_LATENCY_OUTPUT="$output"             MW_MF6_LATENCY_PROXY_PORT=8792               timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs               | tee "mf6-isolated-$id.log"
           fi
           status=${PIPESTATUS[0]}
           set -e

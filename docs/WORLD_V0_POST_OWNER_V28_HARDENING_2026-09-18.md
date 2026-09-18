@@ -1,6 +1,6 @@
 # World V0 — Post-Owner V28 hardening closure
 
-Status: **QUALIFIED RUNTIME / CLOSEOUT IN PROGRESS**  
+Status: **QUALIFIED RUNTIME / TERMINAL CLOSEOUT COMPLETE**  
 Date: 2026-09-18
 
 ## 1. Exact product/evidence anchor
@@ -18,9 +18,11 @@ Frozen predecessor checkpoints remain untouched:
 - V28 Owner candidate: `1e42dfd6bed9ea1df0451ae5e651e63be1615bf5`
 - V25 Owner candidate: `704c4bcb4479882caf8c7e8d3f6b4ac9db25d460`
 
-Full pre-closeout campaign history is preserved at:
+Full pre-closeout campaign history remains preserved through the aggregate recovery DAG at:
 
-`archive/world-v0-v28-campaign-2026-09-18`
+`archive/multi-world-history-2026-09-18`
+
+The former dedicated `archive/world-v0-v28-campaign-2026-09-18` ref was removed only after its exact tip was proven archive-reachable.
 
 ## 2. Owner evidence that opened this tranche
 
@@ -306,7 +308,7 @@ The new `World V0 Current Validation` is centered on the actual current product 
 
 Pipeline false-green audit run `35288659803` passed on the cleaned tree.
 
-Branch-ref cleanup remains a later destructive step and is not claimed complete here.
+Branch-ref cleanup was intentionally deferred at this point; the later terminal closeout below records its guarded execution and independent postflight.
 
 
 ## 13. Final cleaned-tree qualification
@@ -341,3 +343,44 @@ Blob-identity postflight between qualified runtime `2bb295ba583e1852337e88e89f8c
 This establishes the closeout invariant:
 
 > cleanup changed evidence/workflow/document surfaces, not the qualified product runtime.
+
+
+## 14. Terminal integration and branch-namespace closeout
+
+The cleaned qualified product was consolidated to `main` at:
+
+`c4020813a22b4e53121baba25852c5ddf955fd18`
+
+A subsequent test-only mobile audit repair:
+
+`dd688446afd24f57a35c7248a4db4a9e8d308b7c`
+
+replaced an arbitrary scheduler-dependent sleep with an observed actor-motion gate. Exact `main@dd688...` passed CI `35289345255` and World V0 Current Validation `35289345252`.
+
+Before destructive namespace cleanup, aggregate archive `archive/multi-world-history-2026-09-18` was advanced to:
+
+`144babc38817593ce38f4977f90c9118fbda8605`
+
+with exact integrated `main@dd688...` as additional ancestry. Independent comparison showed all 16 obsolete live branch tips had `behind_by=0` relative to the archive.
+
+The terminal deletion transaction was executed by a one-shot fail-closed workflow that first required:
+
+- the exact expected 18-name branch namespace;
+- exact aggregate archive SHA `144babc...`;
+- an explicit 16-name deletion allowlist;
+- no deletion of `main` or `archive/multi-world-history-2026-09-18`.
+
+Run `35294379269`, job `105443786784`: **SUCCESS**.
+
+Final marker:
+
+`TERMINAL_BRANCH_PRUNE_PASS`
+
+Independent GitHub API postflight showed exactly two live branch refs:
+
+- `main`;
+- `archive/multi-world-history-2026-09-18`.
+
+The one-shot workflow was then removed from the live tree. Its removal descendant passed workflow-pipeline audit `35294473650` and CI `35294473644`.
+
+This closes the V28 / Ongoing Yard repository campaign. Historical research remains recoverable through aggregate archive ancestry, while the live repository returns to a small product-facing surface. The next substantial work must be selected from Owner-visible shared-world pressure rather than from leftover reliability apparatus.

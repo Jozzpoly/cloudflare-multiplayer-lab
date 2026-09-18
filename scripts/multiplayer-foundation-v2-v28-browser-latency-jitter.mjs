@@ -155,6 +155,28 @@ function distance3(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
+function canonicalInputWitness(peer, sessionId, expected, minTargetTick) {
+  if (!peer || !sessionId || !expected) return null;
+  for (let index = peer.messages.length - 1; index >= 0; index -= 1) {
+    const message = peer.messages[index];
+    if (message?.type !== "world_v0_consumed" || !Number.isInteger(message.targetTick)) continue;
+    if (message.targetTick < minTargetTick) break;
+    const player = (message.players || []).find((candidate) => candidate?.sessionId === sessionId);
+    if (!player || !player.fresh) continue;
+    if (Math.abs(Number(player.x) - Number(expected.x)) > 1e-6) continue;
+    if (Math.abs(Number(player.z) - Number(expected.z)) > 1e-6) continue;
+    return {
+      targetTick: message.targetTick,
+      boundaryTick: message.boundaryTick,
+      x: player.x,
+      z: player.z,
+      source: player.source,
+      fresh: Boolean(player.fresh),
+    };
+  }
+  return null;
+}
+
 function findChrome() {
   const override = process.env.CHROME_BIN?.trim();
   if (override) return override;
@@ -471,17 +493,27 @@ try {
     35_000,
   );
 
-  const hostileStartPosition = moderate.evidence.livePhysics.actorPositions[selfSessionId];
-  const hostileStartGuardMatches = moderate.evidence.metrics.guardMatches;
-  const hostileStartRttSamples = moderate.evidence.rtt.samples;
-  const hostileStartInputScheduler = { ...moderate.evidence.inputScheduler };
-  const hostileStartServerLate = moderate.evidence.metrics.serverLate;
-  const hostileStartServerRejected = moderate.evidence.metrics.serverRejected;
-  const hostileStartLocalBoundary = moderate.evidence.localBoundaryTick;
-  const hostileStartAuthorityBoundary = moderate.evidence.metrics.latestAuthorityBoundary;
-
   proxy.setProfile({ name: "hostile", latencyMs: 100, jitterMs: 25 });
+
+  // Do not let a short successful speculative move qualify the hostile profile before
+  // ordered-stream queues and RTT observations have lived under the new impairment.
+  // Six seconds is apparatus dwell only; it does not change runtime timing semantics.
+  await sleep(6_000);
+  const hostileWarmup = await cdp.eval(browserSession, "window.__sharedYardV0Evidence()");
+  assert(hostileWarmup && !hostileWarmup.runtimeFailed, "hostile warmup runtime failure");
+  assert(hostileWarmup.metrics?.guardMismatches === 0, "hostile warmup exact-state mismatch");
+
+  const hostileStartPosition = hostileWarmup.livePhysics.actorPositions[selfSessionId];
+  const hostileStartGuardMatches = hostileWarmup.metrics.guardMatches;
+  const hostileStartRttSamples = hostileWarmup.rtt.samples;
+  const hostileStartInputScheduler = { ...hostileWarmup.inputScheduler };
+  const hostileStartServerLate = hostileWarmup.metrics.serverLate;
+  const hostileStartServerRejected = hostileWarmup.metrics.serverRejected;
+  const hostileStartLocalBoundary = hostileWarmup.localBoundaryTick;
+  const hostileStartAuthorityBoundary = hostileWarmup.metrics.latestAuthorityBoundary;
+
   const hostileStimulus = await keyDrive(cdp, browserSession, "KeyA", "a", 65, 1200);
+  const hostileExpectedInput = hostileStimulus.engaged.worldInput;
 
   const hostile = await waitFor(
     async () => {
@@ -490,10 +522,17 @@ try {
       if (e.runtimeFailed) throw new Error(`hostile impairment runtime failure: ${e.runtimeFailureReason}`);
       const position = e.livePhysics?.actorPositions?.[selfSessionId];
       const proxyState = proxy.snapshot();
+      const canonicalWitness = canonicalInputWitness(
+        rawPeers[0],
+        selfSessionId,
+        hostileExpectedInput,
+        hostileStartAuthorityBoundary,
+      );
       const checks = {
         exact: e.metrics?.guardMismatches === 0,
         guardProgress: e.metrics?.guardMatches >= hostileStartGuardMatches + 20,
         rttProgress: e.rtt?.samples >= hostileStartRttSamples + 3,
+        canonicalSelfInput: Boolean(canonicalWitness),
         selfMotion: distance3(position, hostileStartPosition) >= 0.30,
         c2uProgress: proxyState.clientToUpstream.shapedChunks > moderate.proxy.clientToUpstream.shapedChunks,
         u2cProgress: proxyState.upstreamToClient.shapedChunks > moderate.proxy.upstreamToClient.shapedChunks,
@@ -522,6 +561,7 @@ try {
         localBoundaryDelta: e.localBoundaryTick - hostileStartLocalBoundary,
         latestAuthorityBoundary: e.metrics.latestAuthorityBoundary,
         authorityBoundaryDelta: e.metrics.latestAuthorityBoundary - hostileStartAuthorityBoundary,
+        canonicalWitness,
         proxy: proxyState,
       };
       return Object.values(checks).every(Boolean) ? { evidence: e, proxy: proxyState } : false;
@@ -566,6 +606,7 @@ try {
       maxReplaySteps: moderate.evidence.metrics.maxReplaySteps,
       rtt: moderate.evidence.rtt,
       maxAuthoritySilenceTicks: moderate.evidence.metrics.maxAuthoritySilenceTicks,
+      diagnostic: lastModerateDiagnostic,
       proxy: moderate.proxy,
     },
     hostile: {
@@ -578,6 +619,17 @@ try {
       maxReplaySteps: hostile.evidence.metrics.maxReplaySteps,
       rtt: hostile.evidence.rtt,
       maxAuthoritySilenceTicks: hostile.evidence.metrics.maxAuthoritySilenceTicks,
+      warmup: {
+        guardMatches: hostileWarmup.metrics.guardMatches,
+        guardMismatches: hostileWarmup.metrics.guardMismatches,
+        rtt: hostileWarmup.rtt,
+        inputScheduler: hostileWarmup.inputScheduler,
+        serverLate: hostileWarmup.metrics.serverLate,
+        serverRejected: hostileWarmup.metrics.serverRejected,
+        localBoundaryTick: hostileWarmup.localBoundaryTick,
+        latestAuthorityBoundary: hostileWarmup.metrics.latestAuthorityBoundary,
+      },
+      diagnostic: lastHostileDiagnostic,
       proxy: hostile.proxy,
     },
     settled: {

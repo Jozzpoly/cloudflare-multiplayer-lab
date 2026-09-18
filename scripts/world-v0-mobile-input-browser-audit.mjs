@@ -37,7 +37,13 @@ try{
  await touch(c,s,"touchStart",boxes.joy.x,boxes.joy.y);
  await touch(c,s,"touchMove",boxes.joy.x,boxes.joy.y-Math.min(42,boxes.joy.h*0.32));
  await waitFor(c,s,'(() => { const r=window.__sharedYardV0Evidence?.()?.presentation?.rawInput; return r && Math.hypot(r.x,r.z)>0.4; })()',"joystick raw input");
- await sleep(650);
+ assert(Array.isArray(before.livePhysics.selfPosition),"mobile live evidence missing self position");
+ const startPosition=before.livePhysics.selfPosition;
+ await waitFor(c,s,`(() => {
+   const p=window.__sharedYardV0Evidence?.()?.livePhysics?.selfPosition;
+   const a=${JSON.stringify(startPosition)};
+   return Array.isArray(p) && Math.hypot(p[0]-a[0],p[1]-a[1],p[2]-a[2])>0.08;
+ })()`,"touch joystick actor motion",5000);
  const moving=await c.eval(s,'window.__sharedYardV0Evidence()');
  await touch(c,s,"touchEnd",boxes.joy.x,boxes.joy.y);
  await waitFor(c,s,'(() => { const r=window.__sharedYardV0Evidence?.()?.presentation?.rawInput; return r && Math.hypot(r.x,r.z)<0.01; })()',"joystick release");

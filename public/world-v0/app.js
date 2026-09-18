@@ -795,8 +795,17 @@ function resetJumpCausalSeedFromStart(players) {
 }
 
 function causalHighWaterBefore(previous, role, sessionId) {
-  const retained = previous?.jumpCausalHighWater?.[role];
-  if (Number.isInteger(retained) && retained >= 0) return retained;
+  if (role === "self") {
+    const retained = previous?.jumpCausalHighWater?.self;
+    if (Number.isInteger(retained) && retained >= 0) return retained;
+  } else {
+    const perSession = previous?.jumpCausalHighWater?.bySession?.[sessionId];
+    if (Number.isInteger(perSession) && perSession >= 0) return perSession;
+    if (sessionId === remoteSessionId) {
+      const legacyRemote = previous?.jumpCausalHighWater?.remote;
+      if (Number.isInteger(legacyRemote) && legacyRemote >= 0) return legacyRemote;
+    }
+  }
   return Number.isInteger(jumpCausalSeed.get(sessionId)) ? jumpCausalSeed.get(sessionId) : 0;
 }
 
@@ -1629,36 +1638,78 @@ function applyIntent(body, input) {
   b3.b3Body_SetLinearVelocity(body, [nextX, nextY, nextZ]);
 }
 
+function activeRemoteSessionIds() {
+  if (lifecycleR0 && currentTopology && selfSessionId) {
+    return currentTopology.actors
+      .filter((actor) => actor.sessionId !== selfSessionId)
+      .map((actor) => actor.sessionId);
+  }
+  return remoteSessionId ? [remoteSessionId] : [];
+}
+
+function emptyUsedInput() {
+  return { self: zeroInput(), remote: zeroInput(), remotes: {} };
+}
+
 function previousUsedInput(tick) {
-  if (tick <= 0) return { self: zeroInput(), remote: zeroInput() };
-  return usedByTick.get(tick - 1) || { self: zeroInput(), remote: zeroInput() };
+  if (tick <= 0) return emptyUsedInput();
+  return usedByTick.get(tick - 1) || emptyUsedInput();
 }
 
 function authoritativeInput(tick, sessionId) {
-  return consumedByTick.get(tick)?.get(sessionId) || null;
+  return sessionId ? (consumedByTick.get(tick)?.get(sessionId) || null) : null;
+}
+
+function relayedRemoteInput(tick, sessionId) {
+  return peerRemote.get(tick)?.get(sessionId) || null;
+}
+
+function previousRemoteInput(previous, sessionId) {
+  const retained = previous?.remotes?.[sessionId];
+  if (retained) return retained;
+  if (sessionId === remoteSessionId && previous?.remote) return previous.remote;
+  return zeroInput();
 }
 
 function resolveInputsForTick(tick, previous) {
-  if (protocolStartTick === null || tick < protocolStartTick) return { self: zeroInput(), remote: zeroInput() };
+  const remoteIds = activeRemoteSessionIds();
+  if (protocolStartTick === null || tick < protocolStartTick) {
+    const remotes = {};
+    for (const sessionId of remoteIds) remotes[sessionId] = zeroInput();
+    return {
+      self: zeroInput(),
+      remote: remoteSessionId ? (remotes[remoteSessionId] || zeroInput()) : zeroInput(),
+      remotes,
+    };
+  }
+
   const selfAuth = authoritativeInput(tick, selfSessionId);
-  const remoteAuth = authoritativeInput(tick, remoteSessionId);
   const selfRecord = selfAuth || intendedSelf.get(tick) || null;
-  const remoteRecord = remoteAuth || peerRemote.get(tick) || null;
   const self = selfRecord || previous.self;
-  const remote = remoteRecord || previous.remote;
   const selfSequence = selfAuth
     ? normalizedJumpSequence(selfAuth.jumpSequence)
     : normalizedJumpSequence(intendedJumpSequence.get(tick));
-  const remoteSequence = normalizedJumpSequence(remoteRecord?.jumpSequence);
+
+  const remotes = {};
+  for (const sessionId of remoteIds) {
+    const remoteAuth = authoritativeInput(tick, sessionId);
+    const remoteRecord = remoteAuth || relayedRemoteInput(tick, sessionId) || null;
+    const prior = previousRemoteInput(previous, sessionId);
+    const remote = remoteRecord || prior;
+    const remoteSequence = normalizedJumpSequence(remoteRecord?.jumpSequence);
+    remotes[sessionId] = {
+      x: remote.x, z: remote.z, jump: Boolean(remoteRecord?.jump),
+      ...(remoteSequence !== null ? { jumpSequence: remoteSequence } : {}),
+    };
+  }
+
   return {
     self: {
       x: self.x, z: self.z, jump: Boolean(selfRecord?.jump),
       ...(selfSequence !== null ? { jumpSequence: selfSequence } : {}),
     },
-    remote: {
-      x: remote.x, z: remote.z, jump: Boolean(remoteRecord?.jump),
-      ...(remoteSequence !== null ? { jumpSequence: remoteSequence } : {}),
-    },
+    remote: remoteSessionId ? (remotes[remoteSessionId] || zeroInput()) : zeroInput(),
+    remotes,
   };
 }
 
@@ -1666,7 +1717,18 @@ function usedInputsChangedAt(tick) {
   const used = usedByTick.get(tick);
   if (!used) return false;
   const resolved = resolveInputsForTick(tick, previousUsedInput(tick));
-  return !sameResolvedInput(used.self, resolved.self) || !sameResolvedInput(used.remote, resolved.remote);
+  if (!sameResolvedInput(used.self, resolved.self)) return true;
+  const sessionIds = new Set([
+    ...Object.keys(used.remotes || {}),
+    ...Object.keys(resolved.remotes || {}),
+  ]);
+  for (const sessionId of sessionIds) {
+    if (!sameResolvedInput(
+      used.remotes?.[sessionId] || (sessionId === remoteSessionId ? used.remote : zeroInput()),
+      resolved.remotes?.[sessionId] || zeroInput(),
+    )) return true;
+  }
+  return false;
 }
 
 function truncateUsedFrom(targetTick) {
@@ -1679,27 +1741,44 @@ function applyResolvedTick(sim, tick, allowGenerateSelf) {
   void allowGenerateSelf;
   const previous = previousUsedInput(tick);
   const resolved = resolveInputsForTick(tick, previous);
-  // V28: physical jump edges are causal-event edges, not boolean edges. Keep the
-  // consumed event high-water in the replay timeline so a rewind reconstructs the
-  // same discrete state the authority used for true(seqN) -> false -> true(seqN).
+
+  // V28 causal-event identity now composes per ActorSession. Presentation may still
+  // focus one remote, but the physical replay timeline must carry every remote.
   const selfPriorHighWater = causalHighWaterBefore(previous, "self", selfSessionId);
-  const remotePriorHighWater = causalHighWaterBefore(previous, "remote", remoteSessionId);
   const selfJump = causalJumpStep(resolved.self, previous.self, selfPriorHighWater);
-  const remoteJump = causalJumpStep(resolved.remote, previous.remote, remotePriorHighWater);
-  const selfJumpTrigger = selfJump.trigger;
-  const remoteJumpTrigger = remoteJump.trigger;
+  const jumpCausalBySession = {};
+  const appliedRemotes = {};
+
+  for (const sessionId of activeRemoteSessionIds()) {
+    const input = resolved.remotes?.[sessionId] || zeroInput();
+    const previousInput = previousRemoteInput(previous, sessionId);
+    const priorHighWater = causalHighWaterBefore(previous, "remote", sessionId);
+    const jump = causalJumpStep(input, previousInput, priorHighWater);
+    jumpCausalBySession[sessionId] = jump.highWater;
+    appliedRemotes[sessionId] = { input, jumpTrigger: jump.trigger };
+  }
+
   usedByTick.set(tick, {
     self: { ...resolved.self },
     remote: { ...resolved.remote },
-    jumpCausalHighWater: { self: selfJump.highWater, remote: remoteJump.highWater },
+    remotes: Object.fromEntries(
+      Object.entries(resolved.remotes || {}).map(([sessionId, input]) => [sessionId, { ...input }]),
+    ),
+    jumpCausalHighWater: {
+      self: selfJump.highWater,
+      remote: remoteSessionId ? (jumpCausalBySession[remoteSessionId] ?? 0) : 0,
+      bySession: { ...jumpCausalBySession },
+    },
   });
+
   const selfBody = sim.actorBodies.get(selfSessionId);
   if (!selfBody) throw new Error("predicted self actor mapping incomplete");
-  applyIntent(selfBody, { ...resolved.self, jump: selfJumpTrigger });
-  if (remoteSessionId) {
-    const remoteBody = sim.actorBodies.get(remoteSessionId);
-    if (!remoteBody) throw new Error("predicted remote actor mapping incomplete");
-    applyIntent(remoteBody, { ...resolved.remote, jump: remoteJumpTrigger });
+  applyIntent(selfBody, { ...resolved.self, jump: selfJump.trigger });
+
+  for (const [sessionId, applied] of Object.entries(appliedRemotes)) {
+    const remoteBody = sim.actorBodies.get(sessionId);
+    if (!remoteBody) throw new Error(`predicted remote actor mapping incomplete ${sessionId}`);
+    applyIntent(remoteBody, { ...applied.input, jump: applied.jumpTrigger });
   }
 }
 
@@ -2103,22 +2182,29 @@ function classifyBatchAck(message) {
 function handlePeerRecords(message) {
   assertMessageIdentity(message, "peer-records");
   assertR0MessageTopology(message, "peer-records");
-  if (!remoteSessionId || message.senderSessionId !== remoteSessionId) return;
-  if (remoteNetEntityId && message.senderNetEntityId !== remoteNetEntityId) throw new Error("remote NetEntityId drift");
+  if (!message.senderSessionId || message.senderSessionId === selfSessionId) return;
+
+  const sender = currentTopology?.actors?.find((actor) => actor.sessionId === message.senderSessionId) || null;
+  if (!sender) throw new Error("peer-records unknown sender ActorSession");
+  if (message.senderNetEntityId !== sender.netEntityId) throw new Error("peer-records sender NetEntityId drift");
+
   const candidates = [];
   for (const record of message.records || []) {
     if (!Number.isInteger(record.targetTick) || !Number.isFinite(record.x) || !Number.isFinite(record.z)) continue;
-    const existing = peerRemote.get(record.targetTick);
+    let bySession = peerRemote.get(record.targetTick);
+    if (!bySession) {
+      bySession = new Map();
+      peerRemote.set(record.targetTick, bySession);
+    }
+    const existing = bySession.get(message.senderSessionId);
     const jumpSequence = normalizedJumpSequence(record.jumpSequence);
     const next = {
       x: record.x, z: record.z, jump: Boolean(record.jump),
       ...(jumpSequence !== null ? { jumpSequence } : {}),
     };
-    // I2 future-intent supersession: WebSocket relay order mirrors authority batchSeq order.
-    // A changed, still-correctable tick replaces the earlier prefill and reuses the existing
-    // prediction correction path; identical relay data stays idempotent.
+    // I2 future-intent supersession remains ordered per sender ActorSession.
     if (!existing || !sameResolvedInput(existing, next)) {
-      peerRemote.set(record.targetTick, next);
+      bySession.set(message.senderSessionId, next);
       candidates.push(record.targetTick);
     }
   }

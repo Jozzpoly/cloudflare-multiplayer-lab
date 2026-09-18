@@ -380,15 +380,20 @@ try {
   );
   const sourceBoundary = dropped.session.actorResume.sourceBoundary;
 
-  const disconnectedAuthority = await waitFor(async () => {
+  const livenessObserved = await waitFor(async () => {
     const status = await authorityStatus();
-    return status.worldEpoch === epoch &&
+    const protectedDisconnect =
       status.connectedPlayers === EXPECTED_ACTORS - 1 &&
       Array.isArray(status.protectedReservedSlots) &&
-      status.protectedReservedSlots.includes(browserIdentityBefore.slot)
-      ? status
+      status.protectedReservedSlots.includes(browserIdentityBefore.slot);
+    const halfOpenLeaseExpired =
+      status.connectedPlayers === EXPECTED_ACTORS &&
+      Array.isArray(status.leaseExpiredConnectedSlots) &&
+      status.leaseExpiredConnectedSlots.includes(browserIdentityBefore.slot);
+    return status.worldEpoch === epoch && (protectedDisconnect || halfOpenLeaseExpired)
+      ? { ...status, livenessObservation: protectedDisconnect ? "socket-disconnected" : "half-open-lease-expired" }
       : false;
-  }, "browser protected reservation under impairment", 12_000);
+  }, "browser authority liveness under impairment", 12_000);
 
   await sleep(OFFLINE_MS);
 
@@ -403,7 +408,18 @@ try {
 
   const authorityBeforeRestore = await authorityStatus();
   assert(authorityBeforeRestore.worldEpoch === epoch, "WorldEpoch rotated during bounded browser outage");
-  assert(authorityBeforeRestore.connectedPlayers === EXPECTED_ACTORS - 1, "browser transport unexpectedly reconnected while proxy blocked");
+  assert(
+    authorityBeforeRestore.connectedPlayers === EXPECTED_ACTORS - 1 ||
+    authorityBeforeRestore.connectedPlayers === EXPECTED_ACTORS,
+    "authority reported invalid connection count while proxy blocked",
+  );
+  if (authorityBeforeRestore.connectedPlayers === EXPECTED_ACTORS) {
+    assert(
+      Array.isArray(authorityBeforeRestore.leaseExpiredConnectedSlots) &&
+      authorityBeforeRestore.leaseExpiredConnectedSlots.includes(browserIdentityBefore.slot),
+      "half-open browser slot did not fail neutral while proxy blocked",
+    );
+  }
   assert(authorityBeforeRestore.boundaryTick > authorityBeforeDrop.boundaryTick + 100, "authority did not advance materially during browser outage");
 
   proxy.unblock();
@@ -458,9 +474,12 @@ try {
       proxyBeforeRestore: blockedProxy,
       actorResumeSourceBoundary: sourceBoundary,
       actorResumeAttemptsBeforeRestore: beforeRestore.session.actorResume.attempts,
-      authorityDisconnectedBoundary: disconnectedAuthority.boundaryTick,
+      authorityLivenessBoundary: livenessObserved.boundaryTick,
+      authorityLivenessObservation: livenessObserved.livenessObservation,
       authorityBoundaryBeforeRestore: authorityBeforeRestore.boundaryTick,
-      protectedReservedSlots: disconnectedAuthority.protectedReservedSlots,
+      connectedPlayersBeforeRestore: authorityBeforeRestore.connectedPlayers,
+      protectedReservedSlots: livenessObserved.protectedReservedSlots,
+      leaseExpiredConnectedSlots: livenessObserved.leaseExpiredConnectedSlots,
     },
     recovery: {
       actorSessionId: recovered.evidence.session.actorSessionId,

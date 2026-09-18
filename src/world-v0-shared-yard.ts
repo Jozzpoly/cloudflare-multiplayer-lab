@@ -78,6 +78,7 @@ type SharedYardPlayer = {
   sessionId: string;
   resumeToken: string;
   netEntityId: string;
+  actorOrdinal: number;
   slot: number;
   body: BodyId;
   ready: boolean;
@@ -215,6 +216,7 @@ export class SharedYardV0 extends DurableObject<Env> {
   private lifecycleR0 = false;
   private lifecycleMode: "fixed-2p" | "r0" | "mf6" = "fixed-2p";
   private topologyRevision = 0;
+  private nextActorOrdinal = 0;
   private props: SharedYardProp[] = [];
   // ActorSession lifetime is deliberately independent from transport lifetime.
   // sessionId is public simulation identity; resumeToken is private reconnect authority.
@@ -515,16 +517,30 @@ export class SharedYardV0 extends DurableObject<Env> {
       // handoff. Any still-connected old peer then uses the existing same-room recovery
       // path and returns as a fresh actor in the new epoch.
       const activeEpoch = this.protocolStartTick !== null || Boolean(this.loopTimer);
-      const fullyVacantAssembledEpoch = this.players.size === maxPlayers && this.connectedPlayerCount() === 0;
-      const softOnlyReplacement = activeEpoch && this.softReservedPlayers().length > 0 && this.protectedReservedPlayers().length === 0;
-      if (fullyVacantAssembledEpoch) {
-        // Private ActorSession resume authority may survive while an assembled 2P epoch
-        // is unused, including bounded pre-start ambiguity. Zero connected humans never
-        // own scarce public capacity: Resume is handled above and wins if it arrives
-        // first; a fresh request retires the dormant epoch and starts a new waiting room.
-        this.endEpoch("all_players_disconnected_replaced");
-      } else if (softOnlyReplacement) {
-        this.endEpoch("peer_left_restart_required");
+      const softPlayers = this.softReservedPlayers();
+      const mf6SameEpochReplacement =
+        requestedLifecycleMode === MF6_LIFECYCLE_MODE &&
+        activeEpoch &&
+        this.players.size >= maxPlayers &&
+        softPlayers.length > 0;
+      if (mf6SameEpochReplacement) {
+        // Foundation composition invariant: membership identity is not a spawn/capacity
+        // slot. A sufficiently stale disconnected ActorSession may be retired to free
+        // one placement slot, but its actor identity can never be reincarnated.
+        this.retireMf6Player(softPlayers[0]);
+        topologyChanged = true;
+      } else {
+        const fullyVacantAssembledEpoch = this.players.size === maxPlayers && this.connectedPlayerCount() === 0;
+        const softOnlyReplacement = activeEpoch && softPlayers.length > 0 && this.protectedReservedPlayers().length === 0;
+        if (fullyVacantAssembledEpoch) {
+          // Private ActorSession resume authority may survive while an assembled 2P epoch
+          // is unused, including bounded pre-start ambiguity. Zero connected humans never
+          // own scarce public capacity: Resume is handled above and wins if it arrives
+          // first; a fresh request retires the dormant epoch and starts a new waiting room.
+          this.endEpoch("all_players_disconnected_replaced");
+        } else if (softOnlyReplacement) {
+          this.endEpoch("peer_left_restart_required");
+        }
       }
       // The research-only R0 lifecycle mode admits one new authored slot into an
       // already-running epoch. Default World V0 remains fixed-2P and unchanged.
@@ -542,13 +558,18 @@ export class SharedYardV0 extends DurableObject<Env> {
       const slot = starts.findIndex((_start, candidate) => !usedSlots.has(candidate));
       const start = starts[slot];
       if (!start) return json({ ok: false, error: "world_v0_slot_missing" }, 500);
+      const actorOrdinal = requestedLifecycleMode === MF6_LIFECYCLE_MODE
+        ? this.nextActorOrdinal++
+        : slot;
+      const netEntityId = `actor:${actorOrdinal}`;
       player = {
         playerId,
         sessionId: crypto.randomUUID(),
         resumeToken: crypto.randomUUID(),
-        netEntityId: `actor:${slot}`,
+        netEntityId,
+        actorOrdinal,
         slot,
-        body: this.createPlayerBody(start, `actor:${slot}`),
+        body: this.createPlayerBody(start, netEntityId),
         ready: false,
         input: new WorldV0ScheduledInputBuffer(),
         socket: null,
@@ -672,6 +693,7 @@ export class SharedYardV0 extends DurableObject<Env> {
     this.lifecycleMode = lifecycleMode;
     this.lifecycleR0 = lifecycleMode !== "fixed-2p";
     this.topologyRevision = 0;
+    this.nextActorOrdinal = 0;
     this.tick = 0;
     this.snapshotSequence = 0;
     this.protocolStartTick = null;
@@ -1059,6 +1081,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       sessionId: player.sessionId,
       netEntityId: player.netEntityId,
       slot: player.slot,
+      ...(this.lifecycleMode === MF6_LIFECYCLE_MODE ? { actorOrdinal: player.actorOrdinal } : {}),
     }));
     const entityOrder = [
       ...actors.map((actor) => actor.netEntityId),
@@ -1092,6 +1115,17 @@ export class SharedYardV0 extends DurableObject<Env> {
       player.input.resetForTopology();
       player.previousJumpIntent = false;
     }
+  }
+
+  private retireMf6Player(player: SharedYardPlayer): void {
+    if (this.lifecycleMode !== MF6_LIFECYCLE_MODE) throw new Error("mf6_retire_outside_mf6");
+    if (player.socket?.readyState === WebSocket.OPEN) throw new Error("mf6_retire_connected_actor");
+    try { b3.b3DestroyBody(player.body); } catch { /* body retirement is fail-observed by topology/state guard */ }
+    this.sessionBySocket.forEach((sessionId, socket) => {
+      if (sessionId === player.sessionId) this.sessionBySocket.delete(socket);
+    });
+    this.players.delete(player.sessionId);
+    this.advanceR0Topology();
   }
 
   private maxPlayers(): number {
@@ -1232,7 +1266,9 @@ export class SharedYardV0 extends DurableObject<Env> {
     this.worldId = null;
     this.worldEpoch = null;
     this.lifecycleR0 = false;
+    this.lifecycleMode = "fixed-2p";
     this.topologyRevision = 0;
+    this.nextActorOrdinal = 0;
     this.props = [];
   }
 

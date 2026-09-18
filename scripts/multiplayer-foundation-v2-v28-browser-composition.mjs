@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 
 const BASE = (process.env.MW_MF6_BROWSER_BASE || "http://127.0.0.1:8787").replace(/\/$/, "");
 const WS_BASE = BASE.replace(/^http/, "ws");
-const RUN = process.env.MW_MF6_BROWSER_RUN || `mf6-browser-${Date.now().toString(36)}`;
+const RUN = process.env.MW_MF6_BROWSER_RUN || `m6b-${Date.now().toString(36)}`;
 const OUTPUT = process.env.MW_MF6_BROWSER_OUTPUT || "mf6-browser-composition.json";
 const DEBUG_PORT = 9396;
 const TIMEOUT_MS = 45_000;

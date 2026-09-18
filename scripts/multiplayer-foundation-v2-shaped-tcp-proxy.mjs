@@ -19,46 +19,80 @@ function createRng(seed) {
 }
 
 function createDirection({ source, target, rng, metrics, profileRef }) {
+  const queue = [];
+  let timer = null;
   let lastReleaseAt = 0;
-  const timers = new Set();
+  let disposed = false;
+
+  const schedule = () => {
+    if (disposed || timer || queue.length === 0) return;
+    const delay = Math.max(0, queue[0].releaseAt - Date.now());
+    timer = setTimeout(() => {
+      timer = null;
+      if (disposed) return;
+      const now = Date.now();
+      while (queue.length > 0 && queue[0].releaseAt <= now) {
+        const item = queue.shift();
+        if (!target.destroyed) target.write(item.chunk);
+      }
+      schedule();
+    }, delay);
+  };
 
   const onData = (chunk) => {
+    if (disposed) return;
     const profile = profileRef();
     metrics.chunks += 1;
     metrics.bytes += chunk.length;
 
-    if (!profile.enabled || (profile.latencyMs <= 0 && profile.jitterMs <= 0)) {
+    const mustQueue = queue.length > 0 || Boolean(timer) || profile.enabled;
+    if (!mustQueue) {
       if (!target.destroyed) target.write(chunk);
       return;
     }
 
-    const sampledJitter = profile.jitterMs > 0
-      ? ((rng() * 2) - 1) * profile.jitterMs
-      : 0;
-    const requestedDelay = Math.max(0, profile.latencyMs + sampledJitter);
     const now = Date.now();
+    let requestedDelay = 0;
+    if (profile.enabled) {
+      const sampledJitter = profile.jitterMs > 0
+        ? ((rng() * 2) - 1) * profile.jitterMs
+        : 0;
+      requestedDelay = Math.max(0, profile.latencyMs + sampledJitter);
+      metrics.shapedChunks += 1;
+    } else {
+      metrics.carryoverChunks += 1;
+    }
+
+    // Every byte chunk receives one monotonically increasing release timestamp.
+    // This preserves TCP byte order even when sampled jitter would otherwise make
+    // a newer chunk eligible before an older chunk.
     const releaseAt = Math.max(now + requestedDelay, lastReleaseAt + 1);
     lastReleaseAt = releaseAt;
     const actualDelay = Math.max(0, releaseAt - now);
 
-    metrics.shapedChunks += 1;
-    metrics.delaySumMs += actualDelay;
-    metrics.minDelayMs = metrics.minDelayMs === null ? actualDelay : Math.min(metrics.minDelayMs, actualDelay);
-    metrics.maxDelayMs = Math.max(metrics.maxDelayMs, actualDelay);
+    if (profile.enabled) {
+      metrics.delaySumMs += actualDelay;
+      metrics.minDelayMs = metrics.minDelayMs === null ? actualDelay : Math.min(metrics.minDelayMs, actualDelay);
+      metrics.maxDelayMs = Math.max(metrics.maxDelayMs, actualDelay);
+    }
 
-    const timer = setTimeout(() => {
-      timers.delete(timer);
-      if (!target.destroyed) target.write(chunk);
-    }, actualDelay);
-    timers.add(timer);
+    queue.push({ chunk: Buffer.from(chunk), releaseAt });
+    metrics.maxQueueDepth = Math.max(metrics.maxQueueDepth, queue.length);
+    schedule();
   };
 
   source.on("data", onData);
   return {
     dispose() {
+      if (disposed) return;
+      disposed = true;
       source.off("data", onData);
-      for (const timer of timers) clearTimeout(timer);
-      timers.clear();
+      if (timer) clearTimeout(timer);
+      timer = null;
+      queue.length = 0;
+    },
+    snapshot() {
+      return { queuedChunks: queue.length, lastReleaseAt };
     },
   };
 }
@@ -69,9 +103,19 @@ export function createShapedTcpProxy({ target, port, seed = 1 }) {
   let accepted = 0;
   const pairs = new Set();
   const rng = createRng(seed);
+  const makeMetrics = () => ({
+    chunks: 0,
+    bytes: 0,
+    shapedChunks: 0,
+    carryoverChunks: 0,
+    delaySumMs: 0,
+    minDelayMs: null,
+    maxDelayMs: 0,
+    maxQueueDepth: 0,
+  });
   const metrics = {
-    clientToUpstream: { chunks: 0, bytes: 0, shapedChunks: 0, delaySumMs: 0, minDelayMs: null, maxDelayMs: 0 },
-    upstreamToClient: { chunks: 0, bytes: 0, shapedChunks: 0, delaySumMs: 0, minDelayMs: null, maxDelayMs: 0 },
+    clientToUpstream: makeMetrics(),
+    upstreamToClient: makeMetrics(),
   };
 
   const server = net.createServer((client) => {
@@ -98,10 +142,12 @@ export function createShapedTcpProxy({ target, port, seed = 1 }) {
       metrics: metrics.upstreamToClient,
       profileRef: () => profile,
     });
-    const pair = { client, upstream, c2u, u2c };
+    const pair = { client, upstream, c2u, u2c, retired: false };
     pairs.add(pair);
 
     const retire = () => {
+      if (pair.retired) return;
+      pair.retired = true;
       pairs.delete(pair);
       c2u.dispose();
       u2c.dispose();
@@ -145,6 +191,10 @@ export function createShapedTcpProxy({ target, port, seed = 1 }) {
         activePairs: pairs.size,
         clientToUpstream: summarize(metrics.clientToUpstream),
         upstreamToClient: summarize(metrics.upstreamToClient),
+        pairQueues: [...pairs].map((pair) => ({
+          clientToUpstream: pair.c2u.snapshot().queuedChunks,
+          upstreamToClient: pair.u2c.snapshot().queuedChunks,
+        })),
       };
     },
     async close() {
@@ -153,6 +203,7 @@ export function createShapedTcpProxy({ target, port, seed = 1 }) {
         pair.u2c.dispose();
         hardClose(pair.client);
         hardClose(pair.upstream);
+        pair.retired = true;
       }
       pairs.clear();
       await new Promise((resolve) => server.close(() => resolve()));

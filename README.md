@@ -1,10 +1,10 @@
 # Multi_World / Cloudflare Multiplayer Lab
 
-Evidence-driven R&D laboratory for a small shared physical browser world.
+Evidence-driven R&D laboratory for **multiplayer / shared-world technology**.
 
-The current product specimen is **World V0 / Ongoing Shared Yard**: a small server-authoritative Box3D world used to study responsive embodiment, shared physical truth and what makes another real person feel physically present in the same place.
+The current test specimen is **World V0 / Ongoing Shared Yard**: a deliberately small server-authoritative Box3D crucible used to develop and falsify real-time multiplayer behavior under shared active physics.
 
-The project is **not** a generic multiplayer framework. Networking, recovery and infrastructure are supporting machinery; architecture is earned by concrete shared-world experience questions.
+**Multiplayer systems are the primary product of this repository.** Gameplay, map content and interaction affordances exist here only when they provide a useful test surface for multiplayer technology. Multi_World is not being developed by feature expansion into the future game; future games should consume or donate proven systems from this lab.
 
 ## Start here
 
@@ -65,15 +65,23 @@ The retained live workflow spine is:
 
 ## Current work boundary
 
-**Do not restart the old reliability laboratory by momentum.**
+**Do not add gameplay/features by momentum. Do not restart old reliability ladders without a new multiplayer failure or capability question.**
 
-The next substantial task is product-facing:
+The next substantial phase is the **Multiplayer Foundation**: continue developing a reusable real-time physical multiplayer substrate toward the already accepted early envelope of **1–6 dynamic actors**.
 
-> **What new shared-world experience would now teach us the most or make the Yard materially more worth inhabiting?**
+Core technical scope includes:
 
-Plausible pressures include richer shared physical affordances, a third actor, stronger continuity of the place beyond short sessions, or another need exposed by direct human play. These are candidates, not a predetermined roadmap.
+- dynamic join / leave and roster mutation;
+- transport loss, resume and recovery;
+- shared active physics under authoritative truth;
+- real process / runtime restart behavior;
+- network impairment and latency regimes;
+- browser / mobile / platform lifecycle;
+- browser self+N execution;
+- load / fault behavior and, when earned, interest-management pressure;
+- machine evidence plus real 3–6-human qualification.
 
-Current exploration should prefer the smallest reversible experiment that can answer a meaningful product question before it earns new architecture.
+Before new implementation, recover and verify what the archived Multiplayer Foundation v1 research already proved. The Ongoing Yard + V28 two-actor runtime is a qualified regression/test baseline, not the end goal and not a request for gameplay expansion.
 
 ## Explicit nonclaims
 
@@ -104,6 +112,6 @@ npm ci
 npm run dev
 ```
 
-Multi_World's durable objective remains:
+Multi_World's durable objective is:
 
-> Build toward a small shared physical living world where another person's actions feel like consequences in the same place, not merely synchronized coordinates.
+> Develop and qualify reusable multiplayer/shared-world technology that can make a small real-time physical world behave as one coherent place across real people, devices, failures and lifecycle transitions.

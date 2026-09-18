@@ -1,5 +1,9 @@
 name: Multiplayer Foundation V2 dynamic composition
 
+concurrency:
+  group: multiplayer-foundation-v2-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:

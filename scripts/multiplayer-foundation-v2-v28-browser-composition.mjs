@@ -59,6 +59,12 @@ function makeRawPeer(index) {
   return peer;
 }
 
+async function authorityStatus() {
+  const response = await fetch(`${BASE}/api/world-v0/status?run=${encodeURIComponent(RUN)}`, { cache: "no-store" });
+  assert(response.ok, `authority status HTTP ${response.status}`);
+  return response.json();
+}
+
 async function openRawPeer(index) {
   const peer = makeRawPeer(index);
   const welcome = await waitFor(() => peer.welcome || false, `raw ${index} welcome`);
@@ -230,7 +236,17 @@ try {
   const retired = rawPeers[2];
   const oldResumeToken = retired.welcome.resumeToken;
   const killedTransport = await killTransportViaRebind(retired);
-  await sleep(22_000);
+  const replacementReady = await waitFor(async () => {
+    const status = await authorityStatus();
+    return status.worldEpoch === epoch &&
+      status.lifecycleMode === "mf6" &&
+      status.connectedPlayers === EXPECTED_ACTORS - 1 &&
+      status.replaceableReservations >= 1 &&
+      Array.isArray(status.softReservedSlots) &&
+      status.softReservedSlots.includes(retired.welcome.slot)
+      ? status
+      : false;
+  }, "browser churn authority soft reservation", 60_000);
 
   const replacement = await openRawPeer(6);
   rawPeers.push(replacement);
@@ -294,6 +310,12 @@ try {
       guardMismatches: after.metrics.guardMismatches,
       rebases: after.metrics.rebases,
       boundaryTick: after.localBoundaryTick,
+    },
+    replacementReady: {
+      boundaryTick: replacementReady.boundaryTick,
+      connectedPlayers: replacementReady.connectedPlayers,
+      softReservedSlots: replacementReady.softReservedSlots,
+      replaceableReservations: replacementReady.replaceableReservations,
     },
     replacement: {
       actorId: replacement.welcome.selfNetEntityId,

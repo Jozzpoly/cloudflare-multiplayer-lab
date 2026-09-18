@@ -291,6 +291,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       const softReservedSlots = this.softReservedPlayers().map((player) => player.slot);
       const replaceableSlots = this.replaceablePlayers().map((player) => player.slot);
       const staleConnectedSlots = this.staleConnectedPlayers().map((player) => player.slot);
+      const leaseExpiredConnectedSlots = this.leaseExpiredConnectedPlayers().map((player) => player.slot);
       return json({
         ok: this.failure === null,
         revision: WORLD_V0_SERVER_REVISION,
@@ -313,6 +314,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         replaceableSlots,
         replaceableReservations: replaceableSlots.length,
         staleConnectedSlots,
+        leaseExpiredConnectedSlots,
         stalePlayers: [...this.players.values()].filter((player) =>
           player.input.stats().currentMissingStreak >= WORLD_V0_TIMING.inputLeaseMissingTicks
         ).length,
@@ -1200,6 +1202,14 @@ export class SharedYardV0 extends DurableObject<Env> {
     if (this.protocolStartTick === null) return [];
     return this.disconnectedPlayers().filter((player) =>
       player.input.stats().currentMissingStreak >= WORLD_V0_LIFECYCLE.allDisconnectedGraceTicks
+    );
+  }
+
+  private leaseExpiredConnectedPlayers(): SharedYardPlayer[] {
+    if (this.protocolStartTick === null) return [];
+    return this.sortedPlayers().filter((player) =>
+      player.socket?.readyState === WebSocket.OPEN &&
+      player.input.stats().currentMissingStreak >= WORLD_V0_TIMING.inputLeaseMissingTicks
     );
   }
 

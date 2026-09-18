@@ -317,7 +317,15 @@ try {
     feeds.push(startSustainedFeed(peer, vectors[index]));
   }
   retiredPeer.ws.close(1000, "mf6_retire_transport_loss");
-  await waitFor(() => retiredPeer.closed || false, "retired peer transport close");
+  await waitFor(
+    () => retiredPeer.ws.readyState !== WebSocket.OPEN || false,
+    "retired peer transport leaves OPEN",
+    5_000,
+  );
+  // Node's client-side close event is not the authority detach oracle. Give the
+  // close frame a bounded propagation window; later replacement + stale-resume
+  // rejection proves the server-side ActorSession retirement path actually ran.
+  await sleep(500);
 
   // The production reservation horizon is intentionally retained here. This gate
   // tests actual V28 lifecycle semantics, not a shortened research-only timeout.

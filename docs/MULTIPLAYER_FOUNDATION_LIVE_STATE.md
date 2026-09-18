@@ -269,3 +269,52 @@ Interpretation:
 - mixed results at the same lead mean the tested envelope remains transport-sensitive and should be mapped by actual RTT/margin rather than nominal profile alone.
 
 This counterbalanced campaign intentionally uses a dedicated focused workflow. Re-running the already-stable full dynamic-composition suite for every timing-only probe is no longer the best information/cost trade.
+
+
+## Serial counterbalance revealed a second, separate failure mode
+
+Focused serial run:
+35367263682
+Head:
+0253cc7cf2f5759e6b1c5f79b369015d6c05b10b
+
+The serial six-specimen counterbalance is not accepted as a clean network-envelope comparison because later specimens accumulated authority scheduling degradation on the shared CI runner.
+
+Material evidence:
+- A-L8 reached hostile and failed 7/8 at median RTT about 309 ms.
+- A-L10 passed.
+- A-L12 passed.
+- B-L12 passed.
+- B-L10 failed already in moderate before hostile:
+  - exactness remained intact;
+  - self motion failed;
+  - 258 records were rejected as too_future;
+  - browser authority estimate was about 12.7 ticks ahead of the last observed authority boundary at the failure snapshot;
+  - ACK trace contained 258 too_future records.
+- B-L8 later failed 6/8 and command windows showed phase-estimate overshoots up to roughly 18–33 ticks relative to the independent raw-authority boundary.
+
+Raw authority progression also slowed materially in some later 700 ms command windows. Therefore the long serial run mixed F4 network timing with F6-style authority/runner scheduling stalls.
+
+This is a plan-correction trigger:
+- do not interpret later serial B specimens as a clean lead threshold;
+- do not respond by raising lead;
+- keep authority-load/scheduler-stall pressure as a separate Foundation finding to revisit under F6;
+- isolate the F4 network experiment from cumulative runner load.
+
+### Revised nearest experiment
+
+Run two independent fresh-runner replicates for each lead L8/L10/L12.
+
+Each specimen gets:
+- its own GitHub runner;
+- fresh Workerd authority;
+- fresh world;
+- identical browser harness and shaped-TCP profile;
+- sustained 8-command train;
+- ACK future-horizon trace;
+- first canonical onset;
+- exact-state guards.
+
+Aggregate by actual measured RTT and arrival margins after all six finish.
+
+This replaces the serial counterbalance. The purpose is not to manufacture a stable threshold but to separate lead effect from cumulative authority scheduling degradation.

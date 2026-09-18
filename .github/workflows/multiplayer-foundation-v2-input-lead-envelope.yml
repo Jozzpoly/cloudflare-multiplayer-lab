@@ -1,4 +1,4 @@
-name: Multiplayer Foundation V2 input lead counterbalance
+name: Multiplayer Foundation V2 isolated input lead replicates
 
 concurrency:
   group: multiplayer-foundation-v2-input-lead-${{ github.ref }}
@@ -16,9 +16,26 @@ permissions:
   contents: read
 
 jobs:
-  measure:
+  regression:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Repository regression gate
+        run: npm run check
+
+  specimen:
+    needs: regression
+    strategy:
+      fail-fast: false
+      matrix:
+        lead: [8, 10, 12]
+        replicate: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -26,75 +43,84 @@ jobs:
           node-version: 22
       - run: npm ci
 
-      - name: Repository regression gate
-        run: npm run check
-
       - name: Start isolated Workerd authority
         shell: bash
         run: |
           set -euo pipefail
-          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9288 > mf6-envelope-workerd.log 2>&1 &
-          echo $! > mf6-envelope-workerd.pid
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9288 > mf6-isolated-workerd.log 2>&1 &
+          echo $! > mf6-isolated-workerd.pid
           for i in {1..120}; do
             if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
-              echo "MF6_ENVELOPE_WORKER_READY"
+              echo "MF6_ISOLATED_WORKER_READY"
               exit 0
             fi
             sleep 0.25
           done
-          cat mf6-envelope-workerd.log
+          cat mf6-isolated-workerd.log
           exit 1
 
-      - name: Run counterbalanced L8 L10 L12 hostile specimens
+      - name: Run isolated hostile specimen
         env:
           MW_MF6_LATENCY_BASE: http://127.0.0.1:8787
+          LEAD: ${{ matrix.lead }}
+          REP: ${{ matrix.replicate }}
         shell: bash
         run: |
           set -euo pipefail
-          run_specimen() {
-            id="$1"
-            lead="$2"
-            port="$3"
-            set +e
-            if [ "$lead" = "8" ]; then
-              MW_MF6_LATENCY_RUN="m6e-$id-${{ github.run_id }}"               MW_MF6_LATENCY_OUTPUT="mf6-envelope-$id.json"               MW_MF6_LATENCY_PROXY_PORT="$port"                 timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs                 | tee "mf6-envelope-$id.log"
-            else
-              MW_MF6_INPUT_LEAD_PROBE="$lead"               MW_MF6_LATENCY_RUN="m6e-$id-${{ github.run_id }}"               MW_MF6_LATENCY_OUTPUT="mf6-envelope-$id.json"               MW_MF6_LATENCY_PROXY_PORT="$port"                 timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs                 | tee "mf6-envelope-$id.log"
-            fi
-            status=${PIPESTATUS[0]}
-            set -e
-            echo "SPECIMEN-$id-STATUS=$status"
-          }
-
-          # Counterbalanced order:
-          # A: low -> middle -> high
-          # B: high -> middle -> low
-          run_specimen a8 8 8792
-          run_specimen a10 10 8792
-          run_specimen a12 12 8792
-          run_specimen b12 12 8792
-          run_specimen b10 10 8792
-          run_specimen b8 8 8792
-
-          node scripts/multiplayer-foundation-v2-v28-input-lead-counterbalanced.mjs             mf6-envelope-a8.json             mf6-envelope-a10.json             mf6-envelope-a12.json             mf6-envelope-b12.json             mf6-envelope-b10.json             mf6-envelope-b8.json             mf6-input-lead-counterbalanced.json             | tee mf6-input-lead-counterbalanced.log
+          id="$REP$LEAD"
+          output="mf6-isolated-$id.json"
+          set +e
+          if [ "$LEAD" = "8" ]; then
+            MW_MF6_LATENCY_RUN="m6iso-$id-${{ github.run_id }}"             MW_MF6_LATENCY_OUTPUT="$output"             MW_MF6_LATENCY_PROXY_PORT=8792               timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs               | tee "mf6-isolated-$id.log"
+          else
+            MW_MF6_INPUT_LEAD_PROBE="$LEAD"             MW_MF6_LATENCY_RUN="m6iso-$id-${{ github.run_id }}"             MW_MF6_LATENCY_OUTPUT="$output"             MW_MF6_LATENCY_PROXY_PORT=8792               timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs               | tee "mf6-isolated-$id.log"
+          fi
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "SPECIMEN-$id-STATUS=$status"
+          test -f "$output"
 
       - name: Stop isolated authority
         if: always()
         shell: bash
         run: |
-          if [ -f mf6-envelope-workerd.pid ]; then
-            pid="$(cat mf6-envelope-workerd.pid)"
+          if [ -f mf6-isolated-workerd.pid ]; then
+            pid="$(cat mf6-isolated-workerd.pid)"
             kill -TERM -- "-$pid" 2>/dev/null || true
           fi
 
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: multiplayer-foundation-v2-input-lead-envelope-${{ github.run_id }}
-          if-no-files-found: ignore
+          name: mf6-input-lead-specimen-${{ matrix.replicate }}${{ matrix.lead }}
+          if-no-files-found: error
           path: |
-            mf6-envelope-*.log
-            mf6-envelope-*.json
-            mf6-input-lead-counterbalanced.log
-            mf6-input-lead-counterbalanced.json
-            mf6-envelope-workerd.log
+            mf6-isolated-*.json
+            mf6-isolated-*.log
+            mf6-isolated-workerd.log
+
+  aggregate:
+    needs: specimen
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: mf6-input-lead-specimen-*
+          merge-multiple: true
+
+      - name: Aggregate isolated lead replicates
+        run: |
+          node scripts/multiplayer-foundation-v2-v28-input-lead-counterbalanced.mjs             mf6-isolated-a8.json             mf6-isolated-a10.json             mf6-isolated-a12.json             mf6-isolated-b8.json             mf6-isolated-b10.json             mf6-isolated-b12.json             mf6-input-lead-isolated-replicates.json             | tee mf6-input-lead-isolated-replicates.log
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: multiplayer-foundation-v2-input-lead-isolated-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            mf6-input-lead-isolated-replicates.json
+            mf6-input-lead-isolated-replicates.log

@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { openMf6ResumeTransport } from "./multiplayer-foundation-v2-transport-proxy.mjs";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -92,29 +93,18 @@ function startZeroFeed(peer) {
 }
 
 async function killTransportViaRebind(peer) {
-  const child = spawn(process.execPath, ["scripts/multiplayer-foundation-v2-transport-proxy.mjs"], {
-    env: {
-      ...process.env,
-      MW_PROXY_BASE: BASE,
-      MW_PROXY_PLAYER: peer.playerId,
-      MW_PROXY_RUN: RUN,
-      MW_PROXY_RESUME: peer.welcome.resumeToken,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
+  const hardTransport = await openMf6ResumeTransport({
+    base: BASE,
+    player: peer.playerId,
+    run: RUN,
+    resume: peer.welcome.resumeToken,
   });
-
-  let stdout = "";
-  let stderr = "";
-  child.stdout.setEncoding("utf8");
-  child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => { stdout += chunk; });
-  child.stderr.on("data", (chunk) => { stderr += chunk; });
-
-  await waitFor(() => stdout.includes("MF6_TRANSPORT_PROXY_READY") || false, "browser churn transport proxy rebind", 10_000);
-  if (child.exitCode !== null) throw new Error(`browser churn transport proxy exited early: ${child.exitCode} stderr=${stderr}`);
-  child.kill("SIGKILL");
-  await waitFor(() => child.exitCode !== null || child.signalCode === "SIGKILL" || false, "browser churn proxy SIGKILL", 5_000);
-  return { signal: child.signalCode, stdout: stdout.trim(), stderr: stderr.trim() };
+  assert(hardTransport.welcome.selfSessionId === peer.welcome.selfSessionId, "browser churn hard transport ActorSession drift");
+  assert(hardTransport.welcome.selfNetEntityId === peer.welcome.selfNetEntityId, "browser churn hard transport ActorId drift");
+  assert(hardTransport.welcome.worldEpoch === peer.welcome.worldEpoch, "browser churn hard transport WorldEpoch drift");
+  hardTransport.reset();
+  await sleep(100);
+  return { mechanism: "raw-websocket-tcp-rst", signal: "TCP_RST" };
 }
 
 function findChrome() {
@@ -310,7 +300,7 @@ try {
       slot: replacement.welcome.slot,
       staleResumeRejected: true,
       transportLoss: {
-        mechanism: "resume-rebind-child-process-sigkill",
+        mechanism: killedTransport.mechanism,
         signal: killedTransport.signal,
       },
     },

@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
-const [l8Path, l12Path, outputPath = "mf6-input-lead-discriminator.json"] = process.argv.slice(2);
-if (!l8Path || !l12Path) {
-  throw new Error("usage: node input-lead-discriminator.mjs <l8.json> <l12.json> [output.json]");
+const [l8Path, l10Path, l12Path, outputPath = "mf6-input-lead-discriminator.json"] = process.argv.slice(2);
+if (!l8Path || !l10Path || !l12Path) {
+  throw new Error("usage: node input-lead-discriminator.mjs <l8.json> <l10.json> <l12.json> [output.json]");
 }
 
 function load(path) {
@@ -93,6 +93,7 @@ function summarize(label, result, expectedEffectiveLead) {
 }
 
 const l8 = summarize("L8-control", load(l8Path), 8);
+const l10 = summarize("L10-treatment", load(l10Path), 10);
 const l12 = summarize("L12-treatment", load(l12Path), 12);
 
 function numericSummary(values) {
@@ -105,38 +106,28 @@ function numericSummary(values) {
     max: Math.max(...finite),
   };
 }
-l8.phaseError.estimateLagSummary = numericSummary(l8.phaseError.estimateLagTicks);
-l8.phaseError.observedBoundaryLagSummary = numericSummary(l8.phaseError.observedBoundaryLagTicks);
-l12.phaseError.estimateLagSummary = numericSummary(l12.phaseError.estimateLagTicks);
-l12.phaseError.observedBoundaryLagSummary = numericSummary(l12.phaseError.observedBoundaryLagTicks);
-l8.commandOnsetSummary = numericSummary(l8.commandOnsetTicks);
-l12.commandOnsetSummary = numericSummary(l12.commandOnsetTicks);
-l8.commandWitnessCountSummary = numericSummary(l8.commandWitnessCounts);
-l12.commandWitnessCountSummary = numericSummary(l12.commandWitnessCounts);
-l8.commandAckSummary = {
-  viableRecords: numericSummary(l8.commandAck.map((entry) => entry.viableRecords)),
-  lateRecords: numericSummary(l8.commandAck.map((entry) => entry.lateRecords)),
-  maxArrivalMarginTicks: numericSummary(l8.commandAck.map((entry) => entry.maxArrivalMarginTicks)),
-  survivingFutureSpanTicks: numericSummary(l8.commandAck.map((entry) => entry.survivingFutureSpanTicks)),
-};
-l12.commandAckSummary = {
-  viableRecords: numericSummary(l12.commandAck.map((entry) => entry.viableRecords)),
-  lateRecords: numericSummary(l12.commandAck.map((entry) => entry.lateRecords)),
-  maxArrivalMarginTicks: numericSummary(l12.commandAck.map((entry) => entry.maxArrivalMarginTicks)),
-  survivingFutureSpanTicks: numericSummary(l12.commandAck.map((entry) => entry.survivingFutureSpanTicks)),
-};
+for (const summary of [l8, l10, l12]) {
+  summary.phaseError.estimateLagSummary = numericSummary(summary.phaseError.estimateLagTicks);
+  summary.phaseError.observedBoundaryLagSummary = numericSummary(summary.phaseError.observedBoundaryLagTicks);
+  summary.commandOnsetSummary = numericSummary(summary.commandOnsetTicks);
+  summary.commandWitnessCountSummary = numericSummary(summary.commandWitnessCounts);
+  summary.commandAckSummary = {
+    viableRecords: numericSummary(summary.commandAck.map((entry) => entry.viableRecords)),
+    lateRecords: numericSummary(summary.commandAck.map((entry) => entry.lateRecords)),
+    maxArrivalMarginTicks: numericSummary(summary.commandAck.map((entry) => entry.maxArrivalMarginTicks)),
+    survivingFutureSpanTicks: numericSummary(summary.commandAck.map((entry) => entry.survivingFutureSpanTicks)),
+  };
+}
 
 let classification;
-if (!l8.exact || !l12.exact) {
+if (![l8, l10, l12].every((summary) => summary.exact)) {
   classification = "EXACTNESS_RED";
-} else if (!l8.agency && l12.agency) {
-  classification = "L8_AGENCY_RED_L12_AGENCY_PASS";
-} else if (!l8.agency && !l12.agency) {
-  classification = "L8_AGENCY_RED_L12_AGENCY_RED";
-} else if (l8.agency && l12.agency) {
-  classification = "L8_AGENCY_PASS_L12_AGENCY_PASS";
 } else {
-  classification = "L8_AGENCY_PASS_L12_AGENCY_RED";
+  classification = [
+    `L8_${l8.agency ? "PASS" : "RED"}`,
+    `L10_${l10.agency ? "PASS" : "RED"}`,
+    `L12_${l12.agency ? "PASS" : "RED"}`,
+  ].join("_");
 }
 
 const comparison = {
@@ -144,18 +135,28 @@ const comparison = {
   classification,
   generatedAt: new Date().toISOString(),
   declaredProfileComparable:
-    l8.profile.latencyMs === l12.profile.latencyMs &&
-    l8.profile.jitterMs === l12.profile.jitterMs,
-  measuredRttMedianDeltaMs:
-    Number.isFinite(l8.rttMedianMs) && Number.isFinite(l12.rttMedianMs)
-      ? l12.rttMedianMs - l8.rttMedianMs
-      : null,
+    [l10, l12].every((summary) =>
+      summary.profile.latencyMs === l8.profile.latencyMs &&
+      summary.profile.jitterMs === l8.profile.jitterMs),
+  measuredRttMedianDeltaMs: {
+    l10MinusL8:
+      Number.isFinite(l8.rttMedianMs) && Number.isFinite(l10.rttMedianMs)
+        ? l10.rttMedianMs - l8.rttMedianMs
+        : null,
+    l12MinusL8:
+      Number.isFinite(l8.rttMedianMs) && Number.isFinite(l12.rttMedianMs)
+        ? l12.rttMedianMs - l8.rttMedianMs
+        : null,
+  },
   l8,
+  l10,
   l12,
   interpretation:
-    classification === "L8_AGENCY_RED_L12_AGENCY_PASS"
-      ? "Changing only the browser canonical input-authorship horizon from 8 to 12 ticks restored all eight authority-windowed direction commands in this paired hostile specimen while client simulation lead remained 2."
-      : "The paired sustained-command specimen did not isolate a simple L8-to-L12 full-agency restoration; inspect delivery ratios and lateness before changing runtime policy.",
+    classification === "L8_RED_L10_RED_L12_PASS"
+      ? "In this hostile specimen, both 8- and 10-tick canonical authorship horizons exhausted before preserving all command transitions, while 12 ticks retained a surviving future tail. This isolates a boundary above L10 for this specimen, not a production setting."
+      : classification === "L8_RED_L10_PASS_L12_PASS"
+        ? "In this hostile specimen, 10 ticks was already sufficient to preserve all command transitions while 8 ticks was not. This identifies an intermediate surviving horizon but does not qualify L10 as production policy."
+        : "The three-horizon specimen did not isolate a simple monotonic L8/L10/L12 boundary; inspect actual RTT, command delivery, onset and future-horizon survival before changing runtime policy.",
   nonClaim:
     "This is a bounded paired mechanism discriminator under one deterministic shaped-TCP apparatus. It is not a production lead recommendation, an adaptive-policy qualification, a deployed-edge SLO, or human feel evidence.",
 };
@@ -166,7 +167,13 @@ console.log(comparison.verdict);
 console.log(`MF6_V28_INPUT_AUTHORSHIP_HORIZON_CLASSIFICATION_${classification}`);
 
 // Preserve qualification semantics: the current default L8 policy remains RED when
-// its agency fails even if the diagnostic L12 treatment restores agency.
-if (!l8.exact || !l8.agency || !l12.exact || (l8.agency && !l12.agency)) {
+// it loses agency. Also fail on non-monotonic treatment behavior or exactness loss;
+// diagnostic treatments never hide a default-policy failure.
+if (
+  !l8.exact || !l10.exact || !l12.exact ||
+  !l8.agency ||
+  (l8.agency && !l10.agency) ||
+  (l10.agency && !l12.agency)
+) {
   process.exitCode = 1;
 }

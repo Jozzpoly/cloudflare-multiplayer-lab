@@ -129,6 +129,14 @@ jobs:
             | tee mf6-browser-latency-jitter-l8.log
           l8_status=${PIPESTATUS[0]}
 
+          MW_MF6_LATENCY_RUN=m6l10${{ github.run_id }} \
+          MW_MF6_LATENCY_OUTPUT=mf6-browser-latency-jitter-l10.json \
+          MW_MF6_LATENCY_PROXY_PORT=8792 \
+          MW_MF6_INPUT_LEAD_PROBE=10 \
+            timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs \
+            | tee mf6-browser-latency-jitter-l10.log
+          l10_status=${PIPESTATUS[0]}
+
           MW_MF6_LATENCY_RUN=m6l12${{ github.run_id }} \
           MW_MF6_LATENCY_OUTPUT=mf6-browser-latency-jitter-l12.json \
           MW_MF6_LATENCY_PROXY_PORT=8792 \
@@ -139,9 +147,11 @@ jobs:
           set -e
 
           echo "L8_SCRIPT_STATUS=${l8_status}"
+          echo "L10_SCRIPT_STATUS=${l10_status}"
           echo "L12_SCRIPT_STATUS=${l12_status}"
           node scripts/multiplayer-foundation-v2-v28-input-lead-discriminator.mjs \
             mf6-browser-latency-jitter-l8.json \
+            mf6-browser-latency-jitter-l10.json \
             mf6-browser-latency-jitter-l12.json \
             mf6-input-lead-discriminator.json \
             | tee mf6-input-lead-discriminator.log
@@ -172,6 +182,8 @@ jobs:
             mf6-browser-active-impairment.json
             mf6-browser-latency-jitter-l8.log
             mf6-browser-latency-jitter-l8.json
+            mf6-browser-latency-jitter-l10.log
+            mf6-browser-latency-jitter-l10.json
             mf6-browser-latency-jitter-l12.log
             mf6-browser-latency-jitter-l12.json
             mf6-input-lead-discriminator.log

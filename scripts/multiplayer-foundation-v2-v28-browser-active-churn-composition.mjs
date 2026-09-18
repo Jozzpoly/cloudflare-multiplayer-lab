@@ -98,6 +98,40 @@ async function authorityStatus() {
   return response.json();
 }
 
+async function waitForReplacementEligibility({ worldEpoch, slot, label, timeout = 180_000 }) {
+  const start = await authorityStatus();
+  const startBoundary = Number(start.boundaryTick || 0);
+  const expectedHorizon = 1200;
+  const deadline = Date.now() + timeout;
+  let last = start;
+
+  while (Date.now() < deadline) {
+    last = await authorityStatus();
+    if (
+      last.worldEpoch === worldEpoch &&
+      last.lifecycleMode === "mf6" &&
+      last.replaceableReservations >= 1 &&
+      Array.isArray(last.replaceableSlots) &&
+      last.replaceableSlots.includes(slot)
+    ) {
+      return { status: last, startBoundary, boundaryDelta: last.boundaryTick - startBoundary };
+    }
+    if (last.worldEpoch === worldEpoch && Number(last.boundaryTick) >= startBoundary + expectedHorizon + 64) {
+      throw new Error(
+        `${label} semantic failure · crossed canonical horizon without replacement eligibility · ` +
+        `startB=${startBoundary} currentB=${last.boundaryTick} replaceable=${JSON.stringify(last.replaceableSlots)} ` +
+        `staleConnected=${JSON.stringify(last.staleConnectedSlots)} soft=${JSON.stringify(last.softReservedSlots)}`
+      );
+    }
+    await sleep(50);
+  }
+  throw new Error(
+    `${label} infrastructure timeout · canonical horizon not reached · ` +
+    `startB=${startBoundary} currentB=${last?.boundaryTick} replaceable=${JSON.stringify(last?.replaceableSlots)}`
+  );
+}
+
+
 async function killTransportViaRebind(peer) {
   const hardTransport = await openMf6ResumeTransport({
     base: BASE,
@@ -391,16 +425,12 @@ try {
   retired.feed.stop();
 
   const killedTransport = await killTransportViaRebind(retired);
-  const replacementReady = await waitFor(async () => {
-    const status = await authorityStatus();
-    return status.worldEpoch === epoch &&
-      status.lifecycleMode === "mf6" &&
-      status.replaceableReservations >= 1 &&
-      Array.isArray(status.replaceableSlots) &&
-      status.replaceableSlots.includes(retiredSlot)
-      ? status
-      : false;
-  }, "active N-peer churn soft reservation", 120_000);
+  const replacementEligibility = await waitForReplacementEligibility({
+    worldEpoch: epoch,
+    slot: retiredSlot,
+    label: "active N-peer churn replacement eligibility",
+  });
+  const replacementReady = replacementEligibility.status;
 
   const replacement = await openRawPeer(6);
   rawPeers.push(replacement);
@@ -521,7 +551,9 @@ try {
       slot: retiredSlot,
       transportLoss: killedTransport,
       replacementReady: {
+        startBoundary: replacementEligibility.startBoundary,
         boundaryTick: replacementReady.boundaryTick,
+        boundaryDelta: replacementEligibility.boundaryDelta,
         connectedPlayers: replacementReady.connectedPlayers,
         softReservedSlots: replacementReady.softReservedSlots,
         replaceableSlots: replacementReady.replaceableSlots,

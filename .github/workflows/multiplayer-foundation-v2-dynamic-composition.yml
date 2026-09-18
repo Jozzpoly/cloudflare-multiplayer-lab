@@ -16,7 +16,9 @@ on:
       - scripts/multiplayer-foundation-v2-v28-browser-n-input-composition.mjs
       - scripts/multiplayer-foundation-v2-v28-browser-active-churn-composition.mjs
       - scripts/multiplayer-foundation-v2-v28-browser-active-impairment.mjs
+      - scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs
       - scripts/multiplayer-foundation-v2-blocking-tcp-proxy.mjs
+      - scripts/multiplayer-foundation-v2-shaped-tcp-proxy.mjs
       - scripts/multiplayer-foundation-v2-transport-proxy.mjs
       - .github/workflows/multiplayer-foundation-v2-dynamic-composition.yml
 
@@ -112,6 +114,18 @@ jobs:
           timeout 180s node scripts/multiplayer-foundation-v2-v28-browser-active-impairment.mjs | tee mf6-browser-active-impairment.log
           grep -q MF6_V28_BROWSER_ACTIVE_IMPAIRMENT_PASS mf6-browser-active-impairment.log
 
+      - name: Qualify active N-peer latency jitter
+        env:
+          MW_MF6_LATENCY_BASE: http://127.0.0.1:8787
+          MW_MF6_LATENCY_RUN: m6l${{ github.run_id }}
+          MW_MF6_LATENCY_OUTPUT: mf6-browser-latency-jitter.json
+          MW_MF6_LATENCY_PROXY_PORT: 8792
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs | tee mf6-browser-latency-jitter.log
+          grep -q MF6_V28_BROWSER_LATENCY_JITTER_PASS mf6-browser-latency-jitter.log
+
       - name: Stop isolated authority
         if: always()
         shell: bash
@@ -136,4 +150,6 @@ jobs:
             mf6-browser-active-churn-composition.json
             mf6-browser-active-impairment.log
             mf6-browser-active-impairment.json
+            mf6-browser-latency-jitter.log
+            mf6-browser-latency-jitter.json
             mf6-workerd.log

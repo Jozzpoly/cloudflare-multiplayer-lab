@@ -289,6 +289,8 @@ export class SharedYardV0 extends DurableObject<Env> {
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
       const protectedReservedSlots = this.protectedReservedPlayers().map((player) => player.slot);
       const softReservedSlots = this.softReservedPlayers().map((player) => player.slot);
+      const replaceableSlots = this.replaceablePlayers().map((player) => player.slot);
+      const staleConnectedSlots = this.staleConnectedPlayers().map((player) => player.slot);
       return json({
         ok: this.failure === null,
         revision: WORLD_V0_SERVER_REVISION,
@@ -308,7 +310,9 @@ export class SharedYardV0 extends DurableObject<Env> {
         reservedSlots: [...protectedReservedSlots, ...softReservedSlots].sort((a, b) => a - b),
         protectedReservedSlots,
         softReservedSlots,
-        replaceableReservations: softReservedSlots.length,
+        replaceableSlots,
+        replaceableReservations: replaceableSlots.length,
+        staleConnectedSlots,
         stalePlayers: [...this.players.values()].filter((player) =>
           player.input.stats().currentMissingStreak >= WORLD_V0_TIMING.inputLeaseMissingTicks
         ).length,
@@ -518,16 +522,20 @@ export class SharedYardV0 extends DurableObject<Env> {
       // path and returns as a fresh actor in the new epoch.
       const activeEpoch = this.protocolStartTick !== null || Boolean(this.loopTimer);
       const softPlayers = this.softReservedPlayers();
+      const replaceablePlayers = requestedLifecycleMode === MF6_LIFECYCLE_MODE
+        ? this.replaceablePlayers()
+        : softPlayers;
       const mf6SameEpochReplacement =
         requestedLifecycleMode === MF6_LIFECYCLE_MODE &&
         activeEpoch &&
         this.players.size >= maxPlayers &&
-        softPlayers.length > 0;
+        replaceablePlayers.length > 0;
       if (mf6SameEpochReplacement) {
-        // Foundation composition invariant: membership identity is not a spawn/capacity
-        // slot. A sufficiently stale disconnected ActorSession may be retired to free
-        // one placement slot, but its actor identity can never be reincarnated.
-        this.retireMf6Player(softPlayers[0]);
+        // Foundation composition invariant: ActorSession membership is independent
+        // from transport runtime state. After the full bounded recovery horizon,
+        // total canonical-input silence is sufficient to make capacity preemptible
+        // even if a half-open runtime socket still reports OPEN.
+        this.retireMf6Player(replaceablePlayers[0]);
         topologyChanged = true;
       } else {
         const fullyVacantAssembledEpoch = this.players.size === maxPlayers && this.connectedPlayerCount() === 0;
@@ -1119,11 +1127,22 @@ export class SharedYardV0 extends DurableObject<Env> {
 
   private retireMf6Player(player: SharedYardPlayer): void {
     if (this.lifecycleMode !== MF6_LIFECYCLE_MODE) throw new Error("mf6_retire_outside_mf6");
-    if (player.socket?.readyState === WebSocket.OPEN) throw new Error("mf6_retire_connected_actor");
-    try { b3.b3DestroyBody(player.body); } catch { /* body retirement is fail-observed by topology/state guard */ }
-    this.sessionBySocket.forEach((sessionId, socket) => {
-      if (sessionId === player.sessionId) this.sessionBySocket.delete(socket);
+    const missingStreak = player.input.stats().currentMissingStreak;
+    const socketOpen = player.socket?.readyState === WebSocket.OPEN;
+    if (socketOpen && missingStreak < WORLD_V0_LIFECYCLE.allDisconnectedGraceTicks) {
+      throw new Error("mf6_retire_connected_actor_before_recovery_horizon");
+    }
+
+    const socket = player.socket;
+    if (socket) {
+      this.sessionBySocket.delete(socket);
+      player.socket = null;
+      try { socket.close(1012, "actor_session_replaced_after_liveness_timeout"); } catch { /* preemption race */ }
+    }
+    this.sessionBySocket.forEach((sessionId, candidateSocket) => {
+      if (sessionId === player.sessionId) this.sessionBySocket.delete(candidateSocket);
     });
+    try { b3.b3DestroyBody(player.body); } catch { /* body retirement is fail-observed by topology/state guard */ }
     this.players.delete(player.sessionId);
     this.advanceR0Topology();
   }
@@ -1182,6 +1201,24 @@ export class SharedYardV0 extends DurableObject<Env> {
     return this.disconnectedPlayers().filter((player) =>
       player.input.stats().currentMissingStreak >= WORLD_V0_LIFECYCLE.allDisconnectedGraceTicks
     );
+  }
+
+  private staleConnectedPlayers(): SharedYardPlayer[] {
+    if (this.protocolStartTick === null) return [];
+    return this.sortedPlayers().filter((player) =>
+      player.socket?.readyState === WebSocket.OPEN &&
+      player.input.stats().currentMissingStreak >= WORLD_V0_LIFECYCLE.allDisconnectedGraceTicks
+    );
+  }
+
+  private replaceablePlayers(): SharedYardPlayer[] {
+    if (this.lifecycleMode !== MF6_LIFECYCLE_MODE || this.protocolStartTick === null) {
+      return this.softReservedPlayers();
+    }
+    const bySession = new Map<string, SharedYardPlayer>();
+    for (const player of this.softReservedPlayers()) bySession.set(player.sessionId, player);
+    for (const player of this.staleConnectedPlayers()) bySession.set(player.sessionId, player);
+    return [...bySession.values()].sort((a, b) => a.slot - b.slot);
   }
 
   private protectedReservedPlayers(): SharedYardPlayer[] {

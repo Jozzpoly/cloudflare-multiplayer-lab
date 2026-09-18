@@ -128,6 +128,12 @@ function startSustainedFeed(peer, vector) {
   };
 }
 
+async function authorityStatus() {
+  const response = await fetch(`${BASE}/api/world-v0/status?run=${encodeURIComponent(RUN)}`, { cache: "no-store" });
+  assert(response.ok, `authority status HTTP ${response.status}`);
+  return response.json();
+}
+
 async function resumeAuthority(playerId, resumeToken, worldEpoch) {
   const response = await fetch(`${BASE}/api/world-v0/resume-check`, {
     method: "POST",
@@ -339,10 +345,19 @@ try {
   }
   const killedTransport = await killTransportViaRebind(retiredPeer);
 
-  // The original in-process socket has been superseded by the proxy's resume/rebind.
-  // Killing the proxy process forces an OS-level transport loss without depending on
-  // WebSocket close-handshake timing. Keep the production reservation horizon intact.
-  await sleep(22_000);
+  // Wait for the authority's actual reservation state, not wall-clock time.
+  // CI scheduling can make 1200 simulation ticks take materially longer than 20 s.
+  const replacementReady = await waitFor(async () => {
+    const status = await authorityStatus();
+    return status.worldEpoch === retiredWelcome.worldEpoch &&
+      status.lifecycleMode === "mf6" &&
+      status.connectedPlayers === EXPECTED_ACTORS - 1 &&
+      status.replaceableReservations >= 1 &&
+      Array.isArray(status.softReservedSlots) &&
+      status.softReservedSlots.includes(retiredSlot)
+      ? status
+      : false;
+  }, "authority soft reservation", 60_000);
   feeds.splice(0).forEach((feed) => feed.stop());
 
   const epochBeforeReplacement = peers[0].welcome.worldEpoch;
@@ -501,6 +516,12 @@ try {
           mechanism: killedTransport.mechanism,
           signal: killedTransport.signal,
         },
+      },
+      replacementReady: {
+        boundaryTick: replacementReady.boundaryTick,
+        connectedPlayers: replacementReady.connectedPlayers,
+        softReservedSlots: replacementReady.softReservedSlots,
+        replaceableReservations: replacementReady.replaceableReservations,
       },
       replacement: {
         actorId: replacement.welcome.selfNetEntityId,

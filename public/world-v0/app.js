@@ -96,7 +96,11 @@ if (required.some((value) => !value)) throw new Error("Shared Yard V0 UI incompl
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
 const RUN_KEY_PATTERN = /^[A-Za-z0-9_-]{1,20}$/;
 const urlParams = new URL(location.href).searchParams;
-const lifecycleR0 = urlParams.get("lifecycle") === "r0"; // WORLD_V0_LIFECYCLE_R0_BROWSER_V1
+const lifecycleMode = urlParams.get("lifecycle") === "mf6"
+  ? "mf6"
+  : (urlParams.get("lifecycle") === "r0" ? "r0" : "fixed-2p");
+const lifecycleMf6 = lifecycleMode === "mf6";
+const lifecycleR0 = lifecycleMode !== "fixed-2p"; // WORLD_V0_LIFECYCLE_R0_BROWSER_V1
 const storedCallsign = localStorage.getItem("shared-yard-v0-callsign") || "";
 const storedRun = localStorage.getItem("shared-yard-v0-run") || "";
 const randomRun = `yard-${Math.random().toString(36).slice(2, 8)}`;
@@ -858,7 +862,7 @@ function buildInviteUrl() {
   url.hash = "";
   const key = sessionRunKey();
   if (RUN_KEY_PATTERN.test(key)) url.searchParams.set("run", key);
-  if (lifecycleR0) url.searchParams.set("lifecycle", "r0");
+  if (lifecycleR0) url.searchParams.set("lifecycle", lifecycleMf6 ? "mf6" : "r0");
   return url.toString();
 }
 
@@ -1175,11 +1179,13 @@ function normalizeR0Topology(value, phase) {
   if (!value || typeof value !== "object") throw new Error(`${phase} missing R0 topology`);
   if (!Number.isInteger(value.revision) || value.revision <= 0) throw new Error(`${phase} invalid topology revision`);
   if (typeof value.digest !== "string" || !/^[0-9a-f]{8}$/.test(value.digest)) throw new Error(`${phase} invalid topology digest`);
-  if (!Array.isArray(value.actors) || value.actors.length < 1 || value.actors.length > 2) throw new Error(`${phase} invalid topology actors`);
+  const actorLimit = lifecycleMf6 ? 6 : 2;
+  if (!Array.isArray(value.actors) || value.actors.length < 1 || value.actors.length > actorLimit) throw new Error(`${phase} invalid topology actors`);
   const actors = value.actors.map((actor) => ({
     sessionId: actor?.sessionId,
     netEntityId: actor?.netEntityId,
     slot: actor?.slot,
+    ...(Number.isInteger(actor?.actorOrdinal) ? { actorOrdinal: actor.actorOrdinal } : {}),
   }));
   if (actors.some((actor) => typeof actor.sessionId !== "string" || !actor.sessionId || typeof actor.netEntityId !== "string" || !actor.netEntityId || !Number.isInteger(actor.slot))) {
     throw new Error(`${phase} malformed topology actor`);
@@ -1389,7 +1395,8 @@ function authorityEntityDefsFromState(state) {
 function createSimulationFromState(state) {
   const players = [...(state?.players || [])].sort((a, c) => (a.slot ?? 0) - (c.slot ?? 0));
   const props = [...(state?.props || [])];
-  if (players.length < 1 || players.length > 2) throw new Error(`Shared Yard start requires one or two players, got ${players.length}`);
+  const actorLimit = lifecycleMf6 ? 6 : 2;
+  if (players.length < 1 || players.length > actorLimit) throw new Error(`Shared Yard start requires 1..${actorLimit} players, got ${players.length}`);
   const self = players.find((player) => player.sessionId === selfSessionId);
   const remote = players.find((player) => player.sessionId !== selfSessionId) || null;
   if (!self) throw new Error("Shared Yard start state missing self actor");
@@ -1992,7 +1999,7 @@ function socketUrl() {
   const url = new URL(`${protocol}//${location.host}/world-v0/ws`);
   url.searchParams.set("player", callsign);
   url.searchParams.set("run", runKey);
-  if (lifecycleR0) url.searchParams.set("lifecycle", "r0");
+  if (lifecycleR0) url.searchParams.set("lifecycle", lifecycleMf6 ? "mf6" : "r0");
   if (actorResume.pending && resumeToken) url.searchParams.set("resume", resumeToken);
   return url.toString();
 }
@@ -2703,6 +2710,8 @@ function buildEvidence() {
     identity: identity ? { ...identity } : null,
     lifecycle: {
       r0: lifecycleR0,
+      mode: lifecycleMode,
+      mf6: lifecycleMf6,
       topologyTransitionPending,
       topology: currentTopology ? { ...currentTopology, actors: currentTopology.actors.map((actor) => ({ ...actor })), entityOrder: [...currentTopology.entityOrder] } : null,
     },
@@ -2727,6 +2736,8 @@ function buildEvidence() {
     protocolStartTick,
     livePhysics: {
       netEntityOrder: localState?.sim?.netEntityOrder ? [...localState.sim.netEntityOrder] : null,
+      actorBodyCount: localState?.sim?.actorBodies?.size ?? null,
+      actorSessionIds: localState?.sim?.actorBodies ? [...localState.sim.actorBodies.keys()] : null,
       selfPosition: selfSessionId && localState?.sim?.actorBodies.get(selfSessionId) ? bodyPosition(localState.sim.actorBodies.get(selfSessionId)) : null,
       remotePosition: remoteSessionId && localState?.sim?.actorBodies.get(remoteSessionId) ? bodyPosition(localState.sim.actorBodies.get(remoteSessionId)) : null,
     },

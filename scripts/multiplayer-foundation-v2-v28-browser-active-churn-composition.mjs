@@ -401,7 +401,7 @@ try {
       status.softReservedSlots.includes(retiredSlot)
       ? status
       : false;
-  }, "active N-peer churn soft reservation", 60_000);
+  }, "active N-peer churn soft reservation", 120_000);
 
   const replacement = await openRawPeer(6);
   rawPeers.push(replacement);

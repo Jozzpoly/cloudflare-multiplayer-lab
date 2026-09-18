@@ -164,6 +164,52 @@ function sendJumpPulse(peer) {
   return { targetTick, batchSeq, jumpSequence };
 }
 
+async function qualifyReplacementJump(peer, maxAttempts = 4) {
+  const attempts = [];
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const pulse = sendJumpPulse(peer);
+    const consumedMessage = await waitFor(
+      () => peer.messages.find((message) =>
+        message.type === "world_v0_consumed" &&
+        message.targetTick === pulse.targetTick &&
+        message.players?.some((player) =>
+          player.sessionId === peer.welcome.selfSessionId &&
+          player.jump === true &&
+          player.jumpSequence === pulse.jumpSequence
+        )
+      ) || false,
+      `replacement causal jump consumed attempt ${attempt}`,
+      15_000,
+    );
+    const consumedPlayer = consumedMessage.players.find((player) =>
+      player.sessionId === peer.welcome.selfSessionId &&
+      player.jump === true &&
+      player.jumpSequence === pulse.jumpSequence
+    );
+    const evidence = {
+      attempt,
+      targetTick: pulse.targetTick,
+      batchSeq: pulse.batchSeq,
+      jumpSequence: pulse.jumpSequence,
+      consumedBoundary: consumedMessage.targetTick,
+      jumpApplied: Boolean(consumedPlayer?.jumpApplied),
+    };
+    attempts.push(evidence);
+    if (evidence.jumpApplied) return { applied: evidence, attempts };
+
+    // A consumed-but-not-applied jump is a valid causal event while airborne.
+    // Give the replacement body canonical time to acquire support before issuing
+    // the next distinct jump event identity.
+    await waitFor(
+      () => peer.latestBoundary >= pulse.targetTick + 24 || false,
+      `replacement settle after unapplied jump ${attempt}`,
+      10_000,
+    );
+  }
+
+  throw new Error(`replacement jump never applied after causal consumption · attempts=${JSON.stringify(attempts)}`);
+}
+
 function centerDirectedVector(position) {
   const x = -Number(position?.[0] || 0);
   const z = -Number(position?.[2] || 0);
@@ -473,22 +519,10 @@ try {
   const staleResume = await staleResumeResponse.json();
   assert(staleResumeResponse.ok && staleResume.valid === false, `active churn retired resume survived ${JSON.stringify(staleResume)}`);
 
-  // New ActorSession must participate in V28 discrete jump causality immediately.
-  const jumpPulse = sendJumpPulse(replacement);
-  const jumpConsumed = await waitFor(
-    () => replacement.messages.find((message) =>
-      message.type === "world_v0_consumed" &&
-      message.targetTick === jumpPulse.targetTick &&
-      message.players?.some((player) =>
-        player.sessionId === replacement.welcome.selfSessionId &&
-        player.jump === true &&
-        player.jumpApplied === true &&
-        player.jumpSequence === jumpPulse.jumpSequence
-      )
-    ) || false,
-    "replacement causal jump consumed",
-    20_000,
-  );
+  // New ActorSession must enter V28 jump causality immediately. Physical application
+  // remains support-contact dependent, so consumed-but-airborne attempts are valid and
+  // receive fresh event identities until one bounded attempt is grounded/applied.
+  const replacementJump = await qualifyReplacementJump(replacement);
 
   const postChurnBaselines = Object.fromEntries(
     livePeers.map((peer) => [
@@ -568,10 +602,11 @@ try {
       slot: replacement.welcome.slot,
       topologyRevision: postRebase.lifecycle.topology.revision,
       causalJump: {
-        targetTick: jumpPulse.targetTick,
-        jumpSequence: jumpPulse.jumpSequence,
-        consumedBoundary: jumpConsumed.targetTick,
+        targetTick: replacementJump.applied.targetTick,
+        jumpSequence: replacementJump.applied.jumpSequence,
+        consumedBoundary: replacementJump.applied.consumedBoundary,
         applied: true,
+        attempts: replacementJump.attempts,
       },
     },
     postChurn: {

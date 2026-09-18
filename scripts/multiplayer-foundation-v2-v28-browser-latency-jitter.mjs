@@ -183,6 +183,8 @@ let chrome = null;
 let cdp = null;
 let browserSession = null;
 const result = { verdict: "MF6_V28_BROWSER_LATENCY_JITTER_FAIL", run: RUN, generatedAt: new Date().toISOString() };
+let lastModerateDiagnostic = null;
+let lastHostileDiagnostic = null;
 
 try {
   await proxy.listen();
@@ -389,14 +391,27 @@ try {
       if (e.runtimeFailed) throw new Error(`moderate impairment runtime failure: ${e.runtimeFailureReason}`);
       const position = e.livePhysics?.actorPositions?.[selfSessionId];
       const proxyState = proxy.snapshot();
-      return e.metrics?.guardMismatches === 0 &&
-        e.metrics?.guardMatches >= baseline.guardMatches + 20 &&
-        e.rtt?.samples >= baseline.rttSamples + 3 &&
-        distance3(position, baseline.selfPosition) >= 0.35 &&
-        proxyState.clientToUpstream.shapedChunks > 0 &&
-        proxyState.upstreamToClient.shapedChunks > 0
-        ? { evidence: e, proxy: proxyState }
-        : false;
+      const checks = {
+        exact: e.metrics?.guardMismatches === 0,
+        guardProgress: e.metrics?.guardMatches >= baseline.guardMatches + 20,
+        rttProgress: e.rtt?.samples >= baseline.rttSamples + 3,
+        selfMotion: distance3(position, baseline.selfPosition) >= 0.35,
+        c2uShaped: proxyState.clientToUpstream.shapedChunks > 0,
+        u2cShaped: proxyState.upstreamToClient.shapedChunks > 0,
+      };
+      lastModerateDiagnostic = {
+        checks,
+        guardMatches: e.metrics?.guardMatches,
+        guardMismatches: e.metrics?.guardMismatches,
+        firstStateMismatch: e.metrics?.firstStateMismatch,
+        corrections: e.metrics?.corrections,
+        maxRewind: e.metrics?.maxRewind,
+        maxReplaySteps: e.metrics?.maxReplaySteps,
+        rtt: e.rtt,
+        selfMotion: distance3(position, baseline.selfPosition),
+        proxy: proxyState,
+      };
+      return Object.values(checks).every(Boolean) ? { evidence: e, proxy: proxyState } : false;
     },
     "moderate active-N latency jitter exactness",
     35_000,
@@ -416,14 +431,28 @@ try {
       if (e.runtimeFailed) throw new Error(`hostile impairment runtime failure: ${e.runtimeFailureReason}`);
       const position = e.livePhysics?.actorPositions?.[selfSessionId];
       const proxyState = proxy.snapshot();
-      return e.metrics?.guardMismatches === 0 &&
-        e.metrics?.guardMatches >= hostileStartGuardMatches + 20 &&
-        e.rtt?.samples >= hostileStartRttSamples + 3 &&
-        distance3(position, hostileStartPosition) >= 0.30 &&
-        proxyState.clientToUpstream.shapedChunks > moderate.proxy.clientToUpstream.shapedChunks &&
-        proxyState.upstreamToClient.shapedChunks > moderate.proxy.upstreamToClient.shapedChunks
-        ? { evidence: e, proxy: proxyState }
-        : false;
+      const checks = {
+        exact: e.metrics?.guardMismatches === 0,
+        guardProgress: e.metrics?.guardMatches >= hostileStartGuardMatches + 20,
+        rttProgress: e.rtt?.samples >= hostileStartRttSamples + 3,
+        selfMotion: distance3(position, hostileStartPosition) >= 0.30,
+        c2uProgress: proxyState.clientToUpstream.shapedChunks > moderate.proxy.clientToUpstream.shapedChunks,
+        u2cProgress: proxyState.upstreamToClient.shapedChunks > moderate.proxy.upstreamToClient.shapedChunks,
+      };
+      lastHostileDiagnostic = {
+        checks,
+        guardMatches: e.metrics?.guardMatches,
+        guardMismatches: e.metrics?.guardMismatches,
+        firstStateMismatch: e.metrics?.firstStateMismatch,
+        corrections: e.metrics?.corrections,
+        maxRewind: e.metrics?.maxRewind,
+        maxReplaySteps: e.metrics?.maxReplaySteps,
+        maxAuthoritySilenceTicks: e.metrics?.maxAuthoritySilenceTicks,
+        rtt: e.rtt,
+        selfMotion: distance3(position, hostileStartPosition),
+        proxy: proxyState,
+      };
+      return Object.values(checks).every(Boolean) ? { evidence: e, proxy: proxyState } : false;
     },
     "hostile active-N latency jitter exactness",
     40_000,
@@ -495,7 +524,13 @@ try {
   console.log(result.verdict);
 } catch (error) {
   result.error = error instanceof Error ? error.stack || error.message : String(error);
+  result.diagnostic = {
+    moderate: lastModerateDiagnostic,
+    hostile: lastHostileDiagnostic,
+    proxy: proxy.snapshot(),
+  };
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
+  console.error("MF6_V28_BROWSER_LATENCY_JITTER_DIAGNOSTIC", JSON.stringify(result.diagnostic));
   console.error(result.error);
   process.exitCode = 1;
 } finally {

@@ -57,7 +57,9 @@ function makeRawPeer(index) {
     try {
       const message = JSON.parse(String(event.data));
       peer.messages.push(message);
-      if (peer.messages.length > 2000) peer.messages.shift();
+      // The sustained hostile command-train probe needs enough authority history to
+      // classify every command window after the train completes.
+      if (peer.messages.length > 6000) peer.messages.shift();
       if (Number.isInteger(message.boundaryTick)) peer.latestBoundary = Math.max(peer.latestBoundary, message.boundaryTick);
       if (Number.isInteger(message.state?.boundaryTick)) peer.latestBoundary = Math.max(peer.latestBoundary, message.state.boundaryTick);
       if (message.topology?.revision && message.topology?.digest) peer.topology = message.topology;
@@ -161,12 +163,13 @@ function distance3(a, b) {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
-function canonicalInputWitness(peer, sessionId, expected, minTargetTick) {
+function canonicalInputWitness(peer, sessionId, expected, minTargetTick, maxTargetTickExclusive = Infinity) {
   if (!peer || !sessionId || !expected) return null;
   for (let index = peer.messages.length - 1; index >= 0; index -= 1) {
     const message = peer.messages[index];
     if (message?.type !== "world_v0_consumed" || !Number.isInteger(message.targetTick)) continue;
     if (message.targetTick < minTargetTick) break;
+    if (message.targetTick >= maxTargetTickExclusive) continue;
     const player = (message.players || []).find((candidate) => candidate?.sessionId === sessionId);
     if (!player || !player.fresh) continue;
     if (Math.abs(Number(player.x) - Number(expected.x)) > 1e-6) continue;
@@ -181,6 +184,126 @@ function canonicalInputWitness(peer, sessionId, expected, minTargetTick) {
     };
   }
   return null;
+}
+
+async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSessionId, {
+  count = 8,
+  holdMs = 700,
+} = {}) {
+  const specs = [
+    { code: "KeyA", key: "a" },
+    { code: "KeyD", key: "d" },
+  ];
+  const commands = [];
+  let active = null;
+
+  for (let index = 0; index < count; index += 1) {
+    const next = specs[index % specs.length];
+    const startAuthorityBoundary = authorityPeer.latestBoundary;
+    const previousCode = active?.code ? JSON.stringify(active.code) : null;
+    const previousKey = active?.key ? JSON.stringify(active.key) : null;
+    const nextCode = JSON.stringify(next.code);
+    const nextKey = JSON.stringify(next.key);
+
+    await cdp.eval(sessionId, `(() => {
+      ${previousCode ? `window.dispatchEvent(new KeyboardEvent("keyup", { code: ${previousCode}, key: ${previousKey}, bubbles: true, cancelable: true }));` : ""}
+      window.dispatchEvent(new KeyboardEvent("keydown", {
+        code: ${nextCode},
+        key: ${nextKey},
+        bubbles: true,
+        cancelable: true,
+      }));
+      return true;
+    })()`);
+
+    const engaged = await waitFor(
+      async () => {
+        const control = await cdp.eval(sessionId, "window.__sharedYardV0PlayableControl?.()");
+        const raw = control?.rawInput;
+        const world = control?.worldInput;
+        return raw && world &&
+          Math.hypot(Number(raw.x || 0), Number(raw.z || 0)) >= 0.5 &&
+          Math.hypot(Number(world.x || 0), Number(world.z || 0)) >= 0.5
+          ? control
+          : false;
+      },
+      `command train ${index} engagement`,
+      5_000,
+    );
+
+    const expected = {
+      x: Number(engaged.worldInput.x),
+      z: Number(engaged.worldInput.z),
+    };
+    await sleep(holdMs);
+    const afterHold = await cdp.eval(sessionId, "window.__sharedYardV0Evidence()");
+
+    commands.push({
+      index,
+      code: next.code,
+      startAuthorityBoundary,
+      expected,
+      browserPositionAfterHold: afterHold?.livePhysics?.actorPositions?.[selfSessionId] || null,
+    });
+    active = next;
+  }
+
+  if (active) {
+    const code = JSON.stringify(active.code);
+    const key = JSON.stringify(active.key);
+    await cdp.eval(sessionId, `(() => {
+      window.dispatchEvent(new KeyboardEvent("keyup", {
+        code: ${code},
+        key: ${key},
+        bubbles: true,
+        cancelable: true,
+      }));
+      return true;
+    })()`);
+  }
+
+  await waitFor(
+    async () => {
+      const control = await cdp.eval(sessionId, "window.__sharedYardV0PlayableControl?.()");
+      const raw = control?.rawInput;
+      return raw && Math.hypot(Number(raw.x || 0), Number(raw.z || 0)) < 0.05 ? control : false;
+    },
+    "command train release",
+    5_000,
+  );
+
+  const endAuthorityBoundary = authorityPeer.latestBoundary;
+  // Raw authority observation is unshaped. Give the tail enough time to receive any
+  // already-consumed window records before classifying them.
+  await sleep(1_200);
+
+  const classified = commands.map((command, index) => {
+    const maxTargetTickExclusive = index + 1 < commands.length
+      ? commands[index + 1].startAuthorityBoundary
+      : endAuthorityBoundary;
+    const canonicalWitness = canonicalInputWitness(
+      authorityPeer,
+      selfSessionId,
+      command.expected,
+      command.startAuthorityBoundary,
+      maxTargetTickExclusive,
+    );
+    return {
+      ...command,
+      maxTargetTickExclusive,
+      canonicalWitness,
+      deliveredInWindow: Boolean(canonicalWitness),
+    };
+  });
+
+  return {
+    count,
+    holdMs,
+    endAuthorityBoundary,
+    tailAuthorityBoundary: authorityPeer.latestBoundary,
+    commands: classified,
+    delivered: classified.filter((command) => command.deliveredInWindow).length,
+  };
 }
 
 function findChrome() {
@@ -536,28 +659,26 @@ try {
   const hostileStartLocalBoundary = hostileWarmup.localBoundaryTick;
   const hostileStartAuthorityBoundary = hostileWarmup.metrics.latestAuthorityBoundary;
 
-  const hostileStimulus = await keyDrive(cdp, browserSession, "KeyA", "a", 65, 1200);
-  const hostileExpectedInput = hostileStimulus.engaged.worldInput;
+  const hostileCommandTrain = await runDirectionalCommandTrain(
+    cdp,
+    browserSession,
+    rawPeers[0],
+    selfSessionId,
+    { count: 8, holdMs: 700 },
+  );
 
   const hostile = await waitFor(
     async () => {
       const e = await cdp.eval(browserSession, "window.__sharedYardV0Evidence()");
       if (!e) return false;
       if (e.runtimeFailed) throw new Error(`hostile impairment runtime failure: ${e.runtimeFailureReason}`);
-      const position = e.livePhysics?.actorPositions?.[selfSessionId];
       const proxyState = proxy.snapshot();
-      const canonicalWitness = canonicalInputWitness(
-        rawPeers[0],
-        selfSessionId,
-        hostileExpectedInput,
-        hostileStartAuthorityBoundary,
-      );
+      const deliveryRatio = hostileCommandTrain.delivered / hostileCommandTrain.count;
       const checks = {
         exact: e.metrics?.guardMismatches === 0,
         guardProgress: e.metrics?.guardMatches >= hostileStartGuardMatches + 20,
         rttProgress: e.rtt?.samples >= hostileStartRttSamples + 3,
-        canonicalSelfInput: Boolean(canonicalWitness),
-        selfMotion: distance3(position, hostileStartPosition) >= 0.30,
+        sustainedCanonicalAgency: hostileCommandTrain.delivered === hostileCommandTrain.count,
         c2uProgress: proxyState.clientToUpstream.shapedChunks > moderate.proxy.clientToUpstream.shapedChunks,
         u2cProgress: proxyState.upstreamToClient.shapedChunks > moderate.proxy.upstreamToClient.shapedChunks,
       };
@@ -571,7 +692,11 @@ try {
         maxReplaySteps: e.metrics?.maxReplaySteps,
         maxAuthoritySilenceTicks: e.metrics?.maxAuthoritySilenceTicks,
         rtt: e.rtt,
-        selfMotion: distance3(position, hostileStartPosition),
+        maxSelfExcursion: Math.max(
+          0,
+          ...hostileCommandTrain.commands.map((command) =>
+            distance3(command.browserPositionAfterHold, hostileStartPosition)),
+        ),
         inputScheduler: { ...e.inputScheduler },
         inputSchedulerDelta: {
           pumps: e.inputScheduler.pumps - hostileStartInputScheduler.pumps,
@@ -585,13 +710,21 @@ try {
         localBoundaryDelta: e.localBoundaryTick - hostileStartLocalBoundary,
         latestAuthorityBoundary: e.metrics.latestAuthorityBoundary,
         authorityBoundaryDelta: e.metrics.latestAuthorityBoundary - hostileStartAuthorityBoundary,
-        canonicalWitness,
+        agencyDelivery: {
+          delivered: hostileCommandTrain.delivered,
+          total: hostileCommandTrain.count,
+          ratio: deliveryRatio,
+          missedCommandIndexes: hostileCommandTrain.commands
+            .filter((command) => !command.deliveredInWindow)
+            .map((command) => command.index),
+        },
+        commandTrain: hostileCommandTrain,
         proxy: proxyState,
       };
       return Object.values(checks).every(Boolean) ? { evidence: e, proxy: proxyState } : false;
     },
-    "hostile active-N latency jitter exactness",
-    40_000,
+    "hostile sustained command delivery",
+    15_000,
   );
 
   proxy.passthrough();
@@ -635,7 +768,11 @@ try {
     },
     hostile: {
       profile: { latencyMs: 100, jitterMs: 25 },
-      stimulus: hostileStimulus,
+      stimulus: {
+        type: "directional-command-train",
+        commandCount: hostileCommandTrain.count,
+        holdMs: hostileCommandTrain.holdMs,
+      },
       guardMatches: hostile.evidence.metrics.guardMatches,
       guardMismatches: hostile.evidence.metrics.guardMismatches,
       corrections: hostile.evidence.metrics.corrections,
@@ -666,7 +803,7 @@ try {
       rtt: settled.rtt,
       proxy: proxy.snapshot(),
     },
-    interpretation: "Browser-authored input and five concurrent remote inputs retained exact V28 state under sustained bidirectional TCP latency+jitter at moderate and hostile profiles, then settled cleanly after impairment removal.",
+    interpretation: "Eight consecutive browser direction commands were each canonically consumed inside their own authority-time window while five remote actors remained active under sustained bidirectional TCP latency+jitter, with exact V28 state preserved.",
     nonClaim: "This shapes an ordered TCP byte stream. It does not emulate datagram packet loss/reorder, burst loss, simultaneous multi-client impairment, repeated hard outages, deployed-edge behavior, performance limits, N-peer presentation quality, or human 3-6 play.",
   });
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));

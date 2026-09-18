@@ -29,15 +29,27 @@ function summarize(label, result, expectedEffectiveLead) {
     effectiveInputLeadTicks: scheduler.inputLeadTicks ?? null,
     simulationLeadTicks: scheduler.simulationLeadTicks ?? null,
     exact: diagnostic.guardMismatches === 0 && diagnostic.firstStateMismatch == null,
-    canonicalSelfInput: Boolean(checks.canonicalSelfInput),
-    selfMotion: Boolean(checks.selfMotion),
-    agency: Boolean(checks.canonicalSelfInput && checks.selfMotion),
+    agencyDelivered: diagnostic.agencyDelivery?.delivered ?? null,
+    agencyTotal: diagnostic.agencyDelivery?.total ?? null,
+    agencyDeliveryRatio: diagnostic.agencyDelivery?.ratio ?? null,
+    missedCommandIndexes: diagnostic.agencyDelivery?.missedCommandIndexes ?? [],
+    agency: Boolean(
+      checks.sustainedCanonicalAgency &&
+      diagnostic.agencyDelivery?.total >= 8 &&
+      diagnostic.agencyDelivery?.delivered === diagnostic.agencyDelivery?.total
+    ),
     guardMatches: diagnostic.guardMatches ?? null,
     guardMismatches: diagnostic.guardMismatches ?? null,
     serverLateDelta: diagnostic.serverLateDelta ?? null,
     serverRejectedDelta: diagnostic.serverRejectedDelta ?? null,
     authoredDelta: diagnostic.inputSchedulerDelta?.authored ?? null,
     supersededDelta: diagnostic.inputSchedulerDelta?.superseded ?? null,
+    latePerAuthored:
+      Number.isFinite(diagnostic.serverLateDelta) &&
+      Number.isFinite(diagnostic.inputSchedulerDelta?.authored) &&
+      diagnostic.inputSchedulerDelta.authored > 0
+        ? diagnostic.serverLateDelta / diagnostic.inputSchedulerDelta.authored
+        : null,
     authorityBoundaryDelta: diagnostic.authorityBoundaryDelta ?? null,
     localBoundaryDelta: diagnostic.localBoundaryDelta ?? null,
     rttSamples: rtt.samples ?? null,
@@ -99,8 +111,8 @@ const comparison = {
   l12,
   interpretation:
     classification === "L8_AGENCY_RED_L12_AGENCY_PASS"
-      ? "Changing only the browser canonical input-authorship horizon from 8 to 12 ticks restored authority-witnessed movement in this paired hostile specimen while client simulation lead remained 2."
-      : "The paired specimen did not isolate a simple L8-to-L12 agency restoration; inspect the classified evidence before changing runtime policy.",
+      ? "Changing only the browser canonical input-authorship horizon from 8 to 12 ticks restored all eight authority-windowed direction commands in this paired hostile specimen while client simulation lead remained 2."
+      : "The paired sustained-command specimen did not isolate a simple L8-to-L12 full-agency restoration; inspect delivery ratios and lateness before changing runtime policy.",
   nonClaim:
     "This is a bounded paired mechanism discriminator under one deterministic shaped-TCP apparatus. It is not a production lead recommendation, an adaptive-policy qualification, a deployed-edge SLO, or human feel evidence.",
 };

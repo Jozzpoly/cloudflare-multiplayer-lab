@@ -40,12 +40,23 @@ const MAX_PLAYERS = 2;
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
 const RUN_KEY_PATTERN = /^[A-Za-z0-9_-]{1,20}$/;
 const R0_LIFECYCLE_MODE = "r0";
+const MF6_LIFECYCLE_MODE = "mf6";
 const R0_AUTHORITY_REVISION = "world-v0-lifecycle-r0-authority-v1"; // WORLD_V0_LIFECYCLE_R0_AUTHORITY_V1
+const MF6_AUTHORITY_REVISION = "multiplayer-foundation-v2-v28-dynamic-composition-r0";
 
 type WorldId = ReturnType<typeof b3.b3CreateWorld>;
 type BodyId = ReturnType<typeof b3.b3CreateBody>;
 type Vec3 = [number, number, number];
 type Quat = [number, number, number, number];
+
+const MF6_PLAYER_STARTS: readonly Vec3[] = [
+  [...WORLD_V0_PLAYER_STARTS[0]],
+  [...WORLD_V0_PLAYER_STARTS[1]],
+  [-6.5, 0.82, -6.0],
+  [0, 0.82, -6.5],
+  [6.5, 0.82, 6.0],
+  [0, 0.82, 6.5],
+];
 
 type DynamicState = {
   netEntityId: string;
@@ -202,6 +213,7 @@ export class SharedYardV0 extends DurableObject<Env> {
   private worldId: string | null = null;
   private worldEpoch: string | null = null;
   private lifecycleR0 = false;
+  private lifecycleMode: "fixed-2p" | "r0" | "mf6" = "fixed-2p";
   private topologyRevision = 0;
   private props: SharedYardProp[] = [];
   // ActorSession lifetime is deliberately independent from transport lifetime.
@@ -282,7 +294,7 @@ export class SharedYardV0 extends DurableObject<Env> {
         worldId: this.worldId,
         worldEpoch: this.worldEpoch,
         simBuildId: WORLD_V0_SIM_BUILD_ID,
-        lifecycleMode: this.lifecycleR0 ? R0_LIFECYCLE_MODE : "fixed-2p",
+        lifecycleMode: this.lifecycleMode,
         topology: this.lifecycleR0 && this.world ? this.topologyPayload() : null,
         boundaryTick: this.tick,
         protocolStartTick: this.protocolStartTick,
@@ -468,9 +480,17 @@ export class SharedYardV0 extends DurableObject<Env> {
     const requestedResumeToken = (url.searchParams.get("resume") ?? "").trim();
     const runKey = normalizeRunKey(url.searchParams.get("run"));
     const requestedWorldId = `shared-yard-v0-${runKey}`;
-    const requestedLifecycleR0 = url.searchParams.get("lifecycle") === R0_LIFECYCLE_MODE;
+    const requestedLifecycleParam = url.searchParams.get("lifecycle");
+    const requestedLifecycleMode: "fixed-2p" | "r0" | "mf6" =
+      requestedLifecycleParam === MF6_LIFECYCLE_MODE
+        ? MF6_LIFECYCLE_MODE
+        : requestedLifecycleParam === R0_LIFECYCLE_MODE
+          ? R0_LIFECYCLE_MODE
+          : "fixed-2p";
+    const requestedLifecycleR0 = requestedLifecycleMode !== "fixed-2p";
+    const maxPlayers = requestedLifecycleMode === MF6_LIFECYCLE_MODE ? 6 : MAX_PLAYERS;
     if (!PLAYER_ID_PATTERN.test(playerId)) return json({ ok: false, error: "invalid_player" }, 400);
-    if (this.world && requestedLifecycleR0 !== this.lifecycleR0) {
+    if (this.world && requestedLifecycleMode !== this.lifecycleMode) {
       return json({ ok: false, error: "world_mode_mismatch" }, 409);
     }
 
@@ -495,7 +515,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       // handoff. Any still-connected old peer then uses the existing same-room recovery
       // path and returns as a fresh actor in the new epoch.
       const activeEpoch = this.protocolStartTick !== null || Boolean(this.loopTimer);
-      const fullyVacantAssembledEpoch = this.players.size === MAX_PLAYERS && this.connectedPlayerCount() === 0;
+      const fullyVacantAssembledEpoch = this.players.size === maxPlayers && this.connectedPlayerCount() === 0;
       const softOnlyReplacement = activeEpoch && this.softReservedPlayers().length > 0 && this.protectedReservedPlayers().length === 0;
       if (fullyVacantAssembledEpoch) {
         // Private ActorSession resume authority may survive while an assembled 2P epoch
@@ -508,18 +528,19 @@ export class SharedYardV0 extends DurableObject<Env> {
       }
       // The research-only R0 lifecycle mode admits one new authored slot into an
       // already-running epoch. Default World V0 remains fixed-2P and unchanged.
-      const allowR0LateJoin = this.lifecycleR0 && activeEpoch && this.players.size < MAX_PLAYERS;
+      const allowR0LateJoin = this.lifecycleR0 && activeEpoch && this.players.size < maxPlayers;
       if (!allowR0LateJoin && (this.protocolStartTick !== null || this.loopTimer)) {
         return json({ ok: false, error: "world_v0_run_already_active" }, 409);
       }
-      if (this.players.size >= MAX_PLAYERS) return json({ ok: false, error: "world_v0_full" }, 503);
-      if (!this.world) this.createWorld(requestedWorldId, requestedLifecycleR0);
+      if (this.players.size >= maxPlayers) return json({ ok: false, error: "world_v0_full" }, 503);
+      if (!this.world) this.createWorld(requestedWorldId, requestedLifecycleMode);
       if (!this.world || !this.worldId || !this.worldEpoch) return json({ ok: false, error: "world_not_ready" }, 500);
       if (this.worldId !== requestedWorldId) return json({ ok: false, error: "world_id_mismatch" }, 409);
 
       const usedSlots = new Set(this.sortedPlayers().map((candidate) => candidate.slot));
-      const slot = [0, 1].find((candidate) => !usedSlots.has(candidate)) ?? -1;
-      const start = WORLD_V0_PLAYER_STARTS[slot];
+      const starts = requestedLifecycleMode === MF6_LIFECYCLE_MODE ? MF6_PLAYER_STARTS : WORLD_V0_PLAYER_STARTS;
+      const slot = starts.findIndex((_start, candidate) => !usedSlots.has(candidate));
+      const start = starts[slot];
       if (!start) return json({ ok: false, error: "world_v0_slot_missing" }, 500);
       player = {
         playerId,
@@ -585,7 +606,7 @@ export class SharedYardV0 extends DurableObject<Env> {
       rebaseSeed,
       slot: player.slot,
       waitingForPeer: !this.lifecycleR0 && this.connectedPlayerCount() < MAX_PLAYERS,
-      acceptingLateJoin: this.lifecycleR0 && this.players.size < MAX_PLAYERS,
+      acceptingLateJoin: this.lifecycleR0 && this.players.size < this.maxPlayers(),
       protocolStartTick: this.protocolStartTick,
       simulation: worldV0SimulationContract(),
       state: this.snapshotState(),
@@ -620,7 +641,7 @@ export class SharedYardV0 extends DurableObject<Env> {
 
   private maybeStartProtocol(): void {
     if (this.protocolStartTick !== null) return;
-    const requiredPlayers = this.lifecycleR0 ? 1 : MAX_PLAYERS;
+    const requiredPlayers = this.lifecycleR0 ? 1 : this.maxPlayers();
     if (this.players.size < requiredPlayers) return;
     if (this.connectedPlayerCount() !== this.players.size) return;
     if ([...this.players.values()].some((player) => !player.ready)) return;
@@ -641,14 +662,15 @@ export class SharedYardV0 extends DurableObject<Env> {
     this.startLoop();
   }
 
-  private createWorld(worldId: string, lifecycleR0 = false): void {
+  private createWorld(worldId: string, lifecycleMode: "fixed-2p" | "r0" | "mf6" = "fixed-2p"): void {
     this.destroyWorld();
     const def = b3.b3DefaultWorldDef();
     def.gravity = [...WORLD_V0_ARENA.gravity];
     this.world = b3.b3CreateWorld(def);
     this.worldId = worldId;
     this.worldEpoch = crypto.randomUUID();
-    this.lifecycleR0 = lifecycleR0;
+    this.lifecycleMode = lifecycleMode;
+    this.lifecycleR0 = lifecycleMode !== "fixed-2p";
     this.topologyRevision = 0;
     this.tick = 0;
     this.snapshotSequence = 0;
@@ -1042,15 +1064,16 @@ export class SharedYardV0 extends DurableObject<Env> {
       ...actors.map((actor) => actor.netEntityId),
       ...WORLD_V0_PROP_LAYOUT.map((prop) => prop.id),
     ];
+    const modeRevision = this.lifecycleMode === MF6_LIFECYCLE_MODE ? MF6_AUTHORITY_REVISION : R0_AUTHORITY_REVISION;
     const digest = topologyDigest(JSON.stringify({
-      modeRevision: R0_AUTHORITY_REVISION,
+      modeRevision,
       worldEpoch: this.worldEpoch,
       revision: this.topologyRevision,
       actors,
       entityOrder,
     }));
     return {
-      modeRevision: R0_AUTHORITY_REVISION,
+      modeRevision,
       revision: this.topologyRevision,
       digest,
       actors,
@@ -1069,6 +1092,10 @@ export class SharedYardV0 extends DurableObject<Env> {
       player.input.resetForTopology();
       player.previousJumpIntent = false;
     }
+  }
+
+  private maxPlayers(): number {
+    return this.lifecycleMode === MF6_LIFECYCLE_MODE ? 6 : MAX_PLAYERS;
   }
 
   private sortedPlayers(): SharedYardPlayer[] {

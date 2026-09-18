@@ -14,6 +14,7 @@ on:
       - scripts/multiplayer-foundation-v2-v28-dynamic-authority-smoke.mjs
       - scripts/multiplayer-foundation-v2-v28-browser-composition.mjs
       - scripts/multiplayer-foundation-v2-v28-browser-n-input-composition.mjs
+      - scripts/multiplayer-foundation-v2-v28-browser-active-churn-composition.mjs
       - scripts/multiplayer-foundation-v2-transport-proxy.mjs
       - .github/workflows/multiplayer-foundation-v2-dynamic-composition.yml
 
@@ -82,6 +83,20 @@ jobs:
           timeout 150s node scripts/multiplayer-foundation-v2-v28-browser-n-input-composition.mjs | tee mf6-browser-n-input.log
           grep -q MF6_V28_BROWSER_N_INPUT_COMPOSITION_PASS mf6-browser-n-input.log
 
+      - name: Compose active N-peer inputs with same-epoch churn
+        env:
+          MW_MF6_N_INPUT_BASE: http://127.0.0.1:8787
+          MW_MF6_N_INPUT_RUN: m6c${{ github.run_id }}
+          MW_MF6_N_INPUT_OUTPUT: mf6-browser-active-churn-composition.json
+          MW_MF6_ACTIVE_CHURN_BASE: http://127.0.0.1:8787
+          MW_MF6_ACTIVE_CHURN_RUN: m6c${{ github.run_id }}
+          MW_MF6_ACTIVE_CHURN_OUTPUT: mf6-browser-active-churn-composition.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-active-churn-composition.mjs | tee mf6-browser-active-churn.log
+          grep -q MF6_V28_BROWSER_ACTIVE_CHURN_COMPOSITION_PASS mf6-browser-active-churn.log
+
       - name: Stop isolated authority
         if: always()
         shell: bash
@@ -102,4 +117,6 @@ jobs:
             mf6-browser-composition.json
             mf6-browser-n-input.log
             mf6-browser-n-input-composition.json
+            mf6-browser-active-churn.log
+            mf6-browser-active-churn-composition.json
             mf6-workerd.log

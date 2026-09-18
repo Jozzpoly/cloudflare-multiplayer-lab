@@ -414,6 +414,11 @@ try {
     maxRewind: allRemoteExact.metrics.maxRewind,
     rttSamples: allRemoteExact.rtt.samples,
     selfPosition: [...baselineSelfPosition],
+    inputScheduler: { ...allRemoteExact.inputScheduler },
+    serverLate: allRemoteExact.metrics.serverLate,
+    serverRejected: allRemoteExact.metrics.serverRejected,
+    latestAuthorityBoundary: allRemoteExact.metrics.latestAuthorityBoundary,
+    localBoundaryTick: allRemoteExact.localBoundaryTick,
     proxy: proxy.snapshot(),
   };
 
@@ -447,6 +452,17 @@ try {
         maxReplaySteps: e.metrics?.maxReplaySteps,
         rtt: e.rtt,
         selfMotion: distance3(position, baseline.selfPosition),
+        inputScheduler: { ...e.inputScheduler },
+        inputSchedulerDelta: {
+          pumps: e.inputScheduler.pumps - baseline.inputScheduler.pumps,
+          authored: e.inputScheduler.authored - baseline.inputScheduler.authored,
+          superseded: e.inputScheduler.superseded - baseline.inputScheduler.superseded,
+        },
+        serverLateDelta: e.metrics.serverLate - baseline.serverLate,
+        serverRejectedDelta: e.metrics.serverRejected - baseline.serverRejected,
+        networkState: e.networkState,
+        localBoundaryTick: e.localBoundaryTick,
+        latestAuthorityBoundary: e.metrics.latestAuthorityBoundary,
         proxy: proxyState,
       };
       return Object.values(checks).every(Boolean) ? { evidence: e, proxy: proxyState } : false;
@@ -458,6 +474,11 @@ try {
   const hostileStartPosition = moderate.evidence.livePhysics.actorPositions[selfSessionId];
   const hostileStartGuardMatches = moderate.evidence.metrics.guardMatches;
   const hostileStartRttSamples = moderate.evidence.rtt.samples;
+  const hostileStartInputScheduler = { ...moderate.evidence.inputScheduler };
+  const hostileStartServerLate = moderate.evidence.metrics.serverLate;
+  const hostileStartServerRejected = moderate.evidence.metrics.serverRejected;
+  const hostileStartLocalBoundary = moderate.evidence.localBoundaryTick;
+  const hostileStartAuthorityBoundary = moderate.evidence.metrics.latestAuthorityBoundary;
 
   proxy.setProfile({ name: "hostile", latencyMs: 100, jitterMs: 25 });
   const hostileStimulus = await keyDrive(cdp, browserSession, "KeyA", "a", 65, 1200);
@@ -488,6 +509,19 @@ try {
         maxAuthoritySilenceTicks: e.metrics?.maxAuthoritySilenceTicks,
         rtt: e.rtt,
         selfMotion: distance3(position, hostileStartPosition),
+        inputScheduler: { ...e.inputScheduler },
+        inputSchedulerDelta: {
+          pumps: e.inputScheduler.pumps - hostileStartInputScheduler.pumps,
+          authored: e.inputScheduler.authored - hostileStartInputScheduler.authored,
+          superseded: e.inputScheduler.superseded - hostileStartInputScheduler.superseded,
+        },
+        serverLateDelta: e.metrics.serverLate - hostileStartServerLate,
+        serverRejectedDelta: e.metrics.serverRejected - hostileStartServerRejected,
+        networkState: e.networkState,
+        localBoundaryTick: e.localBoundaryTick,
+        localBoundaryDelta: e.localBoundaryTick - hostileStartLocalBoundary,
+        latestAuthorityBoundary: e.metrics.latestAuthorityBoundary,
+        authorityBoundaryDelta: e.metrics.latestAuthorityBoundary - hostileStartAuthorityBoundary,
         proxy: proxyState,
       };
       return Object.values(checks).every(Boolean) ? { evidence: e, proxy: proxyState } : false;

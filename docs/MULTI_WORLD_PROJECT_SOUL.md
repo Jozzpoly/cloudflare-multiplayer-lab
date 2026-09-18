@@ -1,13 +1,25 @@
 # Multi_World — Project Soul
 
-Status: **CANONICAL HANDOFF INTENT / PRODUCT DIRECTION, NOT ARCHITECTURE**  
+Status: **CANONICAL MULTIPLAYER-TECHNOLOGY MISSION / DONOR DIRECTION, NOT FINAL ARCHITECTURE**  
 Grounded: **2026-09-18**
 
 ---
 
 ## One-sentence purpose
 
-> **Build toward a small shared physical living world in which a few real people genuinely inhabit the same space, affect the same matter and experience consequences as shared reality rather than as loosely synchronized client illusions.**
+> **Develop and qualify reusable multiplayer/shared-world technology for small real-time physical worlds, using the Shared Yard as a falsification crucible so future projects can inherit proven shared truth, dynamic presence, recovery and lifecycle behavior.**
+
+---
+
+## Repository role
+
+**Multiplayer systems are the primary product of this repository.**
+
+Multi_World is a long-lived multiplayer core / systems laboratory and donor source. The current Yard is deliberately small because it exposes multiplayer truth cheaply. It is not a mandate to evolve this repository into the future mini-MMO or to add gameplay features for their own sake.
+
+Gameplay, map, interaction and presentation may be expanded only when they create a necessary or materially better test surface for a concrete multiplayer question. A future game may live in another repository and consume/donate proven systems from this lab.
+
+The already accepted early technical envelope is **1–6 dynamic actors**, with real 3–6-human qualification as an important milestone. This is an R&D target, not an MMO-scale commitment.
 
 ---
 
@@ -33,9 +45,7 @@ This creates the core tension:
 
 ### Small-group intimacy before scale
 
-The project is currently aimed at **2–3 genuinely supported players**.
-
-An early later target is roughly **5–6**, but that is not permission to build large-scale multiplayer infrastructure now.
+The current qualified regression baseline is still two-actor, but the accepted early **technology target is 1–6 dynamic actors**, with 3–6 real humans used to qualify roster/lifecycle/shared-physics behavior. This is not permission to drift toward large-scale multiplayer infrastructure.
 
 The point of the small player count is not merely technical convenience. A small shared place can make another person's presence, location and physical actions legible and meaningful.
 
@@ -47,7 +57,7 @@ The world should increasingly support situations that were not individually scri
 
 ### A world worth inhabiting
 
-The longer-term direction is a small persistent cooperative living-world / RPG-like experience, but **persistence, RPG systems, combat, economy, AI and progression are not current substrate requirements**.
+A future recipient may be a small persistent cooperative living-world / RPG-like experience, but **this repository is not currently building its RPG systems, combat, economy, AI, progression or content**.
 
 They should be added only when the shared-world foundation makes them meaningful rather than as scaffolding built in advance.
 
@@ -136,7 +146,7 @@ Important consequences:
 - provisional plans can be rejected without embarrassment;
 - implementation should stop at natural boundaries;
 - do not ask the Owner to perform many experiments that can be automated first;
-- do not build a framework to avoid answering a concrete gameplay question.
+- do not build architecture to avoid answering a concrete multiplayer question.
 
 ---
 
@@ -146,7 +156,7 @@ Important consequences:
 
 The Owner is the primary authority for:
 
-- product intent and priorities;
+- multiplayer-technology intent and priorities;
 - what feels good, interesting or worth pursuing;
 - human free-play judgement;
 - deciding whether an experiment revealed something desirable even when it was not the scripted target.
@@ -164,7 +174,7 @@ The browser orchestrator should act as the persistent second brain of the projec
 - maintain evidence/provenance boundaries;
 - explain technical consequences accessibly;
 - decide when human play is actually worth asking for;
-- prevent accidental drift from product question into infrastructure-building.
+- prevent accidental drift from multiplayer R&D into gameplay/content feature-building or unjustified infrastructure.
 
 ### Repo-native executor / Codex when used
 
@@ -178,26 +188,37 @@ The project must remain operable even when a particular executor/tool is tempora
 
 ## Current stage boundary
 
-World V0 has now crossed two product frontiers inside the current small two-actor envelope:
+World V0 has produced a strong qualified **two-actor multiplayer regression baseline**:
 
-1. the earlier fixed-two-player authoritative Shared Yard established shared physical truth, responsive local embodiment, scheduled canonical input, exact state guards and bounded ActorSession recovery;
-2. the Ongoing Yard tranche then separated world lifetime from a fixed start roster far enough that one player can enter alone, immediately inhabit the physical world, and a second player can later join that same ongoing reality.
+1. authoritative shared physical truth with responsive local embodiment;
+2. scheduled canonical input and exact state guards;
+3. bounded ActorSession / transport recovery;
+4. Ongoing Yard separation far enough for solo-first -> later peer in the same running world;
+5. V25 -> V28 temporal/smoothness hardening and causal jump identity through replay/resume/rebase;
+6. real desktop/mobile execution and extensive lifecycle/failure evidence.
 
-The subsequent V25 -> V28 smoothness / causal-input campaign and post-Owner hardening established a stronger current baseline rather than opening a new architectural mandate. Current evidence supports causal jump identity through replay/resume/rebase, bounded recovery and reservation semantics, real desktop/mobile control, private same-profile refresh/rebound, and an Owner-accepted foreground smoothness envelope whose remaining visible impurities were below his objective threshold at the time of test.
+This baseline is valuable because future multiplayer architecture can be attacked without losing a known working two-human crucible. It is **not** the final target and not an invitation to add gameplay.
 
-That means **solo -> later peer is no longer the next unknown**. Do not keep re-solving it by momentum, and do not automatically turn the reliability laboratory into the project itself.
+The repository closeout is complete. The immediate stage returns to the broader **Multiplayer Foundation** program whose accepted early scope is real-time physical multiplayer for **1–6 dynamic actors**.
 
-The repository closure described by the previous stage is now complete: the earned runtime is integrated, the live validation spine is compact, canonical state is being kept truthful, and retired campaign history is preserved through one aggregate archive rather than a live branch forest.
+The next continuation must first recover and reconcile the archived pre-closeout Multiplayer Foundation v1 research with the current Ongoing Yard/V28 baseline. Historical evidence indicates that research already reached dynamic-actor authority and durable recovery experiments; exact claims must be verified from archive provenance before reuse.
 
-The immediate stage is therefore **product-frontier selection**, not more closure and not another reliability campaign by momentum.
+The pressure map for the next technical era is:
 
-The next substantial frontier is intentionally **not predetermined here**. Plausible future pressures include a third actor, richer shared physical affordances, stronger continuity of the place beyond short sessions, or another Owner-visible need discovered through play. None of those is currently authorized merely because the substrate could support research in that direction.
+- dynamic join/leave and roster mutation rather than a fixed two-slot topology;
+- real runtime/process authority recovery rather than only surviving transport loss;
+- shared active physics across dynamic actors;
+- network impairment and latency regimes;
+- browser/mobile/platform lifecycle;
+- browser self+N execution;
+- fault/load scaling and interest-management questions only when evidence creates the need;
+- real 3–6-human qualification after machine falsification.
 
-Before implementation resumes, ask the product question first:
+The governing question is:
 
-> **What new shared-world experience would now teach us the most or make the Yard materially more worth inhabiting?**
+> **What multiplayer-foundation capability or failure boundary remains unresolved, and what is the cheapest faithful falsifier that advances the 1–6 shared-physics substrate?**
 
-Then use the existing evidence discipline to earn only the architecture that question actually requires.
+No gameplay-feature frontier is authorized by this stage boundary.
 
 ---
 
@@ -213,14 +234,15 @@ Do not let the project drift automatically toward:
 - premature persistence/economy/accounts/combat;
 - automatic Character Controller integration;
 - a new product repository before the shared physical substrate earns the transition;
-- endless laboratory work after the next meaningful product-facing vertical slice becomes more informative.
+- gameplay/content feature work that does not directly serve a concrete multiplayer falsifier;
+- treating the current two-actor Yard as the product roadmap rather than a qualified test crucible.
 
 ---
 
-## What success should eventually feel like
+## What success should eventually mean
 
-A successful Multi_World should make a player think less about networking and more about the other person being **there**.
+A successful Multi_World should leave us with multiplayer technology that can be donated into future worlds with evidence behind its guarantees.
 
-The interesting moment is not that two devices display matching coordinates.
+The practical human symptom remains important: another real person should feel **there**, in the same authoritative physical place, despite dynamic roster changes, transport failures, latency, browser/mobile lifecycle and runtime disruption.
 
-It is that one person can shove something, stand in the way, disturb an arrangement, help move an object, create a physical problem or exploit an unexpected affordance — and the other person experiences that as part of the same world.
+The technical success is not matching coordinates. It is preserving coherent shared consequence and recoverable identity under the failure modes that real recipient projects will inherit.

@@ -134,6 +134,40 @@ async function authorityStatus() {
   return response.json();
 }
 
+async function waitForReplacementEligibility({ worldEpoch, slot, label, timeout = 180_000 }) {
+  const start = await authorityStatus();
+  const startBoundary = Number(start.boundaryTick || 0);
+  const expectedHorizon = 1200;
+  const deadline = Date.now() + timeout;
+  let last = start;
+
+  while (Date.now() < deadline) {
+    last = await authorityStatus();
+    if (
+      last.worldEpoch === worldEpoch &&
+      last.lifecycleMode === "mf6" &&
+      last.replaceableReservations >= 1 &&
+      Array.isArray(last.replaceableSlots) &&
+      last.replaceableSlots.includes(slot)
+    ) {
+      return { status: last, startBoundary, boundaryDelta: last.boundaryTick - startBoundary };
+    }
+    if (last.worldEpoch === worldEpoch && Number(last.boundaryTick) >= startBoundary + expectedHorizon + 64) {
+      throw new Error(
+        `${label} semantic failure · crossed canonical horizon without replacement eligibility · ` +
+        `startB=${startBoundary} currentB=${last.boundaryTick} replaceable=${JSON.stringify(last.replaceableSlots)} ` +
+        `staleConnected=${JSON.stringify(last.staleConnectedSlots)} soft=${JSON.stringify(last.softReservedSlots)}`
+      );
+    }
+    await sleep(50);
+  }
+
+  throw new Error(
+    `${label} infrastructure timeout · canonical horizon not reached · ` +
+    `startB=${startBoundary} currentB=${last?.boundaryTick} replaceable=${JSON.stringify(last?.replaceableSlots)}`
+  );
+}
+
 async function resumeAuthority(playerId, resumeToken, worldEpoch) {
   const response = await fetch(`${BASE}/api/world-v0/resume-check`, {
     method: "POST",
@@ -347,16 +381,12 @@ try {
 
   // Wait for the authority's actual reservation state, not wall-clock time.
   // CI scheduling can make 1200 simulation ticks take materially longer than 20 s.
-  const replacementReady = await waitFor(async () => {
-    const status = await authorityStatus();
-    return status.worldEpoch === retiredWelcome.worldEpoch &&
-      status.lifecycleMode === "mf6" &&
-      status.replaceableReservations >= 1 &&
-      Array.isArray(status.replaceableSlots) &&
-      status.replaceableSlots.includes(retiredSlot)
-      ? status
-      : false;
-  }, "authority soft reservation", 120_000);
+  const replacementEligibility = await waitForReplacementEligibility({
+    worldEpoch: retiredWelcome.worldEpoch,
+    slot: retiredSlot,
+    label: "authority replacement eligibility",
+  });
+  const replacementReady = replacementEligibility.status;
   feeds.splice(0).forEach((feed) => feed.stop());
 
   const epochBeforeReplacement = peers[0].welcome.worldEpoch;
@@ -517,7 +547,9 @@ try {
         },
       },
       replacementReady: {
+        startBoundary: replacementEligibility.startBoundary,
         boundaryTick: replacementReady.boundaryTick,
+        boundaryDelta: replacementEligibility.boundaryDelta,
         connectedPlayers: replacementReady.connectedPlayers,
         softReservedSlots: replacementReady.softReservedSlots,
         replaceableSlots: replacementReady.replaceableSlots,

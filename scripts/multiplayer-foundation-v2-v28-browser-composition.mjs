@@ -91,6 +91,32 @@ function startZeroFeed(peer) {
   return { stop() { running = false; clearInterval(timer); } };
 }
 
+async function killTransportViaRebind(peer) {
+  const child = spawn(process.execPath, ["scripts/multiplayer-foundation-v2-transport-proxy.mjs"], {
+    env: {
+      ...process.env,
+      MW_PROXY_BASE: BASE,
+      MW_PROXY_PLAYER: peer.playerId,
+      MW_PROXY_RUN: RUN,
+      MW_PROXY_RESUME: peer.welcome.resumeToken,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+
+  await waitFor(() => stdout.includes("MF6_TRANSPORT_PROXY_READY") || false, "browser churn transport proxy rebind", 10_000);
+  if (child.exitCode !== null) throw new Error(`browser churn transport proxy exited early: ${child.exitCode} stderr=${stderr}`);
+  child.kill("SIGKILL");
+  await waitFor(() => child.exitCode !== null || child.signalCode === "SIGKILL" || false, "browser churn proxy SIGKILL", 5_000);
+  return { signal: child.signalCode, stdout: stdout.trim(), stderr: stderr.trim() };
+}
+
 function findChrome() {
   const override = process.env.CHROME_BIN?.trim();
   if (override) return override;
@@ -213,8 +239,8 @@ try {
   // four other raw peers keep the world alive.
   const retired = rawPeers[2];
   const oldResumeToken = retired.welcome.resumeToken;
-  retired.ws.close(1000, "mf6_browser_churn");
-  await sleep(22_500);
+  const killedTransport = await killTransportViaRebind(retired);
+  await sleep(22_000);
 
   const replacement = await openRawPeer(6);
   rawPeers.push(replacement);
@@ -283,6 +309,10 @@ try {
       actorId: replacement.welcome.selfNetEntityId,
       slot: replacement.welcome.slot,
       staleResumeRejected: true,
+      transportLoss: {
+        mechanism: "resume-rebind-child-process-sigkill",
+        signal: killedTransport.signal,
+      },
     },
     nonClaim: "This proves neutral-input real-Chromium self+N bootstrap and churn rebase only. General N-peer input prediction/reconciliation, N-peer presentation, impairment, performance, deployed edge and human 3-6 remain unproven.",
   });

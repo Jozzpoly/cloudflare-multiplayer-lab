@@ -449,15 +449,11 @@ let lastHostileDiagnostic = null;
 try {
   await proxy.listen();
 
-  // Start a live five-actor world before the browser arrives.
-  for (let index = 0; index < 5; index += 1) rawPeers.push(await openRawPeer(index));
-  const epoch = rawPeers[0].welcome.worldEpoch;
-  assert(rawPeers.every((peer) => peer.welcome.worldEpoch === epoch), "raw peers changed WorldEpoch");
-  await waitFor(() => rawPeers.every((peer) => peer.topology?.revision === 5) || false, "raw topology revision 5");
-  for (const peer of rawPeers) {
-    peer.feed = startFeed(peer, [0, 0]);
-    feeds.push(peer.feed);
-  }
+  // Boot the browser shell before loading the authority with five active raw peers.
+  // The browser does not join the world until #enter is clicked, so this preserves
+  // actor ordering while removing unrelated WebGL/asset bootstrap pressure from the
+  // network-timing experiment.
+  const browserShellStartedAt = Date.now();
 
   const binary = findChrome();
   chrome = spawn(binary, [
@@ -485,6 +481,19 @@ try {
     () => cdp.eval(browserSession, 'document.readyState === "complete" && document.querySelector("#enter")?.disabled === false && typeof window.__sharedYardV0Evidence === "function"'),
     "browser shell",
   );
+  const browserShellReadyMs = Date.now() - browserShellStartedAt;
+
+  // Establish the five-actor world only after the shell is ready. The browser then
+  // enters sixth, preserving the same MF6 actor:5 identity and tested topology.
+  for (let index = 0; index < 5; index += 1) rawPeers.push(await openRawPeer(index));
+  const epoch = rawPeers[0].welcome.worldEpoch;
+  assert(rawPeers.every((peer) => peer.welcome.worldEpoch === epoch), "raw peers changed WorldEpoch");
+  await waitFor(() => rawPeers.every((peer) => peer.topology?.revision === 5) || false, "raw topology revision 5");
+  for (const peer of rawPeers) {
+    peer.feed = startFeed(peer, [0, 0]);
+    feeds.push(peer.feed);
+  }
+
   await cdp.eval(browserSession, 'document.querySelector("#enter").click(); true');
 
   const before = await waitFor(
@@ -849,6 +858,10 @@ try {
     browserSelf: {
       actorSessionId: selfSessionId,
       netEntityId: settled.session.selfNetEntityId,
+    },
+    bootstrap: {
+      revision: "mf6-browser-shell-before-five-peer-load-v1",
+      shellReadyMs: browserShellReadyMs,
     },
     baseline,
     moderate: {

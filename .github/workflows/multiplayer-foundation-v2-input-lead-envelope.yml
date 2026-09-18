@@ -11,6 +11,7 @@ on:
     paths:
       - .github/workflows/multiplayer-foundation-v2-input-lead-envelope.yml
       - scripts/multiplayer-foundation-v2-v28-input-lead-counterbalanced.mjs
+      - scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs
 
 permissions:
   contents: read

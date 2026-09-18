@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+
 const BASE = (process.env.MW_MF6_BASE || "http://127.0.0.1:8787").replace(/\/$/, "");
 const WS_BASE = BASE.replace(/^http/, "ws");
 const RUN = process.env.MW_MF6_RUN || `mf6-${Date.now().toString(36)}`;
@@ -134,6 +136,39 @@ async function resumeAuthority(playerId, resumeToken, worldEpoch) {
   });
   assert(response.ok, `resume-check HTTP ${response.status}`);
   return response.json();
+}
+
+async function killTransportViaRebind(peer) {
+  const child = spawn(process.execPath, ["scripts/multiplayer-foundation-v2-transport-proxy.mjs"], {
+    env: {
+      ...process.env,
+      MW_PROXY_BASE: BASE,
+      MW_PROXY_PLAYER: peer.playerId,
+      MW_PROXY_RUN: RUN,
+      MW_PROXY_RESUME: peer.welcome.resumeToken,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+
+  await waitFor(() => stdout.includes("MF6_TRANSPORT_PROXY_READY") || false, "transport proxy rebind", 10_000);
+  if (child.exitCode !== null) {
+    throw new Error(`transport proxy exited before kill: ${child.exitCode} stderr=${stderr}`);
+  }
+
+  child.kill("SIGKILL");
+  await waitFor(() => child.exitCode !== null || child.signalCode === "SIGKILL" || false, "transport proxy SIGKILL", 5_000);
+  return {
+    stdout: stdout.trim(),
+    stderr: stderr.trim(),
+    signal: child.signalCode,
+  };
 }
 
 async function openPeer(index) {
@@ -316,19 +351,11 @@ try {
     if (peer === retiredPeer) continue;
     feeds.push(startSustainedFeed(peer, vectors[index]));
   }
-  retiredPeer.ws.close(1000, "mf6_retire_transport_loss");
-  await waitFor(
-    () => retiredPeer.ws.readyState !== WebSocket.OPEN || false,
-    "retired peer transport leaves OPEN",
-    5_000,
-  );
-  // Node's client-side close event is not the authority detach oracle. Give the
-  // close frame a bounded propagation window; later replacement + stale-resume
-  // rejection proves the server-side ActorSession retirement path actually ran.
-  await sleep(500);
+  const killedTransport = await killTransportViaRebind(retiredPeer);
 
-  // The production reservation horizon is intentionally retained here. This gate
-  // tests actual V28 lifecycle semantics, not a shortened research-only timeout.
+  // The original in-process socket has been superseded by the proxy's resume/rebind.
+  // Killing the proxy process forces an OS-level transport loss without depending on
+  // WebSocket close-handshake timing. Keep the production reservation horizon intact.
   await sleep(22_000);
   feeds.splice(0).forEach((feed) => feed.stop());
 
@@ -484,6 +511,10 @@ try {
         actorSessionId: retiredSessionId,
         slot: retiredSlot,
         staleResumeRejected: true,
+        transportLoss: {
+          mechanism: "resume-rebind-child-process-sigkill",
+          signal: killedTransport.signal,
+        },
       },
       replacement: {
         actorId: replacement.welcome.selfNetEntityId,

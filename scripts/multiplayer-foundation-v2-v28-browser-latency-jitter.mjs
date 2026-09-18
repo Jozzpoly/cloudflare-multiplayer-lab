@@ -94,22 +94,60 @@ function startFeed(peer, vector) {
   return { stop() { running = false; clearInterval(timer); } };
 }
 
-async function keyDrive(cdp, sessionId, code, key, keyCode, durationMs) {
-  await cdp.call("Input.dispatchKeyEvent", {
-    type: "keyDown",
-    code,
-    key,
-    windowsVirtualKeyCode: keyCode,
-    nativeVirtualKeyCode: keyCode,
-  }, sessionId);
+async function keyDrive(cdp, sessionId, code, key, _keyCode, durationMs) {
+  const quotedCode = JSON.stringify(code);
+  const quotedKey = JSON.stringify(key);
+
+  await cdp.eval(sessionId, `(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", {
+      code: ${quotedCode},
+      key: ${quotedKey},
+      bubbles: true,
+      cancelable: true,
+    }));
+    return true;
+  })()`);
+
+  const engaged = await waitFor(
+    async () => {
+      const control = await cdp.eval(sessionId, "window.__sharedYardV0PlayableControl?.()");
+      const raw = control?.rawInput;
+      const world = control?.worldInput;
+      return raw && world &&
+        Math.hypot(Number(raw.x || 0), Number(raw.z || 0)) >= 0.5 &&
+        Math.hypot(Number(world.x || 0), Number(world.z || 0)) >= 0.5
+        ? control
+        : false;
+    },
+    `${code} playable input engagement`,
+    5_000,
+  );
+
   await sleep(durationMs);
-  await cdp.call("Input.dispatchKeyEvent", {
-    type: "keyUp",
-    code,
-    key,
-    windowsVirtualKeyCode: keyCode,
-    nativeVirtualKeyCode: keyCode,
-  }, sessionId);
+
+  await cdp.eval(sessionId, `(() => {
+    window.dispatchEvent(new KeyboardEvent("keyup", {
+      code: ${quotedCode},
+      key: ${quotedKey},
+      bubbles: true,
+      cancelable: true,
+    }));
+    return true;
+  })()`);
+
+  const released = await waitFor(
+    async () => {
+      const control = await cdp.eval(sessionId, "window.__sharedYardV0PlayableControl?.()");
+      const raw = control?.rawInput;
+      return raw && Math.hypot(Number(raw.x || 0), Number(raw.z || 0)) < 0.05
+        ? control
+        : false;
+    },
+    `${code} playable input release`,
+    5_000,
+  );
+
+  return { engaged, released };
 }
 
 function distance3(a, b) {
@@ -382,7 +420,7 @@ try {
   // Moderate sustained impairment: exercise browser-authored input while all five
   // remote ActorSessions remain active.
   proxy.setProfile({ name: "moderate", latencyMs: 60, jitterMs: 15 });
-  await keyDrive(cdp, browserSession, "KeyD", "d", 68, 1100);
+  const moderateStimulus = await keyDrive(cdp, browserSession, "KeyD", "d", 68, 1100);
 
   const moderate = await waitFor(
     async () => {
@@ -422,7 +460,7 @@ try {
   const hostileStartRttSamples = moderate.evidence.rtt.samples;
 
   proxy.setProfile({ name: "hostile", latencyMs: 100, jitterMs: 25 });
-  await keyDrive(cdp, browserSession, "KeyA", "a", 65, 1200);
+  const hostileStimulus = await keyDrive(cdp, browserSession, "KeyA", "a", 65, 1200);
 
   const hostile = await waitFor(
     async () => {
@@ -486,6 +524,7 @@ try {
     baseline,
     moderate: {
       profile: { latencyMs: 60, jitterMs: 15 },
+      stimulus: moderateStimulus,
       guardMatches: moderate.evidence.metrics.guardMatches,
       guardMismatches: moderate.evidence.metrics.guardMismatches,
       corrections: moderate.evidence.metrics.corrections,
@@ -497,6 +536,7 @@ try {
     },
     hostile: {
       profile: { latencyMs: 100, jitterMs: 25 },
+      stimulus: hostileStimulus,
       guardMatches: hostile.evidence.metrics.guardMatches,
       guardMismatches: hostile.evidence.metrics.guardMismatches,
       corrections: hostile.evidence.metrics.corrections,

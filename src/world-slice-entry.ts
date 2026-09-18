@@ -84,6 +84,25 @@ async function sharedYardV0WebSocketResponse(request: Request, env: Env): Promis
   return world.fetch(request);
 }
 
+async function sharedYardV0StatusResponse(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405, headers: { "allow": "GET" } });
+  }
+  const url = new URL(request.url);
+  const run = (url.searchParams.get("run") ?? "").trim();
+  if (!/^[A-Za-z0-9_-]{1,20}$/.test(run)) {
+    return new Response(JSON.stringify({ ok: false, error: "invalid_run" }), {
+      status: 400,
+      headers: { "cache-control": "no-store", "content-type": "application/json; charset=utf-8" },
+    });
+  }
+  const stub = sharedYardV0Stub(env, `shared-yard-v0-${run}`);
+  return stub.fetch(new Request(`https://world-v0.internal/status/${encodeURIComponent(run)}`, {
+    method: "GET",
+    headers: { "cache-control": "no-store" },
+  }));
+}
+
 async function sharedYardV0ResumeCheckResponse(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405, headers: { "allow": "POST" } });
@@ -237,6 +256,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/api/world0") return worldSlice0ApiResponse(request, env);
     if (url.pathname === "/api/world-v0/rooms" && env.SHARED_YARD_V0) return sharedYardV0PublicRoomDirectoryResponse(env);
+    if (url.pathname === "/api/world-v0/status" && env.SHARED_YARD_V0) return sharedYardV0StatusResponse(request, env);
     if (url.pathname === "/api/world-v0/resume-check" && env.SHARED_YARD_V0) return sharedYardV0ResumeCheckResponse(request, env);
     if (url.pathname === "/world0/ws") return worldSlice0WebSocketResponse(request, env);
     if (url.pathname === "/world0-f5/ws") return worldSliceF5WebSocketResponse(request, env);

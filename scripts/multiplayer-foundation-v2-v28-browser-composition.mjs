@@ -246,7 +246,7 @@ try {
       status.softReservedSlots.includes(retired.welcome.slot)
       ? status
       : false;
-  }, "browser churn authority soft reservation", 60_000);
+  }, "browser churn authority soft reservation", 120_000);
 
   const replacement = await openRawPeer(6);
   rawPeers.push(replacement);

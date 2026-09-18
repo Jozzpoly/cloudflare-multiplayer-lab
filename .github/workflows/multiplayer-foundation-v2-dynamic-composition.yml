@@ -13,7 +13,7 @@ on:
       - public/world-v0/app.js
       - scripts/multiplayer-foundation-v2-v28-dynamic-authority-smoke.mjs
       - scripts/multiplayer-foundation-v2-v28-browser-composition.mjs
-      - scripts/multiplayer-foundation-v2-v28-browser-n-input-falsifier.mjs
+      - scripts/multiplayer-foundation-v2-v28-browser-n-input-composition.mjs
       - scripts/multiplayer-foundation-v2-transport-proxy.mjs
       - .github/workflows/multiplayer-foundation-v2-dynamic-composition.yml
 
@@ -71,16 +71,16 @@ jobs:
           timeout 180s node scripts/multiplayer-foundation-v2-v28-browser-composition.mjs | tee mf6-browser.log
           grep -q MF6_V28_BROWSER_COMPOSITION_PASS mf6-browser.log
 
-      - name: Falsify current browser N-peer input composition
+      - name: Qualify browser self plus N input composition
         env:
           MW_MF6_N_INPUT_BASE: http://127.0.0.1:8787
           MW_MF6_N_INPUT_RUN: m6n${{ github.run_id }}
-          MW_MF6_N_INPUT_OUTPUT: mf6-browser-n-input-limit.json
+          MW_MF6_N_INPUT_OUTPUT: mf6-browser-n-input-composition.json
         shell: bash
         run: |
           set -euo pipefail
-          timeout 120s node scripts/multiplayer-foundation-v2-v28-browser-n-input-falsifier.mjs | tee mf6-browser-n-input.log
-          grep -q MF6_V28_BROWSER_N_INPUT_LIMIT_CONFIRMED mf6-browser-n-input.log
+          timeout 150s node scripts/multiplayer-foundation-v2-v28-browser-n-input-composition.mjs | tee mf6-browser-n-input.log
+          grep -q MF6_V28_BROWSER_N_INPUT_COMPOSITION_PASS mf6-browser-n-input.log
 
       - name: Stop isolated authority
         if: always()
@@ -101,5 +101,5 @@ jobs:
             mf6-browser.log
             mf6-browser-composition.json
             mf6-browser-n-input.log
-            mf6-browser-n-input-limit.json
+            mf6-browser-n-input-composition.json
             mf6-workerd.log

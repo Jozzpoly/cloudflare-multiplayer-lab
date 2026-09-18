@@ -1,0 +1,80 @@
+name: Terminal branch prune 2026-09-18
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/terminal-branch-prune-2026-09-18.yml
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_ARCHIVE_SHA: 144babc38817593ce38f4977f90c9118fbda8605
+    steps:
+      - name: Exact preflight and guarded deletion
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          keep=(
+            "archive/multi-world-history-2026-09-18"
+            "main"
+          )
+
+          delete=(
+            "archive/repository-cleanup-v3-2026-09-10"
+            "archive/world-v0-v28-campaign-2026-09-18"
+            "research/multiplayer-foundation-recovery-build-entry-probe"
+            "research/multiplayer-foundation-recovery-remote"
+            "research/multiplayer-foundation-v1-2026-09-13"
+            "research/world-v0-lifecycle-independence-r0"
+            "tmp-r2-apparatus-prep-do-not-use"
+            "world-v0-ongoing-yard"
+            "world-v0-post-owner-v28-closeout"
+            "world-v0-post-owner-v28-hardening"
+            "world-v0-smoothness-owner-candidate-v25"
+            "world-v0-smoothness-owner-candidate-v28"
+            "world-v0-smoothness-owner-delivery-v28"
+            "world-v0-smoothness-owner-forensics-v25"
+            "world-v0-smoothness-owner-staging-v25"
+            "world-v0-smoothness-reliability-campaign"
+          )
+
+          expected=( "${keep[@]}" "${delete[@]}" )
+
+          mapfile -t live < <(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/branches?per_page=100" --jq '.[].name' | sort
+          )
+          mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | sort)
+
+          printf '%s\n' "${live[@]}" > live-before.txt
+          printf '%s\n' "${expected_sorted[@]}" > expected-before.txt
+          diff -u expected-before.txt live-before.txt
+
+          archive_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/archive/multi-world-history-2026-09-18" --jq '.object.sha')"
+          test "$archive_sha" = "$EXPECTED_ARCHIVE_SHA"
+
+          for branch in "${delete[@]}"; do
+            printf 'DELETE %s\n' "$branch"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"
+          done
+
+          mapfile -t after < <(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/branches?per_page=100" --jq '.[].name' | sort
+          )
+          mapfile -t keep_sorted < <(printf '%s\n' "${keep[@]}" | sort)
+
+          printf '%s\n' "${after[@]}" > live-after.txt
+          printf '%s\n' "${keep_sorted[@]}" > expected-after.txt
+          diff -u expected-after.txt live-after.txt
+
+          archive_after="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/archive/multi-world-history-2026-09-18" --jq '.object.sha')"
+          test "$archive_after" = "$EXPECTED_ARCHIVE_SHA"
+
+          echo "TERMINAL_BRANCH_PRUNE_PASS"

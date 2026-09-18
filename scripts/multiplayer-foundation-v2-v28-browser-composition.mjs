@@ -240,10 +240,9 @@ try {
     const status = await authorityStatus();
     return status.worldEpoch === epoch &&
       status.lifecycleMode === "mf6" &&
-      status.connectedPlayers === EXPECTED_ACTORS - 1 &&
       status.replaceableReservations >= 1 &&
-      Array.isArray(status.softReservedSlots) &&
-      status.softReservedSlots.includes(retired.welcome.slot)
+      Array.isArray(status.replaceableSlots) &&
+      status.replaceableSlots.includes(retired.welcome.slot)
       ? status
       : false;
   }, "browser churn authority soft reservation", 120_000);

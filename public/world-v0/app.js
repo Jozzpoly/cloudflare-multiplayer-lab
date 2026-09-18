@@ -774,6 +774,15 @@ let actorResume = {
 
 const pendingPings = new Map();
 const rttSamples = [];
+const inputArrival = {
+  records: 0,
+  late: 0,
+  severelyLate: 0,
+  safe: 0,
+  marginSumTicks: 0,
+  minMarginTicks: null,
+  maxMarginTicks: null,
+};
 const frameSamples = [];
 const correctionEvents = [];
 const longFrameEvents = [];
@@ -2195,6 +2204,20 @@ function classifyBatchAck(message) {
   for (const record of message.records || []) {
     if (record.status === "late") metrics.serverLate += 1;
     if (["before_start", "too_future"].includes(record.status)) metrics.serverRejected += 1;
+    if (lifecycleMf6 && Number.isInteger(message.boundaryTick) && Number.isInteger(record.targetTick)) {
+      const marginTicks = record.targetTick - message.boundaryTick;
+      inputArrival.records += 1;
+      inputArrival.marginSumTicks += marginTicks;
+      if (marginTicks < 0) inputArrival.late += 1;
+      if (marginTicks <= -4) inputArrival.severelyLate += 1;
+      if (marginTicks >= 4) inputArrival.safe += 1;
+      inputArrival.minMarginTicks = inputArrival.minMarginTicks === null
+        ? marginTicks
+        : Math.min(inputArrival.minMarginTicks, marginTicks);
+      inputArrival.maxMarginTicks = inputArrival.maxMarginTicks === null
+        ? marginTicks
+        : Math.max(inputArrival.maxMarginTicks, marginTicks);
+    }
   }
 }
 
@@ -2838,6 +2861,20 @@ function buildEvidence() {
       inputLeadProbeRevision: "mf6-input-authorship-lead-probe-v1",
       simulationLeadTicks: simulation?.timing?.clientSimulationLeadTicks ?? null,
       ownsCanonicalAuthorship: true,
+      timingTelemetryRevision: "mf6-input-arrival-margin-v1",
+      authorityEstimateTick: authorityTickEstimate(),
+      phaseAnchorTick: phaseAnchor?.tick ?? null,
+      phaseAnchorAgeMs: phaseAnchor ? Math.max(0, performance.now() - phaseAnchor.at) : null,
+      arrival: {
+        records: inputArrival.records,
+        late: inputArrival.late,
+        severelyLate: inputArrival.severelyLate,
+        safe: inputArrival.safe,
+        marginSumTicks: inputArrival.marginSumTicks,
+        meanMarginTicks: inputArrival.records > 0 ? inputArrival.marginSumTicks / inputArrival.records : null,
+        minMarginTicks: inputArrival.minMarginTicks,
+        maxMarginTicks: inputArrival.maxMarginTicks,
+      },
       jumpDelivery: { ...jumpDelivery },
     },
     localBoundaryTick: localState?.boundaryTick ?? null,
@@ -3018,6 +3055,15 @@ function resetProtocolState({ preserveRoomRecovery = false } = {}) {
   lifecycleEvents.splice(0);
   frameSamples.splice(0);
   rttSamples.splice(0);
+  Object.assign(inputArrival, {
+    records: 0,
+    late: 0,
+    severelyLate: 0,
+    safe: 0,
+    marginSumTicks: 0,
+    minMarginTicks: null,
+    maxMarginTicks: null,
+  });
   pendingBatch = [];
   batchSeq = 0;
   identity = null;

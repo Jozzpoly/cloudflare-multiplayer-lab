@@ -200,6 +200,9 @@ async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSes
   for (let index = 0; index < count; index += 1) {
     const next = specs[index % specs.length];
     const startAuthorityBoundary = authorityPeer.latestBoundary;
+    const timingAtStart = await cdp.eval(sessionId, "window.__sharedYardV0Evidence()");
+    const browserAuthorityEstimateTick = timingAtStart?.inputScheduler?.authorityEstimateTick ?? null;
+    const browserObservedAuthorityBoundary = timingAtStart?.metrics?.latestAuthorityBoundary ?? null;
     const previousCode = active?.code ? JSON.stringify(active.code) : null;
     const previousKey = active?.key ? JSON.stringify(active.key) : null;
     const nextCode = JSON.stringify(next.code);
@@ -242,6 +245,14 @@ async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSes
       index,
       code: next.code,
       startAuthorityBoundary,
+      browserAuthorityEstimateTick,
+      browserObservedAuthorityBoundary,
+      estimateLagTicks: Number.isFinite(browserAuthorityEstimateTick)
+        ? startAuthorityBoundary - browserAuthorityEstimateTick
+        : null,
+      observedBoundaryLagTicks: Number.isInteger(browserObservedAuthorityBoundary)
+        ? startAuthorityBoundary - browserObservedAuthorityBoundary
+        : null,
       expected,
       browserPositionAfterHold: afterHold?.livePhysics?.actorPositions?.[selfSessionId] || null,
     });
@@ -658,6 +669,7 @@ try {
   const hostileStartServerRejected = hostileWarmup.metrics.serverRejected;
   const hostileStartLocalBoundary = hostileWarmup.localBoundaryTick;
   const hostileStartAuthorityBoundary = hostileWarmup.metrics.latestAuthorityBoundary;
+  const hostileStartArrival = { ...(hostileWarmup.inputScheduler?.arrival || {}) };
 
   const hostileCommandTrain = await runDirectionalCommandTrain(
     cdp,
@@ -674,6 +686,12 @@ try {
       if (e.runtimeFailed) throw new Error(`hostile impairment runtime failure: ${e.runtimeFailureReason}`);
       const proxyState = proxy.snapshot();
       const deliveryRatio = hostileCommandTrain.delivered / hostileCommandTrain.count;
+      const currentArrival = e.inputScheduler?.arrival || {};
+      const arrivalRecordsDelta = Number(currentArrival.records || 0) - Number(hostileStartArrival.records || 0);
+      const arrivalLateDelta = Number(currentArrival.late || 0) - Number(hostileStartArrival.late || 0);
+      const arrivalSeverelyLateDelta = Number(currentArrival.severelyLate || 0) - Number(hostileStartArrival.severelyLate || 0);
+      const arrivalSafeDelta = Number(currentArrival.safe || 0) - Number(hostileStartArrival.safe || 0);
+      const arrivalMarginSumDelta = Number(currentArrival.marginSumTicks || 0) - Number(hostileStartArrival.marginSumTicks || 0);
       const checks = {
         exact: e.metrics?.guardMismatches === 0,
         guardProgress: e.metrics?.guardMatches >= hostileStartGuardMatches + 20,
@@ -717,6 +735,24 @@ try {
           missedCommandIndexes: hostileCommandTrain.commands
             .filter((command) => !command.deliveredInWindow)
             .map((command) => command.index),
+        },
+        arrivalMargin: {
+          records: arrivalRecordsDelta,
+          late: arrivalLateDelta,
+          severelyLate: arrivalSeverelyLateDelta,
+          safe: arrivalSafeDelta,
+          lateFraction: arrivalRecordsDelta > 0 ? arrivalLateDelta / arrivalRecordsDelta : null,
+          severelyLateFraction: arrivalRecordsDelta > 0 ? arrivalSeverelyLateDelta / arrivalRecordsDelta : null,
+          safeFraction: arrivalRecordsDelta > 0 ? arrivalSafeDelta / arrivalRecordsDelta : null,
+          meanMarginTicks: arrivalRecordsDelta > 0 ? arrivalMarginSumDelta / arrivalRecordsDelta : null,
+        },
+        phaseError: {
+          estimateLagTicks: hostileCommandTrain.commands
+            .map((command) => command.estimateLagTicks)
+            .filter(Number.isFinite),
+          observedBoundaryLagTicks: hostileCommandTrain.commands
+            .map((command) => command.observedBoundaryLagTicks)
+            .filter(Number.isFinite),
         },
         commandTrain: hostileCommandTrain,
         proxy: proxyState,

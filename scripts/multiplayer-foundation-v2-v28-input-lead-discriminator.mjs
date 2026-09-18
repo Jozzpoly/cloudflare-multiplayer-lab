@@ -50,6 +50,11 @@ function summarize(label, result, expectedEffectiveLead) {
       diagnostic.inputSchedulerDelta.authored > 0
         ? diagnostic.serverLateDelta / diagnostic.inputSchedulerDelta.authored
         : null,
+    arrivalMargin: diagnostic.arrivalMargin || null,
+    phaseError: {
+      estimateLagTicks: diagnostic.phaseError?.estimateLagTicks || [],
+      observedBoundaryLagTicks: diagnostic.phaseError?.observedBoundaryLagTicks || [],
+    },
     authorityBoundaryDelta: diagnostic.authorityBoundaryDelta ?? null,
     localBoundaryDelta: diagnostic.localBoundaryDelta ?? null,
     rttSamples: rtt.samples ?? null,
@@ -82,6 +87,21 @@ function summarize(label, result, expectedEffectiveLead) {
 
 const l8 = summarize("L8-control", load(l8Path), 8);
 const l12 = summarize("L12-treatment", load(l12Path), 12);
+
+function numericSummary(values) {
+  const finite = values.filter(Number.isFinite);
+  if (!finite.length) return { samples: 0, mean: null, min: null, max: null };
+  return {
+    samples: finite.length,
+    mean: finite.reduce((sum, value) => sum + value, 0) / finite.length,
+    min: Math.min(...finite),
+    max: Math.max(...finite),
+  };
+}
+l8.phaseError.estimateLagSummary = numericSummary(l8.phaseError.estimateLagTicks);
+l8.phaseError.observedBoundaryLagSummary = numericSummary(l8.phaseError.observedBoundaryLagTicks);
+l12.phaseError.estimateLagSummary = numericSummary(l12.phaseError.estimateLagTicks);
+l12.phaseError.observedBoundaryLagSummary = numericSummary(l12.phaseError.observedBoundaryLagTicks);
 
 let classification;
 if (!l8.exact || !l12.exact) {

@@ -7,12 +7,13 @@ A fresh continuation should start from the compact current spine below. Do **not
 
 ## Canonical reading order
 
-1. `MULTI_WORLD_PROJECT_SOUL.md` — durable multiplayer-technology mission and decision pressures.
-2. `MULTI_WORLD_CURRENT_STATE.md` — compact current technical/project truth.
-3. `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md` — detailed evidence and closeout record for the current baseline.
-4. GitHub issue #8 — detailed historical campaign checkpoints only when a specific provenance question requires them.
-5. Aggregate archive `archive/multi-world-history-2026-09-18` — machine recovery root for retired branch history.
-6. Earlier 2026-09-10 safe-stop/cleanup documents and issue #41 — historical cleanup provenance, not current startup authority.
+1. root `AGENTS.md` — Owner-locked direction and continuation contract.
+2. `MULTI_WORLD_PROJECT_SOUL.md` — durable multiplayer-technology mission and decision pressures.
+3. `MULTI_WORLD_CURRENT_STATE.md` — compact current technical/project truth.
+4. `WORLD_V0_POST_OWNER_V28_HARDENING_2026-09-18.md` — detailed evidence and closeout record for the current baseline.
+5. GitHub issue #8 — detailed historical campaign checkpoints only when a specific provenance question requires them.
+6. Aggregate archive `archive/multi-world-history-2026-09-18` — machine recovery root for retired branch history.
+7. Earlier 2026-09-10 safe-stop/cleanup documents and issue #41 — historical cleanup provenance, not current startup authority.
 
 ## Current qualified runtime authority
 

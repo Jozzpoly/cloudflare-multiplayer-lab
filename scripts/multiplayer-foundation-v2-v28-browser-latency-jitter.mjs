@@ -21,6 +21,14 @@ if (!["0", "1"].includes(INPUT_ESTIMATE_CEILING_PROBE_RAW)) {
   throw new Error(`invalid MW_MF6_INPUT_ESTIMATE_CEILING_PROBE ${INPUT_ESTIMATE_CEILING_PROBE_RAW}`);
 }
 const INPUT_ESTIMATE_CEILING_PROBE = INPUT_ESTIMATE_CEILING_PROBE_RAW === "1";
+const ADAPTIVE_INPUT_LEAD_PROBE_RAW = process.env.MW_MF6_ADAPTIVE_INPUT_LEAD_PROBE?.trim() || "0";
+if (!["0", "1"].includes(ADAPTIVE_INPUT_LEAD_PROBE_RAW)) {
+  throw new Error(`invalid MW_MF6_ADAPTIVE_INPUT_LEAD_PROBE ${ADAPTIVE_INPUT_LEAD_PROBE_RAW}`);
+}
+const ADAPTIVE_INPUT_LEAD_PROBE = ADAPTIVE_INPUT_LEAD_PROBE_RAW === "1";
+if (ADAPTIVE_INPUT_LEAD_PROBE && INPUT_LEAD_PROBE !== null) {
+  throw new Error("adaptive input lead probe cannot be combined with fixed input lead probe");
+}
 const DEBUG_PORT = 9400;
 const TIMEOUT_MS = 45_000;
 const EXPECTED_ACTORS = 6;
@@ -283,6 +291,7 @@ async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSes
     const timingAtStart = await cdp.eval(sessionId, "window.__sharedYardV0Evidence()");
     const browserAuthorityEstimateTick = timingAtStart?.inputScheduler?.authorityEstimateTick ?? null;
     const browserInputAuthorshipEstimateTick = timingAtStart?.inputScheduler?.inputAuthorshipEstimateTick ?? browserAuthorityEstimateTick;
+    const browserInputLeadTicks = timingAtStart?.inputScheduler?.inputLeadTicks ?? null;
     const browserObservedAuthorityBoundary = timingAtStart?.metrics?.latestAuthorityBoundary ?? null;
     const previousCode = active?.code ? JSON.stringify(active.code) : null;
     const previousKey = active?.key ? JSON.stringify(active.key) : null;
@@ -328,6 +337,7 @@ async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSes
       startAuthorityBoundary,
       browserAuthorityEstimateTick,
       browserInputAuthorshipEstimateTick,
+      browserInputLeadTicks,
       browserObservedAuthorityBoundary,
       estimateLagTicks: Number.isFinite(browserAuthorityEstimateTick)
         ? startAuthorityBoundary - browserAuthorityEstimateTick
@@ -481,6 +491,7 @@ const result = {
   generatedAt: new Date().toISOString(),
   requestedInputLeadProbeTicks: INPUT_LEAD_PROBE,
   requestedInputEstimateCeilingProbe: INPUT_ESTIMATE_CEILING_PROBE,
+  requestedAdaptiveInputLeadProbe: ADAPTIVE_INPUT_LEAD_PROBE,
 };
 let lastModerateDiagnostic = null;
 let lastHostileDiagnostic = null;
@@ -512,6 +523,7 @@ try {
   pageUrl.searchParams.set("player", "mf6-browser");
   if (INPUT_LEAD_PROBE !== null) pageUrl.searchParams.set("mf6InputLeadProbe", String(INPUT_LEAD_PROBE));
   if (INPUT_ESTIMATE_CEILING_PROBE) pageUrl.searchParams.set("mf6InputEstimateCeilingProbe", "1");
+  if (ADAPTIVE_INPUT_LEAD_PROBE) pageUrl.searchParams.set("mf6AdaptiveInputLeadProbe", "1");
   const { targetId } = await cdp.call("Target.createTarget", { url: pageUrl.toString() });
   ({ sessionId: browserSession } = await cdp.call("Target.attachToTarget", { targetId, flatten: true }));
   await cdp.call("Runtime.enable", {}, browserSession);
@@ -920,6 +932,7 @@ try {
       maxReplaySteps: moderate.evidence.metrics.maxReplaySteps,
       rtt: moderate.evidence.rtt,
       maxAuthoritySilenceTicks: moderate.evidence.metrics.maxAuthoritySilenceTicks,
+      inputScheduler: moderate.evidence.inputScheduler,
       diagnostic: lastModerateDiagnostic,
       proxy: moderate.proxy,
     },
@@ -937,6 +950,7 @@ try {
       maxReplaySteps: hostile.evidence.metrics.maxReplaySteps,
       rtt: hostile.evidence.rtt,
       maxAuthoritySilenceTicks: hostile.evidence.metrics.maxAuthoritySilenceTicks,
+      inputScheduler: hostile.evidence.inputScheduler,
       warmup: {
         guardMatches: hostileWarmup.metrics.guardMatches,
         guardMismatches: hostileWarmup.metrics.guardMismatches,

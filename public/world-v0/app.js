@@ -115,6 +115,20 @@ if (mf6InputEstimateCeilingProbeRaw !== null &&
   throw new Error(`invalid mf6InputEstimateCeilingProbe ${mf6InputEstimateCeilingProbeRaw}`);
 }
 const mf6InputEstimateCeilingProbe = mf6InputEstimateCeilingProbeRaw === "1";
+const mf6AdaptiveInputLeadProbeRaw = lifecycleMf6 ? urlParams.get("mf6AdaptiveInputLeadProbe") : null;
+if (mf6AdaptiveInputLeadProbeRaw !== null &&
+    !["0", "1"].includes(mf6AdaptiveInputLeadProbeRaw)) {
+  throw new Error(`invalid mf6AdaptiveInputLeadProbe ${mf6AdaptiveInputLeadProbeRaw}`);
+}
+const mf6AdaptiveInputLeadProbe = mf6AdaptiveInputLeadProbeRaw === "1";
+if (mf6AdaptiveInputLeadProbe && mf6InputLeadProbe !== null) {
+  throw new Error("mf6 adaptive input lead probe cannot be combined with fixed input lead probe");
+}
+const MF6_ADAPTIVE_INPUT_LEAD_MAX_TICKS = 14;
+const MF6_ADAPTIVE_INPUT_TARGET_MARGIN_TICKS = 2;
+let mf6AdaptiveInputLeadTicks = null;
+let mf6AdaptiveInputLeadRaiseCount = 0;
+const mf6AdaptiveInputLeadEvents = [];
 const storedCallsign = localStorage.getItem("shared-yard-v0-callsign") || "";
 const storedRun = localStorage.getItem("shared-yard-v0-run") || "";
 const randomRun = `yard-${Math.random().toString(36).slice(2, 8)}`;
@@ -508,12 +522,48 @@ function stopLogicalInputScheduler() {
 
 function effectiveInputAuthorshipLeadTicks() {
   const contractLead = simulation?.timing?.predictionLeadTicks ?? null;
-  if (!Number.isInteger(contractLead) || mf6InputLeadProbe === null) return contractLead;
+  if (!Number.isInteger(contractLead)) return contractLead;
   const maxFutureTicks = simulation?.timing?.maxFutureTicks;
+
+  if (mf6AdaptiveInputLeadProbe) {
+    if (!Number.isInteger(maxFutureTicks) || contractLead > maxFutureTicks) {
+      throw new Error(`mf6 adaptive input lead base ${contractLead} exceeds maxFutureTicks ${maxFutureTicks}`);
+    }
+    const cap = Math.min(MF6_ADAPTIVE_INPUT_LEAD_MAX_TICKS, maxFutureTicks);
+    if (!Number.isInteger(mf6AdaptiveInputLeadTicks)) {
+      mf6AdaptiveInputLeadTicks = Math.min(contractLead, cap);
+    }
+    return mf6AdaptiveInputLeadTicks;
+  }
+
+  if (mf6InputLeadProbe === null) return contractLead;
   if (!Number.isInteger(maxFutureTicks) || mf6InputLeadProbe > maxFutureTicks) {
     throw new Error(`mf6 input lead probe ${mf6InputLeadProbe} exceeds maxFutureTicks ${maxFutureTicks}`);
   }
   return mf6InputLeadProbe;
+}
+
+function adaptInputAuthorshipLeadFromAck(maxMarginTicks, authorityBoundaryTick) {
+  if (!mf6AdaptiveInputLeadProbe || !Number.isFinite(maxMarginTicks)) return;
+  const current = effectiveInputAuthorshipLeadTicks();
+  const maxFutureTicks = simulation?.timing?.maxFutureTicks;
+  if (!Number.isInteger(current) || !Number.isInteger(maxFutureTicks)) return;
+  if (maxMarginTicks >= MF6_ADAPTIVE_INPUT_TARGET_MARGIN_TICKS) return;
+
+  const cap = Math.min(MF6_ADAPTIVE_INPUT_LEAD_MAX_TICKS, maxFutureTicks);
+  const deficit = Math.max(1, Math.ceil(MF6_ADAPTIVE_INPUT_TARGET_MARGIN_TICKS - maxMarginTicks));
+  const next = Math.min(cap, current + deficit);
+  if (next <= current) return;
+
+  mf6AdaptiveInputLeadTicks = next;
+  mf6AdaptiveInputLeadRaiseCount += 1;
+  pushBounded(mf6AdaptiveInputLeadEvents, {
+    at: performance.now(),
+    authorityBoundaryTick: Number.isInteger(authorityBoundaryTick) ? authorityBoundaryTick : null,
+    maxMarginTicks,
+    fromLeadTicks: current,
+    toLeadTicks: next,
+  }, 32);
 }
 
 function inputAuthorshipEstimateCeilingTick() {
@@ -2226,11 +2276,15 @@ function classifyBatchAck(message) {
   assertMessageIdentity(message, "batch-ack");
   assertR0MessageTopology(message, "batch-ack");
   if (message.batchStatus === "stale_batch") metrics.serverRejected += 1;
+  let adaptiveBatchMaxMargin = null;
   for (const record of message.records || []) {
     if (record.status === "late") metrics.serverLate += 1;
     if (["before_start", "too_future"].includes(record.status)) metrics.serverRejected += 1;
     if (lifecycleMf6 && Number.isInteger(message.boundaryTick) && Number.isInteger(record.targetTick)) {
       const marginTicks = record.targetTick - message.boundaryTick;
+      adaptiveBatchMaxMargin = adaptiveBatchMaxMargin === null
+        ? marginTicks
+        : Math.max(adaptiveBatchMaxMargin, marginTicks);
       inputAckRecordSeq += 1;
       pushBounded(inputAckSamples, {
         seq: inputAckRecordSeq,
@@ -2255,6 +2309,7 @@ function classifyBatchAck(message) {
         : Math.max(inputArrival.maxMarginTicks, marginTicks);
     }
   }
+  adaptInputAuthorshipLeadFromAck(adaptiveBatchMaxMargin, message.boundaryTick);
 }
 
 function handlePeerRecords(message) {
@@ -2895,6 +2950,12 @@ function buildEvidence() {
       inputLeadTicks: effectiveInputAuthorshipLeadTicks(),
       inputLeadProbeTicks: mf6InputLeadProbe,
       inputLeadProbeRevision: "mf6-input-authorship-lead-probe-v1",
+      adaptiveInputLeadProbe: mf6AdaptiveInputLeadProbe,
+      adaptiveInputLeadRevision: "mf6-input-authorship-ack-margin-ratchet-v1",
+      adaptiveInputLeadMaxTicks: MF6_ADAPTIVE_INPUT_LEAD_MAX_TICKS,
+      adaptiveInputLeadTargetMarginTicks: MF6_ADAPTIVE_INPUT_TARGET_MARGIN_TICKS,
+      adaptiveInputLeadRaiseCount: mf6AdaptiveInputLeadRaiseCount,
+      adaptiveInputLeadEvents: mf6AdaptiveInputLeadEvents.map((event) => ({ ...event })),
       simulationLeadTicks: simulation?.timing?.clientSimulationLeadTicks ?? null,
       ownsCanonicalAuthorship: true,
       timingTelemetryRevision: "mf6-input-arrival-margin-v1",

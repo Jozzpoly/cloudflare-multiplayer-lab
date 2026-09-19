@@ -23,6 +23,14 @@ if (!["", "0", "1"].includes(INPUT_ESTIMATE_CEILING_PROBE_RAW)) {
 const INPUT_ESTIMATE_CEILING_PROBE = INPUT_ESTIMATE_CEILING_PROBE_RAW === ""
   ? null
   : INPUT_ESTIMATE_CEILING_PROBE_RAW === "1";
+const HOSTILE_LATENCY_MS = Number(process.env.MW_MF6_HOSTILE_LATENCY_MS || "100");
+const HOSTILE_JITTER_MS = Number(process.env.MW_MF6_HOSTILE_JITTER_MS || "25");
+if (!Number.isInteger(HOSTILE_LATENCY_MS) || HOSTILE_LATENCY_MS < 0 || HOSTILE_LATENCY_MS > 1000) {
+  throw new Error(`invalid MW_MF6_HOSTILE_LATENCY_MS ${process.env.MW_MF6_HOSTILE_LATENCY_MS}`);
+}
+if (!Number.isInteger(HOSTILE_JITTER_MS) || HOSTILE_JITTER_MS < 0 || HOSTILE_JITTER_MS > 1000) {
+  throw new Error(`invalid MW_MF6_HOSTILE_JITTER_MS ${process.env.MW_MF6_HOSTILE_JITTER_MS}`);
+}
 const DEBUG_PORT = 9400;
 const TIMEOUT_MS = 45_000;
 const EXPECTED_ACTORS = 6;
@@ -770,7 +778,7 @@ try {
     35_000,
   );
 
-  proxy.setProfile({ name: "hostile", latencyMs: 100, jitterMs: 25 });
+  proxy.setProfile({ name: "hostile", latencyMs: HOSTILE_LATENCY_MS, jitterMs: HOSTILE_JITTER_MS });
 
   // Do not let a short successful speculative move qualify the hostile profile before
   // ordered-stream queues and RTT observations have lived under the new impairment.
@@ -940,7 +948,7 @@ try {
       proxy: moderate.proxy,
     },
     hostile: {
-      profile: { latencyMs: 100, jitterMs: 25 },
+      profile: { latencyMs: HOSTILE_LATENCY_MS, jitterMs: HOSTILE_JITTER_MS },
       stimulus: {
         type: "directional-command-train",
         commandCount: hostileCommandTrain.count,

@@ -1,6 +1,6 @@
-export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v14-jump-delivery-persistence";
+export const WORLD_V0_CONTRACT_REVISION = "shared-yard-v0-contract-v15-input-authorship-reserve";
 export const WORLD_V0_SERVER_REVISION = "shared-yard-v0-authority-v11-jump-delivery-persistence";
-export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v10-jump-delivery-persistence";
+export const WORLD_V0_CLIENT_SIM_REVISION = "shared-yard-v0-browser-sim-v11-input-authorship-reserve";
 export const WORLD_V0_SCENE_REVISION = "shared-yard-v0-seed-a";
 export const WORLD_V0_STATE_GUARD_REVISION = "shared-yard-v0-f32-state-v1";
 export const WORLD_V0_PROTOCOL_REVISION = "shared-yard-v0-scheduled-input-v3-supersession";
@@ -16,8 +16,16 @@ export const WORLD_V0_TIMING = {
   snapshotHz: 10,
   protocolStartDelayTicks: 90,
   maxCatchupSteps: 4,
-  // Canonical input is authored far enough ahead to survive ordinary transport latency.
+  // Legacy/default authorship horizon retained for the qualified fixed-2p and R0 paths.
   predictionLeadTicks: 8,
+  // Multiplayer Foundation: canonical input authorship reserve is a network-delivery
+  // concern, distinct from how far the browser locally simulates ahead. The larger
+  // reserve extends the revisable future tail; it does not move the scheduler start
+  // beyond floor(authorityEstimate)+1.
+  inputAuthorshipLeadTicks: 14,
+  // Bound the authorship estimate so lead + estimate never targets beyond the
+  // authority-advertised maxFutureTicks relative to the latest observed boundary.
+  inputAuthorshipLegalWindowCeiling: true,
   // Discrete jump delivery is acknowledgement-driven on the browser: a press stays
   // pending across the moving future-input horizon until world_v0_consumed proves that
   // the authority canonically consumed jump=true. Physics remains authority rising-edge

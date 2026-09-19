@@ -16,19 +16,13 @@ if (INPUT_LEAD_PROBE !== null &&
     (!Number.isInteger(INPUT_LEAD_PROBE) || INPUT_LEAD_PROBE < 1 || INPUT_LEAD_PROBE > 32)) {
   throw new Error(`invalid MW_MF6_INPUT_LEAD_PROBE ${INPUT_LEAD_PROBE_RAW}`);
 }
-const INPUT_ESTIMATE_CEILING_PROBE_RAW = process.env.MW_MF6_INPUT_ESTIMATE_CEILING_PROBE?.trim() || "0";
-if (!["0", "1"].includes(INPUT_ESTIMATE_CEILING_PROBE_RAW)) {
+const INPUT_ESTIMATE_CEILING_PROBE_RAW = process.env.MW_MF6_INPUT_ESTIMATE_CEILING_PROBE?.trim() || "";
+if (!["", "0", "1"].includes(INPUT_ESTIMATE_CEILING_PROBE_RAW)) {
   throw new Error(`invalid MW_MF6_INPUT_ESTIMATE_CEILING_PROBE ${INPUT_ESTIMATE_CEILING_PROBE_RAW}`);
 }
-const INPUT_ESTIMATE_CEILING_PROBE = INPUT_ESTIMATE_CEILING_PROBE_RAW === "1";
-const ADAPTIVE_INPUT_LEAD_PROBE_RAW = process.env.MW_MF6_ADAPTIVE_INPUT_LEAD_PROBE?.trim() || "0";
-if (!["0", "1"].includes(ADAPTIVE_INPUT_LEAD_PROBE_RAW)) {
-  throw new Error(`invalid MW_MF6_ADAPTIVE_INPUT_LEAD_PROBE ${ADAPTIVE_INPUT_LEAD_PROBE_RAW}`);
-}
-const ADAPTIVE_INPUT_LEAD_PROBE = ADAPTIVE_INPUT_LEAD_PROBE_RAW === "1";
-if (ADAPTIVE_INPUT_LEAD_PROBE && INPUT_LEAD_PROBE !== null) {
-  throw new Error("adaptive input lead probe cannot be combined with fixed input lead probe");
-}
+const INPUT_ESTIMATE_CEILING_PROBE = INPUT_ESTIMATE_CEILING_PROBE_RAW === ""
+  ? null
+  : INPUT_ESTIMATE_CEILING_PROBE_RAW === "1";
 const DEBUG_PORT = 9400;
 const TIMEOUT_MS = 45_000;
 const EXPECTED_ACTORS = 6;
@@ -491,7 +485,6 @@ const result = {
   generatedAt: new Date().toISOString(),
   requestedInputLeadProbeTicks: INPUT_LEAD_PROBE,
   requestedInputEstimateCeilingProbe: INPUT_ESTIMATE_CEILING_PROBE,
-  requestedAdaptiveInputLeadProbe: ADAPTIVE_INPUT_LEAD_PROBE,
 };
 let lastModerateDiagnostic = null;
 let lastHostileDiagnostic = null;
@@ -522,8 +515,9 @@ try {
   pageUrl.searchParams.set("lifecycle", "mf6");
   pageUrl.searchParams.set("player", "mf6-browser");
   if (INPUT_LEAD_PROBE !== null) pageUrl.searchParams.set("mf6InputLeadProbe", String(INPUT_LEAD_PROBE));
-  if (INPUT_ESTIMATE_CEILING_PROBE) pageUrl.searchParams.set("mf6InputEstimateCeilingProbe", "1");
-  if (ADAPTIVE_INPUT_LEAD_PROBE) pageUrl.searchParams.set("mf6AdaptiveInputLeadProbe", "1");
+  if (INPUT_ESTIMATE_CEILING_PROBE !== null) {
+    pageUrl.searchParams.set("mf6InputEstimateCeilingProbe", INPUT_ESTIMATE_CEILING_PROBE ? "1" : "0");
+  }
   const { targetId } = await cdp.call("Target.createTarget", { url: pageUrl.toString() });
   ({ sessionId: browserSession } = await cdp.call("Target.attachToTarget", { targetId, flatten: true }));
   await cdp.call("Runtime.enable", {}, browserSession);

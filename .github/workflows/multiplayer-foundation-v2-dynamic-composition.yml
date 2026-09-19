@@ -125,6 +125,8 @@ jobs:
           MW_MF6_LATENCY_RUN=m6l8${{ github.run_id }} \
           MW_MF6_LATENCY_OUTPUT=mf6-browser-latency-jitter-l8.json \
           MW_MF6_LATENCY_PROXY_PORT=8792 \
+          MW_MF6_INPUT_LEAD_PROBE=8 \
+          MW_MF6_INPUT_ESTIMATE_CEILING_PROBE=0 \
             timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs \
             | tee mf6-browser-latency-jitter-l8.log
           l8_status=${PIPESTATUS[0]}
@@ -133,6 +135,7 @@ jobs:
           MW_MF6_LATENCY_OUTPUT=mf6-browser-latency-jitter-l10.json \
           MW_MF6_LATENCY_PROXY_PORT=8792 \
           MW_MF6_INPUT_LEAD_PROBE=10 \
+          MW_MF6_INPUT_ESTIMATE_CEILING_PROBE=0 \
             timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs \
             | tee mf6-browser-latency-jitter-l10.log
           l10_status=${PIPESTATUS[0]}
@@ -141,6 +144,7 @@ jobs:
           MW_MF6_LATENCY_OUTPUT=mf6-browser-latency-jitter-l12.json \
           MW_MF6_LATENCY_PROXY_PORT=8792 \
           MW_MF6_INPUT_LEAD_PROBE=12 \
+          MW_MF6_INPUT_ESTIMATE_CEILING_PROBE=0 \
             timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs \
             | tee mf6-browser-latency-jitter-l12.log
           l12_status=${PIPESTATUS[0]}

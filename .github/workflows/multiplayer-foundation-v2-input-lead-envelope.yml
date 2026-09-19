@@ -77,11 +77,7 @@ jobs:
             exit 1
           fi
           set +e
-          if [ "$LEAD" = "8" ]; then
-            MW_MF6_LATENCY_RUN="$run_key"             MW_MF6_LATENCY_OUTPUT="$output"             MW_MF6_LATENCY_PROXY_PORT=8792               timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs               | tee "mf6-isolated-$id.log"
-          else
-            MW_MF6_INPUT_LEAD_PROBE="$LEAD"             MW_MF6_LATENCY_RUN="$run_key"             MW_MF6_LATENCY_OUTPUT="$output"             MW_MF6_LATENCY_PROXY_PORT=8792               timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs               | tee "mf6-isolated-$id.log"
-          fi
+          MW_MF6_INPUT_LEAD_PROBE="$LEAD"             MW_MF6_INPUT_ESTIMATE_CEILING_PROBE=0             MW_MF6_LATENCY_RUN="$run_key"             MW_MF6_LATENCY_OUTPUT="$output"             MW_MF6_LATENCY_PROXY_PORT=8792               timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs               | tee "mf6-isolated-$id.log"
           status=${PIPESTATUS[0]}
           set -e
           echo "SPECIMEN-$id-STATUS=$status"

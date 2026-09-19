@@ -11,8 +11,8 @@ function read(path,id) {
   const value = JSON.parse(readFileSync(path,"utf8"));
   const h = value.hostile?.diagnostic || value.diagnostic?.hostile || null;
   if (!h) throw new Error(id + ": hostile diagnostic missing");
-  const warmup = value.hostile?.warmup?.inputScheduler || null;
-  if (!warmup) throw new Error(id + ": hostile warmup scheduler missing");
+  const scheduler = value.hostile?.warmup?.inputScheduler || h.inputScheduler || null;
+  if (!scheduler) throw new Error(id + ": scheduler evidence missing");
   const profile = h.proxy?.profile || value.hostile?.profile || null;
   const commands = h.commandTrain?.commands || [];
   const windows = commands
@@ -27,11 +27,11 @@ function read(path,id) {
     contractDriven:
       value.requestedInputLeadProbeTicks == null &&
       value.requestedInputEstimateCeilingProbe == null &&
-      warmup.contractInputLeadTicks === 8 &&
-      warmup.contractInputAuthorshipLeadTicks === 14 &&
-      warmup.inputLeadTicks === 14 &&
-      warmup.simulationLeadTicks === 2 &&
-      warmup.inputAuthorshipLegalWindowCeilingEnabled === true,
+      scheduler.contractInputLeadTicks === 8 &&
+      scheduler.contractInputAuthorshipLeadTicks === 14 &&
+      scheduler.inputLeadTicks === 14 &&
+      scheduler.simulationLeadTicks === 2 &&
+      scheduler.inputAuthorshipLegalWindowCeilingEnabled === true,
     exact: h.guardMismatches === 0 && h.firstStateMismatch == null,
     delivered: h.agencyDelivery?.delivered ?? null,
     total: h.agencyDelivery?.total ?? null,
@@ -64,12 +64,18 @@ if (!specimens.every((specimen) => specimen.profileExact && specimen.contractDri
   classification = "F4_STRESS120_EXACTNESS_RED";
 } else if (clean.length < 3) {
   classification = "F4_STRESS120_INCONCLUSIVE_STALL_CONTAMINATION";
-} else if (clean.some((specimen) => specimen.delivered !== 8)) {
-  classification = "F4_STRESS120_AGENCY_OUTSIDE_SUPPORTED_ENVELOPE";
 } else if (clean.some((specimen) => specimen.serverRejected > 0 || specimen.tooFuture > 0)) {
   classification = "F4_STRESS120_LEGAL_WINDOW_RED";
-} else {
+} else if (clean.every((specimen) => specimen.delivered === 8)) {
   classification = "F4_STRESS120_SUPPORTED";
+} else if (clean.some((specimen) => specimen.delivered === 8)) {
+  classification = "F4_STRESS120_MIXED_AGENCY_BOUNDARY";
+} else {
+  classification = "F4_STRESS120_AGENCY_RED";
+}
+if (classification === "F4_STRESS120_LEGAL_WINDOW_RED") {
+  // Keep the explicit branch above visible in the result without rewriting a
+  // legal-window failure as an agency classification.
 }
 
 const result = {

@@ -561,10 +561,19 @@ try {
   );
   assert(before.session?.selfNetEntityId === "actor:5", `browser identity ${before.session?.selfNetEntityId}`);
   assert(before.livePhysics.netEntityOrder.length === 18, "browser six-actor entity order mismatch");
-  const expectedInputLead = INPUT_LEAD_PROBE ?? before.inputScheduler?.contractInputLeadTicks;
+  const expectedInputLead = INPUT_LEAD_PROBE
+    ?? before.inputScheduler?.contractInputAuthorshipLeadTicks
+    ?? before.inputScheduler?.contractInputLeadTicks;
   assert(
     before.inputScheduler?.inputLeadTicks === expectedInputLead,
     `browser effective input lead ${before.inputScheduler?.inputLeadTicks}, expected ${expectedInputLead}`,
+  );
+  const expectedCeiling = INPUT_ESTIMATE_CEILING_PROBE
+    ?? (before.inputScheduler?.contractInputAuthorshipLeadTicks !== null
+      && before.inputScheduler?.contractInputAuthorshipLeadTicks !== undefined);
+  assert(
+    before.inputScheduler?.inputAuthorshipLegalWindowCeilingEnabled === expectedCeiling,
+    `browser legal-window ceiling ${before.inputScheduler?.inputAuthorshipLegalWindowCeilingEnabled}, expected ${expectedCeiling}`,
   );
   assert(
     before.inputScheduler?.simulationLeadTicks === 2,

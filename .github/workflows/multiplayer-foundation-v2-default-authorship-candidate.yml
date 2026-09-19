@@ -9,6 +9,10 @@ on:
     branches:
       - research/multiplayer-foundation-v2-v28-dynamic-composition
     paths:
+      - src/world-v0-contract.ts
+      - public/world-v0/build-contract.js
+      - public/world-v0/app.js
+      - scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs
       - scripts/multiplayer-foundation-v2-v28-default-authorship-candidate.mjs
       - .github/workflows/multiplayer-foundation-v2-default-authorship-candidate.yml
 
@@ -110,7 +114,9 @@ jobs:
           pattern: mf6-default-*
           merge-multiple: true
       - name: Aggregate contract-driven default candidate
+        shell: bash
         run: |
+          set -euo pipefail
           node scripts/multiplayer-foundation-v2-v28-default-authorship-candidate.mjs \
             mf6-default-a.json mf6-default-b.json mf6-default-c.json mf6-default-d.json \
             mf6-default-authorship-candidate.json | tee mf6-default-authorship-candidate.log

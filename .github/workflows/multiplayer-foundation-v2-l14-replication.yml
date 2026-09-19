@@ -1,0 +1,118 @@
+name: Multiplayer Foundation V2 L14 replication
+
+concurrency:
+  group: multiplayer-foundation-v2-l14-replication-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-v2-v28-dynamic-composition
+    paths:
+      - .github/workflows/multiplayer-foundation-v2-l14-replication.yml
+      - scripts/multiplayer-foundation-v2-v28-l14-replication.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run check
+
+  specimen:
+    needs: regression
+    strategy:
+      fail-fast: false
+      matrix:
+        replicate: [a, b, c, d]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Start isolated Workerd authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9288 > mf6-l14-workerd.log 2>&1 &
+          echo $! > mf6-l14-workerd.pid
+          for i in {1..120}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "MF6_L14_WORKER_READY"
+              exit 0
+            fi
+            sleep 0.25
+          done
+          cat mf6-l14-workerd.log
+          exit 1
+      - name: Run isolated L14 specimen
+        env:
+          REP: ${{ matrix.replicate }}
+          MW_MF6_LATENCY_BASE: http://127.0.0.1:8787
+          MW_MF6_INPUT_LEAD_PROBE: "14"
+          MW_MF6_INPUT_ESTIMATE_CEILING_PROBE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_key="m14$REP-${{ github.run_id }}"
+          output="mf6-l14-$REP.json"
+          if [ "${#run_key}" -gt 20 ]; then
+            echo "MF6_SPECIMEN_RUN_KEY_INVALID length=${#run_key} key=$run_key"
+            exit 1
+          fi
+          set +e
+          MW_MF6_LATENCY_RUN="$run_key"           MW_MF6_LATENCY_OUTPUT="$output"           MW_MF6_LATENCY_PROXY_PORT=8792             timeout 210s node scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs             | tee "mf6-l14-$REP.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "MF6_L14_SPECIMEN-$REP-STATUS=$status"
+          test -f "$output"
+      - name: Stop isolated authority
+        if: always()
+        shell: bash
+        run: |
+          if [ -f mf6-l14-workerd.pid ]; then
+            pid="$(cat mf6-l14-workerd.pid)"
+            kill -TERM -- "-$pid" 2>/dev/null || true
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: mf6-l14-${{ matrix.replicate }}
+          if-no-files-found: error
+          path: |
+            mf6-l14-*.json
+            mf6-l14-*.log
+            mf6-l14-workerd.log
+
+  aggregate:
+    needs: specimen
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: mf6-l14-*
+          merge-multiple: true
+      - name: Aggregate L14 replication
+        run: |
+          node scripts/multiplayer-foundation-v2-v28-l14-replication.mjs             mf6-l14-a.json mf6-l14-b.json mf6-l14-c.json mf6-l14-d.json             mf6-l14-replication.json | tee mf6-l14-replication.log
+      - uses: actions/upload-artifact@v6
+        with:
+          name: multiplayer-foundation-v2-l14-replication-${{ github.run_id }}
+          path: |
+            mf6-l14-replication.json
+            mf6-l14-replication.log

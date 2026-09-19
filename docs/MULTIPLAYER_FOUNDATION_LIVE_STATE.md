@@ -1,320 +1,184 @@
 # Multiplayer Foundation — Live State
 
-Status: ACTIVE FRONTIER / VOLATILE / VERIFY LIVE
-Updated: 2026-09-18 after Run 48
+Status: ACTIVE FRONTIER / F4 CONTRACT-DRIVEN CANDIDATE SUPPORTED / F6 CI-STALL ATTRIBUTION BOUNDED  
+Updated: 2026-09-19 after default qualification run 35471466056 and F6 attribution run 35471974719
 
-This file is the compact execution pointer for the active Multiplayer Foundation campaign. Reverify exact refs before mutation or qualification claims.
+This is the compact execution pointer for the active Multiplayer Foundation campaign. Reverify exact refs before mutation or qualification claims.
 
 ## Active mission
 
-Parent program: Multiplayer Foundation
-Early target: 1–6 dynamic actors with shared active physics and later real 3–6-human qualification.
-Current capability path: F1 dynamic composition + F4 timing/impairment/agency.
+Parent program: Multiplayer Foundation.
+
+Early target: a professional reusable real-time physical multiplayer substrate for 1–6 dynamic actors, later qualified with real 3–6-human play.
+
+Current path: dynamic 1–6 composition is machine-defended; the active frontier remains F4 timing/impairment/agency. F6 scheduler-stall evidence was separated from F4 rather than allowed to contaminate the timing decision.
 
 ## Active execution identity
 
-Repository: Jozzpoly/cloudflare-multiplayer-lab
-Branch: research/multiplayer-foundation-v2-v28-dynamic-composition
-Current experiment head before this documentation checkpoint:
-969bfb731578377fe86dce6dae9bbaba43a0fa7b
+Repository: `Jozzpoly/cloudflare-multiplayer-lab`
 
-Main remains the qualified two-actor regression baseline. The active branch remains research and must not be promoted merely because some Foundation gates are green.
+Branch: `research/multiplayer-foundation-v2-v28-dynamic-composition`
 
-## Defended background on the active line
+Research head before this documentation checkpoint:
 
-Repeated current-workflow evidence supports, within the existing machine crucible:
+`dbabb0564cecc0917f6529b79646b64ffefe7197`
+
+The branch remains research. `main` remains the qualified two-actor regression baseline.
+
+## Defended machine substrate
+
+Current research evidence supports, within the existing crucible:
+
 - dynamic authority topology up to 6 actors;
 - real Chromium browser self + N;
 - five concurrently active remote ActorSessions driving shared physics;
 - exact V28 state guards through active N-peer composition;
-- same-epoch churn/replacement behavior in bounded MF6 mode;
-- 8-second hard browser transport outage while the other five actors continue;
-- same ActorSession / NetEntity / WorldEpoch recovery after that outage;
-- moderate shaped latency/jitter with exactness and browser agency;
+- same-epoch churn/replacement;
+- bounded hard browser transport outage with continued world activity and same-identity recovery;
+- moderate and hostile ordered-TCP latency/jitter specimens with authority-realized browser agency;
 - repository regression remaining green.
 
-Runs 43–48 repeatedly preserved those gates while the hostile timing discriminator changed outcome. The active frontier is therefore timing/agency, not topology, shared physics, exactness or recovery.
+Do not reinterpret these as deployed-edge, arbitrary-scale or human-play qualification.
 
-## Material finding — future-horizon exhaustion
+## F4 material result — separate network authorship reserve from local simulation
 
-The hostile shaped-TCP profile is declared as 100 ms latency + 25 ms jitter in both directions. Actual measured RTT varies materially between fresh specimens.
+The earlier fixed L8 authorship horizon was directly observed exhausting its revisable future tail under higher-delay hostile specimens while exact shared state remained intact.
 
-The key evidence now separates four layers:
-1. authority timeline estimation;
-2. ACK arrival margin;
-3. survival of revised future command records;
-4. canonical realization of player command transitions.
+Subsequent L12/L14 work established that larger canonical authorship reserve can preserve command agency without increasing local simulation speculation. The important architectural distinction is now explicit:
 
-### Run 45 — L8 can still survive a lower realized specimen
+- legacy/default `predictionLeadTicks = 8`;
+- MF6 canonical `inputAuthorshipLeadTicks = 14`;
+- local `clientSimulationLeadTicks = 2`;
+- `maxFutureTicks = 32`;
+- contract-driven `inputAuthorshipLegalWindowCeiling = true`.
 
-Run 45:
-35359826659
-Head:
-0a599a3a4f359a0a5b09d2212de53112cbab2e27
+Current contract revision:
 
-L8:
-- median RTT about 243 ms;
-- 8/8 sustained direction changes canonically realized;
-- exactness preserved.
+`shared-yard-v0-contract-v15-input-authorship-reserve`
 
-This proves L8 failure is not deterministic from the declared proxy profile alone.
+Current client simulation revision:
 
-### Run 46 — paired L8 RED / L12 PASS
+`shared-yard-v0-browser-sim-v11-input-authorship-reserve`
 
-Run 46:
-35360810792
-Head:
-80ca86393a84cd93506884362834a3549a784241
+Current sim build:
 
-L8:
-- median RTT about 288 ms;
-- 5/8 command windows delivered;
-- mean ACK arrival margin about -4.08 ticks;
-- 98.8% of traced records late;
-- exactness preserved.
+`shared-yard-v0-sim-eb82dd52affec51d`
 
-L12:
-- median RTT about 284 ms;
-- 8/8 command windows delivered;
-- mean ACK arrival margin about -1.49 ticks;
-- exactness preserved.
+The scheduler still begins canonical authorship at the earliest safe future edge near `floor(authorityEstimate)+1`. Increasing the authorship reserve extends the revisable future tail; it does not move local simulation 14 ticks ahead.
 
-Authority-estimator error remained around zero rather than showing a large systematic lag.
+## Default candidate qualification
 
-### Run 47 — onset measurement
+Fresh-runner workflow:
 
-Run 47:
-35363733953
-Head:
-4a93e39314a6553d22e011bd777a3fea722696d0
+`35471466056`
 
-L8:
-- median RTT about 304 ms;
-- 1/8 command windows delivered;
-- the only delivered command had first canonical onset at 41 ticks;
-- exactness preserved.
+Classification:
 
-L12:
-- median RTT about 285 ms;
-- 8/8 command windows delivered;
-- first canonical onset 11–21 ticks, mean about 14.9 ticks;
-- exactness preserved.
+`DEFAULT_AUTHORSHIP_CANDIDATE_SUPPORTED`
 
-The old witness lookup had returned the latest matching canonical record, not onset. Run 47 corrected that apparatus error by recording first and last canonical witnesses separately.
+Evidence:
 
-### Run 48 — direct surviving-future-horizon evidence
+- four specimens were confirmed contract-driven rather than query-probe overrides;
+- exactness: 4/4;
+- authority-realized directional command delivery: 8/8 in all four;
+- server rejection: 0 in all four;
+- `too_future`: 0 in all four;
+- hostile RTT medians approximately 290–341 ms;
+- three specimens were clean F4 evidence;
+- one specimen had compressed authority windows and is retained as F6/stall evidence rather than counted as clean F4.
 
-Run 48:
-35364660875
-Head:
-969bfb731578377fe86dce6dae9bbaba43a0fa7b
+This qualifies the bounded research candidate under the current shaped ordered-TCP apparatus. It does not define a production SLO or outer network boundary.
 
-All non-timing gates passed.
+## Rejected path — adaptive authorship lead
 
-L8 control:
-- median RTT about 291 ms;
-- 0/8 direction changes canonically realized;
-- all 8 command windows had zero viable matching future records;
-- each window produced about 50–60 matching records, all late;
-- best arrival margin per command was still negative: -1 to -3 ticks;
-- no surviving future span;
-- guard mismatches 0;
-- authority and local simulation continued progressing.
+Two ACK-margin ratchet experiments attempted to begin at L8 and raise toward L14 only when transport evidence demanded it.
 
-L12 treatment:
-- median RTT about 309 ms, worse than L8 in this paired specimen;
-- 8/8 direction changes canonically realized;
-- 15–36 viable matching future records per command;
-- best arrival margin +2 to +8 ticks;
-- first canonical onset 12–16 ticks, mean 13.875 ticks;
-- exactness preserved;
-- clientSimulationLeadTicks remained 2.
+Result: REJECTED FOR CURRENT PRESSURE.
 
-This is direct mechanism evidence: under this realized hostile specimen, L8's revised command horizon is exhausted before authority can accept any matching future record, while L12 leaves a positive surviving tail and preserves command agency.
+Both versions reached L14 prematurely, including during moderate impairment. More importantly, code/evidence review showed that the assumed primary cost was misstated: a larger authorship reserve does not itself push the first canonical command consequence 14 ticks into the future.
 
-## Current interpretation
+Do not add adaptive lead, decay or policy complexity without a newly demonstrated cost that requires it.
 
-### H1 — fixed L8 authorship horizon is insufficient for the high-delay part of the tested envelope
-Status: STRONGLY SUPPORTED / MECHANISM OBSERVED
+## F6 material result — scheduler stalls are not clean F4 network evidence
 
-The failure is no longer inferred only from RTT or aggregate lateness. Run 48 directly observed zero viable revised future records for every L8 command window and positive surviving future records for every L12 window.
+Authority pump semantics intentionally cap catch-up and count/discard excess elapsed canonical steps as `droppedTicks`. Therefore a runner/event-loop pause can shrink a 700 ms wall-clock command window far below its nominal ~42 ticks.
 
-### H2 — browser authority phase estimation is the primary cause
-Status: CONTRADICTED AS PRIMARY EXPLANATION
+Direct attribution workflow:
 
-Independent raw-authority comparison places browser authorityTickEstimate near the actual authority timeline. There is ordinary error, but not the large systematic lag required to explain the L8 failures by itself.
+`35471974719`
 
-### H3 — canonical witness / apparatus error explains the failure
-Status: SUBSTANTIALLY CONTRADICTED
+Classification:
 
-The apparatus now independently agrees across:
-- batch ACK status;
-- arrival margin;
-- surviving future records;
-- raw-peer world_v0_consumed witnesses;
-- physical consequence;
-- exact-state guards.
+`F6_NO_STRONG_ATTRIBUTION_SEPARATION`
 
-A remaining apparatus bug is always falsifiable, but it is no longer the leading explanation.
+Clean attribution run:
 
-### H4 — higher authorship lead is therefore the production answer
-Status: NOT EARNED
+- authority-only mean progress ratio: ~0.973;
+- authority-only mean dropped ratio: ~0.0099;
+- browser-hostile mean progress ratio: ~0.994;
+- browser-hostile mean dropped ratio: ~0.0043;
+- browser-hostile exactness: 2/2;
+- browser-hostile agency: 8/8 in both specimens.
 
-L12 is currently only a diagnostic treatment. We have not established:
-- the minimum sufficient fixed horizon;
-- the useful network envelope;
-- whether a fixed or adaptive policy is preferable;
-- human feel under the added canonical future horizon;
-- deployed-edge behavior;
-- a production SLO.
+A preceding attribution attempt also produced a severe authority-only runner outlier at ~0.432 wall-clock progress and ~0.196 dropped ratio while another browser-hostile specimen on a separate runner was ~0.999 progress. That attempt also exposed and then fixed a wrapper-lifecycle artifact; the inner multiplayer specimen itself had already passed.
 
-## Nearest discriminating experiment
+Interpretation:
 
-Do not promote L12.
+- Chromium + hostile shaped-TCP is not necessary for the observed authority stalls;
+- the current evidence does not show that it inherently worsens authority scheduling;
+- GitHub runner/process scheduling variance can independently create stall contamination;
+- do not tune production scheduler or authorship lead from those contaminated specimens;
+- retain `droppedTicks/catchupSteps` as explicit F6 diagnostics.
 
-Add an intermediate diagnostic treatment L10 while preserving:
-- L8 control;
-- L12 treatment;
-- clientSimulationLeadTicks = 2 for every variant;
-- maxFutureTicks = 32;
-- the same 8-command sustained agency train;
-- ACK future-horizon trace;
-- first canonical onset;
-- exact-state guards;
-- the same declared hostile shaping.
+This does not prove deployed Cloudflare authority has no load/scheduling limits.
 
-Why L10:
-Historical F3.0 timing work identified L10/B2 as a Pareto candidate with approximately zero modeled safety margin in the high-delay stress cell. The new live evidence now justifies testing whether that intermediate horizon:
-- still exhausts like L8;
-- survives only marginally / intermittently;
-- or behaves like L12.
+## Validation semantics correction
 
-This is a causal boundary probe, not a search for the smallest number that turns CI green.
+The historical L8/L10/L12 discriminator remains valuable negative/control evidence, but L8 is no longer the current MF6 default.
 
-## Decision rule after L10
+It therefore no longer turns the full dynamic-composition suite red merely because the historical L8 control loses agency. Apparatus/contract assertions still fail closed, and any exactness loss remains fatal.
 
-- L8 RED / L10 RED or marginal / L12 PASS:
-  authorship reserve has a real threshold in this envelope; next map the network boundary before designing policy.
+## Current frontier
 
-- L8 RED / L10 PASS / L12 PASS:
-  L10 may be sufficient for this specimen, but do not promote it. Repeat across controlled impairment points and compare onset / surviving margin.
+F1 composition/lifecycle mechanics needed by the current crucible are sufficiently defended to keep F4 as the highest-value open child.
 
-- L8 PASS / L10 PASS / L12 PASS:
-  realized transport fell below the discriminating boundary; retain the run as envelope evidence rather than calling the mechanism disproven.
+The immediate F4 unknown is now:
 
-- Any exact-state failure:
-  immediately reclassify the frontier; exactness takes priority over lead-policy work.
+**What is the operating boundary of the contract-driven L14 authorship-reserve + legal-window-ceiling candidate when actual transport delay/jitter rises beyond the currently qualified hostile specimen?**
 
-## Explicit exclusions
+The purpose is to discover the boundary and graceful failure behavior, not to find a larger lead that makes every synthetic profile green.
+
+Nearest work should:
+
+1. preserve `inputAuthorshipLeadTicks=14`, `clientSimulationLeadTicks=2`, `maxFutureTicks=32` and exact guards;
+2. run independent fresh-runner specimens at stronger impairment points;
+3. classify by actual RTT, authority-realized command delivery, ACK margins, legal-window rejection and exactness;
+4. retain scheduler-stall contaminated specimens as F6 evidence rather than using them to move the F4 boundary;
+5. stop increasing impairment once a useful supported/unsupported boundary is bracketed.
+
+## Explicit nonclaims / exclusions
 
 Do not yet:
-- change the canonical WORLD_V0_TIMING.predictionLeadTicks;
-- change clientSimulationLeadTicks;
-- change presentation delay/smoothing;
-- weaken exact guards;
-- raise maxFutureTicks;
-- add rollback, ownership or gameplay/content;
-- merge the research branch to main;
-- ask the Owner to manually test this synthetic timing question.
+
+- promote the research branch to `main`;
+- increase authorship lead beyond 14 merely to chase CI;
+- increase local simulation lead;
+- raise `maxFutureTicks`;
+- add adaptive timing policy;
+- weaken exact-state guards;
+- tune authority catch-up from GitHub-runner stalls;
+- claim packet-loss/reorder qualification from an ordered TCP shaper;
+- claim deployed-edge SLOs;
+- substitute machine evidence for eventual real 3–6-human play.
 
 ## Owner boundary
 
 None at the immediate step.
 
-The L10 discriminator and subsequent machine envelope mapping remain autonomous technical work. Owner judgement becomes material when technically viable policies differ in experienced responsiveness or when a machine-qualified 1–6 candidate is ready for representative human play.
+Machine mapping of the timing envelope remains autonomous technical work. Owner judgement becomes material when viable policies differ in experienced feel/responsiveness or when the 1–6 candidate is ready for representative human play.
 
 ## On “continue”
 
-First reverify branch HEAD and latest workflow state.
+Reverify branch HEAD and current runs.
 
-If unchanged, run the bounded L8/L10/L12 authorship-horizon discriminator. Classify the result using command delivery, first canonical onset, future-horizon survival, ACK arrival margins, actual RTT and exactness. Re-plan from evidence rather than promoting whichever treatment is green.
-
-
-## Run 49 — intermediate L10 result and order confound
-
-Run:
-35365616443
-
-Head:
-9cedb8be7bdfd0adaa0b0124d0cbbbf635b066ed
-
-All non-timing Foundation gates remained GREEN.
-
-Sequential hostile discriminator:
-- L8: 5/8 agency, median RTT about 291.8 ms, mean best per-command arrival margin about -0.125 ticks;
-- L10: 8/8 agency, median RTT about 276.8 ms, mean best per-command arrival margin about +1.25 ticks;
-- L12: 8/8 agency, median RTT about 267.1 ms, mean best per-command arrival margin about +3.875 ticks;
-- exactness preserved for all three;
-- clientSimulationLeadTicks remained 2.
-
-Classification:
-L8_RED_L10_PASS_L12_PASS
-
-The result is material but does not yet locate a clean lead boundary because realized RTT decreased monotonically with treatment order. Lead and transport conditions are partially confounded.
-
-L10 also appears marginal rather than comfortably buffered: its per-command best arrival margins were 0 to +3 ticks.
-
-### Current next discriminator
-
-Before mapping more impairment points or designing policy, remove the order confound.
-
-Run two deterministic counterbalanced fresh-world triplets:
-- sequence A: L8 -> L10 -> L12;
-- sequence B: L12 -> L10 -> L8.
-
-Use the same sustained 8-command train, ACK future-horizon trace, first canonical onset, actual RTT and exact guards.
-
-Interpretation:
-- L8 RED in both positions + L10/L12 PASS in both positions strengthens a real horizon effect independent of first/last run order;
-- mixed results at the same lead mean the tested envelope remains transport-sensitive and should be mapped by actual RTT/margin rather than nominal profile alone.
-
-This counterbalanced campaign intentionally uses a dedicated focused workflow. Re-running the already-stable full dynamic-composition suite for every timing-only probe is no longer the best information/cost trade.
-
-
-## Serial counterbalance revealed a second, separate failure mode
-
-Focused serial run:
-35367263682
-Head:
-0253cc7cf2f5759e6b1c5f79b369015d6c05b10b
-
-The serial six-specimen counterbalance is not accepted as a clean network-envelope comparison because later specimens accumulated authority scheduling degradation on the shared CI runner.
-
-Material evidence:
-- A-L8 reached hostile and failed 7/8 at median RTT about 309 ms.
-- A-L10 passed.
-- A-L12 passed.
-- B-L12 passed.
-- B-L10 failed already in moderate before hostile:
-  - exactness remained intact;
-  - self motion failed;
-  - 258 records were rejected as too_future;
-  - browser authority estimate was about 12.7 ticks ahead of the last observed authority boundary at the failure snapshot;
-  - ACK trace contained 258 too_future records.
-- B-L8 later failed 6/8 and command windows showed phase-estimate overshoots up to roughly 18–33 ticks relative to the independent raw-authority boundary.
-
-Raw authority progression also slowed materially in some later 700 ms command windows. Therefore the long serial run mixed F4 network timing with F6-style authority/runner scheduling stalls.
-
-This is a plan-correction trigger:
-- do not interpret later serial B specimens as a clean lead threshold;
-- do not respond by raising lead;
-- keep authority-load/scheduler-stall pressure as a separate Foundation finding to revisit under F6;
-- isolate the F4 network experiment from cumulative runner load.
-
-### Revised nearest experiment
-
-Run two independent fresh-runner replicates for each lead L8/L10/L12.
-
-Each specimen gets:
-- its own GitHub runner;
-- fresh Workerd authority;
-- fresh world;
-- identical browser harness and shaped-TCP profile;
-- sustained 8-command train;
-- ACK future-horizon trace;
-- first canonical onset;
-- exact-state guards.
-
-Aggregate by actual measured RTT and arrival margins after all six finish.
-
-This replaces the serial counterbalance. The purpose is not to manufacture a stable threshold but to separate lead effect from cumulative authority scheduling degradation.
+If no new contradiction appears, continue F4 by mapping the outer impairment boundary of the contract-driven timing candidate on fresh runners. Re-plan from actual RTT/agency/exactness evidence. Do not reopen adaptive lead or scheduler tuning without new causal pressure.

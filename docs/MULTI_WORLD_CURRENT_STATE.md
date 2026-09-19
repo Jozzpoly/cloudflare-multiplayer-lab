@@ -220,12 +220,24 @@ Do not restart V25/V28 smoothness work without new falsifying evidence. Do not s
 
 ## 10. Active Multiplayer Foundation execution pointer
 
-The post-closeout baseline above remains the qualified regression control. Active Multiplayer Foundation research now continues separately on:
+The qualified two-actor Ongoing Yard + V28 runtime above remains the canonical regression/control baseline on `main`. Active Multiplayer Foundation research continues separately on:
 
-research/multiplayer-foundation-v2-v28-dynamic-composition
+`research/multiplayer-foundation-v2-v28-dynamic-composition`
 
-Use docs/MULTIPLAYER_FOUNDATION_PROGRAM_CONTROL.md for the durable program/roadmap model and docs/MULTIPLAYER_FOUNDATION_LIVE_STATE.md for the current volatile frontier.
+Use `docs/MULTIPLAYER_FOUNDATION_PROGRAM_CONTROL.md` for the durable program model and `docs/MULTIPLAYER_FOUNDATION_LIVE_STATE.md` for exact volatile execution state.
 
-As of the latest live-state checkpoint, dynamic 1–6 composition, browser self+N, active same-epoch churn and bounded hard-outage recovery are machine-defended on the research line. The nearest unresolved boundary is authority-realized browser agency under sustained hostile latency/jitter; exact shared truth remains intact while current L8 input authorship becomes overwhelmingly late.
+As of the 2026-09-19 research checkpoint, the 1–6 machine crucible defends dynamic composition, browser self+N, concurrent active remote actors, same-epoch churn, bounded hard-outage recovery and exact shared-state guards. The hostile-timing campaign also earned a bounded MF6 timing candidate that separates local simulation from canonical network authorship:
 
-Do not promote that research line to canonical product authority merely because earlier composition gates are green. The current frontier must be resolved and later Foundation qualification must remain scoped to its actual evidence.
+- legacy/default `predictionLeadTicks = 8`;
+- MF6 `inputAuthorshipLeadTicks = 14`;
+- `clientSimulationLeadTicks = 2`;
+- `maxFutureTicks = 32`;
+- contract-driven legal-window ceiling enabled.
+
+Fresh contract-driven qualification run `35471466056` classified this candidate `DEFAULT_AUTHORSHIP_CANDIDATE_SUPPORTED`: all four specimens were contract-driven, exact and 8/8 for authority-realized command delivery with zero `too_future` / server rejection; three were clean F4 specimens and one was retained separately as scheduler-stall/F6 evidence.
+
+The adaptive L8→L14 controller explored immediately before this checkpoint was rejected as unearned complexity: it escalated to L14 prematurely and solved no demonstrated cost of the fixed authorship reserve. Do not revive adaptive lead without new pressure.
+
+F6 attribution run `35471974719` directly sampled authority `boundaryTick`, `droppedTicks` and `catchupSteps` on fresh runners. It found no evidence that the co-located Chromium + shaped-TCP apparatus inherently causes the observed stalls. Authority-only runners themselves can exhibit material scheduling variance; browser-hostile specimens in the clean attribution run remained ~99% wall-clock canonical progress while preserving exactness and 8/8 agency. Treat severe local-CI scheduler stalls as apparatus contamination for clean F4 interpretation unless new evidence attributes them to the product runtime.
+
+The research line is **not promoted to main**. It still does not establish deployed-edge SLOs, datagram loss/reorder behavior, arbitrary scale, mobile lifecycle closure or real 3–6-human quality. The next F4 work should map the operating boundary of the contract-driven timing candidate rather than tune lead or scheduler from CI noise.

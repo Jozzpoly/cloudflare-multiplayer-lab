@@ -225,6 +225,9 @@ async function runBrowserHostile() {
   const innerOutput = `mf6-f6-inner-${RUN}.json`;
   const samples = [];
   let childRunning = true;
+  let childExited = false;
+  let observedExitCode = null;
+  let forcedAfterFinalEvidence = false;
   const child = spawn(process.execPath, ["scripts/multiplayer-foundation-v2-v28-browser-latency-jitter.mjs"], {
     env: {
       ...process.env,
@@ -235,23 +238,67 @@ async function runBrowserHostile() {
     },
     stdio: "inherit",
   });
-  const polling = pollWhile(() => childRunning, samples);
-  const exitCode = await new Promise((resolve, reject) => {
+
+  const childExit = new Promise((resolve, reject) => {
     child.on("error", reject);
-    child.on("exit", (code) => resolve(code));
+    child.on("exit", (code, signal) => {
+      childExited = true;
+      observedExitCode = code;
+      resolve({ kind: "exit", code, signal });
+    });
   });
+
+  const finalEvidence = (async () => {
+    const deadline = Date.now() + 180_000;
+    while (Date.now() < deadline) {
+      try {
+        const value = JSON.parse(readFileSync(innerOutput, "utf8"));
+        const final =
+          value?.verdict === "MF6_V28_BROWSER_LATENCY_JITTER_PASS" ||
+          (value?.verdict === "MF6_V28_BROWSER_LATENCY_JITTER_FAIL" && Boolean(value?.error));
+        if (final) return { kind: "evidence", value };
+      } catch {}
+      await sleep(200);
+    }
+    throw new Error("browser-hostile final evidence timeout");
+  })();
+
+  const polling = pollWhile(() => childRunning, samples);
+  const completion = await Promise.race([childExit, finalEvidence]);
+  let inner = completion.kind === "evidence" ? completion.value : null;
+
+  // Scheduler attribution ends when the inner harness has committed its final
+  // evidence, not when Node eventually releases every diagnostic handle.
   childRunning = false;
   await polling;
 
-  let inner = null;
-  try { inner = JSON.parse(readFileSync(innerOutput, "utf8")); } catch {}
+  if (!inner) {
+    try { inner = JSON.parse(readFileSync(innerOutput, "utf8")); } catch {}
+  }
+
+  if (completion.kind === "evidence" && !childExited) {
+    // Give the harness time to execute its own finally cleanup. If a diagnostic
+    // handle still keeps the child alive, terminate only that already-complete child.
+    await Promise.race([childExit, sleep(2_500)]);
+    if (!childExited) {
+      forcedAfterFinalEvidence = true;
+      child.kill("SIGTERM");
+      await Promise.race([childExit, sleep(1_500)]);
+    }
+    if (!childExited) {
+      child.kill("SIGKILL");
+      await Promise.race([childExit, sleep(1_000)]);
+    }
+  }
+
   rmSync(innerOutput, { force: true });
   const hostile = inner?.hostile?.diagnostic || inner?.diagnostic?.hostile || null;
   return {
     mode: MODE,
     run: RUN,
     generatedAt: new Date().toISOString(),
-    childExitCode: exitCode,
+    childExitCode: observedExitCode,
+    childForcedAfterFinalEvidence: forcedAfterFinalEvidence,
     scheduler: schedulerSummary(samples),
     browser: inner ? {
       verdict: inner.verdict,
@@ -267,7 +314,7 @@ async function runBrowserHostile() {
       ).filter(Number.isFinite),
     } : null,
     samples,
-    interpretation: "The full Chromium + five remote peers + shaped ordered-TCP MF6 apparatus runs co-located with Workerd while authority droppedTicks/catchupSteps are sampled out-of-band through the status surface.",
+    interpretation: "The full Chromium + five remote peers + shaped ordered-TCP MF6 apparatus runs co-located with Workerd while authority droppedTicks/catchupSteps are sampled out-of-band through the status surface. Sampling stops when the inner harness commits final evidence; a lingering diagnostic child handle may then be terminated without changing that evidence.",
   };
 }
 

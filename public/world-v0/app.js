@@ -125,7 +125,10 @@ if (mf6AdaptiveInputLeadProbe && mf6InputLeadProbe !== null) {
   throw new Error("mf6 adaptive input lead probe cannot be combined with fixed input lead probe");
 }
 const MF6_ADAPTIVE_INPUT_LEAD_MAX_TICKS = 14;
-const MF6_ADAPTIVE_INPUT_TARGET_MARGIN_TICKS = 2;
+// Raise only after the entire observed batch has exhausted its future horizon.
+// A margin of zero still arrived exactly on the authority boundary and is not
+// evidence that more standing reserve is necessary.
+const MF6_ADAPTIVE_INPUT_TARGET_MARGIN_TICKS = 0;
 let mf6AdaptiveInputLeadTicks = null;
 let mf6AdaptiveInputLeadRaiseCount = 0;
 const mf6AdaptiveInputLeadEvents = [];

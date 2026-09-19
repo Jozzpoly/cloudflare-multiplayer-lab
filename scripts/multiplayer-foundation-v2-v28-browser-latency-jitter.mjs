@@ -16,6 +16,11 @@ if (INPUT_LEAD_PROBE !== null &&
     (!Number.isInteger(INPUT_LEAD_PROBE) || INPUT_LEAD_PROBE < 1 || INPUT_LEAD_PROBE > 32)) {
   throw new Error(`invalid MW_MF6_INPUT_LEAD_PROBE ${INPUT_LEAD_PROBE_RAW}`);
 }
+const INPUT_ESTIMATE_CEILING_PROBE_RAW = process.env.MW_MF6_INPUT_ESTIMATE_CEILING_PROBE?.trim() || "0";
+if (!["0", "1"].includes(INPUT_ESTIMATE_CEILING_PROBE_RAW)) {
+  throw new Error(`invalid MW_MF6_INPUT_ESTIMATE_CEILING_PROBE ${INPUT_ESTIMATE_CEILING_PROBE_RAW}`);
+}
+const INPUT_ESTIMATE_CEILING_PROBE = INPUT_ESTIMATE_CEILING_PROBE_RAW === "1";
 const DEBUG_PORT = 9400;
 const TIMEOUT_MS = 45_000;
 const EXPECTED_ACTORS = 6;
@@ -194,6 +199,34 @@ function canonicalInputWitness(peer, sessionId, expected, minTargetTick, maxTarg
   return canonicalInputWitnessRange(peer, sessionId, expected, minTargetTick, maxTargetTickExclusive).last;
 }
 
+function ackStatusAnalysis(ackRecords, minSeq = 0) {
+  const selected = (ackRecords || []).filter((record) => Number(record.seq) > minSeq);
+  const byStatus = {};
+  for (const record of selected) {
+    const status = String(record.status || "unknown");
+    if (!byStatus[status]) byStatus[status] = {
+      records: 0,
+      marginSumTicks: 0,
+      minMarginTicks: null,
+      maxMarginTicks: null,
+    };
+    const bucket = byStatus[status];
+    const margin = Number(record.marginTicks);
+    bucket.records += 1;
+    if (Number.isFinite(margin)) {
+      bucket.marginSumTicks += margin;
+      bucket.minMarginTicks = bucket.minMarginTicks === null ? margin : Math.min(bucket.minMarginTicks, margin);
+      bucket.maxMarginTicks = bucket.maxMarginTicks === null ? margin : Math.max(bucket.maxMarginTicks, margin);
+    }
+  }
+  return Object.fromEntries(Object.entries(byStatus).map(([status, bucket]) => [status, {
+    records: bucket.records,
+    meanMarginTicks: bucket.records > 0 ? bucket.marginSumTicks / bucket.records : null,
+    minMarginTicks: bucket.minMarginTicks,
+    maxMarginTicks: bucket.maxMarginTicks,
+  }]));
+}
+
 function commandAckAnalysis(ackRecords, commandTrain, minSeq = 0) {
   const viableStatuses = new Set(["accepted", "superseded", "duplicate_same"]);
   return commandTrain.commands.map((command, index) => {
@@ -249,6 +282,7 @@ async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSes
     const startAuthorityBoundary = authorityPeer.latestBoundary;
     const timingAtStart = await cdp.eval(sessionId, "window.__sharedYardV0Evidence()");
     const browserAuthorityEstimateTick = timingAtStart?.inputScheduler?.authorityEstimateTick ?? null;
+    const browserInputAuthorshipEstimateTick = timingAtStart?.inputScheduler?.inputAuthorshipEstimateTick ?? browserAuthorityEstimateTick;
     const browserObservedAuthorityBoundary = timingAtStart?.metrics?.latestAuthorityBoundary ?? null;
     const previousCode = active?.code ? JSON.stringify(active.code) : null;
     const previousKey = active?.key ? JSON.stringify(active.key) : null;
@@ -293,9 +327,13 @@ async function runDirectionalCommandTrain(cdp, sessionId, authorityPeer, selfSes
       code: next.code,
       startAuthorityBoundary,
       browserAuthorityEstimateTick,
+      browserInputAuthorshipEstimateTick,
       browserObservedAuthorityBoundary,
       estimateLagTicks: Number.isFinite(browserAuthorityEstimateTick)
         ? startAuthorityBoundary - browserAuthorityEstimateTick
+        : null,
+      authorshipEstimateLagTicks: Number.isFinite(browserInputAuthorshipEstimateTick)
+        ? startAuthorityBoundary - browserInputAuthorshipEstimateTick
         : null,
       observedBoundaryLagTicks: Number.isInteger(browserObservedAuthorityBoundary)
         ? startAuthorityBoundary - browserObservedAuthorityBoundary
@@ -442,6 +480,7 @@ const result = {
   run: RUN,
   generatedAt: new Date().toISOString(),
   requestedInputLeadProbeTicks: INPUT_LEAD_PROBE,
+  requestedInputEstimateCeilingProbe: INPUT_ESTIMATE_CEILING_PROBE,
 };
 let lastModerateDiagnostic = null;
 let lastHostileDiagnostic = null;
@@ -472,6 +511,7 @@ try {
   pageUrl.searchParams.set("lifecycle", "mf6");
   pageUrl.searchParams.set("player", "mf6-browser");
   if (INPUT_LEAD_PROBE !== null) pageUrl.searchParams.set("mf6InputLeadProbe", String(INPUT_LEAD_PROBE));
+  if (INPUT_ESTIMATE_CEILING_PROBE) pageUrl.searchParams.set("mf6InputEstimateCeilingProbe", "1");
   const { targetId } = await cdp.call("Target.createTarget", { url: pageUrl.toString() });
   ({ sessionId: browserSession } = await cdp.call("Target.attachToTarget", { targetId, flatten: true }));
   await cdp.call("Runtime.enable", {}, browserSession);
@@ -752,11 +792,13 @@ try {
       const proxyState = proxy.snapshot();
       const deliveryRatio = hostileCommandTrain.delivered / hostileCommandTrain.count;
       const currentArrival = e.inputScheduler?.arrival || {};
+      const hostileAckRecords = e.inputScheduler?.ackTrace?.records || [];
       const commandAck = commandAckAnalysis(
-        e.inputScheduler?.ackTrace?.records || [],
+        hostileAckRecords,
         hostileCommandTrain,
         hostileStartAckSeq,
       );
+      const ackStatus = ackStatusAnalysis(hostileAckRecords, hostileStartAckSeq);
       const arrivalRecordsDelta = Number(currentArrival.records || 0) - Number(hostileStartArrival.records || 0);
       const arrivalLateDelta = Number(currentArrival.late || 0) - Number(hostileStartArrival.late || 0);
       const arrivalSeverelyLateDelta = Number(currentArrival.severelyLate || 0) - Number(hostileStartArrival.severelyLate || 0);
@@ -820,10 +862,14 @@ try {
           estimateLagTicks: hostileCommandTrain.commands
             .map((command) => command.estimateLagTicks)
             .filter(Number.isFinite),
+          authorshipEstimateLagTicks: hostileCommandTrain.commands
+            .map((command) => command.authorshipEstimateLagTicks)
+            .filter(Number.isFinite),
           observedBoundaryLagTicks: hostileCommandTrain.commands
             .map((command) => command.observedBoundaryLagTicks)
             .filter(Number.isFinite),
         },
+        ackStatus,
         commandAck,
         commandTrain: hostileCommandTrain,
         proxy: proxyState,

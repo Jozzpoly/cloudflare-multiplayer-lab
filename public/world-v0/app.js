@@ -109,6 +109,12 @@ if (mf6InputLeadProbe !== null &&
     (!Number.isInteger(mf6InputLeadProbe) || mf6InputLeadProbe < 1 || mf6InputLeadProbe > 32)) {
   throw new Error(`invalid mf6InputLeadProbe ${mf6InputLeadProbeRaw}`);
 }
+const mf6InputEstimateCeilingProbeRaw = lifecycleMf6 ? urlParams.get("mf6InputEstimateCeilingProbe") : null;
+if (mf6InputEstimateCeilingProbeRaw !== null &&
+    !["0", "1"].includes(mf6InputEstimateCeilingProbeRaw)) {
+  throw new Error(`invalid mf6InputEstimateCeilingProbe ${mf6InputEstimateCeilingProbeRaw}`);
+}
+const mf6InputEstimateCeilingProbe = mf6InputEstimateCeilingProbeRaw === "1";
 const storedCallsign = localStorage.getItem("shared-yard-v0-callsign") || "";
 const storedRun = localStorage.getItem("shared-yard-v0-run") || "";
 const randomRun = `yard-${Math.random().toString(36).slice(2, 8)}`;
@@ -510,10 +516,26 @@ function effectiveInputAuthorshipLeadTicks() {
   return mf6InputLeadProbe;
 }
 
+function inputAuthorshipEstimateCeilingTick() {
+  const inputLeadTicks = effectiveInputAuthorshipLeadTicks();
+  const maxFutureTicks = simulation?.timing?.maxFutureTicks;
+  if (!Number.isInteger(lastAuthorityBoundaryTick) ||
+      !Number.isInteger(inputLeadTicks) ||
+      !Number.isInteger(maxFutureTicks)) return null;
+  return lastAuthorityBoundaryTick + Math.max(0, maxFutureTicks - inputLeadTicks);
+}
+
+function effectiveInputAuthorshipEstimateTick(now = performance.now()) {
+  const estimate = authorityTickEstimate(now);
+  if (!Number.isFinite(estimate) || !mf6InputEstimateCeilingProbe) return estimate;
+  const ceiling = inputAuthorshipEstimateCeilingTick();
+  return Number.isFinite(ceiling) ? Math.min(estimate, ceiling) : estimate;
+}
+
 function pumpLogicalInputScheduler() {
   if (!playing || runtimeFailed || !simulation || protocolStartTick === null || !phaseAnchor) return;
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
-  const estimate = authorityTickEstimate();
+  const estimate = effectiveInputAuthorshipEstimateTick();
   if (!Number.isFinite(estimate)) return;
 
   // Canonical authorship starts strictly after the estimated current authority
@@ -2877,6 +2899,9 @@ function buildEvidence() {
       ownsCanonicalAuthorship: true,
       timingTelemetryRevision: "mf6-input-arrival-margin-v1",
       authorityEstimateTick: authorityTickEstimate(),
+      inputAuthorshipEstimateTick: effectiveInputAuthorshipEstimateTick(),
+      inputAuthorshipEstimateCeilingProbe: mf6InputEstimateCeilingProbe,
+      inputAuthorshipEstimateCeilingTick: mf6InputEstimateCeilingProbe ? inputAuthorshipEstimateCeilingTick() : null,
       phaseAnchorTick: phaseAnchor?.tick ?? null,
       phaseAnchorAgeMs: phaseAnchor ? Math.max(0, performance.now() - phaseAnchor.at) : null,
       arrival: {

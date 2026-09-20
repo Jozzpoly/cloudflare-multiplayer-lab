@@ -226,7 +226,9 @@ The qualified two-actor Ongoing Yard + V28 runtime above remains the canonical r
 
 Use `docs/MULTIPLAYER_FOUNDATION_PROGRAM_CONTROL.md` for the durable program model and `docs/MULTIPLAYER_FOUNDATION_LIVE_STATE.md` for exact volatile execution state.
 
-As of the 2026-09-19 research checkpoint, the 1–6 machine crucible defends dynamic composition, browser self+N, concurrent active remote actors, same-epoch churn, bounded hard-outage recovery and exact shared-state guards. The hostile-timing campaign also earned a bounded MF6 timing candidate that separates local simulation from canonical network authorship:
+As of the 2026-09-20 checkpoint, the 1–6 machine crucible defends dynamic composition, browser self+N, concurrent active remote actors, same-epoch churn, bounded hard-outage recovery and exact shared-state guards.
+
+The F4 timing campaign earned and retained this research contract candidate:
 
 - legacy/default `predictionLeadTicks = 8`;
 - MF6 `inputAuthorshipLeadTicks = 14`;
@@ -234,10 +236,21 @@ As of the 2026-09-19 research checkpoint, the 1–6 machine crucible defends dyn
 - `maxFutureTicks = 32`;
 - contract-driven legal-window ceiling enabled.
 
-Fresh contract-driven qualification run `35471466056` classified this candidate `DEFAULT_AUTHORSHIP_CANDIDATE_SUPPORTED`: all four specimens were contract-driven, exact and 8/8 for authority-realized command delivery with zero `too_future` / server rejection; three were clean F4 specimens and one was retained separately as scheduler-stall/F6 evidence.
+Fresh default qualification run `35471466056` classified it `DEFAULT_AUTHORSHIP_CANDIDATE_SUPPORTED`. Adaptive lead was rejected as unearned complexity.
 
-The adaptive L8→L14 controller explored immediately before this checkpoint was rejected as unearned complexity: it escalated to L14 prematurely and solved no demonstrated cost of the fixed authorship reserve. Do not revive adaptive lead without new pressure.
+F6 attribution run `35471974719` showed that severe local authority stalls can arise from GitHub-runner/process scheduling independently of the Chromium + shaped-TCP apparatus. Do not tune production scheduler policy from those contaminated specimens.
 
-F6 attribution run `35471974719` directly sampled authority `boundaryTick`, `droppedTicks` and `catchupSteps` on fresh runners. It found no evidence that the co-located Chromium + shaped-TCP apparatus inherently causes the observed stalls. Authority-only runners themselves can exhibit material scheduling variance; browser-hostile specimens in the clean attribution run remained ~99% wall-clock canonical progress while preserving exactness and 8/8 agency. Treat severe local-CI scheduler stalls as apparatus contamination for clean F4 interpretation unless new evidence attributes them to the product runtime.
+F4 outer-envelope mapping is now bounded rather than indefinitely extended:
 
-The research line is **not promoted to main**. It still does not establish deployed-edge SLOs, datagram loss/reorder behavior, arbitrary scale, mobile lifecycle closure or real 3–6-human quality. The next F4 work should map the operating boundary of the contract-driven timing candidate rather than tune lead or scheduler from CI noise.
+- the historical `100+25` ordered-TCP cell is strongly defended;
+- `120+30` produced both complete passes and genuine all-late single-command misses in clean authority windows, followed by an isolated 4/4 pass;
+- run `35480634574` at `140+35` passed 4/4 clean but often with only +1 tick of remaining command arrival margin;
+- run `35480750755` at `160+40` classified `F4_STRESS_MIXED_AGENCY_BOUNDARY`: two clean 8/8 specimens, one clean 7/8 specimen caused by `viableRecords=0` / max arrival margin `-2`, plus one F6-contaminated specimen excluded from clean F4 interpretation.
+
+The important outside-envelope behavior is currently graceful with respect to shared-state integrity: a command may be lost because the entire revisable future tail arrives late, while exactness remains intact and later commands recover. This is agency loss, not state divergence.
+
+Do not increase L14, local prediction or `maxFutureTicks` merely to chase more extreme synthetic cells. The samples are bounded mechanism evidence, not a deployed network SLO.
+
+The active frontier now advances to F5 browser/platform lifecycle. Current Chromium machine tests deliberately disable browser background throttling, so hidden/background-tab behavior is not qualified. The next research should characterize canonical agency, scheduler starvation, transport/ActorSession continuity, authority continuity and exact rebase/recovery when realistic browser background scheduling pressure is allowed.
+
+The research line is **not promoted to main**. It still does not establish deployed-edge SLOs, datagram loss/reorder behavior, mobile lifecycle closure, arbitrary scale or real 3–6-human quality.

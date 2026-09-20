@@ -1,0 +1,120 @@
+name: Multiplayer Foundation V2 F5 browser process restart
+
+concurrency:
+  group: multiplayer-foundation-v2-f5-process-restart-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - research/multiplayer-foundation-v2-v28-dynamic-composition
+    paths:
+      - scripts/multiplayer-foundation-v2-v28-f5-browser-process-restart.mjs
+      - scripts/multiplayer-foundation-v2-v28-f5-browser-process-restart-aggregate.mjs
+      - .github/workflows/multiplayer-foundation-v2-f5-browser-process-restart.yml
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run check
+      - run: node --check scripts/multiplayer-foundation-v2-v28-f5-browser-process-restart.mjs
+      - run: node --check scripts/multiplayer-foundation-v2-v28-f5-browser-process-restart-aggregate.mjs
+
+  specimen:
+    needs: regression
+    strategy:
+      fail-fast: false
+      matrix:
+        replicate: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Start isolated Workerd authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9288 > mf6-f5-process-workerd.log 2>&1 &
+          echo $! > mf6-f5-process-workerd.pid
+          for i in {1..120}; do
+            if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
+              echo "MF6_F5_PROCESS_WORKER_READY"
+              exit 0
+            fi
+            sleep 0.25
+          done
+          cat mf6-f5-process-workerd.log
+          exit 1
+      - name: Run browser process restart specimen
+        env:
+          REP: ${{ matrix.replicate }}
+          MW_MF6_F5_PROCESS_BASE: http://127.0.0.1:8787
+          MW_MF6_F5_PROCESS_GAP_MS: "2500"
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_key="f5p$REP-${{ github.run_id }}"
+          output="mf6-f5-process-$REP.json"
+          MW_MF6_F5_PROCESS_RUN="$run_key" \
+          MW_MF6_F5_PROCESS_OUTPUT="$output" \
+          MW_MF6_F5_PROCESS_DEBUG_PORT=9420 \
+            timeout 150s node scripts/multiplayer-foundation-v2-v28-f5-browser-process-restart.mjs \
+            | tee "mf6-f5-process-$REP.log"
+          test -f "$output"
+      - name: Stop isolated authority
+        if: always()
+        shell: bash
+        run: |
+          if [ -f mf6-f5-process-workerd.pid ]; then
+            pid="$(cat mf6-f5-process-workerd.pid)"
+            kill -TERM -- "-$pid" 2>/dev/null || true
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: mf6-f5-process-${{ matrix.replicate }}
+          if-no-files-found: error
+          path: |
+            mf6-f5-process-*.json
+            mf6-f5-process-*.log
+            mf6-f5-process-workerd.log
+
+  aggregate:
+    needs: specimen
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: mf6-f5-process-*
+          merge-multiple: true
+      - name: Aggregate browser process restart evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/multiplayer-foundation-v2-v28-f5-browser-process-restart-aggregate.mjs \
+            mf6-f5-process-a.json mf6-f5-process-b.json \
+            mf6-f5-browser-process-restart.json | tee mf6-f5-browser-process-restart.log
+      - uses: actions/upload-artifact@v6
+        with:
+          name: multiplayer-foundation-v2-f5-process-${{ github.run_id }}
+          path: |
+            mf6-f5-browser-process-restart.json
+            mf6-f5-browser-process-restart.log

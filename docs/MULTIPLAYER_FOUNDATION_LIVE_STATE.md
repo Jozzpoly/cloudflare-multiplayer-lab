@@ -199,22 +199,52 @@ This is evidence that ordinary hidden-tab throttling can create an enormous brow
 
 Do not interpret this as mobile/OS background closure. Headless Chromium is only a browser-level machine proxy.
 
-## Current frontier — stronger F5 page suspension
+## F5 result — bounded frozen page recovery
 
-The next bounded unknown is stronger page lifecycle suspension:
+Fresh-runner workflow:
 
-**Does the same identity/exactness/agency recovery survive a page that is explicitly frozen while authority and five remote actors continue?**
+`35481297548`
+
+Classification:
+
+`F5_FROZEN_LIFECYCLE_RECOVERY_SUPPORTED`
+
+Two fresh specimens first reproduced real hidden-tab state, then applied an eight-second `Page.setWebLifecycleState(frozen)` interval while five remote actors continued driving authority.
+
+Observed in both specimens:
+
+- no browser scheduler pumps, authored inputs, local simulation ticks or exact-guard progress occurred while frozen;
+- authority advanced exactly 481 ticks during the frozen interval;
+- the browser transport remained represented as connected, but slot 5 became `leaseExpiredConnected`;
+- after thaw, the client recognized the stale input lease and entered `resuming actor · attempt 1`;
+- WorldEpoch, ActorSession and NetEntity identity were preserved;
+- exact recovery completed with guard mismatches 0 and no first mismatch;
+- a fresh foreground command was canonically consumed by authority;
+- final topology returned to six connected actors.
+
+This demonstrates that the current separation between authority time and browser execution survives a bounded full page suspension, including input-lease expiry, without fabricating a new actor or diverging state.
+
+This is controlled CDP lifecycle evidence, not mobile OS eviction or process death.
+
+## Current frontier — browser process death and same-profile restart
+
+The next F5 unknown changes failure class:
+
+**Can MF6 recover the same authoritative actor after the entire Chromium process dies and a new Chromium process opens the same direct Yard from the same persisted browser profile?**
 
 Nearest work should:
 
-1. reproduce real `hidden` state without anti-throttling flags;
-2. apply a short, controlled `Page.setWebLifecycleState(frozen)` interval;
-3. observe authority independently while the page cannot execute;
-4. thaw while still hidden, then return foreground;
-5. require the same WorldEpoch / ActorSession / NetEntity, exact guards, and a fresh authority-consumed player command;
-6. record whether the browser slot becomes input-lease-expired or stale while the transport remains present.
+1. establish six active actors and exact state;
+2. prove the browser profile contains the ActorSession resume record;
+3. SIGKILL Chromium while five remote actors keep driving authority;
+4. observe protected reservation / authority progression independently;
+5. restart a new Chromium process on the same `user-data-dir`;
+6. reject accidental Chrome tab auto-restore as ambiguous apparatus;
+7. require an authority-backed direct Resume offer;
+8. recover the exact same WorldEpoch / ActorSession / NetEntity and six-actor topology;
+9. require a fresh canonical player command after restart.
 
-This is still machine falsification. Process eviction, device sleep, mobile app kill/restart and real OS background policy remain later F5 cells.
+Do not treat same-profile process restart as cross-device identity or mobile app lifecycle closure.
 
 ## Explicit nonclaims / exclusions
 
@@ -229,17 +259,18 @@ Do not yet:
 - weaken exact-state guards;
 - tune authority catch-up from GitHub-runner stalls;
 - claim packet-loss/reorder qualification from the ordered TCP shaper;
-- claim mobile/OS lifecycle closure from hidden-tab evidence;
+- claim mobile/OS lifecycle closure from headless Chromium lifecycle evidence;
+- claim cross-device identity transfer;
 - substitute machine evidence for eventual real 3–6-human play.
 
 ## Owner boundary
 
 None at the immediate step.
 
-F5 lifecycle characterization is autonomous machine work. Owner judgement becomes material when competing policies affect experienced return-to-play behavior, feel, or when the 1–6 candidate is ready for representative human play.
+Browser process restart is autonomous machine falsification. Owner judgement becomes material when representative device/browser lifecycle behavior or human return-to-play quality must be assessed.
 
 ## On “continue”
 
 Reverify branch HEAD and current runs.
 
-If no contradiction appears, continue F5 with the bounded frozen-page discriminator. Preserve the F4 timing contract and exact guards. Re-plan from observed browser scheduler, authority, identity, input-lease and rebase evidence rather than assuming mobile/OS behavior.
+If no contradiction appears, execute the bounded same-profile browser-process restart discriminator. Preserve the F4 timing contract and exact guards. Re-plan from authority reservation, persisted resume authority, exact recovery and post-restart canonical agency evidence.

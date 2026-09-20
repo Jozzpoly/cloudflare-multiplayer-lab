@@ -9,6 +9,8 @@ on:
     branches:
       - research/multiplayer-foundation-v2-v28-dynamic-composition
     paths:
+      - public/world-v0/session-continuity.js
+      - scripts/world-v0-session-continuity-r3-smoke.mjs
       - scripts/multiplayer-foundation-v2-v28-f5-browser-process-restart.mjs
       - scripts/multiplayer-foundation-v2-v28-f5-browser-process-restart-aggregate.mjs
       - .github/workflows/multiplayer-foundation-v2-f5-browser-process-restart.yml

@@ -40,6 +40,25 @@ assert.equal(writeWorldV0StoredSession(actor, local), true);
 assert.deepEqual(readWorldV0StoredSession("yard-3", local), { ...actor, savedAt: readWorldV0StoredSession("yard-3", local).savedAt });
 assert.equal(readWorldV0StoredSession("yard-2", local), null);
 
+// The R3 store format is unchanged, but the accepted persisted slot envelope now
+// follows the current MF6 1-6 actor research contract instead of the legacy 0-1 cap.
+const mf6Local = new MemoryStorage();
+const mf6Session = new MemoryStorage();
+const mf6Actor = {
+  ...actor,
+  runKey: "mf6-slot5",
+  sessionId: "session-slot5",
+  resumeToken: "resume-secret-slot5",
+  netEntityId: "actor:5",
+  slot: 5,
+};
+assert.equal(writeWorldV0StoredSession(mf6Actor, mf6Local), true, "MF6 slot 5 must persist");
+assert.equal(readWorldV0StoredSession("mf6-slot5", mf6Local)?.slot, 5, "MF6 slot 5 did not round-trip");
+assert.equal(writeWorldV0ResumeIntent(mf6Actor, mf6Session), true, "MF6 slot 5 resume intent must persist");
+assert.equal(takeWorldV0ResumeIntent({ runKey: "mf6-slot5", playerId: "Jozz" }, mf6Session)?.slot, 5, "MF6 slot 5 resume intent did not round-trip");
+assert.equal(writeWorldV0StoredSession({ ...mf6Actor, runKey: "mf6-slot6", slot: 6 }, mf6Local), false, "slot 6 must remain outside the 1-6 actor envelope");
+assert.equal(writeWorldV0ResumeIntent({ ...mf6Actor, runKey: "mf6-slot6", slot: 6 }, mf6Session), false, "slot 6 resume intent must remain rejected");
+
 // Private token ownership follows the live WorldEpoch instead of waiting for the
 // public directory to classify that exact slot as disconnected/reserved.
 assert.equal(worldV0StoredSessionMatchesRoom(actor, { id: "yard-3", worldEpoch: "epoch-a", reservedSlots: [1] }), true);

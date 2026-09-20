@@ -5,6 +5,7 @@ const SESSION_STORE_KEY = "shared-yard-v0-actor-sessions-v1";
 const RESUME_INTENT_KEY = "shared-yard-v0-resume-intent-v1";
 const RUN_KEY_PATTERN = /^[A-Za-z0-9_-]{1,20}$/;
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
+const MAX_PERSISTED_ACTOR_SLOT = 5;
 
 function usableStorage(storage) {
   return storage && typeof storage.getItem === "function" && typeof storage.setItem === "function" && typeof storage.removeItem === "function";
@@ -21,7 +22,7 @@ function normalizeRecord(value) {
   if (!PLAYER_ID_PATTERN.test(String(record.playerId || ""))) return null;
   if (!validToken(record.worldEpoch) || !validToken(record.sessionId) || !validToken(record.resumeToken) || !validToken(record.netEntityId)) return null;
   const slot = Number(record.slot);
-  if (!Number.isInteger(slot) || slot < 0 || slot > 1) return null;
+  if (!Number.isInteger(slot) || slot < 0 || slot > MAX_PERSISTED_ACTOR_SLOT) return null;
   return {
     revision: WORLD_V0_SESSION_CONTINUITY_REVISION,
     runKey: String(record.runKey),

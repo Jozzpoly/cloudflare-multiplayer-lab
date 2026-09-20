@@ -171,29 +171,50 @@ Historical L8/L10/L12, L14, ceiling, F6-attribution and outer-stress campaigns r
 
 The live research tree should retain one normal Multiplayer Foundation regression/composition workflow rather than automatically launching every historical experiment whenever a shared harness changes. One-shot research workflows are removed after their evidence is consolidated to prevent the validation apparatus from creating its own CPU/scheduling contamination.
 
-## Current frontier — F5 browser/platform lifecycle
+## F5 result — hidden tab throttling is real and recoverable
 
-F4 ordered-TCP delay/jitter mapping is sufficiently bounded for the current stage. The highest-value next unknown is now browser/platform lifecycle behavior.
+Fresh-runner workflow:
 
-The immediate question is:
+`35481135961`
 
-**Does MF6 preserve canonical agency, exactness and recoverable identity when the browser becomes hidden/backgrounded and browser scheduling pressure is allowed to occur naturally?**
+Classification:
 
-This is materially unproven because the current Chromium research harness deliberately uses anti-background-throttling flags such as:
+`F5_BACKGROUND_THROTTLED_RECOVERY_SUPPORTED`
 
-- `--disable-background-timer-throttling`;
-- `--disable-backgrounding-occluded-windows`;
-- `--disable-renderer-backgrounding`.
+The apparatus removed the previous anti-background-throttling Chrome flags, placed a second real Chromium tab in front, and independently verified the game tab changed from `visible` to `hidden`.
 
-Nearest work should first characterize the existing runtime under realistic background/visibility pressure without changing runtime policy. A useful discriminator must separate:
+Two fresh specimens reproduced strong browser timer pressure during a 15 second hidden dwell:
 
-- browser logical-input scheduler starvation;
-- presentation/rAF suspension;
-- authority/world continuity;
-- ActorSession/transport continuity;
-- exact-state rebase/recovery on return to foreground.
+- logical input scheduler pumps: 19 and 18 versus ~900 nominal;
+- scheduler pump ratio: ~2.1% and ~2.0%;
+- browser local simulation advanced only 10 and 18 ticks;
+- authority advanced 816 and 905 ticks;
+- five remote actors continued driving the world;
+- ActorSession, NetEntity and WorldEpoch remained identical;
+- guard mismatches remained 0;
+- foreground return produced an exact rebase;
+- a fresh post-return command was canonically consumed by authority in both specimens.
 
-Do not design a workaround before reproducing and measuring the actual lifecycle failure mode.
+This is evidence that ordinary hidden-tab throttling can create an enormous browser/authority time separation without requiring transport loss. The current runtime recovered same-identity exactness and fresh player agency in these bounded specimens.
+
+Do not interpret this as mobile/OS background closure. Headless Chromium is only a browser-level machine proxy.
+
+## Current frontier — stronger F5 page suspension
+
+The next bounded unknown is stronger page lifecycle suspension:
+
+**Does the same identity/exactness/agency recovery survive a page that is explicitly frozen while authority and five remote actors continue?**
+
+Nearest work should:
+
+1. reproduce real `hidden` state without anti-throttling flags;
+2. apply a short, controlled `Page.setWebLifecycleState(frozen)` interval;
+3. observe authority independently while the page cannot execute;
+4. thaw while still hidden, then return foreground;
+5. require the same WorldEpoch / ActorSession / NetEntity, exact guards, and a fresh authority-consumed player command;
+6. record whether the browser slot becomes input-lease-expired or stale while the transport remains present.
+
+This is still machine falsification. Process eviction, device sleep, mobile app kill/restart and real OS background policy remain later F5 cells.
 
 ## Explicit nonclaims / exclusions
 
@@ -208,7 +229,7 @@ Do not yet:
 - weaken exact-state guards;
 - tune authority catch-up from GitHub-runner stalls;
 - claim packet-loss/reorder qualification from the ordered TCP shaper;
-- claim background/mobile lifecycle closure;
+- claim mobile/OS lifecycle closure from hidden-tab evidence;
 - substitute machine evidence for eventual real 3–6-human play.
 
 ## Owner boundary
@@ -221,4 +242,4 @@ F5 lifecycle characterization is autonomous machine work. Owner judgement become
 
 Reverify branch HEAD and current runs.
 
-If no contradiction appears, continue F5 with a bounded browser visibility/background scheduling discriminator. Preserve the F4 timing contract and exact guards. Re-plan from observed scheduler, transport, identity, authority and rebase evidence rather than assuming background throttling behavior.
+If no contradiction appears, continue F5 with the bounded frozen-page discriminator. Preserve the F4 timing contract and exact guards. Re-plan from observed browser scheduler, authority, identity, input-lease and rebase evidence rather than assuming mobile/OS behavior.

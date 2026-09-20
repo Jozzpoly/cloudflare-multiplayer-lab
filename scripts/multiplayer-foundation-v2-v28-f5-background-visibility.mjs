@@ -8,6 +8,7 @@ const WS_BASE = BASE.replace(/^http/, "ws");
 const RUN = process.env.MW_MF6_F5_RUN || `m5b-${Date.now().toString(36)}`;
 const OUTPUT = process.env.MW_MF6_F5_OUTPUT || "mf6-f5-background-visibility.json";
 const HIDDEN_MS = Number(process.env.MW_MF6_F5_HIDDEN_MS || 15000);
+const FREEZE_MS = Number(process.env.MW_MF6_F5_FREEZE_MS || 0);
 const DEBUG_PORT = Number(process.env.MW_MF6_F5_DEBUG_PORT || 9410);
 const TIMEOUT_MS = 45000;
 const EXPECTED_ACTORS = 6;
@@ -255,10 +256,11 @@ let browserSession = null;
 let coverSession = null;
 let coverTargetId = null;
 const result = {
-  verdict: "MF6_F5_BACKGROUND_VISIBILITY_FAIL",
+  verdict: FREEZE_MS > 0 ? "MF6_F5_FROZEN_LIFECYCLE_FAIL" : "MF6_F5_BACKGROUND_VISIBILITY_FAIL",
   run: RUN,
   generatedAt: new Date().toISOString(),
   hiddenMs: HIDDEN_MS,
+  freezeMs: FREEZE_MS,
 };
 
 try {
@@ -331,10 +333,15 @@ try {
   assert(beforeVisibility === "visible", `foreground visibility ${beforeVisibility}`);
 
   const selfSessionId = before.session.actorSessionId;
+  const selfTopologyActor = before.lifecycle.topology.actors.find(
+    (actor) => actor.sessionId === selfSessionId,
+  );
+  assert(selfTopologyActor, "browser self missing from topology");
   const browserIdentity = {
     worldEpoch: before.identity.worldEpoch,
     actorSessionId: before.session.actorSessionId,
     netEntityId: before.session.selfNetEntityId,
+    slot: selfTopologyActor.slot,
   };
   const authorityBefore = await authorityStatus();
 
@@ -368,6 +375,59 @@ try {
     ? hiddenSchedulerPumps / hiddenExpectedSchedulerPumps
     : null;
 
+  let freezeEvidence = null;
+  if (FREEZE_MS > 0) {
+    const authorityBeforeFreeze = await authorityStatus();
+    const beforeFreezePumps = hiddenEvidence.inputScheduler.pumps;
+    const beforeFreezeAuthored = hiddenEvidence.inputScheduler.authored;
+    const beforeFreezeLocalBoundary = hiddenEvidence.localBoundaryTick;
+    const beforeFreezeGuardMatches = hiddenEvidence.metrics.guardMatches;
+
+    await cdp.call("Page.setWebLifecycleState", { state: "frozen" }, browserSession);
+    await sleep(FREEZE_MS);
+
+    // Do not evaluate the page while frozen. Observe the authority independently.
+    const authorityFrozen = await authorityStatus();
+    await cdp.call("Page.setWebLifecycleState", { state: "active" }, browserSession);
+
+    const thawed = await waitFor(async () => {
+      const visibility = await cdp.eval(browserSession, "document.visibilityState");
+      const e = await cdp.eval(browserSession, "window.__sharedYardV0Evidence()");
+      return visibility === "hidden" && e && !e.runtimeFailed ? { visibility, evidence: e } : false;
+    }, "frozen page thawed while still hidden", 15000);
+
+    freezeEvidence = {
+      requestedMs: FREEZE_MS,
+      lifecycleCommand: "Page.setWebLifecycleState:frozen->active",
+      visibilityAfterThaw: thawed.visibility,
+      schedulerPumpsAfterThaw:
+        thawed.evidence.inputScheduler.pumps - beforeFreezePumps,
+      schedulerAuthoredAfterThaw:
+        thawed.evidence.inputScheduler.authored - beforeFreezeAuthored,
+      localBoundaryDeltaAfterThaw:
+        thawed.evidence.localBoundaryTick - beforeFreezeLocalBoundary,
+      guardMatchesDeltaAfterThaw:
+        thawed.evidence.metrics.guardMatches - beforeFreezeGuardMatches,
+      guardMismatchesAfterThaw: thawed.evidence.metrics.guardMismatches,
+      firstStateMismatchAfterThaw: thawed.evidence.metrics.firstStateMismatch,
+      actorResumePendingAfterThaw: Boolean(thawed.evidence.session?.actorResume?.pending),
+      networkStateAfterThaw: thawed.evidence.networkState,
+      authorityBoundaryDelta:
+        authorityFrozen.boundaryTick - authorityBeforeFreeze.boundaryTick,
+      authorityConnectedPlayers: authorityFrozen.connectedPlayers,
+      authorityDroppedTicksDelta:
+        Number(authorityFrozen.droppedTicks || 0) - Number(authorityBeforeFreeze.droppedTicks || 0),
+      authorityCatchupStepsDelta:
+        Number(authorityFrozen.catchupSteps || 0) - Number(authorityBeforeFreeze.catchupSteps || 0),
+      leaseExpiredConnectedSlots: authorityFrozen.leaseExpiredConnectedSlots || [],
+      staleConnectedSlots: authorityFrozen.staleConnectedSlots || [],
+      browserSlotLeaseExpired:
+        (authorityFrozen.leaseExpiredConnectedSlots || []).includes(browserIdentity.slot),
+      browserSlotStale:
+        (authorityFrozen.staleConnectedSlots || []).includes(browserIdentity.slot),
+    };
+  }
+
   await cdp.call("Page.bringToFront", {}, browserSession);
   const visibleAgain = await waitFor(
     () => cdp.eval(browserSession, "document.visibilityState").then((value) => value === "visible" ? value : false),
@@ -397,7 +457,7 @@ try {
   const authorityAfter = await authorityStatus();
 
   Object.assign(result, {
-    verdict: "MF6_F5_BACKGROUND_VISIBILITY_COMPLETE",
+    verdict: FREEZE_MS > 0 ? "MF6_F5_FROZEN_LIFECYCLE_COMPLETE" : "MF6_F5_BACKGROUND_VISIBILITY_COMPLETE",
     apparatus: {
       chromeBackgroundProtectionFlagsPresent: false,
       beforeVisibility,
@@ -438,6 +498,7 @@ try {
         Number(authorityHidden.catchupSteps || 0) - Number(authorityBefore.catchupSteps || 0),
       authorityConnectedPlayers: authorityHidden.connectedPlayers,
     },
+    freeze: freezeEvidence,
     recovery: {
       guardMatches: recovered.metrics.guardMatches,
       guardMismatches: recovered.metrics.guardMismatches,
@@ -457,8 +518,10 @@ try {
       authorityBoundary: authorityAfter.boundaryTick,
       authorityConnectedPlayers: authorityAfter.connectedPlayers,
     },
-    interpretation: "Real Chromium tab visibility is changed by placing another tab in front while Chrome runs without the previous anti-background-throttling flags. Five remote actors continue driving the shared authority. The specimen measures hidden-page scheduler progression, same-identity exact recovery and fresh authority-consumed agency after returning to foreground.",
-    nonClaim: "Headless Chromium visibility/background scheduling is a machine proxy, not proof of desktop/mobile OS background policy. A hidden tab that remains unthrottled in this apparatus does not qualify real-device background lifecycle.",
+    interpretation: FREEZE_MS > 0
+      ? "After reproducing a real hidden tab without anti-background-throttling flags, CDP freezes the page for a bounded interval while five remote actors continue driving authority. The page is thawed while still hidden, returned to foreground, and must preserve exact same-identity recovery plus fresh authority-consumed agency."
+      : "Real Chromium tab visibility is changed by placing another tab in front while Chrome runs without the previous anti-background-throttling flags. Five remote actors continue driving the shared authority. The specimen measures hidden-page scheduler progression, same-identity exact recovery and fresh authority-consumed agency after returning to foreground.",
+    nonClaim: "Headless Chromium/CDP lifecycle control is machine evidence, not proof of desktop/mobile OS process eviction or all real-device background policies.",
   });
 
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));

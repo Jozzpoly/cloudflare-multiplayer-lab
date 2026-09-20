@@ -1,7 +1,7 @@
-name: Multiplayer Foundation V2 F5 background visibility
+name: Multiplayer Foundation V2 F5 frozen lifecycle
 
 concurrency:
-  group: multiplayer-foundation-v2-f5-background-${{ github.ref }}
+  group: multiplayer-foundation-v2-f5-frozen-${{ github.ref }}
   cancel-in-progress: true
 
 on:
@@ -10,8 +10,8 @@ on:
       - research/multiplayer-foundation-v2-v28-dynamic-composition
     paths:
       - scripts/multiplayer-foundation-v2-v28-f5-background-visibility.mjs
-      - scripts/multiplayer-foundation-v2-v28-f5-background-visibility-aggregate.mjs
-      - .github/workflows/multiplayer-foundation-v2-f5-background-visibility.yml
+      - scripts/multiplayer-foundation-v2-v28-f5-frozen-lifecycle-aggregate.mjs
+      - .github/workflows/multiplayer-foundation-v2-f5-frozen-lifecycle.yml
 
 permissions:
   contents: read
@@ -28,7 +28,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: node --check scripts/multiplayer-foundation-v2-v28-f5-background-visibility.mjs
-      - run: node --check scripts/multiplayer-foundation-v2-v28-f5-background-visibility-aggregate.mjs
+      - run: node --check scripts/multiplayer-foundation-v2-v28-f5-frozen-lifecycle-aggregate.mjs
 
   specimen:
     needs: regression
@@ -48,51 +48,51 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9288 > mf6-f5-workerd.log 2>&1 &
-          echo $! > mf6-f5-workerd.pid
+          setsid npx wrangler dev --env reliability_play --ip 127.0.0.1 --port 8787 --inspector-port 9288 > mf6-f5-frozen-workerd.log 2>&1 &
+          echo $! > mf6-f5-frozen-workerd.pid
           for i in {1..120}; do
             if curl -fsS http://127.0.0.1:8787/api/ping >/dev/null; then
-              echo "MF6_F5_WORKER_READY"
+              echo "MF6_F5_FROZEN_WORKER_READY"
               exit 0
             fi
             sleep 0.25
           done
-          cat mf6-f5-workerd.log
+          cat mf6-f5-frozen-workerd.log
           exit 1
-      - name: Run background visibility specimen
+      - name: Run frozen lifecycle specimen
         env:
           REP: ${{ matrix.replicate }}
           MW_MF6_F5_BASE: http://127.0.0.1:8787
-          MW_MF6_F5_HIDDEN_MS: "15000"
+          MW_MF6_F5_HIDDEN_MS: "3000"
+          MW_MF6_F5_FREEZE_MS: "8000"
         shell: bash
         run: |
           set -euo pipefail
-          run_key="f5b$REP-${{ github.run_id }}"
-          output="mf6-f5-background-$REP.json"
+          run_key="f5f$REP-${{ github.run_id }}"
+          output="mf6-f5-frozen-$REP.json"
           MW_MF6_F5_RUN="$run_key" \
           MW_MF6_F5_OUTPUT="$output" \
           MW_MF6_F5_DEBUG_PORT=9410 \
             timeout 150s node scripts/multiplayer-foundation-v2-v28-f5-background-visibility.mjs \
-            | tee "mf6-f5-background-$REP.log"
-          grep -q MF6_F5_BACKGROUND_VISIBILITY_COMPLETE "$output" || true
+            | tee "mf6-f5-frozen-$REP.log"
           test -f "$output"
       - name: Stop isolated authority
         if: always()
         shell: bash
         run: |
-          if [ -f mf6-f5-workerd.pid ]; then
-            pid="$(cat mf6-f5-workerd.pid)"
+          if [ -f mf6-f5-frozen-workerd.pid ]; then
+            pid="$(cat mf6-f5-frozen-workerd.pid)"
             kill -TERM -- "-$pid" 2>/dev/null || true
           fi
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: mf6-f5-background-${{ matrix.replicate }}
+          name: mf6-f5-frozen-${{ matrix.replicate }}
           if-no-files-found: error
           path: |
-            mf6-f5-background-*.json
-            mf6-f5-background-*.log
-            mf6-f5-workerd.log
+            mf6-f5-frozen-*.json
+            mf6-f5-frozen-*.log
+            mf6-f5-frozen-workerd.log
 
   aggregate:
     needs: specimen
@@ -104,18 +104,18 @@ jobs:
           node-version: 22
       - uses: actions/download-artifact@v7
         with:
-          pattern: mf6-f5-background-*
+          pattern: mf6-f5-frozen-*
           merge-multiple: true
-      - name: Aggregate background visibility evidence
+      - name: Aggregate frozen lifecycle evidence
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/multiplayer-foundation-v2-v28-f5-background-visibility-aggregate.mjs \
-            mf6-f5-background-a.json mf6-f5-background-b.json \
-            mf6-f5-background-visibility.json | tee mf6-f5-background-visibility.log
+          node scripts/multiplayer-foundation-v2-v28-f5-frozen-lifecycle-aggregate.mjs \
+            mf6-f5-frozen-a.json mf6-f5-frozen-b.json \
+            mf6-f5-frozen-lifecycle.json | tee mf6-f5-frozen-lifecycle.log
       - uses: actions/upload-artifact@v6
         with:
-          name: multiplayer-foundation-v2-f5-background-${{ github.run_id }}
+          name: multiplayer-foundation-v2-f5-frozen-${{ github.run_id }}
           path: |
-            mf6-f5-background-visibility.json
-            mf6-f5-background-visibility.log
+            mf6-f5-frozen-lifecycle.json
+            mf6-f5-frozen-lifecycle.log

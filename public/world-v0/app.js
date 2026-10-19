@@ -35,6 +35,10 @@ import {
   writeWorldV0StoredSession,
 } from "./session-continuity.js";
 import {
+  mf6StoreDurableActorSession,
+  mf6ClearDurableActorSession,
+} from "./mf6-durable-resume-probe.js";
+import {
   WORLD_V0_JOIN_FAILURE_CLARITY_REVISION,
   classifyWorldV0JoinFailure,
 } from "./join-failure-clarity.js";
@@ -100,6 +104,7 @@ const lifecycleMode = urlParams.get("lifecycle") === "mf6"
   ? "mf6"
   : (urlParams.get("lifecycle") === "r0" ? "r0" : "fixed-2p");
 const lifecycleMf6 = lifecycleMode === "mf6";
+const mf6DurableResumeProbe = lifecycleMf6 && urlParams.get("mf6DurableResumeProbe") === "1";
 const lifecycleR0 = lifecycleMode !== "fixed-2p"; // WORLD_V0_LIFECYCLE_R0_BROWSER_V1
 // Diagnostic-only Multiplayer Foundation probe. It is inert outside lifecycle=mf6
 // and never mutates the authority-advertised simulation contract.
@@ -767,7 +772,23 @@ function currentActorSessionRecord() {
 
 function persistCurrentActorSession() {
   const record = currentActorSessionRecord();
-  return record ? writeWorldV0StoredSession(record) : false;
+  const stored = record ? writeWorldV0StoredSession(record) : false;
+  if (mf6DurableResumeProbe && record) {
+    // No awaited I/O inside the authority message handler. This is a bounded
+    // experiment: the client must NOT claim durable recovery before tx.complete.
+    if (window.__mf6DurableResumeProbe) window.__mf6DurableResumeProbe.commit = "pending";
+    void mf6StoreDurableActorSession(record).then((outcome) => {
+      const status = window.__mf6DurableResumeProbe;
+      if (!status) return;
+      const now = currentActorSessionRecord();
+      if (!now || now.sessionId !== record.sessionId || now.worldEpoch !== record.worldEpoch) return;
+      status.commit = outcome.committed ? "complete" : "failed";
+      status.failureReason = outcome.committed ? null : outcome.reason;
+    }).catch(() => {
+      if (window.__mf6DurableResumeProbe) window.__mf6DurableResumeProbe.commit = "failed";
+    });
+  }
+  return stored;
 }
 
 function armCurrentActorResumeIntentForPageExit() {
@@ -778,7 +799,13 @@ function armCurrentActorResumeIntentForPageExit() {
 
 function clearCurrentStoredActorSession(worldEpoch = identity?.worldEpoch ?? null) {
   if (!runKey) return false;
-  return clearWorldV0StoredSession(runKey, worldEpoch);
+  const cleared = clearWorldV0StoredSession(runKey, worldEpoch);
+  if (mf6DurableResumeProbe) {
+    if (window.__mf6DurableResumeProbe) window.__mf6DurableResumeProbe.commit = "invalidated";
+    // The authority invalidated this epoch; never clear a different epoch.
+    void mf6ClearDurableActorSession(runKey, worldEpoch);
+  }
+  return cleared;
 }
 
 let protocolStartTick = null;

@@ -27,6 +27,26 @@ async function waitFor(fn, label, timeout = TIMEOUT_MS) {
   throw new Error(`${label} timeout · last=${last instanceof Error ? last.message : JSON.stringify(last)}`);
 }
 
+function verifiedVisualRoster(e) {
+  const actors=e?.lifecycle?.topology?.actors || [];
+  const self=e?.session?.actorSessionId;
+  const expected=actors.filter(a=>a.sessionId!==self);
+  const shown=e?.presentation?.visibleRemoteActors||[];
+  const shownById=new Map(shown.map(a=>[a.sessionId,a]));
+  return actors.length===6 &&
+    e?.presentation?.visibleRosterRevision==="mf6-visible-actor-roster-v1" &&
+    e?.presentation?.visibleActorCount===6 &&
+    shown.length===5&&shownById.size===5&&
+    expected.every(actor=>{
+      const m=shownById.get(actor.sessionId);
+      return m?.mounted===true&&m.netEntityId===actor.netEntityId &&
+        m.presenceLabel===`PEER ${actor.slot+1}` &&
+        Array.isArray(m.position)&&m.position.length===3&&
+        m.position.every(Number.isFinite);
+    }) &&
+    shown.every(visual=>expected.some(actor=>actor.sessionId===visual.sessionId));
+}
+
 function identity(message) {
   return {
     worldId: message.worldId,
@@ -327,6 +347,7 @@ try {
         e.lifecycle?.topology?.revision === 6 &&
         e.lifecycle.topology.actors?.length === 6 &&
         e.livePhysics?.actorBodyCount === 6 &&
+        verifiedVisualRoster(e) &&
         e.identity?.worldEpoch === epoch &&
         !e.runtimeFailed &&
         e.metrics?.guardMismatches === 0 &&
@@ -496,6 +517,9 @@ try {
         e.livePhysics?.actorBodyCount === EXPECTED_ACTORS &&
         ids.includes("actor:6") &&
         !ids.includes(retiredActorId) &&
+        verifiedVisualRoster(e) &&
+        !e.presentation.visibleRemoteSessionIds.includes(retiredSessionId) &&
+        e.presentation.visibleRemoteSessionIds.includes(replacement.welcome.selfSessionId) &&
         e.metrics?.guardMismatches === 0 &&
         e.metrics?.guardMatches > allRemoteExact.metrics.guardMatches &&
         e.metrics?.rebases > allRemoteExact.metrics.rebases
@@ -560,6 +584,7 @@ try {
       });
       return e.lifecycle?.topology?.revision === 8 &&
         e.metrics?.guardMismatches === 0 &&
+        verifiedVisualRoster(e) &&
         e.metrics?.guardMatches >= postRebase.metrics.guardMatches + 20 &&
         movedAll
         ? e
@@ -578,6 +603,8 @@ try {
       guardMatches: allRemoteExact.metrics.guardMatches,
       guardMismatches: allRemoteExact.metrics.guardMismatches,
       fiveActiveRemotes: true,
+      sixVisibleBodies: before.presentation.visibleActorCount===6,
+      visualSessionIds:before.presentation.visibleRemoteSessionIds,
     },
     retirement: {
       actorId: retiredActorId,
@@ -618,9 +645,17 @@ try {
       firstStateMismatch: postChurnExact.metrics.firstStateMismatch,
       rebases: postChurnExact.metrics.rebases,
       boundaryTick: postChurnExact.localBoundaryTick,
+      visualPresence: {
+        visibleCount:postChurnExact.presentation.visibleActorCount,
+        visibleRemoteSessionIds:postChurnExact.presentation.visibleRemoteSessionIds,
+        retiredGone:!postChurnExact.presentation.visibleRemoteSessionIds.includes(retiredSessionId),
+        replacementMounted:postChurnExact.presentation.visibleRemoteActors.some(
+          entry=>entry.sessionId===replacement.welcome.selfSessionId&&entry.mounted,
+        ),
+      },
     },
     interpretation: "Dynamic membership churn now composes with self+5 active remote V28 prediction/replay in one WorldEpoch, including monotonic replacement identity and replacement jump causality.",
-    nonClaim: "This is local Workerd/Chromium composition evidence. Network impairment, remote presentation quality for N peers, performance limits, deployed-edge behavior, and real human 3-6 qualification remain unproven.",
+    nonClaim: "This is local Workerd/Chromium six-actor visible roster identity/churn evidence. Multi-peer perceptual smoothness, mobile framing, network impairment, performance limits, deployed-edge behavior, and real human 3-6 qualification remain unproven.",
   });
   writeFileSync(OUTPUT, JSON.stringify(result, null, 2));
   console.log("MF6_V28_BROWSER_ACTIVE_CHURN_COMPOSITION_EVIDENCE", JSON.stringify(result));

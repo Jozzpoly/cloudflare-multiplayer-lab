@@ -2,6 +2,14 @@
 
 **Purpose:** a small, reversible *receiving-project handoff*, not an architecture decision or instructions to merge the repositories. Multi remains a **multiplayer/shared-world technology donor**. Jaskinia remains the owner's one entrance to independent work; Opus owns its live implementation. Medium remains an optional source-aware working substrate, **not** a new central deployment or session controller.
 
+## 2026-10-20 Owner update — early 2P in Jaskinia is explicitly wanted
+
+Owner confirmed **do not wait for MF6**: put the existing 2P staging Yard into Jaskinia early to make casual play and return possible. This revises the earlier *wait for complete verified playable session before adding an entry* suggestion: an **honestly labeled early-access launcher** is authorized, with its incomplete play verification visible, rather than withholding the door.
+
+**Implementation done, not yet published:** [Jaskinia draft PR #6](https://github.com/Jozzpoly/Jozz-Cave-Workbench/pull/6) against Opus's `v6-materialy` branch. Exactly 3 files: `data/wejscia.json` adds stable staging URL + `okno:false` and source-accurate verification limits; `data/library.json` updates only Multi's entry in the current snapshot; `tools/jk63_test.mjs` adds 2 smoke assertions for URL/tab-only and no iframe in the game window. PR source branch: `experiment/multi-2p-jaskinia-entry-2026-10-20`. The PR is **draft**, preserving Opus ownership of Jaskinia versioning, release/data-safety regression and deployment; [Kompas routing note](https://github.com/Jozzpoly/Jozz-Cave-Workbench/issues/5#issuecomment-6278927691).
+
+Static JSON consistency and exact 3-file compare were checked; the `jk63_test.mjs` additions were **not yet run against a built page**, and neither the Worker nor public GitHub Pages was modified. Do not assert that Jaskinia already displays the updated button until Opus publishes it. Separate tabs remain a transitional one-Home doorway; deeper iframe / saved session unification is a *later experiment*, not required for first play.
+
 ## Exact verified source observations
 
 | Boundary | Evidence | Narrow claim |
@@ -30,7 +38,7 @@ If Jaskinia shows “MultiWorld — żywe” and a `Zagraj` link, it must not si
 
 - Use the existing staging **two-actor** URL as a **candidate** entry. The stable **launcher** URL is `https://cloudflare-multiplayer-lab-staging.jozzpoly.workers.dev/world-v0/`, without a fixed `run` parameter. Ordinary no-`run` entry opens the **live canonical public Yard directory**, not a new private room on each click. The player chooses a public Yard. Its card checks per-room ActorSession storage and can offer Resume if the authority still recognizes that epoch. Explicit private Yard invitations are **separate deliberate deep links**. On later `Zagraj`, the public room must be reselected; do not claim one-click automatic return to the previous actor.
 - **Before** declaring this URL `sprawdzil` / “verified playable”, perform top-level entry → choose a public Yard → Enter → live movement/jump → reopen base URL → reselect the same Yard and Resume, plus a bounded touch/mobile return test when practical. A directory response showing joinable capacity is not evidence of successful movement or Resume. The current Opera inspection stopped short of qualifying that.
-- In Jaskinia's **existing** `data/wejscia.json` (receiving-project decision; **not changed here**), the likely mapping after verification is for `cloudflare-multiplayer-lab`: `url` = stable staging launcher; `okno:false`; `dlaczego` = Worker session identity and possible third-party iframe storage partitioning; `sprawdzil` / `kiedy` = actual evidence, not inferred.
+- Jaskinia's existing `data/wejscia.json` mapping was now **proposed in isolated PR #6**: `url` = stable staging launcher; `okno:false`; `dlaczego` = Worker ActorSession and possible iframe partitioning; `sprawdzil` explicitly says **page, build revision and public room-directory verified, but human Enter/Resume not yet verified**. This follows the Owner's authorization for early 2P access, without mislabeling the result.
 - Top-level new tab is a **deliberate first pilot**, as already done for Tysiąc. This preserves the Worker origin's ActorSession storage and avoids untested iframe partitioning. A Jaskinia doorway does not require same-origin, shared runtime or a monolith.
 - Jaskinia's existing `#repo~cloudflare-multiplayer-lab` address and `Zagraj` / game window semantics remain the home-side entrance. Do not add another dashboard, launcher service, or a second competing Home.
 
@@ -53,4 +61,4 @@ If Jaskinia shows “MultiWorld — żywe” and a `Zagraj` link, it must not si
 
 **Failure/stop:** the Worker remains in “Catching up…”, cannot pass real enter/return, the iframe changes storage ownership, a global refresh/bus is required to make the demo appear, the candidate URL promises six-person play, or any private token/room key ends up in the public handoff. Report this instead of forcing a misleading `Zagraj` badge.
 
-**Explicitly not performed here:** no Jaskinia source mutation, no Worker redeploy, no MF6 merge, no public room-state API, no automatic repo refresh, no shared secret/session transport, no Medium platform changes, no human acceptance claim.
+**Explicitly not performed here:** no change to Jaskinia's *active* `v6-materialy` or public GitHub Pages deployment (only isolated PR #6), no Worker redeploy, no MF6 merge, no public room-state API change, no automatic repo refresh, no shared secret/session transport, no Medium platform changes, no human acceptance claim.

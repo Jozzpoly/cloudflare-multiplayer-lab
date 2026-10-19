@@ -312,6 +312,13 @@ try{
     netEntityId:before.session.selfNetEntityId,
     slot:selfTopologyActor.slot,
   };
+  const actualGameUrl=await browser.cdp.eval(page.sessionId,"location.href");
+  const observedUrl=new URL(actualGameUrl);
+  assert(observedUrl.searchParams.get("lifecycle")==="mf6",
+    "actual post-Enter URL lost MF6 lifecycle contract");
+  if(APP_NATIVE_DURABLE_PROBE)assert(observedUrl.searchParams.get("mf6DurableResumeProbe")==="1",
+    "actual post-Enter URL lost opt-in durable probe flag");
+  result.reopenedActualAddress=true;
   const storedBefore=await browser.cdp.eval(page.sessionId,'localStorage.getItem("shared-yard-v0-actor-sessions-v1")');
   assert(typeof storedBefore==="string"&&storedBefore.includes(identityBefore.actorSessionId),"ActorSession resume state not persisted before crash");
   const savedActorSession=JSON.parse(storedBefore)?.sessions?.[RUN];
@@ -409,7 +416,9 @@ try{
   assert(result.profileStorageBeforeApp.originMatches,"neutral storage probe used wrong origin");
   await browser.cdp.call("Target.closeTarget",{targetId:neutralPage.targetId});
 
-  page=await attachPage(browser.cdp,pageUrl);
+  // Real user refresh/reopen follows the address left by the application,
+  // not the original test fixture URL.
+  page=await attachPage(browser.cdp,actualGameUrl);
   await bootPage(browser.cdp,page);
   const resumeOffer=await browser.cdp.eval(page.sessionId,`({
     entry: window.__sharedYardV0FriendEntry(),

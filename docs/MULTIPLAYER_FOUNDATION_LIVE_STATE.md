@@ -1,7 +1,7 @@
 # Multiplayer Foundation — Live State
 
-Status: ACTIVE FRONTIER / F4 ORDERED-TCP ENVELOPE BOUNDED / F5 BROWSER-LIFECYCLE NEXT  
-Updated: 2026-09-20 after F4 outer-envelope run 35480750755
+Status: ACTIVE FRONTIER / F4 ENVELOPE BOUNDED / F5 RECOVERY RESEARCH SCOPED / MF6 VISUAL PRESENCE UNDER QUALIFICATION  
+Updated: 2026-10-19 after native strict-IDB F5 and MF6 scene-presence research
 
 This is the compact execution pointer for the active Multiplayer Foundation campaign. Reverify exact refs before mutation or qualification claims.
 
@@ -39,6 +39,22 @@ Current research evidence supports, within the existing local Workerd/Chromium c
 - repository regression remaining green.
 
 Do not reinterpret these claims as deployed-edge, arbitrary-scale, datagram-loss/reorder or human-play qualification.
+
+## MF6 scene presence — session-identity keyed visual roster (2026-10-19)
+
+**Why:** existing `app.js` simulated all six actors and handled their distinct inputs, but the renderer maintained only `selfMesh` + one `remoteMesh`. Four peers were physically real but had no visible representation. The legacy single remote model also was not removed when its actor disappeared, allowing a stale model to remain. This was an **independent multiplayer legibility gap**, not a simulation-integrity failure.
+
+**Research-only implementation** on `research/multiplayer-foundation-v2-v28-dynamic-composition`:
+- `public/world-v0/visible-actor-roster.js`: pure bounded identity reconciliation, requiring each desired remote ActorSession to occur both in validated topology and live simulation body map. It returns distinct create/remove sets and rejects malformed/duplicate/out-of-envelope actors.
+- `public/world-v0/app.js`: MF6 creates, updates and disposes per-ActorSession models and ground rings, removes stale session-owned models after same-epoch churn, and exposes non-secret visual evidence (IDs, mounted status, label, positions, count). Legacy fixed-2P still uses the original single-peer presentation path; missing 2P remote bodies now cause cleanup instead of a ghost.
+- `scripts/world-v0-visible-actor-roster-smoke.mjs` + `package.json`: pure reconciliation checks for six actors, solo, missing body, replacement and invalid/duplicate topology. The check was added after the initial dynamic-composition workflow SHA, so its **independent verification must not be inferred** from that earlier run.
+- `scripts/multiplayer-foundation-v2-v28-browser-active-churn-composition.mjs`: real Chromium test now requires six mounted models corresponding one-for-one to authoritative session/net IDs, and verifies that retired sessions leave the rendered roster and replacements appear with the correct identities during real five-peer movement and exact-state rebase.
+
+**Validation so far:** [dynamic-composition run 39318923780](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/actions/runs/39318923780) independently passed authority 1–6 composition, Chromium self+N, active peer input, MF6 churn-with-visual-roster and active hard-outage steps. The ordered-TCP impairment/latency matrix was still running at the time of this checkpoint; do not describe the entire workflow as complete until its conclusion is verified. The research implementation does **not** require or modify a deployment and is not a change to qualified `main`.
+
+**Important fidelity boundary:** the V25 confirmed-position presentation smoothing remains tied to the *first* remote peer; the other four MF6 remotes are shown from their **actual locally predicted physics bodies**. This avoids presenting one peer using another's temporal anchors, but does not qualify comparative visual smoothness, occlusion/frustum/on-screen visibility, label readability, or human perception. Mounted in the WebGL scene does not mean simultaneously visible within camera framing. Human 3–6 play, mobile UI and deployed-edge representativeness remain open.
+
+**Next:** verify final CI and check the additional pure smoke at a commit that actually includes the updated `package.json`. Then consider bounded 1–5 incremental presence, ghost cleanup after leaving, perceptual visual comparison under motion/jitter, and actual 3–6-human qualification. Do not generalize visual interpolation without per-peer evidence.
 
 ## F4 timing contract candidate
 
@@ -328,7 +344,7 @@ No changes to qualified `main` or deployment are authorized by these research PA
 - **Negative:** early (<5-second-class) abrupt browser death can lose the local private resume token while server authority still exists. Do not classify this as supported.
 - **Not tested:** cross-device credentials, OS/mobile eviction, unbounded absence, browser storage partitioning when launched inside Jaskinia, or distributed/cloud authority recreation.
 - F5 research-only native path now has positive original-token recovery **and** obsolete-epoch rejection evidence (two Chromium specimens each). It is not a deployed/default feature. Nearest F5 unknowns are blocked/unavailable storage, pre-commit crash semantics and multi-tab identity races; consider their information value against 3–6 actor visibility and eventual human qualification.
-- Parallel foundation gap: `app.js` physics tracks up to six actors, while `syncMeshes()` still renders only self plus one remote mesh. Machine six-actor exactness does not qualify human-readable 3–6 presence. Separate this from F5.
+- MF6 visual representation now has a research implementation and Chromium churn test for **six mounted models**, but not yet perceptual/per-player smoothness, all on-screen in camera, staged deploy, incremental 1–5 qualification or real 3–6-human play. Do not confuse scene membership with finished UX.
 - Do not promote this research tree to `main` or describe the generic browser lifecycle as qualified.
 
 ## Explicit nonclaims / exclusions
@@ -358,4 +374,4 @@ Browser process restart is autonomous machine falsification. Owner judgement bec
 
 Reverify branch HEAD and current runs.
 
-Treat F5 as a layered evidence stack: native localStorage 1.5 s RED / 8 s GREEN; strict-IDB test bridge early-crash GREEN; explicit research-flag native IDB positive recovery and stale-epoch tombstone GREEN, but storage denial and multi-tab races unqualified. Re-rank the nearest next unknown among those failure modes, six-actor visible presence, and eventual real-human gameplay validation. Re-rank by impact and evidence; do not imply the product implements the bridge. Preserve the F4 timing contract, existing guards, qualified 2P main and the unmerged research donor.
+F5 remains a bounded layered evidence stack: native localStorage 1.5 s RED / 8 s GREEN; test-bridge strict-IDB early-crash GREEN; research-flag app-native strict-IDB positive recovery plus stale-epoch tombstone GREEN, but storage denial and multi-tab races unqualified. MF6 now has session-identity keyed scene-presence code with a six-actor/churn browser test; reverify final CI and smoke before any qualification statement. Then re-rank incremental 1–5 scenes, per-peer presentation feel and real human tests against open F5 risks. Re-rank by impact and evidence; do not imply the product implements the bridge. Preserve the F4 timing contract, existing guards, qualified 2P main and the unmerged research donor.

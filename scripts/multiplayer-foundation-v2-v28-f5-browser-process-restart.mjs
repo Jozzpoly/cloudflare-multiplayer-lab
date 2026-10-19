@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -10,6 +10,9 @@ const RUN=process.env.MW_MF6_F5_PROCESS_RUN||`f5p-${Date.now().toString(36)}`;
 const OUTPUT=process.env.MW_MF6_F5_PROCESS_OUTPUT||"mf6-f5-browser-process-restart.json";
 const DEBUG_PORT=Number(process.env.MW_MF6_F5_PROCESS_DEBUG_PORT||9420);
 const RESTART_GAP_MS=Number(process.env.MW_MF6_F5_PROCESS_GAP_MS||2500);
+// Deliberate second specimen: 8 s vs the earlier failing 1.5 s after localStorage.write.
+// Not a qualified lifecycle SLO or a fix; the short-window FAIL stays on record.
+const PRE_CRASH_DWELL_MS=8000;
 const TIMEOUT_MS=45000;
 const EXPECTED_ACTORS=6;
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
@@ -96,6 +99,19 @@ async function authorityStatus(){
   const response=await fetch(`${BASE}/api/world-v0/status?run=${encodeURIComponent(RUN)}`,{cache:"no-store"});
   assert(response.ok,`authority status HTTP ${response.status}`);
   return response.json();
+}
+
+function profileDiskSnapshot(profile){
+  const dir=join(profile,"Default","Local Storage","leveldb");
+  if(!existsSync(dir))return {exists:false,files:[]};
+  try{
+    return {exists:true,files:readdirSync(dir).slice(0,32).map((name)=>{
+      const stat=statSync(join(dir,name));
+      return {name,bytes:stat.size,isFile:stat.isFile()};
+    }).sort((a,b)=>a.name.localeCompare(b.name))};
+  }catch(error){
+    return {exists:true,readError:error?.code||"unknown"};
+  }
 }
 
 function findChrome(){
@@ -255,7 +271,7 @@ const feeds=[];
 const profile=mkdtempSync(join(tmpdir(),"mf6-f5-process-"));
 let browser=null;
 let page=null;
-const result={verdict:"MF6_F5_BROWSER_PROCESS_RESTART_FAIL",run:RUN,generatedAt:new Date().toISOString(),restartGapMs:RESTART_GAP_MS};
+const result={verdict:"MF6_F5_BROWSER_PROCESS_RESTART_FAIL",run:RUN,generatedAt:new Date().toISOString(),restartGapMs:RESTART_GAP_MS,preCrashDwellMs:PRE_CRASH_DWELL_MS};
 
 try{
   for(let index=0;index<5;index+=1)rawPeers.push(await openRawPeer(index));
@@ -308,12 +324,15 @@ try{
   })()`);
   assert(markerWritten===true,"non-secret profile control was not written before crash");
 
-  // Give Chrome a bounded foreground dwell after the persisted record is observable.
-  await sleep(1500);
+  // Compare an 8-second foreground dwell with the previously failed 1.5-second dwell.
+  // Keep both specimens as separate evidence; do not redefine recovery as passing.
+  await sleep(PRE_CRASH_DWELL_MS);
+  result.profileDiskBeforeCrash=profileDiskSnapshot(profile);
   const authorityBeforeCrash=await authorityStatus();
   const boundaryBeforeCrash=rawPeers[0].latestBoundary;
 
   await crashBrowser(browser);
+  result.profileDiskAfterCrash=profileDiskSnapshot(profile);
   browser=null;
   page=null;
 

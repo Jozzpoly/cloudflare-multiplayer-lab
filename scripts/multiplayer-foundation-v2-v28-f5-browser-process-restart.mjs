@@ -469,6 +469,47 @@ try{
   },"post-process-restart exact settle",10000);
   const authorityAfter=await authorityStatus();
 
+  // Negative evidence for the app-native IDB path: deliberately persist a
+  // well-formed but obsolete epoch in the same real browser profile, remove
+  // localStorage, and verify ordinary app bootstrap rejects + tombstones it.
+  // No private token is printed in the evidence JSON.
+  if (APP_NATIVE_DURABLE_PROBE) {
+    const staleWrite=await browser.cdp.eval(page.sessionId,`(async()=>{
+      const module=await import("/world-v0/mf6-durable-resume-probe.js");
+      const raw=localStorage.getItem("shared-yard-v0-actor-sessions-v1");
+      const actor=JSON.parse(raw)?.sessions?.[${JSON.stringify(RUN)}];
+      if(!actor)return {committed:false,reason:"missing-source"};
+      const stale={...actor,worldEpoch:"f5-stale-epoch-control"};
+      const outcome=await module.mf6StoreDurableActorSession(stale);
+      if(outcome.committed)localStorage.removeItem("shared-yard-v0-actor-sessions-v1");
+      return {committed:outcome.committed,localCleared:localStorage.getItem("shared-yard-v0-actor-sessions-v1")===null};
+    })()`);
+    assert(staleWrite.committed&&staleWrite.localCleared,
+      "negative fixture could not durably save stale ActorSession");
+    const stalePage=await attachPage(browser.cdp,actualGameUrl);
+    await bootPage(browser.cdp,stalePage);
+    const rejected=await waitFor(async()=>{
+      const observation=await browser.cdp.eval(stalePage.sessionId,`(async()=>{
+        const module=await import("/world-v0/mf6-durable-resume-probe.js");
+        return {
+          bootMode:window.__mf6DurableResumeProbe?.bootMode||null,
+          offer:window.__sharedYardV0FriendEntry()?.directLinkResumable===true,
+          localPresent:localStorage.getItem("shared-yard-v0-actor-sessions-v1")!==null,
+          durablePresent:!!(await module.mf6ReadDurableActorSession(${JSON.stringify(RUN)})),
+        };
+      })()`);
+      return observation.bootMode==="hydrated"&&!observation.offer&&
+        !observation.localPresent&&!observation.durablePresent?observation:false;
+    },"stale strict-IDB token authority rejection + durable tombstone",10000);
+    result.negativeStaleEpoch={
+      appRehydratedCandidate:rejected.bootMode==="hydrated",
+      authorityRejectedResume:!rejected.offer,
+      localCleared:!rejected.localPresent,
+      durableTombstoned:!rejected.durablePresent,
+    };
+    await browser.cdp.call("Target.closeTarget",{targetId:stalePage.targetId});
+  }
+
   Object.assign(result,{
     verdict:"MF6_F5_BROWSER_PROCESS_RESTART_COMPLETE",
     identity:{

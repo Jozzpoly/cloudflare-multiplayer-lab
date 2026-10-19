@@ -226,25 +226,37 @@ This demonstrates that the current separation between authority time and browser
 
 This is controlled CDP lifecycle evidence, not mobile OS eviction or process death.
 
-## Current frontier — browser process death and same-profile restart
+## F5 process restart — scoped contrasting evidence (2026-10-19)
 
-The next F5 unknown changes failure class:
+The browser-process restart discriminator was executed twice with different pre-crash foreground dwell windows. **Both windows must remain in the evidence model; a later PASS does not erase the earlier FAIL.**
 
-**Can MF6 recover the same authoritative actor after the entire Chromium process dies and a new Chromium process opens the same direct Yard from the same persisted browser profile?**
+### 1.5-second crash: persisted client authority missing (FAIL)
 
-Nearest work should:
+- Source: [run 39180909446](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/actions/runs/39180909446), two independent specimens, both FAIL.
+- Same machine, same `--user-data-dir`, real Chrome process `SIGKILL`, five other active actors and live authority.
+- Server-side `/api/world-v0/resume-check` returned HTTP 200, `valid=true`, identical WorldEpoch / ActorSession / NetEntity / slot.
+- A neutral same-origin page, **before loading any Shared Yard app scripts**, found neither the stored ActorSession nor an independent non-secret localStorage control marker.
+- The app therefore did not offer Resume; this is **not** evidence that the application erased the record or that authority rejected recovery.
+- Narrowest supported explanation: the profile failed to provide recent localStorage writes after abrupt process death. This may reflect deferred browser disk commits; the exact mechanism has not been instrumented at the Chromium storage layer.
 
-1. establish six active actors and exact state;
-2. prove the browser profile contains the ActorSession resume record;
-3. SIGKILL Chromium while five remote actors keep driving authority;
-4. observe protected reservation / authority progression independently;
-5. restart a new Chromium process on the same `user-data-dir`;
-6. reject accidental Chrome tab auto-restore as ambiguous apparatus;
-7. require an authority-backed direct Resume offer;
-8. recover the exact same WorldEpoch / ActorSession / NetEntity and six-actor topology;
-9. require a fresh canonical player command after restart.
+### 8-second crash: exact same-session recovery (PASS, conditional)
 
-Do not treat same-profile process restart as cross-device identity or mobile app lifecycle closure.
+- Source: [run 39181218610](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/actions/runs/39181218610), code [7b8e3e6](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/commit/7b8e3e66a1518d38e283c9083f8a2bcbff681d71).
+- Both independent fresh-runner specimens: full F5 recovery PASS with an **8-second** dwell between observing the saved record and force-killing Chrome.
+- Both persisted ActorSession and non-secret control marker were present on a neutral same-origin page after restart, before app startup; authority recognized the private token.
+- Both preserved exact WorldEpoch, ActorSession and NetEntity identity with six connected physical actors; exactly one authority rebase; zero guard mismatches.
+- A fresh resumed-player command was consumed authoritatively in both trials.
+- Authority advanced independently by 157 and 156 ticks while the browser was dead; both observed `protected-disconnect`.
+- Chromium [LocalStorageImpl](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/services/storage/dom_storage/local_storage_impl.cc) configures a default five-second delayed write batch. This is consistent with 1.5s red / 8s green, **but correlation does not yet isolate every storage/profile factor**.
+
+### Qualification boundary and next discriminators
+
+- **Supported:** post-persistence same-machine/same-profile process restart, exact reconstruction and fresh agency under this isolated six-actor apparatus.
+- **Negative:** early (<5-second-class) abrupt browser death can lose the local private resume token while server authority still exists. Do not classify this as supported.
+- **Not tested:** cross-device credentials, OS/mobile eviction, unbounded absence, browser storage partitioning when launched inside Jaskinia, or distributed/cloud authority recreation.
+- Nearest unresolved F5 question: whether a genuinely acknowledged durable local write (candidate: a small IndexedDB transaction requesting `durability: "strict"`) can survive an immediate browser crash. This requires an isolated, falsifiable A/B experiment **before** changing the product or delaying player admission.
+- Parallel foundation gap: `app.js` physics tracks up to six actors, while `syncMeshes()` still renders only self plus one remote mesh. Machine six-actor exactness does not qualify human-readable 3–6 presence. Separate this from F5.
+- Do not promote this research tree to `main` or describe the generic browser lifecycle as qualified.
 
 ## Explicit nonclaims / exclusions
 
@@ -273,4 +285,4 @@ Browser process restart is autonomous machine falsification. Owner judgement bec
 
 Reverify branch HEAD and current runs.
 
-If no contradiction appears, execute the bounded same-profile browser-process restart discriminator. Preserve the F4 timing contract and exact guards. Re-plan from authority reservation, persisted resume authority, exact recovery and post-restart canonical agency evidence.
+Treat F5 as a conditional A/B result: 1.5 s RED, 8 s exact recovery GREEN. Select the next bounded falsifier from early-crash durable token capture, 3–6 actor visual presence, and eventual human qualification; use fresh evidence and Owner priorities to re-rank, not a mechanical checklist. Preserve the F4 timing contract, existing guards, qualified 2P main and the unmerged research donor.

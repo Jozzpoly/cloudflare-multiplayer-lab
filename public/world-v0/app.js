@@ -3252,7 +3252,15 @@ function enterWorld() {
   shareUrl.search = "";
   shareUrl.hash = "";
   shareUrl.searchParams.set("run", runKey);
-  if (lifecycleR0) shareUrl.searchParams.set("lifecycle", "r0");
+  // Preserve the authoritative lifecycle mode in the actual browser address.
+  // Otherwise MF6 silently downgrades the URL to r0 on Enter, so refresh or
+  // natural same-profile return targets a different authority contract.
+  if (lifecycleMf6) {
+    shareUrl.searchParams.set("lifecycle", "mf6");
+    if (mf6DurableResumeProbe) shareUrl.searchParams.set("mf6DurableResumeProbe", "1");
+  } else if (lifecycleR0) {
+    shareUrl.searchParams.set("lifecycle", "r0");
+  }
   history.replaceState(null, "", shareUrl);
   const resumeIntent = takeWorldV0ResumeIntent({ runKey, playerId: callsign });
   resetProtocolState();

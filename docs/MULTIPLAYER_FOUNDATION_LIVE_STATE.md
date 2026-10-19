@@ -249,12 +249,38 @@ The browser-process restart discriminator was executed twice with different pre-
 - Authority advanced independently by 157 and 156 ticks while the browser was dead; both observed `protected-disconnect`.
 - Chromium [LocalStorageImpl](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/services/storage/dom_storage/local_storage_impl.cc) configures a default five-second delayed write batch. This is consistent with 1.5s red / 8s green, **but correlation does not yet isolate every storage/profile factor**.
 
+### Short-window IndexedDB strict sidecar discriminator (2026-10-19)
+
+**Run [39228476293](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/actions/runs/39228476293), commit [96d0de3](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/commit/96d0de34ceaeff7f839cc9e9a3456ed05cc4801f): two fresh independent specimens.** Regression gate PASS; both specimens intentionally RED at the existing app Resume assertion; aggregate SKIPPED. The negative overall workflow status is **expected** and must not be rewritten as a green recovery gate.
+
+Both specimens performed the exact six-actor authority scenario, but inserted a **non-secret, independent IndexedDB marker** in a `readwrite` transaction with `{ durability: "strict" }`. They waited for `oncomplete`, then the shortened (1.5-second) foreground dwell and `SIGKILL`. A neutral same-origin page read both storage mechanisms **before any game script**.
+
+| Observation | Specimen a | Specimen b |
+| --- | --- | --- |
+| Wall time since localStorage control write (including strict-IDB commit) | 2170 ms | 1859 ms |
+| strict-IDB transaction completed | yes / strict / 587 ms | yes / strict / 335 ms |
+| same authoritative ActorSession token still valid | yes | yes |
+| ActorSession record in localStorage after Chrome restart | **absent** | **absent** |
+| independent localStorage control marker after restart | **absent** | **absent** |
+| strict IndexedDB control marker after restart | **present** | **present** |
+| client Resume offer | absent / expected RED | absent / expected RED |
+
+**Supported causal discriminator:** two durable-completed IDB writes survived real process death in a profile whose concurrent localStorage writes did not survive. This supports strict IndexedDB as a candidate for **persisting private resume capability** before declaring actor admission recoverable.
+
+**Important boundaries:** the IndexedDB record was deliberately **only a harmless marker**, never the private token. The test does not show that the actual app can read IDB and Resume, that strict transactions are available on every mobile browser, that storage survives clearing/partitioning, or that the transaction can always complete before an arbitrarily early crash. Writing the sidecar can perturb browser I/O timing, so do not claim an exact threshold or a universal advantage. The client still fails Resume on this specimen; only the independent sidecar survived.
+
+Design options worth falsifying before product changes:
+- Persist the **actual** ActorSession record in strict-IDB as an additional store, and only count it committed after `complete`; test same-profile immediate SIGKILL, full app replay and authoritative agency.
+- Define migration and read precedence carefully to avoid competing localStorage and IDB identities; retain the server token as sole authority and never log it.
+- Distinguish failure **before a durable commit** from failure after commit; no browser storage API can guarantee recovery of a token that was never durably committed.
+- Measure overhead on actual mobile devices, hosted HTTPS and Jaskinia framing before deciding to replace a shipping path.
+
 ### Qualification boundary and next discriminators
 
 - **Supported:** post-persistence same-machine/same-profile process restart, exact reconstruction and fresh agency under this isolated six-actor apparatus.
 - **Negative:** early (<5-second-class) abrupt browser death can lose the local private resume token while server authority still exists. Do not classify this as supported.
 - **Not tested:** cross-device credentials, OS/mobile eviction, unbounded absence, browser storage partitioning when launched inside Jaskinia, or distributed/cloud authority recreation.
-- Nearest unresolved F5 question: whether a genuinely acknowledged durable local write (candidate: a small IndexedDB transaction requesting `durability: "strict"`) can survive an immediate browser crash. This requires an isolated, falsifiable A/B experiment **before** changing the product or delaying player admission.
+- Nearest unresolved F5 question: whether persisting the **actual private ActorSession record** through an acknowledged strict-IDB transaction permits an *end-to-end* immediate-crash recovery with exact identity and fresh canonical agency. The non-secret sidecar discriminator above is favorable evidence, **not** this qualification.
 - Parallel foundation gap: `app.js` physics tracks up to six actors, while `syncMeshes()` still renders only self plus one remote mesh. Machine six-actor exactness does not qualify human-readable 3–6 presence. Separate this from F5.
 - Do not promote this research tree to `main` or describe the generic browser lifecycle as qualified.
 

@@ -14,7 +14,9 @@ const RESTART_GAP_MS=Number(process.env.MW_MF6_F5_PROCESS_GAP_MS||2500);
 // Not a qualified lifecycle SLO or a fix; the short-window FAIL stays on record.
 // Research-only discriminator. The qualified 8-second harness is pinned in
 // Git history and must be restored after this one-shot experiment.
-const PRE_CRASH_DWELL_MS=1500;
+// Zero *requested* dwell after strict commit; the authoritative status call
+// and disk metadata observation still impose measured runtime latency.
+const PRE_CRASH_DWELL_MS=0;
 const TIMEOUT_MS=45000;
 const EXPECTED_ACTORS=6;
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
@@ -359,6 +361,7 @@ try{
   const authorityBeforeCrash=await authorityStatus();
   const boundaryBeforeCrash=rawPeers[0].latestBoundary;
 
+  result.strictCommitToCrashRequestMs=Date.now()-tStrictCapture;
   await crashBrowser(browser);
   result.profileDiskAfterCrash=profileDiskSnapshot(profile);
   browser=null;

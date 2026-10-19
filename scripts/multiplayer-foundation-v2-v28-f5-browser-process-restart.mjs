@@ -10,9 +10,9 @@ const RUN=process.env.MW_MF6_F5_PROCESS_RUN||`f5p-${Date.now().toString(36)}`;
 const OUTPUT=process.env.MW_MF6_F5_PROCESS_OUTPUT||"mf6-f5-browser-process-restart.json";
 const DEBUG_PORT=Number(process.env.MW_MF6_F5_PROCESS_DEBUG_PORT||9420);
 const RESTART_GAP_MS=Number(process.env.MW_MF6_F5_PROCESS_GAP_MS||2500);
-// Deliberate second specimen: 8 s vs the earlier failing 1.5 s after localStorage.write.
-// Not a qualified lifecycle SLO or a fix; the short-window FAIL stays on record.
-const PRE_CRASH_DWELL_MS=8000;
+// Experimental branch-only short-window comparison. The already-qualified 8s
+// result remains pinned at run 39181605149; this run may intentionally be RED.
+const PRE_CRASH_DWELL_MS=1500;
 const TIMEOUT_MS=45000;
 const EXPECTED_ACTORS=6;
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
@@ -323,10 +323,36 @@ try{
     return localStorage.getItem(${JSON.stringify(markerKey)})===${JSON.stringify(RUN)};
   })()`);
   assert(markerWritten===true,"non-secret profile control was not written before crash");
+  const preCrashStart=Date.now();
 
-  // Compare an 8-second foreground dwell with the previously failed 1.5-second dwell.
-  // Keep both specimens as separate evidence; do not redefine recovery as passing.
+  // Independent IndexedDB strict-durability sidecar contains only a harmless
+  // marker. It does NOT replace, duplicate or expose the real private token.
+  // Wait for transaction completion before the browser is killed.
+  const strictWrite=await browser.cdp.eval(page.sessionId,`new Promise((resolve,reject)=>{
+    const started=performance.now();
+    const req=indexedDB.open("mf6-f5-durable-marker-v1",1);
+    req.onupgradeneeded=()=>req.result.createObjectStore("markers");
+    req.onerror=()=>reject(new Error("strict idb open failed"));
+    req.onsuccess=()=>{
+      const db=req.result;
+      let tx;
+      try{tx=db.transaction("markers","readwrite",{durability:"strict"});}
+      catch(error){db.close();reject(error);return;}
+      const hint=tx.durability;
+      tx.objectStore("markers").put(${JSON.stringify(RUN)},"marker");
+      tx.oncomplete=()=>{db.close();resolve({committed:true,hint,elapsedMs:performance.now()-started});};
+      tx.onerror=()=>{db.close();reject(new Error("strict idb transaction failed"));};
+      tx.onabort=()=>{db.close();reject(new Error("strict idb transaction aborted"));};
+    };
+  })`);
+  assert(strictWrite?.committed===true&&strictWrite.hint==="strict","strict IDB write not confirmed");
+  result.durableMarkerWrite=strictWrite;
+
+  // Deliberately re-run the earlier short-window crash. This does NOT change
+  // the older 8s PASS; it tests whether a separately committed strict-IDB
+  // marker survives where localStorage has previously failed.
   await sleep(PRE_CRASH_DWELL_MS);
+  result.elapsedSinceLocalStorageMarkerMs=Date.now()-preCrashStart;
   result.profileDiskBeforeCrash=profileDiskSnapshot(profile);
   const authorityBeforeCrash=await authorityStatus();
   const boundaryBeforeCrash=rawPeers[0].latestBoundary;
@@ -391,10 +417,26 @@ try{
     stored:localStorage.getItem("shared-yard-v0-actor-sessions-v1"),
     marker:localStorage.getItem(${JSON.stringify(markerKey)})
   })`);
+  const strictRead=await browser.cdp.eval(neutralPage.sessionId,`new Promise((resolve,reject)=>{
+    const req=indexedDB.open("mf6-f5-durable-marker-v1",1);
+    let existed=true;
+    req.onupgradeneeded=()=>{existed=false;req.result.createObjectStore("markers");};
+    req.onerror=()=>reject(new Error("strict idb reopen failed"));
+    req.onsuccess=()=>{
+      const db=req.result;
+      if(!existed){db.close();resolve({existed:false,present:false});return;}
+      const tx=db.transaction("markers","readonly");
+      const get=tx.objectStore("markers").get("marker");
+      get.onsuccess=()=>{const present=get.result===${JSON.stringify(RUN)};db.close();resolve({existed:true,present});};
+      get.onerror=()=>{db.close();reject(new Error("strict idb read failed"));};
+    };
+  })`);
+  result.durableMarkerAfterCrash=strictRead;
   result.profileStorageBeforeApp={
     originMatches:neutralStorage.origin===new URL(BASE).origin,
     actorRecordPresent:typeof neutralStorage.stored==="string"&&neutralStorage.stored.includes(identityBefore.actorSessionId),
     controlMarkerPresent:neutralStorage.marker===RUN,
+    strictIdbPresent:strictRead?.present===true,
   };
   assert(result.profileStorageBeforeApp.originMatches,"neutral storage probe used wrong origin");
   await browser.cdp.call("Target.closeTarget",{targetId:neutralPage.targetId});
@@ -417,7 +459,10 @@ try{
     `same-profile process restart not offered Resume · diagnostics=${JSON.stringify({
       authority:result.authorityResumePreflight,
       beforeApp:result.profileStorageBeforeApp,
-      afterApp:result.profileStorageAfterApp
+      afterApp:result.profileStorageAfterApp,
+      strictWrite:result.durableMarkerWrite,
+      strictAfterCrash:result.durableMarkerAfterCrash,
+      elapsedSinceLocalStorageMarkerMs:result.elapsedSinceLocalStorageMarkerMs
     })}`);
   assert(/Resume/.test(String(resumeOffer.enterLabel||resumeOffer.entry?.enterLabel||"")),"process restart entry label is not Resume");
   assert(typeof resumeOffer.stored==="string"&&resumeOffer.stored.includes(identityBefore.actorSessionId),"persisted ActorSession record missing after process restart");

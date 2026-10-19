@@ -12,7 +12,9 @@ const DEBUG_PORT=Number(process.env.MW_MF6_F5_PROCESS_DEBUG_PORT||9420);
 const RESTART_GAP_MS=Number(process.env.MW_MF6_F5_PROCESS_GAP_MS||2500);
 // Deliberate second specimen: 8 s vs the earlier failing 1.5 s after localStorage.write.
 // Not a qualified lifecycle SLO or a fix; the short-window FAIL stays on record.
-const PRE_CRASH_DWELL_MS=8000;
+// Research-only discriminator. The qualified 8-second harness is pinned in
+// Git history and must be restored after this one-shot experiment.
+const PRE_CRASH_DWELL_MS=1500;
 const TIMEOUT_MS=45000;
 const EXPECTED_ACTORS=6;
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
@@ -324,9 +326,35 @@ try{
   })()`);
   assert(markerWritten===true,"non-secret profile control was not written before crash");
 
+  // Mirror the *actual* private ActorSession blob in strict IndexedDB. This is
+  // not production code. No private token is ever written to logs or artifacts.
+  const strictCapture=await browser.cdp.eval(page.sessionId,`new Promise((resolve,reject)=>{
+    const raw=localStorage.getItem("shared-yard-v0-actor-sessions-v1");
+    if(!raw){reject(new Error("strict mirror missing source record"));return;}
+    const request=indexedDB.open("mf6-f5-actor-session-recovery-v1",1);
+    request.onupgradeneeded=()=>request.result.createObjectStore("resume");
+    request.onerror=()=>reject(new Error("strict mirror database open failed"));
+    request.onsuccess=()=>{
+      const db=request.result;
+      let tx;
+      try{tx=db.transaction("resume","readwrite",{durability:"strict"});}
+      catch{db.close();reject(new Error("strict mirror unsupported"));return;}
+      const hint=tx.durability;
+      tx.objectStore("resume").put(raw,"record");
+      tx.oncomplete=()=>{db.close();resolve({committed:true,hint});};
+      tx.onerror=()=>{db.close();reject(new Error("strict mirror transaction failed"));};
+      tx.onabort=()=>{db.close();reject(new Error("strict mirror transaction aborted"));};
+    };
+  })`);
+  assert(strictCapture?.committed===true&&strictCapture.hint==="strict","strict ActorSession capture was not acknowledged");
+  result.strictCaptureAcknowledged=true;
+  result.strictCaptureDurabilityHint=strictCapture.hint;
+  const tStrictCapture=Date.now();
+
   // Compare an 8-second foreground dwell with the previously failed 1.5-second dwell.
   // Keep both specimens as separate evidence; do not redefine recovery as passing.
   await sleep(PRE_CRASH_DWELL_MS);
+  result.dwellAfterStrictCommitMs=Date.now()-tStrictCapture;
   result.profileDiskBeforeCrash=profileDiskSnapshot(profile);
   const authorityBeforeCrash=await authorityStatus();
   const boundaryBeforeCrash=rawPeers[0].latestBoundary;
@@ -397,6 +425,53 @@ try{
     controlMarkerPresent:neutralStorage.marker===RUN,
   };
   assert(result.profileStorageBeforeApp.originMatches,"neutral storage probe used wrong origin");
+
+  // Only recover from the browser's post-crash persisted IndexedDB; NEVER from
+  // the pre-crash Node snapshot or savedActorSession variable. Read, validate,
+  // and bridge into the old synchronous path on a neutral SAME-ORIGIN page.
+  const postCrashBridge=await browser.cdp.eval(neutralPage.sessionId,`new Promise((resolve,reject)=>{
+    const presentBefore=localStorage.getItem("shared-yard-v0-actor-sessions-v1")!==null;
+    const markerBefore=localStorage.getItem(${JSON.stringify(markerKey)})!==null;
+    const request=indexedDB.open("mf6-f5-actor-session-recovery-v1",1);
+    let databaseExisted=true;
+    request.onupgradeneeded=()=>{databaseExisted=false;request.result.createObjectStore("resume");};
+    request.onerror=()=>reject(new Error("strict recovery database open failed"));
+    request.onsuccess=()=>{
+      const db=request.result;
+      if(!databaseExisted){db.close();resolve({databaseExisted:false,recordPresent:false,presentBefore,markerBefore,bridged:false});return;}
+      const tx=db.transaction("resume","readonly");
+      const get=tx.objectStore("resume").get("record");
+      get.onerror=()=>{db.close();reject(new Error("strict recovery record read failed"));};
+      get.onsuccess=()=>{
+        const raw=get.result;
+        let matched=false;
+        if(typeof raw==="string"){
+          try {
+            const value=JSON.parse(raw)?.sessions?.[${JSON.stringify(RUN)}];
+            matched=value?.sessionId===${JSON.stringify(identityBefore.actorSessionId)}&&
+              value?.worldEpoch===${JSON.stringify(identityBefore.worldEpoch)}&&
+              value?.netEntityId===${JSON.stringify(identityBefore.netEntityId)}&&
+              typeof value?.resumeToken==="string"&&value.resumeToken.length>0;
+          }catch{}
+        }
+        // An already available localStorage record contaminates the test.
+        if(matched&&!presentBefore){
+          localStorage.setItem("shared-yard-v0-actor-sessions-v1",raw);
+        }
+        const bridged=matched&&!presentBefore&&
+          localStorage.getItem("shared-yard-v0-actor-sessions-v1")===raw;
+        db.close();
+        resolve({databaseExisted:true,recordPresent:typeof raw==="string",
+          matchingActor:matched,presentBefore,markerBefore,bridged});
+      };
+    };
+  })`);
+  result.strictPostCrashBridge=postCrashBridge;
+  assert(postCrashBridge.databaseExisted&&postCrashBridge.recordPresent&&postCrashBridge.matchingActor,
+    `actual ActorSession record did not persist in strict IndexedDB: ${JSON.stringify(postCrashBridge)}`);
+  assert(!postCrashBridge.presentBefore&&!postCrashBridge.markerBefore,
+    `short-window localStorage unexpectedly survived: ${JSON.stringify(postCrashBridge)}`);
+  assert(postCrashBridge.bridged,"strict persisted ActorSession could not be bridged to legacy entry");
   await browser.cdp.call("Target.closeTarget",{targetId:neutralPage.targetId});
 
   page=await attachPage(browser.cdp,pageUrl);

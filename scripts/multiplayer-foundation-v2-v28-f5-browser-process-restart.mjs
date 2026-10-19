@@ -295,6 +295,18 @@ try{
   };
   const storedBefore=await browser.cdp.eval(page.sessionId,'localStorage.getItem("shared-yard-v0-actor-sessions-v1")');
   assert(typeof storedBefore==="string"&&storedBefore.includes(identityBefore.actorSessionId),"ActorSession resume state not persisted before crash");
+  const savedActorSession=JSON.parse(storedBefore)?.sessions?.[RUN];
+  assert(savedActorSession?.sessionId===identityBefore.actorSessionId&&typeof savedActorSession.resumeToken==="string",
+    "pre-crash ActorSession record malformed");
+
+  // Independent, non-secret marker discriminates general Chrome profile loss
+  // from an application-level deletion of the private ActorSession record.
+  const markerKey="shared-yard-v0-mf6-f5-profile-control-v1";
+  const markerWritten=await browser.cdp.eval(page.sessionId,`(() => {
+    localStorage.setItem(${JSON.stringify(markerKey)},${JSON.stringify(RUN)});
+    return localStorage.getItem(${JSON.stringify(markerKey)})===${JSON.stringify(RUN)};
+  })()`);
+  assert(markerWritten===true,"non-secret profile control was not written before crash");
 
   // Give Chrome a bounded foreground dwell after the persisted record is observable.
   await sleep(1500);
@@ -325,10 +337,48 @@ try{
   assert(authorityBeforeRestart.worldEpoch===identityBefore.worldEpoch,"WorldEpoch rotated during process outage");
   assert(rawPeers[0].latestBoundary>boundaryBeforeCrash+60,"authority did not advance while browser process was dead");
 
+  // Server truth is tested independently from Chrome's disk and the web UI.
+  // Never expose the private token in specimen JSON, console logs or error messages.
+  const resumeCheckResponse=await fetch(`${BASE}/api/world-v0/resume-check`,{
+    method:"POST",
+    headers:{"content-type":"application/json"},
+    body:JSON.stringify({
+      run:RUN,playerId:savedActorSession.playerId,
+      resumeToken:savedActorSession.resumeToken,worldEpoch:savedActorSession.worldEpoch,
+    }),
+  });
+  const resumeCheckVerdict=await resumeCheckResponse.json();
+  result.authorityResumePreflight={
+    httpStatus:resumeCheckResponse.status,
+    valid:resumeCheckVerdict?.valid===true,
+    reason:String(resumeCheckVerdict?.reason||""),
+    sameIdentity:resumeCheckVerdict?.worldEpoch===identityBefore.worldEpoch&&
+      resumeCheckVerdict?.sessionId===identityBefore.actorSessionId&&
+      resumeCheckVerdict?.netEntityId===identityBefore.netEntityId&&
+      resumeCheckVerdict?.slot===identityBefore.slot,
+  };
+
   browser=await launchBrowser(binary,profile);
   const targetInfos=await browser.cdp.call("Target.getTargets");
   const restoredGameTargets=(targetInfos.targetInfos||[]).filter((info)=>String(info.url||"").includes("/world-v0/"));
   assert(restoredGameTargets.length===0,`Chrome auto-restored game target; apparatus ambiguous ${JSON.stringify(restoredGameTargets)}`);
+
+  // Read storage on a script-free response at the SAME origin, before friend-ready.js
+  // can validate or clear any record. Do not accidentally test about:blank storage.
+  const neutralPage=await attachPage(browser.cdp,`${BASE}/api/ping`);
+  await waitFor(()=>browser.cdp.eval(neutralPage.sessionId,'document.readyState==="complete"'),"neutral origin response",10000);
+  const neutralStorage=await browser.cdp.eval(neutralPage.sessionId,`({
+    origin:location.origin,
+    stored:localStorage.getItem("shared-yard-v0-actor-sessions-v1"),
+    marker:localStorage.getItem(${JSON.stringify(markerKey)})
+  })`);
+  result.profileStorageBeforeApp={
+    originMatches:neutralStorage.origin===new URL(BASE).origin,
+    actorRecordPresent:typeof neutralStorage.stored==="string"&&neutralStorage.stored.includes(identityBefore.actorSessionId),
+    controlMarkerPresent:neutralStorage.marker===RUN,
+  };
+  assert(result.profileStorageBeforeApp.originMatches,"neutral storage probe used wrong origin");
+  await browser.cdp.call("Target.closeTarget",{targetId:neutralPage.targetId});
 
   page=await attachPage(browser.cdp,pageUrl);
   await bootPage(browser.cdp,page);
@@ -338,7 +388,18 @@ try{
     enterLabel: document.querySelector("#enter")?.textContent || null,
     stored: localStorage.getItem("shared-yard-v0-actor-sessions-v1")
   })`);
-  assert(resumeOffer.entry?.directLinkResumable===true,`same-profile process restart not offered Resume ${JSON.stringify(resumeOffer)}`);
+  result.profileStorageAfterApp={
+    actorRecordPresent:typeof resumeOffer.stored==="string"&&resumeOffer.stored.includes(identityBefore.actorSessionId),
+    directLinkResumable:resumeOffer.entry?.directLinkResumable===true,
+    entryLabel:String(resumeOffer.entry?.enterLabel||resumeOffer.enterLabel||""),
+  };
+  // Fail without printing stored ActorSession bytes, which contain a private token.
+  assert(resumeOffer.entry?.directLinkResumable===true,
+    `same-profile process restart not offered Resume · diagnostics=${JSON.stringify({
+      authority:result.authorityResumePreflight,
+      beforeApp:result.profileStorageBeforeApp,
+      afterApp:result.profileStorageAfterApp
+    })}`);
   assert(/Resume/.test(String(resumeOffer.enterLabel||resumeOffer.entry?.enterLabel||"")),"process restart entry label is not Resume");
   assert(typeof resumeOffer.stored==="string"&&resumeOffer.stored.includes(identityBefore.actorSessionId),"persisted ActorSession record missing after process restart");
 

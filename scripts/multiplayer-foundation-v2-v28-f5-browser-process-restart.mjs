@@ -488,19 +488,30 @@ try{
       "negative fixture could not durably save stale ActorSession");
     const stalePage=await attachPage(browser.cdp,actualGameUrl);
     await bootPage(browser.cdp,stalePage);
-    const rejected=await waitFor(async()=>{
+    let lastStaleObservation=null;
+    let rejected;
+    try{
+      rejected=await waitFor(async()=>{
       const observation=await browser.cdp.eval(stalePage.sessionId,`(async()=>{
         const module=await import("/world-v0/mf6-durable-resume-probe.js");
         return {
           bootMode:window.__mf6DurableResumeProbe?.bootMode||null,
           offer:window.__sharedYardV0FriendEntry()?.directLinkResumable===true,
-          localPresent:localStorage.getItem("shared-yard-v0-actor-sessions-v1")!==null,
+          // A cleared run leaves a valid empty localStorage envelope.
+          // Check the actual ActorSession, not existence of the envelope key.
+          localPresent:!!(await import("/world-v0/session-continuity.js"))
+            .readWorldV0StoredSession(${JSON.stringify(RUN)}),
           durablePresent:!!(await module.mf6ReadDurableActorSession(${JSON.stringify(RUN)})),
         };
       })()`);
+      lastStaleObservation=observation;
       return observation.bootMode==="hydrated"&&!observation.offer&&
         !observation.localPresent&&!observation.durablePresent?observation:false;
-    },"stale strict-IDB token authority rejection + durable tombstone",10000);
+      },"stale strict-IDB token authority rejection + durable tombstone",10000);
+    }catch{
+      // Only non-secret status flags: no resume token or raw persisted record.
+      throw new Error(`stale session negative failed · observed=${JSON.stringify(lastStaleObservation)}`);
+    }
     result.negativeStaleEpoch={
       appRehydratedCandidate:rejected.bootMode==="hydrated",
       authorityRejectedResume:!rejected.offer,

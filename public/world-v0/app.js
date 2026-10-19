@@ -35,6 +35,10 @@ import {
   writeWorldV0StoredSession,
 } from "./session-continuity.js";
 import {
+  WORLD_V0_VISIBLE_ACTOR_ROSTER_REVISION,
+  planWorldV0VisibleRemotes,
+} from "./visible-actor-roster.js";
+import {
   mf6StoreDurableActorSession,
   mf6ClearDurableActorSession,
 } from "./mf6-durable-resume-probe.js";
@@ -175,7 +179,8 @@ const worldVisualRoot = new THREE.Group();
 scene.add(worldVisualRoot);
 const propMeshes = new Map();
 let selfMesh = null;
-let remoteMesh = null;
+let remoteMesh = null; // 2P / first-remote compatibility
+const mf6RemoteMeshes = new Map(); // MF6 stable sessionId -> independent model
 let visualContractBuiltFor = null;
 let spatialCueCount = 0;
 
@@ -216,7 +221,24 @@ function resetCameraOrbit() {
 
 resetCameraOrbit();
 
+function disposePlayerPresence(mesh) {
+  if (!mesh) return;
+  worldVisualRoot.remove(mesh);
+  const ring = mesh.userData?.presenceRing;
+  if (ring) worldVisualRoot.remove(ring);
+  for (const root of [mesh,ring]) root?.traverse(node => {
+    node.geometry?.dispose();
+    if (!node.material) return;
+    for (const material of (Array.isArray(node.material) ? node.material : [node.material])) {
+      material.map?.dispose();
+      material.dispose();
+    }
+  });
+}
+
 function clearWorldVisuals() {
+  for (const mesh of new Set([selfMesh,remoteMesh,...mf6RemoteMeshes.values()])) disposePlayerPresence(mesh);
+  mf6RemoteMeshes.clear();
   while (worldVisualRoot.children.length) worldVisualRoot.remove(worldVisualRoot.children[0]);
   propMeshes.clear();
   selfMesh = null;
@@ -339,7 +361,7 @@ function buildArenaVisual(contract) {
   worldVisualRoot.add(grid);
 }
 
-function createPlayerMesh(isSelf) {
+function createPlayerMesh(isSelf, labelText = isSelf ? "YOU" : "PEER") {
   const color = isSelf ? 0x76d8c0 : 0xe7a16e;
   const material = new THREE.MeshStandardMaterial({ color, roughness: 0.56 });
   const group = new THREE.Group();
@@ -348,7 +370,7 @@ function createPlayerMesh(isSelf) {
   const bottom = new THREE.Mesh(new THREE.SphereGeometry(0.35, 14, 10), material);
   top.position.y = 0.45;
   bottom.position.y = -0.45;
-  const label = makePresenceLabel(isSelf ? "YOU" : "PEER", isSelf ? "#94f6de" : "#ffc18b");
+  const label = makePresenceLabel(labelText, isSelf ? "#94f6de" : "#ffc18b");
   label.position.set(0, 1.3, 0);
   group.add(cylinder, top, bottom, label);
   const ring = makeGroundRing(color);
@@ -2408,7 +2430,7 @@ function handleStart(message) {
   updatePhaseFromStart(message, performance.now());
   startLogicalInputScheduler();
   if (!selfMesh) selfMesh = createPlayerMesh(true);
-  if (remoteSessionId && !remoteMesh) remoteMesh = createPlayerMesh(false);
+  if (!lifecycleMf6 && remoteSessionId && !remoteMesh) remoteMesh = createPlayerMesh(false);
   sessionEnd = null;
   networkState = lifecycleR0 && !remoteSessionId ? "live · solo Shared Yard" : "live · Shared Yard V0";
   jumpButton.classList.remove("hidden");
@@ -2833,21 +2855,57 @@ function syncPresence(mesh, position) {
 function syncMeshes() {
   if (!localState?.sim || !selfSessionId) return;
   if (!selfMesh) selfMesh = createPlayerMesh(true);
-  if (remoteSessionId && !remoteMesh) remoteMesh = createPlayerMesh(false);
   const selfBody = localState.sim.actorBodies.get(selfSessionId);
-  const remoteBody = remoteSessionId ? localState.sim.actorBodies.get(remoteSessionId) : null;
   if (selfBody) {
     const position = bodyPosition(selfBody);
     selfMesh.position.fromArray(position);
     selfMesh.quaternion.fromArray(bodyRotation(selfBody)).normalize();
     syncPresence(selfMesh, position);
   }
-  if (remoteBody && remoteMesh) {
-    const exactPosition = bodyPosition(remoteBody);
-    const position = remotePresentationPosition(performance.now(), exactPosition) || exactPosition;
-    remoteMesh.position.fromArray(position);
-    remoteMesh.quaternion.fromArray(bodyRotation(remoteBody)).normalize();
-    syncPresence(remoteMesh, position);
+  if (lifecycleMf6) {
+    const plan = planWorldV0VisibleRemotes(
+      currentTopology,selfSessionId,[...localState.sim.actorBodies.keys()],[...mf6RemoteMeshes.keys()],
+    );
+    for (const sessionId of plan.removeSessionIds) {
+      disposePlayerPresence(mf6RemoteMeshes.get(sessionId));
+      mf6RemoteMeshes.delete(sessionId);
+    }
+    const now = performance.now();
+    for (const actor of plan.remoteActors) {
+      const body = localState.sim.actorBodies.get(actor.sessionId);
+      if (!body) continue;
+      let mesh = mf6RemoteMeshes.get(actor.sessionId);
+      if (!mesh) {
+        mesh = createPlayerMesh(false, `PEER ${actor.slot+1}`);
+        mesh.userData.actorSessionId = actor.sessionId;
+        mesh.userData.actorNetEntityId = actor.netEntityId;
+        mf6RemoteMeshes.set(actor.sessionId,mesh);
+      }
+      const exactPosition = bodyPosition(body);
+      // V25 interpolation represents the primary remote only. Never reuse
+      // its one-peer temporal anchors for another ActorSession.
+      const position = actor.sessionId === remoteSessionId
+        ? (remotePresentationPosition(now,exactPosition) || exactPosition)
+        : exactPosition;
+      mesh.position.fromArray(position);
+      mesh.quaternion.fromArray(bodyRotation(body)).normalize();
+      syncPresence(mesh,position);
+    }
+    remoteMesh = remoteSessionId ? (mf6RemoteMeshes.get(remoteSessionId) || null) : null;
+  } else {
+    const remoteBody = remoteSessionId ? localState.sim.actorBodies.get(remoteSessionId) : null;
+    if (!remoteBody && remoteMesh) {
+      disposePlayerPresence(remoteMesh);
+      remoteMesh = null;
+    }
+    if (remoteBody && !remoteMesh) remoteMesh = createPlayerMesh(false);
+    if (remoteBody && remoteMesh) {
+      const exactPosition = bodyPosition(remoteBody);
+      const position = remotePresentationPosition(performance.now(),exactPosition) || exactPosition;
+      remoteMesh.position.fromArray(position);
+      remoteMesh.quaternion.fromArray(bodyRotation(remoteBody)).normalize();
+      syncPresence(remoteMesh,position);
+    }
   }
   for (const [id, body] of localState.sim.propBodies) {
     const mesh = getPropMesh(id);
@@ -2988,6 +3046,19 @@ function buildEvidence() {
       selfPresence: selfMesh?.userData?.presenceLabel?.userData?.presenceText || null,
       remotePresence: remoteMesh?.userData?.presenceLabel?.userData?.presenceText || null,
       remoteDisplayedPosition: remoteMesh ? [remoteMesh.position.x, remoteMesh.position.y, remoteMesh.position.z] : null,
+      visibleRosterRevision: WORLD_V0_VISIBLE_ACTOR_ROSTER_REVISION,
+      visibleRemoteSessionIds: lifecycleMf6 ? [...mf6RemoteMeshes.keys()] :
+        (remoteMesh && remoteSessionId ? [remoteSessionId] : []),
+      visibleActorCount: (selfMesh ? 1 : 0) +
+        (lifecycleMf6 ? mf6RemoteMeshes.size : (remoteMesh && remoteSessionId ? 1 : 0)),
+      visibleRemoteActors: lifecycleMf6 ? [...mf6RemoteMeshes.entries()].map(([sessionId,mesh]) => ({
+        sessionId,
+        netEntityId:mesh.userData.actorNetEntityId,
+        presenceLabel:mesh.userData.presenceLabel?.userData?.presenceText || null,
+        mounted:worldVisualRoot.children.includes(mesh) &&
+          worldVisualRoot.children.includes(mesh.userData.presenceRing),
+        position:[mesh.position.x,mesh.position.y,mesh.position.z],
+      })) : [],
       remotePresentation: remotePresentationEvidence(),
       spatialCueCount,
       cameraPreset: cameraPresetName(),

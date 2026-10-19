@@ -12,10 +12,7 @@ const DEBUG_PORT=Number(process.env.MW_MF6_F5_PROCESS_DEBUG_PORT||9420);
 const RESTART_GAP_MS=Number(process.env.MW_MF6_F5_PROCESS_GAP_MS||2500);
 // Deliberate second specimen: 8 s vs the earlier failing 1.5 s after localStorage.write.
 // Not a qualified lifecycle SLO or a fix; the short-window FAIL stays on record.
-const PRE_CRASH_DWELL_MS=0;
-// One-shot app-native strict-IDB probe; qualified 8s native harness is preserved
-// in earlier Git history and must be restored when this discriminator ends.
-const APP_NATIVE_DURABLE_PROBE=true;
+const PRE_CRASH_DWELL_MS=8000;
 const TIMEOUT_MS=45000;
 const EXPECTED_ACTORS=6;
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
@@ -286,7 +283,7 @@ try{
 
   const binary=findChrome();
   browser=await launchBrowser(binary,profile);
-  const pageUrl=`${BASE}/world-v0/?run=${encodeURIComponent(RUN)}&lifecycle=mf6&player=mf6-browser${APP_NATIVE_DURABLE_PROBE?"&mf6DurableResumeProbe=1":""}`;
+  const pageUrl=`${BASE}/world-v0/?run=${encodeURIComponent(RUN)}&lifecycle=mf6&player=mf6-browser`;
   page=await attachPage(browser.cdp,pageUrl);
   await bootPage(browser.cdp,page);
   await browser.cdp.eval(page.sessionId,'document.querySelector("#enter").click(); true');
@@ -312,13 +309,10 @@ try{
     netEntityId:before.session.selfNetEntityId,
     slot:selfTopologyActor.slot,
   };
+  // Verify natural refresh/reopen uses the actual post-Enter browser URL.
   const actualGameUrl=await browser.cdp.eval(page.sessionId,"location.href");
-  const observedUrl=new URL(actualGameUrl);
-  assert(observedUrl.searchParams.get("lifecycle")==="mf6",
-    "actual post-Enter URL lost MF6 lifecycle contract");
-  if(APP_NATIVE_DURABLE_PROBE)assert(observedUrl.searchParams.get("mf6DurableResumeProbe")==="1",
-    "actual post-Enter URL lost opt-in durable probe flag");
-  result.reopenedActualAddress=true;
+  assert(new URL(actualGameUrl).searchParams.get("lifecycle")==="mf6",
+    "browser address downgraded MF6 lifecycle after Enter");
   const storedBefore=await browser.cdp.eval(page.sessionId,'localStorage.getItem("shared-yard-v0-actor-sessions-v1")');
   assert(typeof storedBefore==="string"&&storedBefore.includes(identityBefore.actorSessionId),"ActorSession resume state not persisted before crash");
   const savedActorSession=JSON.parse(storedBefore)?.sessions?.[RUN];
@@ -333,13 +327,6 @@ try{
     return localStorage.getItem(${JSON.stringify(markerKey)})===${JSON.stringify(RUN)};
   })()`);
   assert(markerWritten===true,"non-secret profile control was not written before crash");
-
-  // Native app writes the original token, without CDP inserting an IDB record.
-  const nativeCommit=await waitFor(
-    ()=>browser.cdp.eval(page.sessionId,"window.__mf6DurableResumeProbe?.commit === 'complete'"),
-    "app-native strict-IDB commit",12000);
-  assert(nativeCommit===true,"native strict-IDB ActorSession commit unacknowledged");
-  result.nativeDurableWriteConfirmed=true;
 
   // Compare an 8-second foreground dwell with the previously failed 1.5-second dwell.
   // Keep both specimens as separate evidence; do not redefine recovery as passing.
@@ -416,8 +403,6 @@ try{
   assert(result.profileStorageBeforeApp.originMatches,"neutral storage probe used wrong origin");
   await browser.cdp.call("Target.closeTarget",{targetId:neutralPage.targetId});
 
-  // Real user refresh/reopen follows the address left by the application,
-  // not the original test fixture URL.
   page=await attachPage(browser.cdp,actualGameUrl);
   await bootPage(browser.cdp,page);
   const resumeOffer=await browser.cdp.eval(page.sessionId,`({
@@ -431,12 +416,6 @@ try{
     directLinkResumable:resumeOffer.entry?.directLinkResumable===true,
     entryLabel:String(resumeOffer.entry?.enterLabel||resumeOffer.enterLabel||""),
   };
-  result.nativeDurableBoot=await browser.cdp.eval(page.sessionId,"window.__mf6DurableResumeProbe?.bootMode || null");
-  // A retained localStorage record would not discriminate the native IDB path.
-  assert(!result.profileStorageBeforeApp.actorRecordPresent,
-    "original localStorage ActorSession survived; native IDB recovery not discriminated");
-  assert(result.nativeDurableBoot==="hydrated",
-    `app-native pre-boot hydration missing: mode=${result.nativeDurableBoot}`);
   // Fail without printing stored ActorSession bytes, which contain a private token.
   assert(resumeOffer.entry?.directLinkResumable===true,
     `same-profile process restart not offered Resume · diagnostics=${JSON.stringify({
@@ -468,58 +447,6 @@ try{
     return e&&!e.runtimeFailed&&e.metrics?.guardMismatches===0?e:false;
   },"post-process-restart exact settle",10000);
   const authorityAfter=await authorityStatus();
-
-  // Negative evidence for the app-native IDB path: deliberately persist a
-  // well-formed but obsolete epoch in the same real browser profile, remove
-  // localStorage, and verify ordinary app bootstrap rejects + tombstones it.
-  // No private token is printed in the evidence JSON.
-  if (APP_NATIVE_DURABLE_PROBE) {
-    const staleWrite=await browser.cdp.eval(page.sessionId,`(async()=>{
-      const module=await import("/world-v0/mf6-durable-resume-probe.js");
-      const raw=localStorage.getItem("shared-yard-v0-actor-sessions-v1");
-      const actor=JSON.parse(raw)?.sessions?.[${JSON.stringify(RUN)}];
-      if(!actor)return {committed:false,reason:"missing-source"};
-      const stale={...actor,worldEpoch:"f5-stale-epoch-control"};
-      const outcome=await module.mf6StoreDurableActorSession(stale);
-      if(outcome.committed)localStorage.removeItem("shared-yard-v0-actor-sessions-v1");
-      return {committed:outcome.committed,localCleared:localStorage.getItem("shared-yard-v0-actor-sessions-v1")===null};
-    })()`);
-    assert(staleWrite.committed&&staleWrite.localCleared,
-      "negative fixture could not durably save stale ActorSession");
-    const stalePage=await attachPage(browser.cdp,actualGameUrl);
-    await bootPage(browser.cdp,stalePage);
-    let lastStaleObservation=null;
-    let rejected;
-    try{
-      rejected=await waitFor(async()=>{
-      const observation=await browser.cdp.eval(stalePage.sessionId,`(async()=>{
-        const module=await import("/world-v0/mf6-durable-resume-probe.js");
-        return {
-          bootMode:window.__mf6DurableResumeProbe?.bootMode||null,
-          offer:window.__sharedYardV0FriendEntry()?.directLinkResumable===true,
-          // A cleared run leaves a valid empty localStorage envelope.
-          // Check the actual ActorSession, not existence of the envelope key.
-          localPresent:!!(await import("/world-v0/session-continuity.js"))
-            .readWorldV0StoredSession(${JSON.stringify(RUN)}),
-          durablePresent:!!(await module.mf6ReadDurableActorSession(${JSON.stringify(RUN)})),
-        };
-      })()`);
-      lastStaleObservation=observation;
-      return observation.bootMode==="hydrated"&&!observation.offer&&
-        !observation.localPresent&&!observation.durablePresent?observation:false;
-      },"stale strict-IDB token authority rejection + durable tombstone",10000);
-    }catch{
-      // Only non-secret status flags: no resume token or raw persisted record.
-      throw new Error(`stale session negative failed · observed=${JSON.stringify(lastStaleObservation)}`);
-    }
-    result.negativeStaleEpoch={
-      appRehydratedCandidate:rejected.bootMode==="hydrated",
-      authorityRejectedResume:!rejected.offer,
-      localCleared:!rejected.localPresent,
-      durableTombstoned:!rejected.durablePresent,
-    };
-    await browser.cdp.call("Target.closeTarget",{targetId:stalePage.targetId});
-  }
 
   Object.assign(result,{
     verdict:"MF6_F5_BROWSER_PROCESS_RESTART_COMPLETE",

@@ -16,6 +16,10 @@ function summarize(value,id){
     neutralControlPresent:value.profileStorageBeforeApp?.controlMarkerPresent===true,
     nativeDurableCommit:value.nativeDurableWriteConfirmed===true,
     nativeDurableBoot:value.nativeDurableBoot??null,
+    staleEpochRejected:value.negativeStaleEpoch?.appRehydratedCandidate===true&&
+      value.negativeStaleEpoch?.authorityRejectedResume===true&&
+      value.negativeStaleEpoch?.localCleared===true&&
+      value.negativeStaleEpoch?.durableTombstoned===true,
     strictCaptureAcknowledged:value.strictCaptureAcknowledged===true&&value.strictCaptureDurabilityHint==="strict",
     bridgeDatabasePresent:value.strictPostCrashBridge?.databaseExisted===true&&value.strictPostCrashBridge?.recordPresent===true,
     bridgeMatchesIdentity:value.strictPostCrashBridge?.matchingActor===true,
@@ -52,6 +56,7 @@ const apparatusAll=sharedApparatusAll&&summaries.every((value)=>strictBridgeExpe
    value.bridgeRestoredFromIdb&&!value.neutralRecordPresent&&!value.neutralControlPresent
   :nativeStrictProbe
     ?value.nativeDurableCommit&&value.nativeDurableBoot==="hydrated"&&
+     value.staleEpochRejected&&
      !value.neutralRecordPresent&&!value.neutralControlPresent
     :value.neutralRecordPresent&&value.neutralControlPresent);
 const identityAll=summaries.every((value)=>value.identityPreserved);
@@ -68,7 +73,7 @@ else if(!identityAll||!exactAll||!agencyAll||!restoredAll)classification="F5_BRO
 else if(strictBridgeExperiment)classification=
   "F5_STRICT_IDB_ACTOR_SESSION_BRIDGED_RECOVERY_SUPPORTED_AT_RECORDED_DWELL";
 else if(nativeStrictProbe)classification=
-  "F5_APP_NATIVE_STRICT_IDB_RESUME_SUPPORTED_AT_RECORDED_DWELL";
+  "F5_APP_NATIVE_STRICT_IDB_RESUME_AND_STALE_TOMBSTONE_SUPPORTED_AT_RECORDED_DWELL";
 else classification=summaries.every((value)=>value.preCrashDwellMs===8000)
   ?"F5_BROWSER_PROCESS_RESTART_RECOVERY_SUPPORTED_AFTER_8S_DWELL"
   :"F5_BROWSER_PROCESS_RESTART_RECOVERY_SUPPORTED_AT_RECORDED_DWELL";

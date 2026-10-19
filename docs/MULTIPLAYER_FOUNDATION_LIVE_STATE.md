@@ -370,6 +370,15 @@ Do not yet:
 - claim cross-device identity transfer;
 - substitute machine evidence for eventual real 3–6-human play.
 
+## Cross-project reception, not a new program (2026-10-19)
+
+The Owner asked how the same work can help **Multi_World, Jaskinia and Medium** without erasing their autonomy. A [source-bound entry seam](./MULTI_WORLD_JASKINIA_MEDIUM_ENTRY_SEAM_2026-10-19.md) now pins the relevant original repos, qualified-vs-research-vs-deployed identities, staging URL and unknowns. It was delivered through existing work objects, without asking the Owner to relay it:
+
+- [Jaskinia Compass #5 receiving-agent comment](https://github.com/Jozzpoly/Jozz-Cave-Workbench/issues/5#issuecomment-6277421227): Opus can independently evaluate a possible **2P staging** entry in Jaskinia's existing `data/wejscia.json` / `okno:false` pattern after real enter/move/return verification. No change to Compass body or Jaskinia source.
+- [Medium capability expedition #7 source-bound workpiece](https://github.com/Jozzpoly/Shared-Work-Medium-Lab/issues/7#issuecomment-6277429960): identifies the observed ambiguity **Git activity ≠ Worker deployment ≠ live ActorSession ≠ human qualification**, without inventing a synchronization bus, forced adoption or new Medium architecture.
+
+The staging Worker returned public static asset contract and `/api/ping`, **but complete 2P play from that address was not verified in the Opera inspection** (the observed shell later showed `Catching up…`). Do not silently mark the candidate as verified `Zagraj`, do not deploy MF6 as a side effect and do not publish private room/run keys or bearer Resume tokens. Jaskinia owner/Opus judgement and actual human/device testing remain the decisive receiving boundary. Automated catalog refresh stays explicitly out of scope under the Jaskinia Compass.
+
 ## Owner boundary
 
 None at the immediate step.

@@ -27,6 +27,20 @@ import {
   writeWorldV0ResumeIntent,
 } from "./session-continuity.js";
 
+import {
+  mf6DurableResumeProbeEnabled,
+  mf6ClearDurableActorSession,
+} from "./mf6-durable-resume-probe.js";
+
+function invalidateLocalAndDurableActorSession(run,worldEpoch){
+  const locallyCleared=clearWorldV0StoredSession(run,worldEpoch);
+  if(mf6DurableResumeProbeEnabled()){
+    // Authority has disproved this specific epoch, not ownership of another one.
+    void mf6ClearDurableActorSession(run,worldEpoch);
+  }
+  return locallyCleared;
+}
+
 const bootstrapUrl = new URL(location.href);
 const rawInviteRun = bootstrapUrl.searchParams.get("run");
 const entryMode = friendEntryMode(rawInviteRun);
@@ -300,14 +314,14 @@ async function resolvePrivateDirectLinkResume(run, stored) {
         if (identityMatches) {
           return presentDeepLinkResume(stored, "This private Yard kept your player · resume the same session");
         }
-        clearWorldV0StoredSession(run, stored.worldEpoch);
+        invalidateLocalAndDurableActorSession(run, stored.worldEpoch);
         deepLinkResumeSession = null;
         enterButton.textContent = entryCopy.enterLabel;
         bootStatus.textContent = entryCopy.status;
         return null;
       }
       if (verdict?.ok === true && verdict.valid === false) {
-        clearWorldV0StoredSession(run, stored.worldEpoch);
+        invalidateLocalAndDurableActorSession(run, stored.worldEpoch);
         deepLinkResumeSession = null;
         enterButton.textContent = entryCopy.enterLabel;
         bootStatus.textContent = entryCopy.status;
@@ -343,7 +357,7 @@ async function resolveDirectLinkResume() {
           await new Promise((resolve) => setTimeout(resolve, 200));
           continue;
         }
-        clearWorldV0StoredSession(run, stored.worldEpoch);
+        invalidateLocalAndDurableActorSession(run, stored.worldEpoch);
         authorityDisprovedStoredSession = true;
         break;
       }

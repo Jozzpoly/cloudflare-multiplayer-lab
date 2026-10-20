@@ -20,6 +20,12 @@ The early-access [Jaskinia PR #6](https://github.com/Jozzpoly/Jozz-Cave-Workbenc
 
 All CI driver scripts and single-use workflows were removed from the PR after execution; the final diff still consists of the *three agreed source/data/test files*, with the real hosted Worker and Multi qualified `main` unchanged. PR #6 was moved out of draft, ready for Opus's release judgement. **Public Jaskinia still does not include the new entry until Opus builds and publishes**, and Owner/human/mobile play quality is not demonstrated. This is precisely the distinction between source-ready and visible-in-the-Home; do not claim the button is already live.
 
+## 2026-10-20 resolution: code integrated; Owner artifact release outstanding
+
+**[Jaskinia PR #6 was squash-merged](https://github.com/Jozzpoly/Jozz-Cave-Workbench/pull/6)** into `v6-materialy` as [`2d813488`](https://github.com/Jozzpoly/Jozz-Cave-Workbench/commit/2d813488fa8a13dd39440fda6267522fadc78f80), modifying exactly 3 source/data/test files and no deployed Worker. Source is now integrated, not merely proposed. Latest confirmed `gh-pages` head remains `8e0186d` with v6.3 `status.json`; **Multi's new launcher is not yet in the public Jaskinia**.
+
+**Critical second distribution surface:** the owner's main private `claude.ai` Jaskinia artifact contains **31 projects**, while the public repository snapshot and published public Pages contain **26**. A public Pages update alone would not deliver the change into the owner's usual Jaskinia, and packaging the public snapshot as his private artifact would omit private projects. Opus's normal release path must regenerate *the actual 31-project artifact* from its own private workspace, increment `src/jaskinia/version.txt`, preserve old-tab state and revise `docs/VERSIONS.md`; the Pages preview is a separate public-only package. [Receiving release handoff in Opus PR #4](https://github.com/Jozzpoly/Jozz-Cave-Workbench/pull/4#issuecomment-6280025085). **No private artifact or public Pages publication was performed by this research line.**
+
 ## Exact verified source observations
 
 | Boundary | Evidence | Narrow claim |

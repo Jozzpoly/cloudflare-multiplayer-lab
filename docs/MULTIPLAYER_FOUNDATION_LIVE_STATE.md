@@ -1,9 +1,30 @@
 # Multiplayer Foundation — Live State
 
-Status: ACTIVE FRONTIER / F4 ENVELOPE BOUNDED / F5 RECOVERY RESEARCH SCOPED / MF6 VISUAL PRESENCE UNDER QUALIFICATION  
-Updated: 2026-10-19 after native strict-IDB F5 and MF6 scene-presence research
+Status: RESEARCH ACTIVE / F4 TIMING ENVELOPE BOUNDED / F5 CONDITIONAL EVIDENCE / MF6 SIX-SCENE ROSTER PASS, HUMAN QUALIFICATION OPEN  
+Updated: 2026-10-20 full campaign closeout after Multi 2P -> Jaskinia source merge and Medium handoff
 
-This is the compact execution pointer for the active Multiplayer Foundation campaign. Reverify exact refs before mutation or qualification claims.
+This is the active Multiplayer Foundation execution pointer; the historical sections below remain evidence, NOT independent live orders. Reverify exact refs and run-SHAs before mutation or qualification.
+
+## October 19–20 verified closeout and next-day re-entry (READ FIRST)
+
+**Mission, unchanged:** 1–6 actor real-time shared physics, join/leave, recovery, impairment and eventual human 3–6 qualification as reusable multiplayer technology/donor. No gameplay expansion. [Owner lock: AGENTS.md](../AGENTS.md).
+
+| Surface | Supported today | Still OPEN / forbidden inference |
+| --- | --- | --- |
+| **Qualified Multi `main`** | `d6b9be57` is 2P baseline; hosted staging public build UI v22 / sim v10 | MF6 is **not** deployed or merged |
+| **F5** | [Flagged native strict-IDB #39316524529](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/actions/runs/39316524529): 2/2 early-crash same-ActorSession restores **and** invalid old-epoch IDB tombstones; [ordinary 8s #39316916833](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/actions/runs/39316916833): 4/4 jobs PASS | 1.5s localStorage-only process-death RED; pre-IDB-commit crash, denied storage, multi-tab race, mobile eviction and Jaskinia iframe origins unresolved. IDB opt-in research **not** default |
+| **MF6 visual/physics** | [Chromium+Workerd #39318923780](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/actions/runs/39318923780): six actor bodies and **scene-mounted** identity-keyed avatars, churn/replacement/no stale mesh, exact guards PASS | Screen-space visibility, peer-by-peer smoothing, mobile/human 3–6 not proven; F4 hostile latency included `L8_RED_L10_RED_L12_PASS` |
+| **Existing deployed 2P** | [Actual hosted staging #39340405745](https://github.com/Jozzpoly/Jozz-Cave-Workbench/actions/runs/39340405745): 2 browsers, same WorldEpoch, input, exact, close/reopen original ActorSession PASS | This used a private fixture room, not a human route from Jaskinia through a public Yard directory |
+| **Jaskinia source** | [PR #6 merged](https://github.com/Jozzpoly/Jozz-Cave-Workbench/pull/6) to `v6-materialy` at `2d813488`; three files only. [Old-tab v6.3 suite #39341348105](https://github.com/Jozzpoly/Jozz-Cave-Workbench/actions/runs/39341348105) 43/43 PASS | **Not published:** public `gh-pages` still `8e0186d` at verification. Owner private claude.ai artifact release separate |
+| **Medium** | [Exact source/evidence workpiece #7](https://github.com/Jozzpoly/Shared-Work-Medium-Lab/issues/7#issuecomment-6277429960) and [Opus receiving handoff](https://github.com/Jozzpoly/Jozz-Cave-Workbench/pull/4#issuecomment-6280025085) created | No claim of independent adoption, reduced attention, shared runtime, or new platform |
+
+**CRITICAL release distinction:** the public Jaskinia snapshot has **26 public repositories**; v6.3's documented private Owner artifact has **31**. Merging a PR, publishing public Pages, and releasing the Owner artifact are **three separate steps**. Neither Pages nor the private artifact was published in this campaign. [Complete source-bound current handoff](./MULTI_WORLD_JASKINIA_MEDIUM_ENTRY_SEAM_2026-10-19.md).
+
+**Mistakes corrected in this campaign:** early F5 fixture reopened a prepared MF6 URL rather than the app's real post-Enter URL; the app actually had `lifecycle=mf6` downgrade bug. F5 artifact once checked an empty `localStorage` envelope rather than the per-run token. One hosted staging probe clicked before event handlers bound. Distinguish those apparatus failures from product defects. Never generalize a CI workflow's success into all latency cells passing.
+
+**Next autonomous move:** (1) verify if Opus's *actual* Owner artifact has been released (do not infer from Git branch or public Pages); support native release if requested, don't create a parallel/private packaging pipeline; (2) when visible, get actual public Yard→move→return and mobile/human evidence; (3) independently inside Multi's program rank incremental 1–5 presence, per-peer visual feel, storage denial/races by the highest unresolved causal value. Don't repeat already-proven 2P launcher tests simply for more green CI. Preserve 3 Multi branches (main/archive/research); don't delete history or promote MF6 as a side effect.
+
+---
 
 ## Active mission
 
@@ -19,9 +40,7 @@ Repository: `Jozzpoly/cloudflare-multiplayer-lab`
 
 Branch: `research/multiplayer-foundation-v2-v28-dynamic-composition`
 
-Research head before this documentation checkpoint:
-
-`6673899f9ee5ccc4b10a35ad11bce3d8f305c2dd`
+Research working branch is intentionally mutable; **do not trust a checkpoint SHA as current HEAD**. Retrieve the GitHub branch ref live. This section's historical tests identify immutable **workflow head SHAs** where required.
 
 The branch remains research. `main` remains the qualified two-actor regression/control baseline.
 
@@ -317,7 +336,7 @@ The apparatus retained five active remote actors, authority progression, real Ch
 
 **Cleanup and validation:** [commit 5c1277b](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/commit/5c1277b23e2b67bb0776ad54c219ce8a146ee5c4) restored the original proven native 8-second F5 script **byte for byte** (blob `77e9a727613b6a128da856ef4357d4c9bab0e29c`). The aggregate now preserves the separate diagnostic evidence modes and enforces semantic PASS in CI. The qualified product `main` was never modified. [Final restored native-harness run 39270279868](https://github.com/Jozzpoly/cloudflare-multiplayer-lab/actions/runs/39270279868) verified 4/4 jobs PASS, `evidenceMode=native-localstorage`, `apparatusAll/identityAll/exactAll/agencyAll/restoredAll=true`, and `F5_BROWSER_PROCESS_RESTART_RECOVERY_SUPPORTED_AFTER_8S_DWELL` for both 8,000 ms specimens. This separately proves the broadened aggregate still honors the original qualification.
 
-**Next bounded implementation question:** can the **real app** implement a well-defined ordering of `welcome → write strict-IDB ActorSession → await completed commit → surface recoverable-status` and on fresh boot `read strict-IDB → validate source/run/epoch identity → normal authority Resume`, while clearing/invalidating both stores consistently, preserving fail-closed ownership, and not hanging on storage errors? Defer any promotion until automated positive **and negative** cases show no stale-token resurrection, no identity theft, and no unexplained degradation in 2P or MF6. Measure mobile/embedded behavior separately.
+**Historical next question at this checkpoint, now partially answered:** the *actual flagged research app* subsequently completed native strict-IDB write/read and demonstrated stale WorldEpoch rejection plus tombstoning. Read the newer native MF6 section below before acting. **Still unresolved**: failure/timeout/denial of IDB, pre-commit crash and concurrent-tab write/clear races. No promotion to default 2P is implied.
 
 ### Native MF6 strict-IDB ActorSession probe, with stale-token rejection (2026-10-19)
 
@@ -342,7 +361,7 @@ The strict-IDB *test-controlled bridge* from earlier F5 work has now been separa
 
 **Remaining boundaries, not yet qualified:** crash before strict-IDB commit, unavailable/blocked IDB, read timeout and quota/permission failure, multi-tab write/clear races, competing persisted identities, browser storage partitions and Jaskinia iframe/top-level differences, actual mobile OS eviction, authority-process death / WorldEpoch replacement, real hosting and real-player usability. Strict-IDB `oncomplete` signals an observed browser storage commit, **not permanent shared-world survival**. The durable token is still a bearer secret and must never be emitted through URL, telemetry, postMessage or CI artifact.
 
-No changes to qualified `main` or deployment are authorized by these research PASS results. The nearest continuation should discriminate **storage failure and multi-tab races** with an explicit failure model, and separately prioritize the existing 3–6 actor *visual presence* gap instead of refining F5 indefinitely.
+No changes to qualified `main` or deployment are authorized by these research PASS results. Later in this campaign the **six-scene visual roster** was implemented and machine-tested (see the top checkpoint and visual-presence section); do not treat that once-open gap as still unimplemented. For F5, the remaining bounded falsifiers are storage denial and multi-tab races; weigh them against unqualified human readability/return-to-play.
 
 ### Qualification boundary and next discriminators
 
@@ -370,14 +389,11 @@ Do not yet:
 - claim cross-device identity transfer;
 - substitute machine evidence for eventual real 3–6-human play.
 
-## Cross-project reception, not a new program (2026-10-19)
+## Cross-project outcome — source integrated, distribution pending (20 Oct)
 
-The Owner asked how the same work can help **Multi_World, Jaskinia and Medium** without erasing their autonomy. A [source-bound entry seam](./MULTI_WORLD_JASKINIA_MEDIUM_ENTRY_SEAM_2026-10-19.md) now pins the relevant original repos, qualified-vs-research-vs-deployed identities, staging URL and unknowns. It was delivered through existing work objects, without asking the Owner to relay it:
+The Owner explicitly wants **current 2P available through Jaskinia before MF6 is finished**. Existing Worker staging is the delivery candidate; no Jaskinia engine rewrite or new Medium launcher required. [Jaskinia PR #6](https://github.com/Jozzpoly/Jozz-Cave-Workbench/pull/6) was **squash-merged** as `2d813488` into `v6-materialy`, not released to the private artifact or public Pages. Machine browser integration 8/8, deployed Worker two-browser/Resume PASS, full v6.3 regression 43/43 at their historical run-SHAs. The only remaining mandatory *distribution* dependency is Opus's safe **private Owner artifact** rebuild/rollout using its 31-project data; a Pages-only update would not satisfy this. Opus has the exact [handoff](https://github.com/Jozzpoly/Jozz-Cave-Workbench/pull/4#issuecomment-6280025085); Medium has a bounded [workpiece](https://github.com/Jozzpoly/Shared-Work-Medium-Lab/issues/7#issuecomment-6277429960).
 
-- [Jaskinia Compass #5 receiving-agent comment](https://github.com/Jozzpoly/Jozz-Cave-Workbench/issues/5#issuecomment-6277421227): Opus can independently evaluate a possible **2P staging** entry in Jaskinia's existing `data/wejscia.json` / `okno:false` pattern after real enter/move/return verification. No change to Compass body or Jaskinia source.
-- [Medium capability expedition #7 source-bound workpiece](https://github.com/Jozzpoly/Shared-Work-Medium-Lab/issues/7#issuecomment-6277429960): identifies the observed ambiguity **Git activity ≠ Worker deployment ≠ live ActorSession ≠ human qualification**, without inventing a synchronization bus, forced adoption or new Medium architecture.
-
-The staging Worker returned public static asset contract and `/api/ping`, **but complete 2P play from that address was not verified in the Opera inspection** (the observed shell later showed `Catching up…`). Do not silently mark the candidate as verified `Zagraj`, do not deploy MF6 as a side effect and do not publish private room/run keys or bearer Resume tokens. Jaskinia owner/Opus judgement and actual human/device testing remain the decisive receiving boundary. Automated catalog refresh stays explicitly out of scope under the Jaskinia Compass.
+The entry uses a standalone top-level Worker tab, because browser session storage ownership matters. Human Jaskinia→public room→return is not yet qualified. Source, deployed Worker, public Pages, private artifact, authority state and human experience are distinct; no confidential ActorSession capability passes through Jaskinia or Medium. [Full current receiving-project status](./MULTI_WORLD_JASKINIA_MEDIUM_ENTRY_SEAM_2026-10-19.md).
 
 ## Owner boundary
 
@@ -387,6 +403,6 @@ Browser process restart is autonomous machine falsification. Owner judgement bec
 
 ## On “continue”
 
-Reverify branch HEAD and current runs.
+Recover AGENTS.md Owner lock; read the **top 20-Oct table first**, then verify live Multi research/main heads and relevant source-bound CI. Do not let older “next” paragraphs or a freshly passing local gate silently replace the parent objective.
 
-F5 remains a bounded layered evidence stack: native localStorage 1.5 s RED / 8 s GREEN; test-bridge strict-IDB early-crash GREEN; research-flag app-native strict-IDB positive recovery plus stale-epoch tombstone GREEN, but storage denial and multi-tab races unqualified. MF6 now has session-identity keyed scene-presence code with a six-actor/churn browser test; reverify final CI and smoke before any qualification statement. Then re-rank incremental 1–5 scenes, per-peer presentation feel and real human tests against open F5 risks. Re-rank by impact and evidence; do not imply the product implements the bridge. Preserve the F4 timing contract, existing guards, qualified 2P main and the unmerged research donor.
+**Two complementary frontiers:** Jaskinia Owner-artifact *publication* is a receiving-agent release dependency (not an excuse to rebuild Jaskinia here); Multi's research frontier is real 1–6 dynamic multiplayer with incomplete human play and perceptual quality. Rank narrow differentiating tests (incremental scene presence, camera/motion feel, IDB storage-denial and multi-tab ownership) rather than reopening successful 2P gate or broad synthetic F4 stress. Distinguish FAIL vs not tested. Keep 2P main, archive, research and exact guard/timing invariants protected.
